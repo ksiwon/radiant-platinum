@@ -82,6 +82,82 @@ export const Poison = {
 } as const
 type PoisonOutcome = (typeof Poison)[keyof typeof Poison]
 
+/**
+ * 이 걸음에서 독 연출(화면 일렁임 + `SEQ_SE_DP_DOKU2`)이 도는가.
+ *
+ * 깎이기만 했든 1까지 내려갔든 **둘 다** 돈다 — 원작 `Field_UpdatePoison`이
+ * `FLDPSN_POISONED`·`FLDPSN_FAINTED` 두 갈래에서 같은 `Field_DoPoisonEffect`를 부른다
+ * (`overlay005/field_control.c` 908-916)
+ */
+export const poisonShowsEffect = (outcome: PoisonOutcome): boolean => outcome !== Poison.NONE
+
+/**
+ * 이 걸음이 독 스크립트(`SCRIPT_ID(COMMON_SCRIPTS, 3)`)를 걸고 거기서 멈추는가.
+ *
+ * ⚠️ **1까지 내려간 걸음에서만이다.** 깎이기만 한 걸음은 원작이 연출만 내고 `FALSE`를
+ * 돌려줘서 그 뒤(리펠 끝 알림 …)가 같은 걸음에 이어 돈다. 한때 깎일 때마다 걸어서
+ * 독 든 마리를 데리고 다니면 네 걸음마다 `LockAll`에 발이 묶였다
+ */
+export const poisonRunsScript = (outcome: PoisonOutcome): boolean => outcome === Poison.FAINTED
+
+/**
+ * 독이 들 때 화면이 가로로 일렁이는 폭 — 원작 픽셀(256폭), 틱마다 하나 (`ov5_021EF4BC.c`).
+ *
+ * 원작 태스크(`ov5_021EF5A8`)가 0번 갈래에서 셈을 3으로 두고, 1번 갈래에서 세 틱 동안
+ * `3 × (3 − 셈) / 3` = 1·2·3을, 2번 갈래에서 세 틱 동안 `3 × 셈 / 3` = 2·1·0을 쓴 뒤
+ * 3번 갈래에서 걷는다. 첫 0은 0번 갈래의 틱이다 — 그때 표는 `memset`으로 0이다.
+ *
+ * ⚠️ **한 틱을 1/60초로 센다.** 원작 본 루프 한 바퀴는 1/30초지만 우리 연출은 다
+ * 1/60초 규약이라(docs/orders/COMPLETION_20260928.md §0) 여기만 따로 늦추지 않는다.
+ * 원작의 겹버퍼(`BufferManager`) 한 틱 늦음도 같은 까닭으로 접는다
+ */
+export const POISON_WOBBLE_PIXELS: readonly number[] = [0, 1, 2, 3, 2, 1, 0]
+
+/** 한 틱 (ms) */
+const POISON_WOBBLE_TICK_MS = 1000 / 60
+
+/**
+ * 같은 쪽으로 밀리는 주사선 묶음의 높이 — 열 줄마다 방향이 뒤집힌다 (`ov5_021EF66C`의 `v0 % 10`).
+ *
+ * 화면 192줄 중 0~9줄이 −, 10~19줄이 +다: 원작이 `v2 = 1`로 시작해 0번 줄에서 먼저
+ * 뒤집기 때문이다. 표는 H블랭크에서 **다음 줄** 몫을 읽어 걸므로(`ov5_021EF634`의 `v1++`)
+ * L번 줄에 서는 값이 곧 표의 L번 칸이다
+ */
+export const POISON_WOBBLE_BAND = 10
+
+/**
+ * 지금 도는 독 일렁임. 걸음 쪽(`scene/stepSystem`)이 세우고 후처리(`scene/fx/post`)가 읽는다.
+ *
+ * ⚠️ **틱을 세지 않고 시각을 적는다.** 원작 태스크는 필드가 멈춰도 제 길이만큼 돌고
+ * 끝난다. 고정 스텝(`gameLoop`)에 매어 세면 메뉴나 창 내림으로 루프가 서는 순간
+ * 화면이 3픽셀 밀린 채로 굳는다. 프레임마다 바뀌는 값이라 스토어가 아니라 읽기용
+ * 싱글톤이다 (`battle/encounterCutIn`의 `cutInFrame`과 같은 이유다)
+ */
+export const fieldPoisonWobble: { since: number | null } = { since: null }
+
+/** 독 일렁임을 처음부터 다시 건다. 도는 중이면 되감는다 — 네 걸음 사이에 다 끝나므로 겹칠 일은 없다 */
+export function startPoisonWobble(now: number): void {
+  fieldPoisonWobble.since = now
+}
+
+/** 그 시각의 일렁임 폭 (원작 픽셀). 안 돌면 0이고, 다 돌았으면 그 자리에서 놓는다 */
+export function poisonWobblePixels(now: number): number {
+  const since = fieldPoisonWobble.since
+  if (since === null) return 0
+  const tick = Math.floor((now - since) / POISON_WOBBLE_TICK_MS)
+  const px = POISON_WOBBLE_PIXELS[Math.max(0, tick)]
+  if (px === undefined) {
+    fieldPoisonWobble.since = null
+    return 0
+  }
+  return px
+}
+
+/** 주사선 L(0~191, 위가 0)이 밀리는 방향 — +1이면 그림이 왼쪽으로 간다 (`G3X_SetHOffset`) */
+export function poisonWobbleSign(line: number): 1 | -1 {
+  return Math.floor(line / POISON_WOBBLE_BAND) % 2 === 0 ? -1 : 1
+}
+
 interface PoisonResult {
   party: PokemonInstance[]
   outcome: PoisonOutcome

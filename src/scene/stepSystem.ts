@@ -7,7 +7,7 @@
 // ⚠️ **알리는 방법이 원작 그대로다.** 독도 리펠도 우리가 문장을 지어내지 않고
 // 롬의 공용 스크립트를 돌린다 — 독은 `SCRIPT_ID(COMMON_SCRIPTS, 3)`,
 // 리펠은 `…, 32`다. 그래야 글도 소리도 창 모양도 원작이다.
-import { step as stepOnce, Poison } from '../engine/actor/steps'
+import { step as stepOnce, poisonRunsScript, poisonShowsEffect, startPoisonWobble } from '../engine/actor/steps'
 import { StepTrace } from '../engine/actor/stepTrace'
 import { addRecord, RECORD_EGGS_HATCHED, RECORD_STEPS } from '../engine/world/gameRecords'
 import { VAR_FRIENDSHIP_STEPS } from '../engine/actor/steps'
@@ -48,6 +48,8 @@ import { useHatchStore } from '../state/hatchStore'
 import { NO_LEAD, type Lead } from '../engine/battle/encounterLead'
 import { Behavior } from '../engine/map/zone'
 import { useSlopeAnimStore } from './slopeAnimStore'
+import { music } from '../engine/audio/music'
+import { SFX } from '../engine/audio/sfx'
 
 /**
  * 보고 있는 쪽을 원작의 방향 번호로 (`FACE_UP`·`DOWN`·`LEFT`·`RIGHT`).
@@ -59,7 +61,7 @@ function facingDir(): number {
   return [DIR.south, DIR.east, DIR.north, DIR.west][quarter]!
 }
 
-/** `SCRIPT_ID(COMMON_SCRIPTS, 3)` — 독이 깎였을 때 */
+/** `SCRIPT_ID(COMMON_SCRIPTS, 3)` — 독으로 1까지 내려갔을 때 (`CommonScript_FieldEffectPoisonFainted`) */
 const COMMON_SCRIPT_POISON = 2003
 /** `SCRIPT_ID(COMMON_SCRIPTS, 32)` — 리펠이 다 됐을 때 */
 const COMMON_SCRIPT_REPEL = 2032
@@ -465,6 +467,14 @@ function oneStep(): boolean {
     coin: () => Math.random() < 0.5,
   })
 
+  // 독이 들었다 — 깎이기만 했든 1까지 내려갔든 화면이 일렁이고 `DOKU2`가 난다
+  // (`Field_DoPoisonEffect`). 원작도 스크립트를 걸기 **전에** 부른다. 일렁임은
+  // 후처리가 그린다 (`scene/fx/post`)
+  if (poisonShowsEffect(got.poison)) {
+    startPoisonWobble(performance.now())
+    void music.playEffect(SFX.FIELD_POISON)
+  }
+
   // 육성가와 알도 같은 한 걸음에 돈다 (`Daycare_Update`)
   const now = new Date()
   const table = speciesTable
@@ -507,7 +517,9 @@ function oneStep(): boolean {
   // 알리는 것은 하나뿐이다 — 원작도 `Field_ProcessStep`이 첫 참에서 돌아온다
   const scripts = mapById(mapWorld.mapId)?.scripts
   if (scripts === undefined) return false
-  if (got.poison !== Poison.NONE) { start(COMMON_SCRIPT_POISON, scripts); return true }
+  // ⚠️ **1까지 내려간 걸음에서만 건다** (`poisonRunsScript`). 깎이기만 한 걸음은
+  // 원작이 `FALSE`를 돌려줘서 아래 리펠 검사가 같은 걸음에 이어 돈다
+  if (poisonRunsScript(got.poison)) { start(COMMON_SCRIPT_POISON, scripts); return true }
   if (got.repelExpired) { start(COMMON_SCRIPT_REPEL, scripts); return true }
   return false
 }

@@ -7,7 +7,9 @@ import { describe, expect, it } from 'vitest'
 import type { PokemonInstance } from '../pokemon/instance'
 import { noOrigin } from '../pokemon/origin'
 import {
-  FRIENDSHIP_STEPS, Poison, POISON_STEPS, poisonStep, step, walkFriendship, type StepWorld,
+  fieldPoisonWobble, FRIENDSHIP_STEPS, Poison, POISON_STEPS, POISON_WOBBLE_PIXELS, poisonRunsScript,
+  poisonShowsEffect, poisonStep, poisonWobblePixels, poisonWobbleSign, startPoisonWobble, step,
+  walkFriendship, type StepWorld,
 } from './steps'
 
 const mon = (over: Partial<PokemonInstance> = {}): PokemonInstance => ({
@@ -121,5 +123,81 @@ describe('걸음', () => {
   it('파티 전원이 같이 받는다', () => {
     const got = walk(FRIENDSHIP_STEPS, { party: [mon(), mon({ friendship: 120 })] })
     expect(got.party.map((m) => m.friendship)).toEqual([71, 121])
+  })
+})
+
+describe('독이 든 걸음 (`Field_UpdatePoison`)', () => {
+  it('깎이기만 한 걸음은 스크립트를 안 걸고 연출만 낸다', () => {
+    // ⚠️ **이것이 고친 자리다.** 한때 깎일 때마다 `COMMON_SCRIPTS 3`을 걸어서 독 든
+    // 마리를 데리고 다니면 네 걸음마다 `LockAll`에 발이 묶이고, 같은 걸음의 리펠
+    // 끝 알림이 밀렸다. 원작은 `FLDPSN_POISONED`에서 `FALSE`를 돌려준다
+    const hurt = walk(POISON_STEPS, { party: [mon({ status: 'psn', hp: 30 })] })
+    expect(hurt.poison).toBe(Poison.HURT)
+    expect(poisonRunsScript(hurt.poison)).toBe(false)
+    expect(poisonShowsEffect(hurt.poison)).toBe(true)
+  })
+
+  it('1까지 내려간 걸음은 스크립트를 걸고, 연출도 낸다', () => {
+    const fainted = walk(POISON_STEPS, { party: [mon({ status: 'psn', hp: 2 })] })
+    expect(fainted.poison).toBe(Poison.FAINTED)
+    expect(poisonRunsScript(fainted.poison)).toBe(true)
+    expect(poisonShowsEffect(fainted.poison)).toBe(true)
+  })
+
+  it('독이 안 든 걸음은 아무것도 안 한다', () => {
+    // 독 걸린 마리가 있어도 네 걸음째가 아니면 안 든다
+    const between = walk(POISON_STEPS - 1, { party: [mon({ status: 'psn', hp: 30 })] })
+    expect(between.poison).toBe(Poison.NONE)
+    expect(poisonRunsScript(between.poison)).toBe(false)
+    expect(poisonShowsEffect(between.poison)).toBe(false)
+  })
+
+  it('깎이고 리펠이 끝난 같은 걸음은 리펠 알림이 이어서 돈다', () => {
+    // 원작 `Field_ProcessStep`은 독이 `FALSE`를 내면 다음 갈래(리펠)로 간다
+    const got = walk(POISON_STEPS, { party: [mon({ status: 'psn', hp: 30 })], repelSteps: POISON_STEPS })
+    expect(poisonRunsScript(got.poison)).toBe(false)
+    expect(got.repelExpired).toBe(true)
+  })
+})
+
+describe('독 일렁임 (`ov5_021EF4BC.c`)', () => {
+  const TICK = 1000 / 60
+
+  it('틱마다 0·1·2·3·2·1·0픽셀을 내고 놓는다', () => {
+    // 원작 태스크의 0번 갈래(셈을 3으로) → 1번 갈래 셋(1·2·3) → 2번 갈래 셋(2·1·0) → 3번 갈래에서 걷는다
+    expect(POISON_WOBBLE_PIXELS).toEqual([0, 1, 2, 3, 2, 1, 0])
+    startPoisonWobble(1000)
+    // 틱 한가운데를 읽는다 — 경계에서는 부동소수 반올림에 따라 앞뒤 틱이 갈린다
+    const seen = POISON_WOBBLE_PIXELS.map((_, t) => poisonWobblePixels(1000 + (t + 0.5) * TICK))
+    expect(seen).toEqual([0, 1, 2, 3, 2, 1, 0])
+    expect(fieldPoisonWobble.since).toBe(1000)
+    // 다 돌았으면 0이고 놓는다 — 다음 프레임부터 후처리가 항등이다
+    expect(poisonWobblePixels(1000 + 7.5 * TICK)).toBe(0)
+    expect(fieldPoisonWobble.since).toBeNull()
+    expect(poisonWobblePixels(5000)).toBe(0)
+  })
+
+  it('안 걸었으면 0이다', () => {
+    fieldPoisonWobble.since = null
+    expect(poisonWobblePixels(123)).toBe(0)
+  })
+
+  it('다시 걸면 처음부터 돈다', () => {
+    startPoisonWobble(0)
+    expect(poisonWobblePixels(3.5 * TICK)).toBe(3)
+    const again = 3.5 * TICK
+    startPoisonWobble(again)
+    expect(poisonWobblePixels(again + 0.5 * TICK)).toBe(0)
+    expect(poisonWobblePixels(again + 1.5 * TICK)).toBe(1)
+    fieldPoisonWobble.since = null
+  })
+
+  it('열 줄마다 방향이 뒤집힌다 — 0번 줄부터 −', () => {
+    // `ov5_021EF66C`가 `v2 = 1`로 시작해 0번 줄에서 먼저 뒤집는다
+    for (let line = 0; line < 10; line++) expect(poisonWobbleSign(line)).toBe(-1)
+    for (let line = 10; line < 20; line++) expect(poisonWobbleSign(line)).toBe(1)
+    expect(poisonWobbleSign(20)).toBe(-1)
+    // 마지막 묶음(190·191)은 열아홉째라 +다
+    expect(poisonWobbleSign(191)).toBe(1)
   })
 })

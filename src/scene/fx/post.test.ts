@@ -4,9 +4,10 @@
 // 실제 셰이더가 어느 기계에서 터지는지는 GPU마다 다르지만, 터졌을 때 무엇을
 // 해야 하는지는 기계와 무관하다 — 그래서 그 판단만 떼어 여기서 잰다.
 import { describe, expect, it, vi } from 'vitest'
-import { OrthographicCamera, PerspectiveCamera, Scene } from 'three'
+import { Fog, OrthographicCamera, PerspectiveCamera, Scene } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import { createPostChain, ladder } from './post'
+import { fieldPoisonWobble } from '../../engine/actor/steps'
 
 /** 사다리 한 칸의 대역. 언제 무엇이 불렸는지만 적는다 */
 function step(name: 'outline' | 'bloom', opts: { throws?: boolean } = {}) {
@@ -153,6 +154,48 @@ describe('진짜 체인 (GPU 없이)', () => {
       expect(reads.width).toBeGreaterThan(atBuild)
       chain?.dispose()
     } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('안개 값을 만들 때 굽지 않고 그릴 때마다 다시 읽는다', () => {
+    // ⚠️ **윤곽은 안개 시작부터 걷힌다** (`EDGE_FOG_FADE`). 안개는 시각 · 날씨 · 맵마다
+    // 움직이므로(`scene/MapStreamer`) 만들 때 한 번 읽어 구우면 밤의 짧은 안개에서
+    // 낮의 거리로 선을 남기거나, 실내에서 들판 값을 쓴다
+    const { gl } = fakeGl({ width: 960, height: 640 })
+    const scene = new Scene()
+    const fog = new Fog(0xffffff, 38, 130)
+    let reads = 0
+    Object.defineProperty(fog, 'near', { get() { reads++; return 38 }, configurable: true })
+    scene.fog = fog
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const chain = createPostChain(gl, scene, new PerspectiveCamera())
+      const atBuild = reads
+      expect(atBuild).toBeGreaterThan(0)
+      // 가짜 렌더러라 그리다 터지지만, 터지기 전에 이번 프레임의 안개를 읽는다
+      chain?.render()
+      expect(reads).toBeGreaterThan(atBuild)
+      chain?.dispose()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('독 일렁임을 그릴 때마다 읽는다 — 다 돈 것은 그 프레임에 놓는다', () => {
+    // 걸음 쪽(`scene/stepSystem`)은 시각만 적고, 몇 픽셀 밀지는 그리는 쪽이 그 프레임의
+    // 시각으로 낸다. 다 돈 것을 놓는 것도 여기다 — 그래서 이미 끝난 일렁임을 걸어 두고
+    // 한 장 그리면 놓여 있어야 한다
+    const { gl } = fakeGl({ width: 960, height: 640 })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const chain = createPostChain(gl, new Scene(), new PerspectiveCamera())
+      fieldPoisonWobble.since = performance.now() - 1000
+      chain?.render()
+      expect(fieldPoisonWobble.since).toBeNull()
+      chain?.dispose()
+    } finally {
+      fieldPoisonWobble.since = null
       warn.mockRestore()
     }
   })
