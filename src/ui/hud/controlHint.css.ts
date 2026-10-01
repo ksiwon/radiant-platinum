@@ -32,20 +32,39 @@ export const wrap = style({
   gap: GAP.small,
 })
 
-/** 접힌 표. 눈에 걸리지 않게 흐리게 두고 손이 오면 또렷해진다 */
-export const chip = style({
+/**
+ * 접힌 표의 살갗. 눈에 걸리지 않게 **글자만** 흐리게 두고 손이 오면 또렷해진다.
+ *
+ * ⚠️ **창을 통째로 흐리게 하지 않는다** (I-p01-14 · I-p15-13). 한때 `opacity: 0.5`였는데,
+ * 그러면 글자만이 아니라 창 바탕과 테두리까지 비쳐서 방에서는 회색, 하늘 앞에서는
+ * 하늘색, 깨어진 세계에서는 분홍이 됐다 — 같은 단추가 장면마다 다른 색이었고, 분홍
+ * 바닥과 흰 하늘 위에서는 글자가 묻혔다. 창은 `WINDOW_SMALL` 그대로 불투명하게 두고
+ * (밑색 `faceMid`까지 깔린다) 흐림은 `ink.dim`이 맡는다 — 창 바닥색에 대해 4.5:1을
+ * 넘기는 색이다 (`theme/day.css`)
+ */
+export const CHIP = {
   ...WINDOW_SMALL,
   pointerEvents: 'auto',
   cursor: 'pointer',
+  // ⚠️ `<button>`은 글꼴을 물려받지 않는다 — 안 적으면 브라우저 기본 단추 글꼴이다.
+  // 단축 속성이라 크기보다 먼저 온다
+  font: 'inherit',
   padding: `${GAP.tight}px ${GAP.base}px`,
   fontSize: TEXT.tiny,
-  opacity: 0.5,
-  transition: 'opacity 160ms ease-out',
-  ':hover': { opacity: 1 },
-  ':focus-visible': { opacity: 1, outline: `2px solid ${vars.pick.edge}` },
+  color: vars.ink.dim,
+  transition: 'color 160ms ease-out',
+} as const
+
+/** 손이 왔거나 펴져 있을 때의 글자 */
+export const CHIP_LIT = { color: vars.ink.strong } as const
+
+export const chip = style({
+  ...CHIP,
+  ':hover': CHIP_LIT,
+  ':focus-visible': { ...CHIP_LIT, outline: `2px solid ${vars.pick.edge}` },
 })
 
-export const chipOpen = style([chip, { opacity: 0.95 }])
+export const chipOpen = style([chip, CHIP_LIT])
 
 export const panel = style({
   ...WINDOW,

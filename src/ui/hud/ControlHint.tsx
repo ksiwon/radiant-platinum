@@ -9,6 +9,7 @@
 // 바꾼 날부터 거짓말이 된다.
 import { useEffect, useMemo, useState } from 'react'
 import { controlRows, LEGEND_TOGGLE } from '../../engine/input/controlLegend'
+import { keyLabel } from '../../engine/input/keyNames'
 import { typingInto } from '../../engine/input/keys'
 import { useBattleStore } from '../../state/battleStore'
 import { useMenuStore } from '../../state/menuStore'
@@ -18,6 +19,20 @@ import * as css from './controlHint.css'
 /** 접힌 알약에 적는 말 */
 const TITLE: Readonly<Record<string, string>> = {
   ko: '조작', en: 'Controls', ja: 'そうさ',
+}
+
+/**
+ * 접힌 알약의 글자 — 「조작 [G]」.
+ *
+ * ⚠️ **여는 키를 같이 적는다** (I-p01-14). 한때 「조작 ?」뿐이라 어느 키로 펴는지
+ * 화면만 보고는 몰랐다. 키 이름은 쪽지의 줄들과 같은 `keyLabel`에서 오고,
+ * `LEGEND_TOGGLE`의 **첫 키**만 적는다 — 둘째(`F1`)는 자판을 모르는 손을 위한
+ * 덤이라 글자 몇 자짜리 알약에 「또는」을 늘어놓지 않는다
+ */
+export function chipLabel(locale: string): string {
+  const title = TITLE[locale] ?? TITLE.ko ?? ''
+  const key = LEGEND_TOGGLE[0]
+  return key === undefined ? title : `${title} [${keyLabel(key)}]`
 }
 
 export function ControlHint() {
@@ -45,9 +60,10 @@ export function ControlHint() {
         type="button"
         className={open ? css.chipOpen : css.chip}
         aria-expanded={open}
+        aria-keyshortcuts={LEGEND_TOGGLE.map(keyLabel).join(' ')}
         onClick={() => { setOpen((v) => !v) }}
       >
-        {`${TITLE[locale] ?? TITLE.ko} ?`}
+        {chipLabel(locale)}
       </button>
       {open && (
         <div className={css.panel} role="table" aria-label={TITLE[locale] ?? TITLE.ko}>
