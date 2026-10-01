@@ -1,17 +1,18 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Group, Mesh, MeshStandardMaterial, type Material, type Object3D } from 'three'
-import { introOutro, outroLook } from '../engine/intro/beats'
+import { introOutro, introReturn, outroLook, rowanReturnLook } from '../engine/intro/beats'
 import { createRig, updateLocomotion, type Rig } from '../engine/actor/locomotion'
 import { RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { normalizeModel, PLAYER_HEIGHT } from '../engine/model/normalize'
+import { isChibi, shapeChibi } from '../engine/model/chibi'
 import { type AssetPath } from '../data/providers/assetProvider'
 import { useIntroStageStore } from '../state/introStageStore'
 import { useMonBody } from './monBody'
 import { cinematicStage, CINEMATIC_ORIGIN } from './battle/stageRefs'
 import { cinematicScale } from './cinematicMotion'
 import { playerModelPath } from './playerModelPath'
-import { NPC_BUNDLE } from '../engine/actor/npcModels'
+import { NPC_BUNDLE, NPC_MODEL_BUNDLE } from '../engine/actor/npcModels'
 import { usePersonModel } from './personModel'
 import { INTRO_BALL, INTRO_CAMERA } from './introPlace'
 
@@ -40,21 +41,51 @@ function fadePerson(root: Object3D, alpha: number, owned: Map<Material, number>)
   })
 }
 
+/** 이 프레임에 그 사람이 얼마나 진하고 얼마나 큰가. 시계가 안 돌면 `null`이고 그때는 손대지 않는다 */
+type PersonLook = (gender: 'boy' | 'girl') => { alpha: number; scale: number } | null
+
+/**
+ * 마박사 — 라이벌 이름 뒤에 다시 떠오르고(`rowanReturnLook`) 닫는 박자에 사라진다
+ * (`outroLook`). 다시 서기 전 그림을 얹기 전에는 진하기 0으로 서 있다
+ */
+const rowanLook: PersonLook = (gender) => {
+  if (introReturn.frame >= 0) {
+    return { alpha: rowanReturnLook(introReturn.frame).rowan ?? 0, scale: 1 }
+  }
+  if (introOutro.frame >= 0) return { alpha: outroLook(introOutro.frame, gender).rowan, scale: 1 }
+  return null
+}
+
+/** 라이벌 — 이름을 확인하면 사라진다 (`RI_STATE_FADE_OUT_RIVAL`) */
+const rivalLook: PersonLook = () =>
+  introReturn.frame >= 0 ? { alpha: rowanReturnLook(introReturn.frame).rival, scale: 1 } : null
+
+/**
+ * 닫는 박자의 주인공 — 떠올라 작아진다.
+ *
+ * ⚠️ **발을 붙인 채 줄인다** — 원작 그림은 줄면서 뜨지만 우리는 바닥 위에
+ * 서 있다 (`SHRINK_HEIGHTS` 머리말)
+ */
+const avatarLook: PersonLook = (gender) => {
+  if (introOutro.frame < 0) return null
+  const look = outroLook(introOutro.frame, gender)
+  return { alpha: look.avatar ?? 0, scale: look.scale }
+}
+
 function Person({
   path,
   position,
   selected = true,
-  outro,
+  look,
 }: {
   path: AssetPath
   position: readonly [number, number, number]
   selected?: boolean
   /**
-   * 닫는 박자에서 맡는 일 (`engine/intro/beats`의 `outroLook`). `leave`는 사라지는
-   * 마박사, `arrive`는 떠올라 작아지는 주인공이다. 시계(`introOutro`)가 −1이면
-   * 아무 일도 안 한다
+   * 박자가 이 사람을 비치고 줄이는 일 (`rowanLook` · `rivalLook` · `avatarLook`).
+   * 시계(`introReturn` · `introOutro`)가 −1이면 아무 일도 안 한다
    */
-  outro?: 'leave' | 'arrive'
+  look?: PersonLook
 }) {
   const wrapper = useRef<Group>(null)
   const host = useRef<Group>(null)
@@ -85,24 +116,30 @@ function Person({
 
   useLayoutEffect(() => {
     if (!wrapper.current || !model) return
-    normalizeModel(wrapper.current, model, PLAYER_HEIGHT)
+    // ⚠️ **필드 번들(`fc*`)은 치비라 그대로 세우면 머리 큰 아이가 된다.** 마박사가
+    // 그렇다(`PROF_ROWAN` — 배틀 번들이 없다). 필드의 그 사람(`NpcModels`)과 같은
+    // 손질을 거치고, 키도 치비 손질이 정한 그 키다 — 연구소에서 만나는 마박사와
+    // 오프닝의 마박사가 같은 몸이어야 한다
+    if (isChibi(path.slice(path.lastIndexOf('/') + 1))) {
+      const { nativeHeight } = normalizeModel(wrapper.current, model, 1)
+      shapeChibi(wrapper.current, model, nativeHeight)
+    } else {
+      normalizeModel(wrapper.current, model, PLAYER_HEIGHT)
+    }
     // 리그는 정규화 **이후**에 만든다 — 본의 월드 회전에서 축을 뽑기 때문에
     // 래퍼 변환이 확정된 뒤라야 축이 맞는다 (`PlayerModel`과 같은 순서)
     rig.current = createRig(model, wrapper.current)
     return () => { rig.current = null }
-  }, [model])
+  }, [model, path])
 
   useFrame(({ clock }, delta) => {
     if (rig.current) updateLocomotion(rig.current, delta, 0, WALK_SPEED, RUN_SPEED)
     const node = body.current
-    if (outro && node && introOutro.frame >= 0) {
-      const look = outroLook(introOutro.frame, gender)
-      const alpha = outro === 'leave' ? look.rowan : (look.avatar ?? 0)
+    const now = look?.(gender) ?? null
+    if (node && now) {
       // 다 진한 채로 한 번도 안 비친 몸은 재질을 안 건드린다
-      if (alpha < 1 || owned.current.size > 0) fadePerson(node, alpha, owned.current)
-      // ⚠️ **발을 붙인 채 줄인다** — 원작 그림은 줄면서 뜨지만 우리는 바닥 위에
-      // 서 있다 (`SHRINK_HEIGHTS` 머리말)
-      node.scale.setScalar(outro === 'arrive' ? look.scale : 1)
+      if (now.alpha < 1 || owned.current.size > 0) fadePerson(node, now.alpha, owned.current)
+      node.scale.setScalar(now.scale)
     }
     if (!host.current) return
     host.current.position.y = Math.sin(clock.elapsedTime * 1.5 + position[0]) * 0.018
@@ -278,6 +315,9 @@ function IntroBall({ opened, gone }: { opened: boolean, gone: boolean }) {
   )
 }
 
+/** 마박사 모델 (`NPC_MODEL_BUNDLE.PROF_ROWAN`) — 필드에서 서는 그 번들이다 */
+const ROWAN_MODEL: AssetPath = `models/npc/${NPC_MODEL_BUNDLE.PROF_ROWAN ?? 'fc2003_00'}.glb`
+
 /** Rowan intro rendered on the persistent 3D canvas after New Game is selected. */
 export function IntroStage() {
   const scene = useIntroStageStore((state) => state.scene)
@@ -292,9 +332,18 @@ export function IntroStage() {
    * 세워 두면 마박사가 사라지고 기다리는 50프레임 사이에 다 온다
    */
   const [outro, setOutro] = useState(false)
+  /**
+   * 마박사가 다시 서는 박자가 돌고 있는가 (`introReturn` 시계가 0 이상).
+   *
+   * 같은 까닭으로 마박사를 라이벌이 사라지기 시작할 때 진하기 0으로 미리 세운다 —
+   * 그림을 얹는 프레임에 받기 시작하면 떠오르는 동안 절차형 몸이 선다
+   */
+  const [returning, setReturning] = useState(false)
   useFrame(() => {
     const on = introOutro.frame >= 0
     if (on !== outro) setOutro(on)
+    const back = introReturn.frame >= 0
+    if (back !== returning) setReturning(back)
   })
 
   /**
@@ -341,12 +390,19 @@ export function IntroStage() {
       <directionalLight position={[-4, 7, 5]} intensity={1.85} color="#eaf2ff" castShadow />
       <pointLight position={[0, 2.4, 2.5]} intensity={0.65} color="#8cbcff" distance={8} />
 
-      {scene === 'rowan' && (
-        <Person path={`models/npc/${NPC_BUNDLE.gentleman}.glb`} position={[0, 0, 0]} outro="leave" />
+      {/*
+        ⚠️ **마박사는 제 몸이다** (`PROF_ROWAN`). 한동안 신사(`tr0046_00`)가 대역으로
+        섰다 — 마박사가 `doctor00~02` 중 어느 것인지 못 짚던 때의 자리였는데, 짚은
+        뒤에도 여기만 남아 챙 모자 신사가 마박사의 말을 하고 있었다
+      */}
+      {(scene === 'rowan' || returning) && (
+        <Person path={ROWAN_MODEL} position={[0, 0, 0]} look={rowanLook} />
       )}
-      {scene === 'rival' && <Person path={`models/npc/${NPC_BUNDLE.rival}.glb`} position={[0, 0, 0]} />}
+      {scene === 'rival' && (
+        <Person path={`models/npc/${NPC_BUNDLE.rival}.glb`} position={[0, 0, 0]} look={rivalLook} />
+      )}
       {(scene === 'player' || outro) && (
-        <Person path={playerModelPath(gender)} position={[0, 0, 0]} outro="arrive" />
+        <Person path={playerModelPath(gender)} position={[0, 0, 0]} look={avatarLook} />
       )}
       {scene === 'gender' && (
         <>

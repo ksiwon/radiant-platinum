@@ -139,9 +139,17 @@ export const ok = style({
   cursor: 'pointer',
 })
 
+/**
+ * 키 안내 한 줄. 원작에 없는, 우리가 얹은 줄이다.
+ *
+ * ⚠️ **바탕이 어두운 무대라 글자가 밝아야 한다** (`ink.onDark`). 글자색을
+ * 안 적어 `wrap`의 창 글자색(어두운 남색)을 물려받고 그 위에 진하기 0.6이
+ * 겹쳐서, 남색 바탕 위 짙은 남색이 되어 안 읽혔다. 그늘은 안 깐다 (DESIGN.md §2)
+ */
 export const hint = style({
   padding: '0 0 18px',
   textAlign: 'center',
   fontSize: 13,
-  opacity: 0.6,
+  color: vars.ink.onDark,
+  opacity: 0.85,
 })

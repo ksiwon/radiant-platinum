@@ -7,8 +7,8 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { fillMenuText, INTRO_TEXT, UI_BANK } from '../../data/uiText'
 import {
-  INFO_CHOICES, INFO_CONTROLS, infoLines, INTRO, introOutro, OUTRO, OUTRO_FRAMES, outroLook,
-  RIVAL_NAME_CHOICES, SHRINK_HEIGHTS,
+  INFO_CHOICES, INFO_CONTROLS, infoLines, INTRO, introOutro, introReturn, nameRetryAt, OUTRO,
+  OUTRO_FRAMES, outroLook, RIVAL_NAME_CHOICES, ROWAN_RETURN_FRAMES, rowanReturnLook, SHRINK_HEIGHTS,
 } from './beats'
 import { controlPages } from './controlText'
 import { withData } from '../../data/romData.testkit'
@@ -31,6 +31,7 @@ describe('인트로 박자', () => {
       'name', // 주인공
       'say', // SoYoure — 라이벌이 선다
       'name', // 라이벌
+      'rowanReturn', // 라이벌이 사라지고 마박사가 다시 선다 — 말이 없다
       'say', // EndDialogue — 마박사의 마지막 말
       'outro', // 마박사가 사라지고 주인공이 작아진다
       'done',
@@ -63,6 +64,23 @@ describe('인트로 박자', () => {
       INTRO_TEXT.liveAlongside, INTRO_TEXT.aboutYourself,
       INTRO_TEXT.soYoure, INTRO_TEXT.end,
     ])
+  })
+
+  it('⚠️ 마박사가 다시 선 뒤에 마지막 말을 한다', () => {
+    // `RI_STATE_FADE_OUT_RIVAL` → … → `RI_STATE_DELAY_BEFORE_END_0` → `RI_STATE_DIALOGUE_END`.
+    // 없으면 라이벌이 마박사로 한 프레임에 바뀌고 마지막 말이 바로 뜬다
+    const rivalName = INTRO.findIndex((s) => s.kind === 'name' && s.who === 'rival')
+    expect(INTRO[rivalName + 1]).toEqual({ kind: 'rowanReturn' })
+    expect(INTRO[rivalName + 2]).toEqual({ kind: 'say', line: INTRO_TEXT.end })
+  })
+
+  it('이름 확인의 「아니오」는 주인공이면 성별부터, 라이벌이면 후보부터 다시 묻는다', () => {
+    // `RI_STATE_NAME_CONFIRM_CHOICE_BOX` → `RI_STATE_GENDR_FADE_IN_AVATAR_PREP` ·
+    // `RI_STATE_RIVAL_NAME_CONFIRM_CHOICE_BOX` → `RI_STATE_RIVAL_NAME_DIALOGUE`
+    expect(INTRO[nameRetryAt('player')]).toEqual({ kind: 'gender' })
+    expect(INTRO[nameRetryAt('rival')]).toEqual({ kind: 'name', who: 'rival' })
+    // 성별 다음이 곧 주인공 이름이라, 성별을 다시 정하면 이름 자판으로 다시 온다
+    expect(INTRO[nameRetryAt('player') + 1]).toEqual({ kind: 'name', who: 'player' })
   })
 
   it('이름을 묻는 순서가 주인공 먼저다', () => {
@@ -159,6 +177,36 @@ describe('닫는 박자 (RI_STATE_FADE_OUT_ROWAN_END → RI_STATE_END)', () => {
 
   it('시계는 닫는 중이 아닐 때 −1이다', () => {
     expect(introOutro.frame).toBe(-1)
+  })
+})
+
+describe('마박사가 다시 선다 (RI_STATE_FADE_OUT_RIVAL → RI_STATE_DELAY_BEFORE_END_0)', () => {
+  /** 마박사가 떠오르기 시작하는 프레임 — 라이벌 페이드 아웃 19 + 그림 얹기 1 */
+  const rowanIn = OUTRO.layerFade + OUTRO.load
+
+  it('마디가 원작 함수를 부르는 횟수다', () => {
+    // FadeBgLayer 19 + LoadTilemap 1 + FadeBgLayer 19 + Delay(30) 31 — 1.2초쯤이다
+    expect(ROWAN_RETURN_FRAMES).toBe(19 + 1 + 19 + 31)
+  })
+
+  it('라이벌이 16단으로 사라지는 동안 마박사는 아직 없다', () => {
+    expect(rowanReturnLook(0)).toEqual({ rival: 1, rowan: null })
+    expect(rowanReturnLook(1).rival).toBe(15 / 16)
+    expect(rowanReturnLook(16).rival).toBe(0)
+    expect(rowanReturnLook(rowanIn - 1)).toEqual({ rival: 0, rowan: null })
+  })
+
+  it('그림을 얹은 다음 프레임부터 마박사가 16단으로 떠오르고 선 채로 쉰다', () => {
+    expect(rowanReturnLook(rowanIn)).toEqual({ rival: 0, rowan: 0 })
+    expect(rowanReturnLook(rowanIn + 8).rowan).toBe(0.5)
+    expect(rowanReturnLook(rowanIn + 16).rowan).toBe(1)
+    // 쉬는 30프레임 동안 그대로 서 있다
+    expect(rowanReturnLook(ROWAN_RETURN_FRAMES - 1).rowan).toBe(1)
+    expect(ROWAN_RETURN_FRAMES - (rowanIn + OUTRO.layerFade)).toBe(OUTRO.delay)
+  })
+
+  it('시계는 그 박자가 아닐 때 −1이다', () => {
+    expect(introReturn.frame).toBe(-1)
   })
 })
 

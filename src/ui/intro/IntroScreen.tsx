@@ -19,10 +19,14 @@ import {
   infoLines,
   INTRO,
   introOutro,
+  introReturn,
+  nameRetryAt,
   OUTRO,
   OUTRO_FRAMES,
   outroLook,
   RIVAL_NAME_CHOICES,
+  ROWAN_RETURN_FRAMES,
+  rowanReturnLook,
   type IntroStep,
 } from '../../engine/intro/beats'
 import { controlPages } from '../../engine/intro/controlText'
@@ -63,9 +67,10 @@ const RIVAL_ENTERS = INTRO.findIndex(
 /**
  * 라이벌이 내려가는 박자 — 라이벌 이름을 정하는 자리. 그 뒤 말줄은 마박사가 한다.
  *
- * 원작이 이름을 확인하면 라이벌을 지우고 마박사를 다시 세운다
- * (`RI_STATE_FADE_OUT_RIVAL` → `RI_STATE_FADE_IN_ROWAN_AFTER_RIVAL`). ⚠️ **안 그러면
- * 마지막 말을 라이벌이 하고, 닫는 박자에서 사라지는 것도 마박사가 아니게 된다**
+ * 원작이 이름을 확인하면 라이벌을 지우고 마박사를 다시 세운다 — 그 사이가
+ * `rowanReturn` 박자다 (`RI_STATE_FADE_OUT_RIVAL` → `RI_STATE_FADE_IN_ROWAN_AFTER_RIVAL`).
+ * ⚠️ **안 그러면 마지막 말을 라이벌이 하고, 닫는 박자에서 사라지는 것도 마박사가
+ * 아니게 된다**
  */
 const RIVAL_LEAVES = INTRO.findIndex((s) => s.kind === 'name' && s.who === 'rival')
 
@@ -88,6 +93,11 @@ type Stage =
   | { kind: 'rivalChoice'; at: number }
   | { kind: 'nameEntry'; at: number; who: 'player' | 'rival' }
   | { kind: 'nameConfirm'; at: number; who: 'player' | 'rival' }
+  /**
+   * 라이벌 이름을 확인한 뒤 마박사가 다시 서기까지 (`rowanReturnLook`). 글도 고를
+   * 것도 없고 대사창도 없다 — 원작이 「예」를 고른 자리에서 창을 지운다
+   */
+  | { kind: 'rowanReturn'; at: number }
   /**
    * 닫는 박자. `text`는 마지막 말의 마지막 쪽이다.
    *
@@ -112,6 +122,8 @@ export function IntroScreen() {
   const [cursor, setCursor] = useState(0)
   /** 닫는 박자를 시작한 지 몇 프레임째인가. 닫는 중이 아니면 −1이다 */
   const [outroFrame, setOutroFrame] = useState(-1)
+  /** 마박사가 다시 서기 시작한 지 몇 프레임째인가 (`rowanReturn`). 그 박자가 아니면 의미가 없다 */
+  const [returnFrame, setReturnFrame] = useState(-1)
   const [draft, setDraft] = useState('')
   const [text, setText] = useState('')
   /** 지금 글을 다 찍었나. 고를 것은 이때만 뜬다 */
@@ -129,6 +141,8 @@ export function IntroScreen() {
   const outro = stage.kind === 'outro' ? outroLook(outroFrame, boy ? 'boy' : 'girl') : null
   /** 닫는 박자에서 마박사가 내려가고 주인공 그림을 얹었는가 (`RI_STATE_LOAD_MINI_AVATAR`) */
   const outroAvatar = outro !== null && outro.avatar !== null
+  /** 라이벌이 다 사라지고 마박사 그림을 얹었는가 (`RI_STATE_LOAD_ROWAN_TILEMAP_1`) */
+  const rowanBack = stage.kind === 'rowanReturn' && rowanReturnLook(returnFrame).rowan !== null
 
   useEffect(() => {
     const visual = useIntroStageStore.getState()
@@ -138,6 +152,9 @@ export function IntroScreen() {
     // 닫는 박자: 마박사가 사라지는 동안은 마박사, 그림을 얹은 뒤는 주인공 하나.
     // 진하기와 크기는 3D가 시계(`introOutro`)를 읽어 맞춘다
     if (stage.kind === 'outro') visual.show(outroAvatar ? 'player' : 'rowan')
+    // 라이벌이 사라지는 동안은 라이벌, 마박사 그림을 얹은 뒤는 마박사. 진하기는
+    // 3D가 시계(`introReturn`)를 읽어 맞춘다
+    else if (stage.kind === 'rowanReturn') visual.show(rowanBack ? 'rowan' : 'rival')
     else if (stage.kind === 'pokeBall') visual.show(stage.opened ? 'buneary' : 'ball')
     else if (stage.kind === 'gender' || stage.kind === 'genderConfirm') visual.show('gender')
     else if ((stage.kind === 'nameEntry' || stage.kind === 'nameConfirm') && stage.who === 'player')
@@ -154,7 +171,7 @@ export function IntroScreen() {
     )
       visual.show('rival')
     else visual.show('rowan')
-  }, [stage, cursor, boy, outroAvatar])
+  }, [stage, cursor, boy, outroAvatar, rowanBack])
   /**
    * 이번 프레임에 A를 눌렀는가.
    *
@@ -276,6 +293,9 @@ export function IntroScreen() {
           : line(INTRO_TEXT.confirmRivalName)
       // 닫는 박자는 새 글이 없다 — 마지막 말을 `stage.text`로 붙들고 있다
       case 'outro':
+        return null
+      // 마박사가 다시 서는 동안은 창이 없다 — 마지막 말이 새로 띄운다
+      case 'rowanReturn':
         return null
     }
     // `locale`은 우리 인사가 본다 — 뱅크 쪽은 `line`이 이미 그 언어로 받아 온다
@@ -406,6 +426,10 @@ export function IntroScreen() {
               : { kind: 'nameEntry', at: at + 1, who: 'player' },
           )
           break
+        case 'rowanReturn':
+          setReturnFrame(0)
+          setStage({ kind: 'rowanReturn', at: at + 1 })
+          break
         case 'outro':
           setOutroFrame(0)
           setStage({ kind: 'outro', at: at + 1, text })
@@ -417,6 +441,40 @@ export function IntroScreen() {
     },
     [finish, text],
   )
+
+  /**
+   * 마박사가 다시 서는 박자의 시계 (`rowanReturnLook`). 다 돌면 마지막 말로 간다.
+   *
+   * 닫는 박자처럼 화면 주사율이 아니라 지난 시간으로 센다.
+   * ⚠️ **`step`을 의존에 안 넣는다.** 이 박자에 들면 창 글이 비워지면서(`showing`이
+   * null) `step`이 새로 만들어진다 — 그때마다 시계를 다시 세우면 처음부터 다시 센다
+   */
+  const returnAt = stage.kind === 'rowanReturn' ? stage.at : -1
+  const stepNow = useRef(step)
+  useEffect(() => {
+    stepNow.current = step
+  })
+  useEffect(() => {
+    if (returnAt < 0) return
+    const start = performance.now()
+    let raf = 0
+    const tick = (): void => {
+      const frame = Math.floor((performance.now() - start) / FRAME_MS)
+      introReturn.frame = frame
+      setReturnFrame(frame)
+      if (frame >= ROWAN_RETURN_FRAMES) {
+        stepNow.current(returnAt)
+        return
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    introReturn.frame = 0
+    raf = requestAnimationFrame(tick)
+    return () => {
+      cancelAnimationFrame(raf)
+      introReturn.frame = -1
+    }
+  }, [returnAt])
 
   const advance = (): void => {
     if (rush()) return
@@ -487,13 +545,19 @@ export function IntroScreen() {
         setCursor(0)
         break
       }
+      // 「아니오」면 적은 이름을 비우고 되묻는다 (`nameRetryAt`). ⚠️ **주인공은 성별부터
+      // 다시다** — 원작이 `String_Clear` 뒤 `RI_STATE_GENDR_FADE_IN_AVATAR_PREP`로 간다.
+      // 우리는 한동안 앞서 적은 이름을 채운 채 자판으로 돌아갔다
       case 'nameConfirm':
         if (chosen === 0) step(stage.at)
         else if (stage.who === 'player') {
-          setDraft(player)
-          setStage({ kind: 'nameEntry', at: stage.at, who: 'player' })
+          setPlayer('')
+          setDraft('')
+          setStage({ kind: 'gender', at: nameRetryAt('player') })
+          setCursor(0)
         } else {
-          setStage({ kind: 'rivalChoice', at: stage.at })
+          setRival('')
+          setStage({ kind: 'rivalChoice', at: nameRetryAt('rival') })
           setCursor(0)
         }
         break
@@ -559,8 +623,9 @@ export function IntroScreen() {
         pick(NO)
       },
     },
-    // ⚠️ **닫는 박자에는 손이 안 닿는다.** 원작 상태 기계도 그동안 키를 안 본다
-    !typing && stage.kind !== 'outro',
+    // ⚠️ **닫는 박자와 마박사가 다시 서는 동안에는 손이 안 닿는다.** 원작 상태
+    // 기계도 그동안 키를 안 본다
+    !typing && stage.kind !== 'outro' && stage.kind !== 'rowanReturn',
   )
 
   const step_ = INTRO[stageAt(stage)]
@@ -589,9 +654,11 @@ export function IntroScreen() {
 
       <div
         className={css.box}
-        // 마박사가 다 사라지는 프레임에 원작이 대사창을 지운다 (BG0). 자리는 남겨
-        // 두어야 3D 화면이 위아래로 안 밀린다
-        style={outro && !outro.box ? { visibility: 'hidden' } : undefined}
+        // 마박사가 다 사라지는 프레임에 원작이 대사창을 지운다 (BG0). 라이벌 이름을
+        // 확인한 뒤 마박사가 다시 서는 동안도 창이 없다. 자리는 남겨 두어야 3D
+        // 화면이 위아래로 안 밀린다
+        style={(outro && !outro.box) || stage.kind === 'rowanReturn'
+          ? { visibility: 'hidden' } : undefined}
         onClick={() => {
           if (!typing && !choices) advance()
         }}
@@ -654,7 +721,7 @@ export function IntroScreen() {
       <div className={css.hint}>
         {typing
           ? `${String(NAME_MAX)}글자까지 · Enter 결정`
-          : stage.kind === 'outro'
+          : stage.kind === 'outro' || stage.kind === 'rowanReturn'
             ? ''
             : stage.kind === 'pokeBall' && !stage.opened
               ? '볼 가운데의 버튼을 누른다 — 클릭 · Z·Enter'

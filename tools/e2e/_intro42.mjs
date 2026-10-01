@@ -2,11 +2,13 @@
 //
 //     node tools/e2e/_intro42.mjs [--runs=5] [--headed]
 //
-// ⚠️ **Escape를 안 보냈다는 사실만으로는 아무 쪽도 못 지운다.** 타이틀로
-// 보내는 자리는 셋이다 — `app/PlayRoute`의 Escape, `ui/menu/CreditsScreen`,
-// `ui/screens/RestoreScreen`의 「타이틀로」. 어느 것이 눌렸는지는 **주소가
+// ⚠️ **키 하나를 안 보냈다는 사실만으로는 아무 쪽도 못 지운다.** 타이틀로
+// 보내는 자리는 셋이다 — `ui/screens/RestoreScreen`의 「타이틀로」(`navigate('/')`),
+// `ui/menu/CreditsScreen`의 끝, `ui/menu/OptionsScreen`의 저장 지우기. 뒤의 둘은
+// `location.assign`으로 페이지를 통째로 다시 띄운다. 어느 것이 눌렸는지는 **주소가
 // 바뀐 그 순간의 호출 스택**에만 있다. 그래서 `history.pushState`를 감싸
-// 스택째로 적고, 키·클릭·주소를 **한 시계 위에** 얹는다.
+// 스택째로 적고, 키·클릭·주소를 **한 시계 위에** 얹는다. `location.assign`은
+// 감싼 자리를 안 지나므로 그 판은 자취가 새 문서에서 끊기는 것으로 보인다.
 //
 // ⚠️ **증거를 덮지 않는다.** 타이틀로 돌아가도 「시작」을 다시 누르지 않는다 —
 // 다시 누르면 그 판의 자취가 새 판에 섞인다. 그 판은 거기서 실패로 적는다.
@@ -82,6 +84,14 @@ try {
       await page.getByRole('button', { name: '시작', exact: true }).waitFor({ timeout: 120_000 })
       await page.getByRole('button', { name: '시작', exact: true }).click()
       row.opening = await playOpening(page)
+      // ⚠️ **마지막 말 뒤에도 오프닝이 한참 돈다.** 마박사가 다시 서는 박자
+      // (`ROWAN_RETURN_FRAMES` 70프레임 · 1.2초쯤)는 마지막 말 앞이고, 닫는 박자
+      // (`OUTRO_FRAMES` 145프레임 · 2.4초쯤)가 끝나야 `/play`로 간다 — 그동안 누른
+      // 키는 버려진다(`engine/intro/beats`). `/intro`에 있는 동안은 키 없이 기다린다
+      const settle = Date.now() + 10_000
+      while (Date.now() < settle && await page.evaluate(() => location.pathname) === '/intro') {
+        await page.waitForTimeout(100)
+      }
       // ⚠️ **여기서 더 안 누른다.** 어디에 섰든 그대로 적는다
       row.path = await page.evaluate(() => location.pathname)
       row.marks = await page.evaluate(() => ({ ...document.documentElement.dataset }))

@@ -10,7 +10,7 @@
 //
 //   HelloThere → MyNameRowan → [되묻기] → WidelyInhabited → HavePokeBall →
 //   LiveAlongsidePokemon → AboutYourself → 성별 → 이름 →
-//   **SoYoure** → 라이벌 이름 → **EndDialogue**
+//   **SoYoure** → 라이벌 이름 → [마박사가 다시 선다] → **EndDialogue**
 //
 // ⚠️ **`SoYoure`와 `EndDialogue`가 특히 중요하다.**
 // `SoYoure`(「…라고 하는가! 여기 있는 이 소년은 자네의 친구였지?」)가 **라이벌을
@@ -36,6 +36,8 @@ export type IntroStep =
   | { kind: 'gender' }
   /** 이름을 짓는다. `who`가 누구 것인지 */
   | { kind: 'name'; who: 'player' | 'rival' }
+  /** 라이벌 이름을 확인한 뒤 — 라이벌이 사라지고 마박사가 다시 선다 (`rowanReturnLook`) */
+  | { kind: 'rowanReturn' }
   /** 마지막 말 뒤 — 마박사가 사라지고 주인공이 작아진다 (`outroLook`) */
   | { kind: 'outro' }
   /** 끝. 필드로 넘어간다 */
@@ -70,6 +72,8 @@ export const INTRO: readonly IntroStep[] = [
   { kind: 'say', line: INTRO_TEXT.soYoure },
   // RI_STATE_RIVAL_NAME_*
   { kind: 'name', who: 'rival' },
+  // RI_STATE_FADE_OUT_RIVAL … RI_STATE_DELAY_BEFORE_END_0 — 말 없이 사람만 바뀐다
+  { kind: 'rowanReturn' },
   // RI_STATE_DIALOGUE_END — 마박사의 마지막 말
   { kind: 'say', line: INTRO_TEXT.end },
   // RI_STATE_FADE_OUT_ROWAN_END … RI_STATE_AVATAR_SHRINK_ANIMATION · RI_STATE_END
@@ -112,6 +116,23 @@ export function infoLines(choice: number): readonly number[] {
  * 이 목록이 없다 — 원작도 바로 자판으로 간다
  */
 export const RIVAL_NAME_CHOICES: readonly number[] = INTRO_TEXT.rivalChoices
+
+/**
+ * 이름 확인에서 「아니오」(B도 같다)를 고르면 되돌아갈 박자 — `INTRO`의 자리.
+ *
+ * 원작은 두 이름을 다르게 되돌린다. 둘 다 적은 이름을 **비우고**(`String_Clear`)
+ * 돌아간다 — 앞서 적은 이름을 채운 채 자판을 다시 여는 길은 원작에 없다:
+ *
+ *   주인공  `RI_STATE_NAME_CONFIRM_CHOICE_BOX` → `RI_STATE_GENDR_FADE_IN_AVATAR_PREP`
+ *           **성별 고르기부터** 다시 한다 (두 그림이 다시 서고 「남자인가 여자인가」)
+ *   라이벌  `RI_STATE_RIVAL_NAME_CONFIRM_CHOICE_BOX` → `RI_STATE_RIVAL_NAME_DIALOGUE`
+ *           이름 후보 여덟을 다시 묻는다
+ */
+export function nameRetryAt(who: 'player' | 'rival'): number {
+  return who === 'player'
+    ? INTRO.findIndex((s) => s.kind === 'gender')
+    : INTRO.findIndex((s) => s.kind === 'name' && s.who === 'rival')
+}
 
 // ── 닫는 박자 ───────────────────────────────────────────────────────────────
 //
@@ -183,7 +204,7 @@ export const SHRINK_HEIGHTS: Readonly<Record<'boy' | 'girl', readonly number[]>>
 }
 
 /** 닫는 박자의 한 프레임에 화면이 어떤가 */
-export interface OutroLook {
+interface OutroLook {
   /** 마박사의 진하기 0~1 */
   rowan: number
   /** 주인공의 진하기 0~1. 아직 그림을 안 얹었으면 null */
@@ -228,3 +249,53 @@ export function outroLook(frame: number, gender: 'boy' | 'girl'): OutroLook {
  * 읽는다 — 둘이 따로 세면 마박사가 사라지는 때와 대사창이 지워지는 때가 어긋난다
  */
 export const introOutro = { frame: -1 }
+
+// ── 마박사가 다시 선다 ──────────────────────────────────────────────────────
+//
+// 라이벌 이름을 「예」로 확인하면 원작은 곧장 마지막 말로 가지 않는다
+// (`rowan_intro_app.c`):
+//
+//   RI_STATE_RIVAL_NAME_CONFIRM_CHOICE_BOX  「예」 — 대사창을 지운다 (BG0)
+//   RI_STATE_FADE_OUT_RIVAL                 라이벌이 사라진다 (BG1 알파)
+//   RI_STATE_LOAD_ROWAN_TILEMAP_1           마박사 그림을 얹는다
+//   RI_STATE_FADE_IN_ROWAN_AFTER_RIVAL      마박사가 떠오른다
+//   RI_STATE_DELAY_BEFORE_END_0             `RowanIntro_Delay(30)` — 선 채로 쉰다
+//   RI_STATE_DIALOGUE_END                   마지막 말
+//
+// ⚠️ **이 박자가 없으면 라이벌이 마박사로 한 프레임에 바뀌고 마지막 말이 바로 뜬다.**
+// 마디는 닫는 박자와 같은 함수라 같은 수를 쓴다 (`OUTRO`).
+
+/** 라이벌이 다 사라지고 마박사 그림을 얹은 뒤, 마박사가 떠오르기 시작하는 프레임 (페이드 인 INIT) */
+const ROWAN_BACK_AT = OUTRO.layerFade + OUTRO.load
+
+/** 마박사가 다시 서는 박자 전체. 이만큼 지나면 마지막 말이 뜬다 */
+export const ROWAN_RETURN_FRAMES = ROWAN_BACK_AT + OUTRO.layerFade + OUTRO.delay
+
+/** 마박사가 다시 서는 박자의 한 프레임에 화면이 어떤가 */
+interface ReturnLook {
+  /** 라이벌의 진하기 0~1 */
+  rival: number
+  /** 마박사의 진하기 0~1. 아직 그림을 안 얹었으면 null */
+  rowan: number | null
+}
+
+/**
+ * 마박사가 다시 서기 시작한 지 `frame`프레임째의 화면.
+ *
+ * 0프레임이 `RI_STATE_FADE_OUT_RIVAL`의 첫 프레임이다. 대사창은 이 박자 내내 없다 —
+ * 「예」를 고른 그 자리에서 지웠고 마지막 말이 새로 띄운다
+ */
+export function rowanReturnLook(frame: number): ReturnLook {
+  const f = Math.max(0, Math.floor(frame))
+  return {
+    rival: f < OUTRO.layerFade ? alphaStep(16 - f) : 0,
+    rowan: f < ROWAN_BACK_AT ? null : alphaStep(f - ROWAN_BACK_AT),
+  }
+}
+
+/**
+ * 마박사가 다시 서는 박자의 시계. −1이면 그 박자가 아니다.
+ *
+ * 닫는 박자의 시계(`introOutro`)와 같은 까닭으로 화면이 쥐고 3D가 읽는다
+ */
+export const introReturn = { frame: -1 }
