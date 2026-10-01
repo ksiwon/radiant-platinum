@@ -5,8 +5,11 @@
 // 여기서 전부 풀어 보고 걸어갈 수 있는지 확인한다.
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from '../map/grid'
+import { heightField } from '../map/height'
+import { isOnWater } from '../map/zone'
+import { blocked, findPlatform, tileAttributes, tileBehavior } from '../world/distortion'
 import { walkOutOfDoor, type EventFile, type MapHeader } from '../map/world'
 import { isLandEncounterTile, type EncounterTable } from '../battle/encounter'
 import { CHECKPOINTS, HM_CARRIER, HM_TEACHES, resolveSpot, seenAlongTheWay } from './checkpoints'
@@ -16,16 +19,35 @@ import { VEILSTONE_BAGS, VEILSTONE_STACKS } from '../world/veilstoneGym'
 import { PASTORIA_BUTTON_MODEL } from '../world/pastoriaGym'
 import { CANALAVE_COLLISION, CANALAVE_PLATFORMS } from '../world/canalaveGym'
 import { SUNYSHORE_GEARS, sunyshoreRoomOf } from '../world/sunyshoreGym'
-import { withData } from '../../data/romData.testkit'
+import { withData, withDecomp } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const maybe = withData('matrices/0.bin')
+const maybe = withData('matrices/0.bin', 'bdhc.bin', 'distortion.json')
 const read = (p: string) => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
 
 /** Buffer는 공유 풀에서 잘라 온 것이라 그대로 뷰를 얹으면 엉뚱한 데이터를 읽는다 */
 function detach(p: string): ArrayBuffer {
   const buf = readFileSync(resolve(DATA, p))
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
+}
+
+/**
+ * 높이 표를 싣는다 — 씬이 부팅에서 하는 것과 같은 모양(`scene/worldData`의 `bindHeights`).
+ *
+ * ⚠️ **`open` 자리는 높이가 있는 칸만 고른다**(그려진 바닥). 안 실으면 그 지점이
+ * 전부 「자리를 못 찾았다」가 된다
+ */
+function loadHeights(): void {
+  const meta = read('bdhc.json') as {
+    plateCount: number, fixedPerTile: number,
+    planes: [number, number, number, number][], chunks: [number, number][],
+  }
+  const bin = detach('bdhc.bin')
+  heightField.data = {
+    planes: meta.planes, chunks: meta.chunks, fixedPerTile: meta.fixedPerTile,
+    coords: new Int32Array(bin, 0, meta.plateCount * 4),
+    refs: new Uint16Array(bin, meta.plateCount * 16, meta.plateCount),
+  }
 }
 
 /**
@@ -59,6 +81,7 @@ maybe('확인 지점', () => {
   beforeAll(() => {
     maps = read('maps.json').maps as MapHeader[]
     events = read('events.json').events as Record<string, EventFile>
+    loadHeights()
 
     const overworld = new MapGrid(
       read('matrices/0.json') as MatrixMeta, new Uint16Array(detach('matrices/0.bin')),
@@ -74,6 +97,8 @@ maybe('확인 지점', () => {
       grids.set(Number(id), new MapGrid(meta, new Uint16Array(blob, meta.byteOffset, count)))
     }
   })
+
+  afterAll(() => { heightField.data = null })
 
   const warpsOf = (mapId: number) => events[String(maps[mapId]!.events)]?.warps ?? []
   // 사람도 같이 넘긴다 — 화면이 그렇게 부른다(`scene/useDevWarp`). 안 넘기면
@@ -96,6 +121,9 @@ maybe('확인 지점', () => {
     const out = walkOutOfDoor(grid!, at!.x, at!.z)
     const tx = Math.floor(out.x), tz = Math.floor(out.z)
     expect(grid!.isBlocked(tx, tz), `(${tx},${tz})이 막혀 있다`).toBe(false)
+    // 격자는 물을 안 막는다 — 막는 것은 주인공 쪽이다(`actor/player`). 물 위에
+    // 세우면 탈것 없이 수면에 서서 파도타기를 묻는다 (천관산 4층 · 깨어진 세계 B4F)
+    expect(isOnWater(grid!.behavior(tx, tz), false), `(${tx},${tz})이 물이다`).toBe(false)
     // 오버월드는 한 격자에 맵이 여럿이라 어느 맵에 섰는지 확인해야 한다 — 엉뚱한
     // 칸이면 지역명도 인카운터 표도 어긋난다. 실내 행렬은 통째로 한 맵이라
     // 청크에 맵 번호가 안 적혀 있고(`zoneAt`이 -1) 확인할 것도 없다
@@ -150,17 +178,115 @@ maybe('확인 지점', () => {
   })
 
   it('`atWarp`는 워프를 마주 본다', () => {
+    let near = 0
     for (const c of CHECKPOINTS) {
       if (c.spot.kind !== 'atWarp') continue
       const grid = grids.get(maps[c.map]!.matrix)!
       const w = warpsOf(c.map)[c.spot.index]!
       const at = resolveSpot(grid, c.map, c.spot, warpsOf(c.map), npcsOf(c.map))!
-      // 붙어 있는 칸이다 — 맨해튼 거리 1
-      expect(Math.abs(Math.floor(at.x) - w.x) + Math.abs(Math.floor(at.z) - w.z), c.label).toBe(1)
-      // 한 걸음 앞이 그 워프다. `facing`은 atan2(dx, dz)라 0이 남쪽이다
-      expect(Math.round(at.x - 0.5 + Math.sin(at.facing)), c.label).toBe(w.x)
-      expect(Math.round(at.z - 0.5 + Math.cos(at.facing)), c.label).toBe(w.z)
+      const tx = Math.floor(at.x), tz = Math.floor(at.z)
+      // 워프와 같은 줄이다. 바로 옆이 대부분이고, 문 앞을 사람이 막았으면 물러선다
+      expect(tx === w.x || tz === w.z, `${c.label}: 워프와 같은 줄이 아니다`).toBe(true)
+      const d = Math.abs(tx - w.x) + Math.abs(tz - w.z)
+      expect(d, c.label).toBeGreaterThanOrEqual(1)
+      expect(d, c.label).toBeLessThanOrEqual(3)
+      if (d === 1) near++
+      // 보는 쪽으로 d 걸음 가면 그 워프다. `facing`은 atan2(dx, dz)라 0이 남쪽이다
+      expect(Math.round(at.x - 0.5 + d * Math.sin(at.facing)), c.label).toBe(w.x)
+      expect(Math.round(at.z - 0.5 + d * Math.cos(at.facing)), c.label).toBe(w.z)
+      // 사이에 벽이 없다 — 사람은 있어도 된다(그 너머로 문을 본다)
+      for (let k = 1; k < d; k++) {
+        const bx = Math.round(at.x - 0.5 + k * Math.sin(at.facing))
+        const bz = Math.round(at.z - 0.5 + k * Math.cos(at.facing))
+        expect(grid.isBlocked(bx, bz), `${c.label}: (${String(bx)},${String(bz)})이 벽이다`).toBe(false)
+      }
     }
+    // 물러서는 것은 드문 갈래다. 셋(들판·무쇠·서바이벌)만 그렇다 — 늘면 자리 표를 다시 본다
+    const all = CHECKPOINTS.filter((c) => c.spot.kind === 'atWarp').length
+    expect(all - near).toBe(3)
+  })
+
+  it('⚠️ `atWarp`·`open` 자리는 사람이 선 칸이 아니다', () => {
+    // 들판시티 체육관 문 바로 남쪽(589,828)에 바리가 서 있어서 그 칸을 골랐고,
+    // 주인공이 바리 몸속에 묻혔다 (`events_pastoria_city.json` LOCALID_RIVAL).
+    // 갤럭시단아지트의 `open` 자리도 단원 칸이었다
+    let checked = 0
+    for (const c of CHECKPOINTS) {
+      if (c.spot.kind !== 'atWarp' && c.spot.kind !== 'open') continue
+      const grid = grids.get(maps[c.map]!.matrix)!
+      const at = resolveSpot(grid, c.map, c.spot, warpsOf(c.map), npcsOf(c.map))!
+      const tx = Math.floor(at.x), tz = Math.floor(at.z)
+      const hit = npcsOf(c.map).find((n) => Math.floor(n.x) === tx && Math.floor(n.z) === tz)
+      expect(hit, `${c.id}: (${String(tx)},${String(tz)})에 사람이 서 있다`).toBeUndefined()
+      checked++
+    }
+    expect(checked).toBeGreaterThan(30)
+  })
+
+  it('⚠️ `open` 자리는 그려진 바닥 위다 — 허공·물이 아니다', () => {
+    // 깨어진 세계는 바닥 봉인을 안 해서(`scene/worldData`) 허공도 격자에 「안
+    // 막힘」이다 — B3F가 소용돌이 하늘에 떴다. 높이가 있는 칸이 그려진 바닥이다
+    const open = CHECKPOINTS.filter((c) => c.spot.kind === 'open')
+    expect(open.length).toBeGreaterThan(4)
+    for (const c of open) {
+      const grid = grids.get(maps[c.map]!.matrix)!
+      const at = resolveSpot(grid, c.map, c.spot, warpsOf(c.map), npcsOf(c.map))!
+      expect(grid.heightAtWorld(at.x, at.z), `${c.id}: 발밑에 바닥이 없다`).not.toBeNull()
+      expect(isOnWater(grid.behavior(Math.floor(at.x), Math.floor(at.z)), false), c.id).toBe(false)
+    }
+  })
+
+  it('⚠️ 깨어진 세계 세 층은 지형 위에 서고, 판이 겹치면 그 판에서도 걸을 칸이다', () => {
+    // 이 세 층에는 **바닥 판이 없다** — 1F 0장 · B3F 서쪽 벽 1장 · B4F 동쪽 벽과
+    // 천장(웅덩이 46칸). 내려서면 지형(지역 y 1, `scene/distortionCore`의
+    // `DISTORTION_STAND_Y`)을 딛는다. 그 높이에 판이 걸치면 원작은 그 판을 잡으니
+    // (`distortionEnter`의 `findPlatform`) 그 판의 칸도 막힘·물이 아니어야 한다
+    const STAND_Y = 1
+    const dist = read('distortion.json') as {
+      maps: { map: number, offsetX: number, offsetY: number, offsetZ: number,
+        platforms: Parameters<typeof findPlatform>[0] }[]
+      attrs: number[][]
+    }
+    for (const id of ['distortion', 'distortion-b3f', 'distortion-b4f']) {
+      const c = CHECKPOINTS.find((x) => x.id === id)!
+      const floor = dist.maps.find((m) => m.map === c.map)
+      expect(floor, `${id}: 맵 ${String(c.map)}이 깨어진 세계 표에 없다`).toBeDefined()
+      const grid = grids.get(maps[c.map]!.matrix)!
+      const at = resolveSpot(grid, c.map, c.spot, warpsOf(c.map), npcsOf(c.map))!
+      expect(grid.heightAtWorld(at.x, at.z), `${id}: 지형이 없다`).not.toBeNull()
+      const wx = Math.floor(at.x) + floor!.offsetX
+      const wy = STAND_Y + floor!.offsetY
+      const wz = Math.floor(at.z) + floor!.offsetZ
+      const i = findPlatform(floor!.platforms, wx, wy, wz)
+      if (i < 0) continue
+      const p = floor!.platforms[i]!
+      const attrs = tileAttributes(p, dist.attrs[p.attr], wx, wy, wz)
+      expect(blocked(attrs), `${id}: 판 ${String(i)}에서 막힌 칸이다`).toBe(false)
+      expect(isOnWater(tileBehavior(attrs) ?? 0, false), `${id}: 판 ${String(i)}의 물이다`).toBe(false)
+    }
+  })
+
+  it('⚠️ 리그 배틀은 그 사람의 방에 선다 — 무대가 맵 헤더의 battleBg다', () => {
+    // 둘 다 리그 바깥(172, battleBg 2)에 서서 배틀을 걸어, 사천왕전이 풀밭
+    // 무대에서 벌어졌다. 방마다 무대가 따로다(`battle/arena`의 ARENA[12..16])
+    const bg = (id: string) => maps[CHECKPOINTS.find((c) => c.id === id)!.map]!.battleBg
+    expect(bg('elite'), '충호의 방이 아니다').toBe(12)
+    expect(bg('champion'), '챔피언의 방이 아니다').toBe(16)
+  })
+
+  it('⚠️ 리그 로비는 밖에서 들어온 문으로 선다 — 승강기 문지기 몸속이 아니다', () => {
+    // 승강기 문(워프 0, (11,2)) 바로 앞 (11,3)에 문지기가 선다
+    // (`events_pokemon_league_north_pokecenter_1f.json`)
+    const c = CHECKPOINTS.find((x) => x.id === 'league')!
+    expect(c.spot.kind).toBe('warp')
+    if (c.spot.kind !== 'warp') return
+    const w = warpsOf(c.map)[c.spot.index]!
+    expect(w.to, '리그 바깥으로 나가는 문이 아니다').toBe(172)
+    const grid = grids.get(maps[c.map]!.matrix)!
+    const out = walkOutOfDoor(grid, w.x + 0.5, w.z + 0.5)
+    const guard = npcsOf(c.map).find((n) => n.x === 11 && n.z === 3)
+    expect(guard, '문지기가 (11,3)에 없다').toBeDefined()
+    expect([Math.floor(out.x), Math.floor(out.z)]).not.toEqual([guard!.x, guard!.z])
   })
 
   it('배틀 지점은 파티를 갖고 간다 — 빈손이면 배틀이 안 열린다', () => {
@@ -168,6 +294,28 @@ maybe('확인 지점', () => {
       if (!c.battle) continue
       expect(c.party?.length ?? 0, c.label).toBeGreaterThan(0)
     }
+  })
+})
+
+withDecomp('generated/map_headers.txt')('확인 지점이 가리키는 맵 헤더', () => {
+  // 줄 번호 − 1이 맵 번호다 (`world/distortion`의 `MAP`과 같은 잣대)
+  const headerOf = (id: string): string | undefined => {
+    const lines = readFileSync(
+      resolve(__dirname, '../../../raw/decomp/generated/map_headers.txt'), 'utf8',
+    ).split(/\r?\n/)
+    return lines[CHECKPOINTS.find((c) => c.id === id)!.map]
+  }
+
+  it('⚠️ 천관산 윗길은 바깥 길이고 웅덩이 방은 4층이다', () => {
+    // 「윗길」이 한동안 4층 웅덩이 방(212)을 가리켜, 바깥 산길은 한 번도 안 찍혔다
+    expect(headerOf('coronet-peak')).toBe('MAP_HEADER_MT_CORONET_OUTSIDE_NORTH')
+    expect(headerOf('coronet-4f')).toBe('MAP_HEADER_MT_CORONET_4F_ROOMS_1_AND_2')
+  })
+
+  it('리그 셋이 로비 · 충호의 방 · 챔피언의 방이다', () => {
+    expect(headerOf('league')).toBe('MAP_HEADER_POKEMON_LEAGUE_NORTH_POKECENTER_1F')
+    expect(headerOf('elite')).toBe('MAP_HEADER_POKEMON_LEAGUE_AARON_ROOM')
+    expect(headerOf('champion')).toBe('MAP_HEADER_POKEMON_LEAGUE_CHAMPION_ROOM')
   })
 })
 

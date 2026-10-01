@@ -260,6 +260,14 @@ describe('세 나라 말', () => {
     expect(siwonLines('de')).toBe(siwonLines('ko'))
   })
 
+  it('⚠️ 부르는 자리는 롬 이름 「축복맨션 2층」이다', () => {
+    // 맵 헤더 이름(`JUBILIFE_CITY_CONDOMINIUMS_2F`)을 옮긴 「콘도미니엄」은 롬 대사에
+    // 0건이다. 건물 앞 표지판이 「축복맨션」이라 부른다(롬 `ko/23.json`, SIWON.md §2)
+    const { cameo } = siwonLines('ko')
+    expect(cameo).toContain('축복맨션 2층')
+    expect(cameo).not.toContain('콘도미니엄')
+  })
+
   it('한 쪽이 두 줄을 안 넘는다', () => {
     // 대사창이 두 줄이다. `\r`·`\f`가 쪽을 나누고 그 안에서는 `\n` 하나뿐이다
     for (const locale of ['ko', 'en', 'ja'] as const) {

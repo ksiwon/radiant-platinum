@@ -14,6 +14,7 @@ import type { MapGrid } from '../map/grid'
 import type { Warp } from '../map/world'
 import type { EncounterTable } from '../battle/encounter'
 import { isLandEncounterTile } from '../battle/encounter'
+import { isOnWater } from '../map/zone'
 import {
   VAR_FIGHT_AREA_STATE, VAR_HALL_OF_ORIGIN_STATE, VAR_SUNYSHORE_CITY_STATE,
 } from '../script/vars'
@@ -1290,15 +1291,34 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ...STAGE.badge6,
   },
   {
+    id: 'coronet-4f',
+    label: '천관산 4층 · 웅덩이 방',
+    env: '실내 · 천관산 4층 (웅덩이가 방을 거의 채운다) · 배지 6개',
+    try: [
+      '물가에 서서 웅덩이 물결과 동굴 벽을 본다',
+      '파도타기로 웅덩이에 들어가 본다 — 걸어서는 못 들어간다',
+      '바깥 산길로 나가는 굴 입구를 찾아 본다',
+    ],
+    // ⚠️ **212는 산꼭대기가 아니다** — `MAP_HEADER_MT_CORONET_4F_ROOMS_1_AND_2`
+    // (`generated/map_headers.txt` 213행)다. 한동안 이 방이 「천관산 윗길」이라는
+    // 이름으로 서 있어서 바깥 산길(210·211)은 한 번도 안 찍혔다
+    map: 212,
+    spot: { kind: 'open' },
+    ...STAGE.badge6,
+  },
+  {
     id: 'coronet-peak',
     label: '천관산 윗길',
-    env: '실내 취급 · 산 윗길 (바깥이 열려 있다) · 배지 6개',
+    env: '실내 취급 · 산 바깥 북쪽 길 (하늘이 열려 있다) · 배지 6개',
     try: [
-      '바깥이 열린 굴에서 하늘과 안개가 어떻게 섞이는지 본다',
-      '이 자리만 쓰는 카메라 각도가 실제로 다른지 본다',
-      '층을 오르내리며 스트리밍이 따라오는지 본다',
+      '바깥이 열린 산길에서 하늘과 안개가 어떻게 섞이는지 본다',
+      '이 자리만 쓰는 카메라 각도가 실제로 다른지 본다 — 굴 안(12)과 다른 7번이다',
+      '굴 입구로 들어갔다 나오며 스트리밍이 따라오는지 본다',
     ],
-    map: 212,
+    // `MAP_HEADER_MT_CORONET_OUTSIDE_NORTH`. 바깥 두 길 중 4층 방을 지나 5층
+    // 쪽(4층 3번 방)으로 이어지는 **위쪽** 길이다 — 남쪽 길(211)은 3층에서 4층
+    // 방으로 가는 아래쪽이다 (`events_mt_coronet_outside_{north,south}.json`)
+    map: 210,
     spot: { kind: 'open' },
     ...STAGE.badge6,
   },
@@ -1462,7 +1482,11 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
       '리그 곡을 듣는다',
     ],
     map: 175,
-    spot: { kind: 'warp', index: 0 },
+    // 로비 입구(워프 1, (11,11))로 들어선다 — 밖에서 걸어 들어온 자리다. 워프 0
+    // (11,2)는 사천왕 승강기 문이고 그 바로 앞 (11,3)에 문지기가 서 있어서
+    // (`events_pokemon_league_north_pokecenter_1f.json`), 문에서 한 칸 내려 세우면
+    // 문지기 몸속이었다. 원작에서는 문지기가 막고 있어 거기 설 일이 없다
+    spot: { kind: 'warp', index: 1 },
     ...STAGE.badge8,
   },
   {
@@ -1474,8 +1498,11 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
       '긴 배틀에서 이야기 속도·진행 설정을 잰다',
       '사천왕 곡이 따로 나오는지 듣는다',
     ],
-    map: 172,
-    spot: { kind: 'atWarp', index: 0 },
+    // 충호의 방(`POKEMON_LEAGUE_AARON_ROOM`). 배틀 무대는 맵 헤더의 battleBg가
+    // 정한다 — 이 방이 12(사천왕 충호 방)이고, 리그 바깥(172)은 2라 풀밭 무대가
+    // 섰다. 승강기에서 내려서는 입구 워프 1 (8,11)에 선다
+    map: 177,
+    spot: { kind: 'warp', index: 1 },
     ...STAGE.badge8,
     battle: { kind: 'trainer', id: 261 },
   },
@@ -1488,8 +1515,9 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
       'AI가 교체와 도구를 어떻게 쓰는지 본다',
       '챔피언 곡을 듣는다',
     ],
-    map: 172,
-    spot: { kind: 'atWarp', index: 0 },
+    // 챔피언의 방(`POKEMON_LEAGUE_CHAMPION_ROOM`) — battleBg 16. 입구 워프 1 (8,18)
+    map: 185,
+    spot: { kind: 'warp', index: 1 },
     ...STAGE.badge8,
     battle: { kind: 'trainer', id: 267 },
   },
@@ -1624,7 +1652,7 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
   },
   {
     id: 'siwon',
-    label: '시원의 방 (축복시티 콘도미니엄 2층)',
+    label: '시원의 방 (축복맨션 2층)',
     env: '실내 · 원작에 없는 사람 하나 · 전당등록 뒤',
     try: [
       '시원이 서 있는지, 게임 디렉터 모델로 뜨는지 본다',
@@ -1783,7 +1811,7 @@ export function resolveSpot(
 ): Placement | null {
   if (spot.kind === 'grass') return grassSpot(grid, mapId)
   if (spot.kind === 'tile') return center(spot.x, spot.z, spot.facing)
-  if (spot.kind === 'open') return openSpot(grid, mapId, [...warps, ...people])
+  if (spot.kind === 'open') return openSpot(grid, mapId, warps, people)
   if (spot.kind === 'feature') return featureSpot(grid, mapId, spot.of)
 
   const w = warps[spot.index]
@@ -1792,12 +1820,35 @@ export function resolveSpot(
   // 한 칸 내려 준다 — 여기서는 자리만 가리킨다
   if (spot.kind === 'warp') return center(w.x, w.z, 0)
 
-  for (const [dx, dz] of AROUND) {
-    const tx = w.x + dx, tz = w.z + dz
-    if (grid.isBlocked(tx, tz)) continue
-    return center(tx, tz, look(tx, tz, w.x, w.z))
+  // ⚠️ **사람이 선 칸은 건너뛴다.** 들판시티 체육관 문 바로 남쪽(589,828)에
+  // 바리가 서 있어서(`events_pastoria_city.json` LOCALID_RIVAL) 그 칸을 골랐고,
+  // 주인공이 바리 몸속에 묻혀 3인칭 카메라가 바리를 주인공처럼 비췄다. 원작에서는
+  // 사람이 선 칸에 못 들어간다(`sub_02063F00`) — 설 수 없는 칸이다.
+  //
+  // 그 문은 나머지 세 이웃이 다 벽이라, 바로 옆이 없으면 **같은 줄에서 한 칸씩
+  // 물러선다** — 사이에 선 사람 너머로 문을 본다. 사이가 벽이면 그 줄은 버린다
+  for (let d = 1; d <= AT_WARP_REACH; d++) {
+    for (const [dx, dz] of AROUND) {
+      const tx = w.x + dx * d, tz = w.z + dz * d
+      if (grid.isBlocked(tx, tz) || standsOn(people, tx, tz)) continue
+      let open = true
+      for (let k = 1; k < d && open; k++) open = !grid.isBlocked(w.x + dx * k, w.z + dz * k)
+      if (!open) continue
+      return center(tx, tz, look(tx, tz, w.x, w.z))
+    }
   }
   return null
+}
+
+/**
+ * `atWarp`가 문에서 몇 칸까지 물러서는가. 문 앞을 사람이 막은 자리가 들판시티
+ * 체육관 · 무쇠시티 · 서바이벌에리어 셋이고, 셋 다 두 칸이면 선다(실측)
+ */
+const AT_WARP_REACH = 3
+
+/** 그 칸에 누가 서 있는가. 배치표 좌표는 칸 정수지만 한가운데 값이 와도 같은 칸으로 센다 */
+function standsOn(people: readonly { x: number, z: number }[], tx: number, tz: number): boolean {
+  return people.some((p) => Math.floor(p.x) === tx && Math.floor(p.z) === tz)
 }
 
 /**
@@ -1967,8 +2018,10 @@ function pastoriaButtonTile(grid: MapGrid): [number, number] | null {
  * (실측: B1F·B2F 둘 다). 그래서 **둘레에 걸어갈 칸이 제일 많은** 자리를 고른다
  */
 function openSpot(
-  grid: MapGrid, mapId: number, marks: readonly { x: number, z: number }[],
+  grid: MapGrid, mapId: number,
+  warps: readonly { x: number, z: number }[], people: readonly { x: number, z: number }[],
 ): Placement | null {
+  const marks = [...warps, ...people]
   const n = grid.chunkTiles
   const mine = grid.meta.chunks.filter((c) => c.zone === mapId)
   const boxes = mine.length > 0 ? mine : grid.meta.chunks.filter((c) => c.zone < 0)
@@ -1991,6 +2044,29 @@ function openSpot(
         maxZ: Math.max(...marks.map((m) => m.z)) + 1,
       }
     : null
+  // ⚠️ **「안 막힘」은 「걸을 수 있음」이 아니다.** 셋을 더 본다 — 실측으로 셋 다
+  // 그 자리를 골랐다:
+  //
+  // · 물 — 격자는 물을 안 막는다. 막는 것은 주인공 쪽이다(`actor/player`의
+  //   `isOnWater`). 물이 넓은 방은 둘레 점수가 **물 한가운데에서** 제일 높아서,
+  //   천관산 4층(맵 212)은 (17,10) · 깨어진 세계 B4F는 (34,23)으로 웅덩이 위에
+  //   탈것 없이 섰고 파도타기를 물었다. 둘 다 거동 21이다
+  // · 그려진 바닥이 없는 칸 — 깨어진 세계는 바닥 봉인을 안 해서(`scene/worldData`
+  //   `SEAL_SKIP_MAPS`) 허공도 격자에 「안 막힘」이다. B3F는 안 막힌 3161칸 중
+  //   높이가 있는 칸이 311뿐이고, 고른 (3,3)은 높이가 없어 주인공이 소용돌이
+  //   하늘에 떴다. 1F도 (33,31)이 그랬다. **높이가 있는 칸만** 바닥으로 센다
+  //   (`heightAtWorld` — 원작도 판이 없는 칸에서는 높이를 못 받는다).
+  //   ⚠️ 높이 표가 안 실려 있으면 아무 칸도 못 고른다. 씬은 부팅에서 싣고
+  //   (`scene/worldData`), 시험은 `bdhc`를 따로 싣는다
+  // · 사람이 선 칸 — 갤럭시단아지트는 (11,12)의 단원 몸속에 섰다
+  //
+  // ⚠️ **판 표로 고르지 않는다.** 이 세 층의 판은 1F 0장 · B3F 서쪽 벽 1장 ·
+  // B4F 동쪽 벽과 천장이라 **바닥 판이 하나도 없다** — 주인공은 그 층에
+  // 내려서면 지형(지역 y 1)을 딛고, 판은 뛰는 자리로만 올라간다. 칸 (x,z)만
+  // 고르는 이 함수로는 벽·천장에 세울 수 없다
+  const ground = (x: number, z: number): boolean =>
+    !grid.isBlocked(x, z) && !isOnWater(grid.behavior(x, z), false)
+    && grid.heightAtWorld(x + 0.5, z + 0.5) !== null
   let best: [number, number] | null = null
   let bestScore = -1
   for (const c of boxes) {
@@ -1998,11 +2074,11 @@ function openSpot(
       if (fence !== null && (tz < fence.minZ || tz > fence.maxZ)) continue
       for (let tx = c.mx * n; tx < (c.mx + 1) * n; tx++) {
         if (fence !== null && (tx < fence.minX || tx > fence.maxX)) continue
-        if (grid.isBlocked(tx, tz)) continue
+        if (!ground(tx, tz) || standsOn(people, tx, tz)) continue
         let score = 0
         for (let dz = -R; dz <= R; dz++) {
           for (let dx = -R; dx <= R; dx++) {
-            if (!grid.isBlocked(tx + dx, tz + dz)) score++
+            if (ground(tx + dx, tz + dz)) score++
           }
         }
         if (score <= bestScore) continue

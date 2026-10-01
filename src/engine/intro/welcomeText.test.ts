@@ -42,7 +42,7 @@ describe('인트로 인사', () => {
   })
 
   it('명예의 전당 뒤에 열리는 배포를 알려 준다', () => {
-    // 만든 사람이 축복시티 콘도미니엄 2층에서 일곱을 건넨다 (`world/siwonText`).
+    // 만든 사람이 축복맨션 2층에서 일곱을 건넨다 (`world/siwonText`).
     // 그 말을 아무 데서도 안 하면, 원작에 없는 이 이벤트는 아무도 못 찾는다
     expect(introWelcome('ko')).toMatch(/명예의 전당/)
     expect(introWelcome('en')).toMatch(/Hall of Fame/i)
