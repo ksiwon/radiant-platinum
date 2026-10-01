@@ -143,10 +143,10 @@ export function EasyChatAskScreen() {
   return (
     <MenuScreen
       title={line ?? ''}
-      foot={place.at === 'words' ? '↑↓ 낱말 · Q E 한 쪽씩 · Z 넣는다 · X 무리로'
+      foot={place.at === 'words' ? '↑↓ 단어 · Q/E 한 쪽씩 · Z 넣는다 · X 무리로'
         : place.at === 'groups' ? '↑↓ 무리 · Z 연다 · X 칸으로'
           : place.at === 'ask' ? '↑↓ · Z 결정'
-            : '←→ 칸 · ↓ 결정/그만둔다 · Z 낱말 · X 그만둔다'}
+            : '←→ 칸 · ↓ 결정/그만둔다 · Z 단어 · X 그만둔다'}
     >
       <div className={css.stage}>
         <ul className={css.list} style={UL_RESET}>

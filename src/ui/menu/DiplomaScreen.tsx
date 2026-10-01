@@ -43,7 +43,7 @@ export function DiplomaScreen() {
         </div>
         <div className={own.maker}>{text[LINE.maker] ?? ''}</div>
       </div>
-      <div className={own.hint}>Z · X 닫는다</div>
+      <div className={own.hint}>Z · X 닫기</div>
     </div>
   )
 }

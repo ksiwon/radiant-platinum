@@ -105,7 +105,7 @@ export function EasyChatScreen() {
     <MenuScreen
       title={say[0] ?? '단어를 선택하세요.'}
       foot={inWords
-        ? '↑↓ 낱말 · Q E 한 쪽씩 · Z 넣는다 · X 무리로'
+        ? '↑↓ 단어 · Q/E 한 쪽씩 · Z 넣는다 · X 무리로'
         : '↑↓ 무리 · Z 연다 · X 비우고 나간다'}
     >
       <div className={css.stage}>

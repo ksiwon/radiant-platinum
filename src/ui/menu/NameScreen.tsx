@@ -23,6 +23,12 @@ import * as own from './nameScreen.css'
 /** 이름 짓기 화면의 글 뱅크 (`TEXT_BANK_NAMING_SCREEN`) */
 const NAMING_BANK = 'naming'
 
+/**
+ * 키 안내. 글자를 치는 자리라 Z·X가 글자로 들어간다 — 결정은 Enter, 지나가기는
+ * Esc뿐이다. 안 적으면 마우스 없이 빠져나가는 길을 모른다
+ */
+export const NAME_HINT = 'Enter 결정 · Esc 그대로 두기'
+
 export function NameScreen() {
   const what = useMenuStore((s) => s.naming)
   const closeAll = useMenuStore((s) => s.closeAll)
@@ -127,6 +133,7 @@ export function NameScreen() {
           <button className={own.skip} type="button" onClick={() => { done('') }}>
             그대로 두기
           </button>
+          <div className={chrome.hint}>{NAME_HINT}</div>
         </div>
       </div>
     </div>

@@ -65,6 +65,19 @@ function playerBlock(): { x: number, z: number } {
   return { x: Math.floor(at.x / 32), z: Math.floor(at.z / 32) }
 }
 
+/**
+ * 지도 아래 날기 줄. 날기 자리가 아닌 칸이면 null이다.
+ *
+ * ⚠️ **보기만 하는 지도에서는 「Z · 여기로 날아간다」를 안 띄운다** — 벽 지도와
+ * 타운맵 도구는 Z가 아무것도 안 한다(`fly`의 `viewOnly`). 열린 자리는 날 수
+ * 있는 곳이라고만 적는다
+ */
+export function flyCaption(spot: boolean, unlocked: boolean, viewOnly: boolean): string | null {
+  if (!spot) return null
+  if (!unlocked) return '아직 가 본 적이 없다'
+  return viewOnly ? '날 수 있는 곳' : 'Z · 여기로 날아간다'
+}
+
 export function FlyScreen() {
   const closeAll = useMenuStore((s) => s.closeAll)
   const back = useMenuStore((s) => s.back)
@@ -108,6 +121,7 @@ export function FlyScreen() {
   const spot = flySpotAt(cellHere?.map ?? -1, at.x, at.z)
   const unlocked = spot !== null && (flySpots & (1 << spot.spawn)) !== 0
   const cell = cellHere
+  const caption = flyCaption(spot !== null, unlocked, viewOnly)
 
   const move = (dx: number, dz: number) => () => {
     setAt((c) => ({
@@ -236,11 +250,7 @@ export function FlyScreen() {
                   ? (notes[cell.area] ?? '')
                   : ''}
             </span>
-            {spot && (
-              <span className={own.captionFly}>
-                {unlocked ? 'Z · 여기로 날아간다' : '아직 가 본 적이 없다'}
-              </span>
-            )}
+            {caption !== null && <span className={own.captionFly}>{caption}</span>}
           </div>
         </div>
       </div>

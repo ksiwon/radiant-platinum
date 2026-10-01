@@ -7,7 +7,7 @@
 // 넷을 다 알고 있으면 **무엇을 잊을지** 고른다. 그 자리에서 취소하면
 // 아무것도 안 배운다 (`keepOldMove`).
 import { useEffect, useState } from 'react'
-import { loadMoveNames, loadMoves, type MoveTable } from '../../data/gameData'
+import { loadMoveNames, loadMoves, loadSpeciesNames, type MoveTable } from '../../data/gameData'
 import { loadUiText } from '../../data/uiText'
 import { useMenuStore } from '../../state/menuStore'
 import { gameLocale } from '../../state/optionsStore'
@@ -20,12 +20,33 @@ import * as own from './moveReminder.css'
 /** 기술 칸 넷 (`LEARNED_MOVES_MAX`) */
 const MOVES_MAX = 4
 
+/**
+ * 머리 오른쪽 — 누구에게 가르치는가.
+ *
+ * ⚠️ **별명이 없으면 종족 이름이다.** 별명 없는 마리는 `nickname`이 null이라,
+ * 별명만 쓰면 이름이 빠지고 「 Lv.15」만 남는다 (다른 화면의 `nickname ?? 종족명`과 같다)
+ */
+export function reminderNote(
+  mon: { nickname: string | null, species: number, level: number },
+  speciesNames: readonly string[],
+): string {
+  return `${mon.nickname ?? speciesNames[mon.species] ?? ''} Lv.${String(mon.level)}`
+}
+
+/** 바닥 안내. 잊을 기술을 고를 때 X는 새 기술 목록으로 물러난다 */
+export function reminderFoot(forgetting: boolean): string {
+  return forgetting
+    ? '↑↓ 잊을 기술 · Z 결정 · X 뒤로'
+    : '↑↓ 고르기 · Z 가르친다 · X 그만둔다'
+}
+
 export function MoveReminderScreen() {
   const back = useMenuStore((s) => s.back)
   const ask = useMenuStore((s) => s.reminder)
   const finish = useMenuStore((s) => s.finishReminder)
   const party = useSaveStore((s) => s.party)
   const [names, setNames] = useState<string[]>([])
+  const [speciesNames, setSpeciesNames] = useState<string[]>([])
   const [table, setTable] = useState<MoveTable | null>(null)
   const [text, setText] = useState<string[]>([])
   const [cursor, setCursor] = useState(0)
@@ -35,10 +56,12 @@ export function MoveReminderScreen() {
   useEffect(() => {
     let alive = true
     const locale = gameLocale()
-    void Promise.all([loadMoveNames(locale), loadMoves(), loadUiText('moveDescriptions', locale)])
-      .then(([list, moves, lines]) => {
+    void Promise.all([
+      loadMoveNames(locale), loadMoves(), loadUiText('moveDescriptions', locale), loadSpeciesNames(locale),
+    ])
+      .then(([list, moves, lines, species]) => {
         if (!alive) return
-        setNames(list); setTable(moves); setText(lines)
+        setNames(list); setTable(moves); setText(lines); setSpeciesNames(species)
       })
       .catch(() => { /* 이름 없이도 자리는 선다 */ })
     return () => { alive = false }
@@ -96,10 +119,8 @@ export function MoveReminderScreen() {
   return (
     <MenuScreen
       title={ask?.tutor === true ? '기술가르침' : '기술 되살리기'}
-      note={mon ? `${mon.nickname ?? ''} Lv.${String(mon.level)}` : undefined}
-      foot={forget !== null
-        ? '↑↓ 잊을 기술 · Z 고른다 · X 되돌아간다'
-        : '↑↓ 고르기 · Z 가르친다 · X 그만둔다'}
+      note={mon ? reminderNote(mon, speciesNames) : undefined}
+      foot={reminderFoot(forget !== null)}
     >
       <div className={css.stage}>
         <div className={css.list}>

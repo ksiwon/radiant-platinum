@@ -11,6 +11,7 @@
 // ⚠️ **낱말을 하나도 안 넣으면 안 붙는다** — 원작이 「단어를 넣어 주십시오」로
 // 되돌린다.
 import { useEffect, useMemo, useState } from 'react'
+import { loadItemNames } from '../../data/gameData'
 import { loadUiText } from '../../data/uiText'
 import { EASY_CHAT_WORD_NONE } from '../../engine/world/easyChat'
 import {
@@ -27,6 +28,19 @@ import * as css from './menuChrome.css'
 /** 커서가 갈 수 있는 자리 — 낱말 여섯 + 「결정」 */
 const SLOTS = MAIL_LINES * MAIL_WORDS_PER_LINE
 
+/**
+ * 편지지 이름 — 도구 이름표에서 메일 도구의 이름을 읽는다. 「편지지 N」으로
+ * 지어 붙이지 않는다 (우편함과 같다)
+ */
+export function mailPaperName(type: number, itemNames: readonly string[]): string {
+  return itemNames[mailItemOfType(type)] ?? ''
+}
+
+/** 바닥 안내. 롬이 「메일」·「단어」라고 부르니 안내도 그 말을 쓴다 */
+export function mailFoot(writing: boolean): string {
+  return writing ? '화살표 키 자리 · Z 단어 · 마지막 칸에서 Z 결정 · X 그만둔다' : 'X 닫기'
+}
+
 export function MailScreen() {
   const back = useMenuStore((s) => s.back)
   const closeAll = useMenuStore((s) => s.closeAll)
@@ -36,16 +50,18 @@ export function MailScreen() {
   const trainer = useSaveStore((s) => s.trainer)
   const [say, setSay] = useState<readonly string[]>([])
   const [lookup, setLookup] = useState<WordLookup | null>(null)
+  const [itemNames, setItemNames] = useState<readonly string[]>([])
   const [at, setAt] = useState(0)
   const [notice, setNotice] = useState<string | null>(null)
 
   useEffect(() => {
     let live = true
     const locale = gameLocale()
-    void Promise.all([loadUiText('mail', locale), loadWordLookup(locale)])
-      .then(([lines, get]) => {
+    void Promise.all([loadUiText('mail', locale), loadWordLookup(locale), loadItemNames(locale)])
+      .then(([lines, get, items]) => {
         if (!live) return
         setSay(lines)
+        setItemNames(items)
         // 함수를 상태에 넣을 때는 한 겹 감싼다 — 그냥 넣으면 갱신 함수로 알아듣는다
         setLookup(() => get)
       })
@@ -110,9 +126,9 @@ export function MailScreen() {
 
   return (
     <MenuScreen
-      title={writing ? '편지' : held?.trainerName ?? '편지'}
-      note={`편지지 ${String(type + 1)}`}
-      foot={writing ? '방향키 자리 · Z 낱말 · 마지막 칸에서 Z 결정 · X 그만둔다' : 'X 닫는다'}
+      title={writing ? '메일' : held?.trainerName ?? '메일'}
+      note={mailPaperName(type, itemNames) || undefined}
+      foot={mailFoot(writing)}
     >
       <div className={css.stageWide}>
         <ul className={css.list}>

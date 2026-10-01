@@ -50,7 +50,7 @@ export function BerryTagScreen() {
   const label = (i: number): string => tags[i] ?? ''
 
   return (
-    <MenuScreen title={label(BERRY_TAG.title) || '나무열매 태그'} foot="Z · X 닫는다">
+    <MenuScreen title={label(BERRY_TAG.title) || '나무열매 태그'} foot="Z · X 닫기">
       <div className={css.stageWide}>
         <div className={own.tag}>
           {berry ? (

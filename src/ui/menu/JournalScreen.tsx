@@ -75,7 +75,7 @@ export function JournalScreen() {
     <MenuScreen
       title="모험노트"
       note={count > 0 ? `${String(Math.min(page, count - 1) + 1)} / ${String(count)}` : undefined}
-      foot="← → 쪽 넘기기 · X 닫기"
+      foot="←→ 쪽 넘기기 · X 닫기"
     >
       <div className={css.stageWide}>
         <div className={own.paper}>
