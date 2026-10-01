@@ -55,9 +55,11 @@ import {
   createWild,
   fillPp,
   genderOf,
+  isShiny,
   PARTY_MAX,
   shinyPersonality,
   statsOf,
+  type Gender,
   type PokemonInstance,
   type Status,
 } from '../engine/pokemon/instance'
@@ -98,6 +100,21 @@ type BattlePhase = 'off' | 'loading' | 'running' | 'over'
  * 없어서 심판에게 넘길 것이 없고, `engine/battle/safariBattle`이 사건을 직접 낸다
  */
 type BattleKind = 'wild' | 'trainer' | 'factory' | 'safari'
+
+/**
+ * 상대 쪽에 **트레이너가 서는** 판인가.
+ *
+ * 배틀팩토리도 트레이너전이다 — 원작의 프런티어 판은 `BATTLE_TYPE_FRONTIER_SINGLES`
+ * = `FRONTIER | TRAINER`이고 더블도 `TRAINER_DOUBLES`를 품는다 (`constants/battle.h` 42~43).
+ * 화면이 「야생 ○○」·트레이너 몸·첫 줄을 가를 때 이 술어 하나를 본다.
+ *
+ * ⚠️ **규칙까지 이걸로 가르지 않는다.** 경험치(팩토리는 0)·상금(BP로 셈)·시합규칙
+ * 「교체」(`BATTLE_TYPE_FORCED_SET_MODE`에 `FRONTIER`가 들어 있다 — `battle_controller_player.c` 4145)는
+ * 팩토리가 트레이너전과 다르게 돈다. 그 자리들은 `kind === 'trainer'`를 그대로 본다
+ */
+export function hasTrainer(kind: BattleKind): boolean {
+  return kind === 'trainer' || kind === 'factory'
+}
 
 /**
  * 이 판에만 붙는 규칙 (`FieldBattleDTO.battleStatusMask`).
@@ -170,6 +187,14 @@ interface FactoryBout {
   /** 롬의 두 칸짜리 줄이 받는 분류와 이름 (`PlayerDefeatedTr`) */
   readonly cls: string
   readonly name: string
+  /**
+   * 상대의 트레이너 분류 번호 — 프런티어 트레이너 자료의 `type`이다 (`cls`를 그 번호로 찾은 이름).
+   *
+   * 무대가 이 번호로 상대의 몸을 고른다 (`scene/battle/BattleTrainers`). ⚠️ **이름(`cls`)으로 거꾸로 찾지
+   * 않는다** — 에이스트레이너처럼 같은 이름이 남녀·눈 지방으로 여럿이라 엉뚱한 몸이 선다. 없으면 몸을 못
+   * 고르고 절차형으로 선다
+   */
+  readonly classId?: number
   /** 진 뒤 상대의 말 — 뱅크 614의 `번호 × 3 + 2` (`TRMSG_DEFEAT`) */
   readonly defeat: string | null
   /** 이긴 뒤 상대의 말 — `번호 × 3 + 1` (`TRMSG_WIN`) */
@@ -189,6 +214,17 @@ export interface RosterEntry {
   form: number
   nickname: string | null
   level: number
+  /**
+   * 들어 있는 볼 (`MON_DATA_POKEBALL`). 내보낼 때 이 볼이 날아가 열린다 (`BattleBallEffects`).
+   * 0이나 빈 값이면 몬스터볼이다 — 트레이너 개체는 볼을 따로 안 적는다
+   */
+  ball?: number
+  /**
+   * 몸을 고르는 두 값. 무대가 판이 열린 뒤 **뒤에 나올 마리의 몸을 미리 받는** 데 쓴다
+   * (`BattleStage`의 `usePrefetchBodies`) — 몸 캐시는 성별·색까지 열쇠로 든다 (`monModel.loadMonModel`)
+   */
+  gender?: Gender
+  shiny?: boolean
 }
 
 interface WildStart {
@@ -784,8 +820,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       if (!trainer.party.length || (other && !other.party.length) || (ally && !ally.party.length)) {
         // ⚠️ **잡은 자리를 놓고 나간다.** 안 놓으면 `phase`가 `'loading'`에 묶여
         // 배틀 화면이 빈 채로 남는다
-        set({ phase: 'off', trainerId: null, trainerClass: null,
-          error: `트레이너 #${trainerId}은(는) 파티가 없다` })
+        console.error(`트레이너 #${String(trainerId)} — 파티가 비어 있어 배틀을 못 연다`)
+        set({ phase: 'off', trainerId: null, trainerClass: null, error: OPEN_FAILED })
         return
       }
       const tag = (id: number, t: Trainer): TrainerTag => {
@@ -888,17 +924,24 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         },
       )
     } catch (e) {
-      set({ phase: 'off', trainerId: null, trainerClass: null,
-        error: e instanceof Error ? e.message : String(e) })
+      // 원문은 콘솔에 남긴다. 화면 칸(`error`)에는 사람이 읽는 말만 간다 (`OPEN_FAILED`)
+      console.error('트레이너전을 못 열었다', e)
+      set({ phase: 'off', trainerId: null, trainerClass: null, error: OPEN_FAILED })
       throw e
     }
   },
 
-  startFactory: async ({ team, foe, label, ai, doubles, cls, name, defeat, victory }) => {
+  startFactory: async ({ team, foe, label, ai, doubles, cls, name, defeat, victory, classId }) => {
     rentalParty = team.map((m) => ({ ...m }))
     metTrainer = null
     set({
-      trainerId: null, trainerClass: null, foes: [], partner: null,
+      // ⚠️ **상대의 몸은 분류 번호로 선다** (`hasTrainer`). 비우면 무대에 상대 트레이너가 아예
+      // 안 서고, 교체 볼이 빈 자리에서 날아온다. 더블도 한 사람이다 — 프런티어 더블은
+      // `BATTLE_TYPE_FRONTIER_DOUBLES`(= `TRAINER_DOUBLES`)라 태그(`2vs2`)가 아니다.
+      //
+      // `foes`는 비워 둔다 — 그 칸은 **트레이너 표(trdata)의 번호**를 드는 자리라
+      // (`TrainerTag.id` · 이긴 뒤 `journalBeatTrainer`) 프런티어 트레이너 번호를 넣으면 다른 사람이 된다
+      trainerId: null, trainerClass: classId ?? null, foes: [], partner: null,
       defeatLines: defeat === null ? [] : [defeat], foeWinLines: victory === null ? [] : [victory],
     })
     await open(
@@ -993,7 +1036,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     } catch (e) {
       console.error('사파리 판을 못 열었다', e)
       safariRun = null
-      set({ phase: 'off', error: e instanceof Error ? e.message : String(e) })
+      set({ phase: 'off', error: OPEN_FAILED })
     }
   },
 
@@ -1808,6 +1851,16 @@ function leadOrder(events: readonly BattleEvent[]): BattleEvent[] {
 const LOADING_TELL_MS = 20_000
 
 /**
+ * 화면에 띄우는 말 (`error` 칸 → `ui/battle/BattleScreen`).
+ *
+ * ⚠️ **진단 문장은 여기 안 든다.** 무엇을 기다리는지, 어느 트레이너의 파티가 비었는지,
+ * 예외의 원문은 `console.error`에만 남긴다 — 그 말들은 우리 모듈 별명과 번호라 플레이어가
+ * 읽을 말이 아니다. 화면에는 지금 무슨 일인지만 뜬다
+ */
+const SLOW_OPEN = '배틀을 여는 데 시간이 걸리고 있습니다'
+const OPEN_FAILED = '배틀을 열지 못했습니다'
+
+/**
  * 지금 **무엇을 기다리는가**. 화면에 적을 말이다.
  *
  * ⚠️ **오래 걸리는 것과 영영 안 오는 것을 밖에서 못 가른다.** `open()`의
@@ -1818,6 +1871,25 @@ const LOADING_TELL_MS = 20_000
  * 바로 그 모양이고, 콘솔에도 화면에도 단서가 한 줄도 없었다
  */
 type Waiting = '규칙기' | '게임 자료' | '파티' | '심판'
+
+/**
+ * 명부 한 칸 중 **개체에서 바로 읽히는 몫** (`RosterEntry`).
+ *
+ * 볼은 0(적힌 것 없음)이면 비운다 — 무대가 몬스터볼로 떨어진다. 성별·색은 sim에 넣는 값과 같은
+ * 셈이다 (`sim/session`의 `genderOf` · `isShiny`)
+ */
+function bodyEntry(
+  mon: PokemonInstance, species: Species,
+): Pick<RosterEntry, 'species' | 'form' | 'level' | 'ball' | 'gender' | 'shiny'> {
+  return {
+    species: mon.species,
+    form: mon.form,
+    level: mon.level,
+    ...(mon.ball > 0 ? { ball: mon.ball } : {}),
+    gender: genderOf(mon.pid, species.genderRatio),
+    shiny: isShiny(mon.pid, mon.otId, mon.otSecretId),
+  }
+}
 
 /** 상대 쪽을 만드는 것. 야생 한 마리든 트레이너 여섯 마리든 모양은 같다 */
 type BuildFoe = (ctx: { species: SpeciesTable; pp: (move: number) => number }) => SideSpec
@@ -1928,9 +2000,11 @@ async function open(
   let waiting: Waiting = '규칙기'
   const tell = setTimeout(() => {
     if (get().phase !== 'loading') return
-    const why = `배틀이 안 열린다 — ${waiting}을(를) ${String(LOADING_TELL_MS / 1000)}초째 기다리는 중이다`
-    console.error(why)
-    set({ error: why })
+    // ⚠️ **별명은 콘솔에만 간다.** `Waiting`은 우리 모듈을 부르는 말이라 화면에 뜨면 개발 문장이다.
+    // 조사도 별명마다 갈리므로(`규칙기를`·`파티를`) 「기다리는 대상:」으로 피해 쓴다
+    console.error(
+      `배틀이 안 열린다 — 기다리는 대상: ${waiting} (${String(LOADING_TELL_MS / 1000)}초째)`)
+    set({ error: SLOW_OPEN })
   }, LOADING_TELL_MS)
 
   try {
@@ -1964,13 +2038,7 @@ async function open(
     const party = ensureParty(species, pp)
     const roster: Record<string, RosterEntry> = {}
     const team = party.map((mon, i) => {
-      roster[partyKey(i)] = {
-        side: 'p1',
-        species: mon.species,
-        form: mon.form,
-        nickname: mon.nickname,
-        level: mon.level,
-      }
+      roster[partyKey(i)] = { side: 'p1', nickname: mon.nickname, ...bodyEntry(mon, species.of(mon)) }
       return ready(mon, species.of(mon), partyKey(i))
     })
     // ⚠️ **쓰러진 마리를 앞세우고 배틀을 열 수 없다.** 원작도 첫 번째
@@ -2007,13 +2075,7 @@ async function open(
       ['p2', foe.team], ['p2', foe2?.team ?? []], ['p1', partner?.team ?? []],
     ] as const) {
       for (const m of list) {
-        roster[m.key] = {
-          side,
-          species: m.mon.species,
-          form: m.mon.form,
-          nickname: null,
-          level: m.mon.level,
-        }
+        roster[m.key] = { side, nickname: null, ...bodyEntry(m.mon, m.species) }
       }
     }
     // 둘이 서는 판이면 더블이다 (`sim/session`이 같은 셈을 한다)
@@ -2100,7 +2162,7 @@ async function open(
       phase: 'off',
       trainerId: null,
       trainerClass: null,
-      error: e instanceof Error ? e.message : String(e),
+      error: OPEN_FAILED,
     })
   } finally {
     clearTimeout(tell)

@@ -39,7 +39,7 @@ import { SLOTS, type SlotId } from '../../engine/battle/events'
 import {
   ballOpen, battleStage, impactHits, moveImpact, slotBody, STAGE_ORIGIN,
 } from './stageRefs'
-import { BattleBallEffects } from './BattleBallEffects'
+import { BattleBallEffects, SEND_RECALL_TIME } from './BattleBallEffects'
 import { BattleTrainers } from './BattleTrainers'
 import { BattleWorldLabels } from './BattleWorldLabels'
 import { captureBodyScale } from './battleBallMotion'
@@ -50,7 +50,7 @@ import { spriteKey } from '../../engine/pokemon/form'
 import { MoveVfx } from './MoveVfx'
 import { BattleAtmosphere } from './BattleAtmosphere'
 import { MOVE_FRAMES, moveFramesOf } from '../../engine/battle/vfx'
-import { CAMERA, PAIR_DIR, pairOffset, SLOT, type Side } from '../../engine/battle/shots'
+import { CAMERA, PAIR_DIR, pairOffset, SLOT } from '../../engine/battle/shots'
 import { useOptionsStore } from '../../state/optionsStore'
 import {
   BACK_DIR,
@@ -115,11 +115,6 @@ function spotOf(slot: SlotId): typeof MINE {
     x: base.x + PAIR_DIR[0] * off,
     z: base.z + PAIR_DIR[2] * off,
   }
-}
-
-/** 자리 → 쪽. 카메라 샷은 쪽 단위다 */
-function sideOf(slot: SlotId): Side {
-  return slot.startsWith('p1') ? 'p1' : 'p2'
 }
 
 /**
@@ -211,7 +206,12 @@ function Slot({
   other: typeof MINE
   mine: boolean
   shadow: CanvasTexture | null
-  /** 몸이 바뀌면 알려 준다. 카메라가 큰 종 앞에서 물러나야 한다 */
+  /**
+   * 이 자리에 **지금 선 몸의 키**를 알려 준다. 카메라가 큰 종 앞에서 물러나야 한다.
+   *
+   * 절대값이다 — 몸이 바뀌거나 자리가 비면 0을 보내 그 자리 몫을 비운다. 한 마리 안에서만
+   * 커진 값을 올린다(아래 `grown`)
+   */
   onBody: (tall: number) => void
 }) {
   const body = useRef<Group>(null)
@@ -226,6 +226,33 @@ function Slot({
   const fainted = mon !== null && mon.presence === 'down'
   const [art, setArt] = useState<{ map: Texture; scale: number; lift: number } | null>(null)
   const [model, setModel] = useState<MonBody | null>(null)
+  /**
+   * 몸을 받는 일이 **끝났는가** — 모델이든 도트든, 둘 다 못 받았든.
+   *
+   * ⚠️ **받는 동안은 아무것도 안 그린다.** 도형(캡슐)은 그림을 끝내 못 받은 종의 몫인데,
+   * 받는 중에도 그것이 섰다 — 볼이 0.48초 만에 열리고 glb 받기와 파이프라인 굽기가
+   * 216~600ms라, 판 도중 처음 나오는 마리는 종족색 캡슐이 섰다가 진짜 몸으로 바뀌었다.
+   * 등판(`shown`)도 이 깃발이 설 때까지 안 차오른다. `useFrame`이 읽으므로 ref를 같이 든다
+   */
+  const settled = useRef(false)
+  const [settledShown, setSettledShown] = useState(false)
+  const settle = (): void => { settled.current = true; setSettledShown(true) }
+  /**
+   * **앞 몸을 거두기 시작한 시각** (`RecallPokemon`). 거두는 중이 아니면 null.
+   *
+   * ⚠️ 종이 바뀌는 순간 앞 몸을 지우면 거두는 빔(`BattleBallEffects`)이 빈 자리에 쏜다.
+   * 그래서 서 있던 마리를 바꿔 낼 때는 앞 몸(모델이든 도트든)을 **새 몸이 올 때까지 그대로
+   * 두고**, 빔과 같은 시간(`SEND_RECALL_TIME`)에 걸쳐 줄여서 감춘다. 쓰러진 뒤의 교체는
+   * 몸이 이미 졌으므로 거두지 않는다 — 원작도 쓰러진 마리는 거두지 않는다.
+   *
+   * ⚠️ **앞 몸을 다른 부모로 옮겨 그리지 않는다.** 같은 `object`를 새 `<primitive>`로
+   * 다시 달면 옛 것을 떼는 커밋이 새 인스턴스의 `__r3f`까지 지운다 (R3F `removeChild`)
+   */
+  const recallFrom = useRef<number | null>(null)
+  /** 지금 몸(모델이나 도트)이 서 있는가 — 종이 바뀌는 효과가 거둘 몸이 있는지 본다 */
+  const hasBody = useRef(false)
+  /** 앞서 그린 마리의 열쇠와, 그 마리가 서 있었는가. 아래 효과들이 **앞 커밋의 값**으로 읽는다 */
+  const before = useRef<{ key: string | null; alive: boolean }>({ key: null, alive: false })
 
   // 몸은 종이 바뀔 때만 받는다. 같은 종을 여럿 데리고 있어도 한 벌이면 된다.
   // **3D 모델이 먼저고 도트가 대신**이다 — 493종 중 모델이 없는 종만 그림으로 선다
@@ -235,10 +262,20 @@ function Slot({
   const camera = useThree((s) => s.camera)
   useEffect(() => {
     let alive = true
-    setModel(null)
-    setArt(null)
+    // 서 있던 **다른 마리**로 바뀌면 앞 몸을 거둔다. 같은 마리의 폼 변화(`form`)는 거두지 않는다
+    const recall = hasBody.current && before.current.alive && before.current.key !== (mon?.key ?? null)
+    recallFrom.current = recall ? battleClock.now() : null
+    if (!recall) {
+      setModel(null)
+      setArt(null)
+      hasBody.current = false
+    }
+    settled.current = false
+    setSettledShown(false)
     grown.current = 0
     watch.current = 0
+    // 자리가 비거나 몸이 바뀌면 이 자리의 키를 비운다 — 카메라가 앞 몸 기준에 머물지 않는다
+    onBody(0)
     // 몸이 바뀌면 시간도 다시 센다 — 안 그러면 새 모델이 앞 모델을 기다린
     // 시간을 첫 프레임에 통째로 소비한다
     stageTime.current.reset()
@@ -258,27 +295,46 @@ function Slot({
             .then(() => {
               if (!alive) return null
               setModel(body)
+              setArt(null)
+              recallFrom.current = null
+              hasBody.current = true
+              settle()
               onBody(body.tall)
               return null
             })
         }
-        onBody(0)
         // 모델이 없다 — 원작 도트로 떨어진다
         const key = spriteKey(species, form, false)
         return Promise.all([loadSpriteIndex(), loadMonSprite(key, mine)]).then(([idx, map]) => {
           if (!alive) return
           const box = idx.sprites[key]?.[mine ? 'back' : 'front']
           setArt({ map, ...spriteFit(box, idx.size, MON_TALL) })
+          setModel(null)
+          recallFrom.current = null
+          hasBody.current = true
+          settle()
         })
       })
       .catch(() => {
-        /* 둘 다 못 받으면 아래에서 도형으로 떨어진다 */
+        // 둘 다 못 받았다 — 이제야 아래에서 도형으로 떨어진다
+        if (!alive) return
+        setModel(null)
+        setArt(null)
+        recallFrom.current = null
+        hasBody.current = true
+        settle()
       })
     return () => {
       alive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [species, form, mine, mon?.gender, mon?.shiny])
+
+  // 이번 커밋에 그린 마리를 적어 둔다. ⚠️ **위 효과보다 뒤에 둔다** — 효과는 적힌 차례로
+  // 돌므로, 위에서는 앞 커밋의 마리를 읽고 여기서 이번 마리로 갈아 적는다
+  useEffect(() => {
+    before.current = { key: mon?.key ?? null, alive: mon?.presence === 'alive' }
+  })
 
   /**
    * 지금 트는 동작. 뷰가 바뀌는 순간에만 갈아 끼운다.
@@ -396,12 +452,32 @@ function Slot({
     if (!g) return
     // 공통 시계에서 내 몫을 뗀다. 같은 프레임에 두 번 읽어도 두 번 안 나아간다
     const delta = stageTime.current.read(battleClock.now())
+    // 앞 몸을 거두는 중 — 빔과 같은 시간에 걸쳐 줄어들고, 다 줄면 새 몸이 올 때까지 감춘다.
+    // 그동안은 아래의 등판·동작·키 재기를 안 한다(거두는 몸은 이미 이 자리의 마리가 아니다)
+    const recalling = recallFrom.current
+    if (recalling !== null) {
+      const k = (battleClock.now() - recalling) / SEND_RECALL_TIME
+      const left = Math.max(0, 1 - k)
+      g.visible = left > 0.01
+      g.scale.setScalar(left)
+      model?.mixer.update(delta)
+      const sh = shade.current
+      if (sh) {
+        sh.visible = left > 0.01
+        sh.scale.setScalar(left)
+      }
+      // 새 몸은 **처음부터** 나온다 — 앞 몸의 등판 값을 물려받으면 볼이 열리기 전에 새 몸이
+      // 다 선 채로 가라앉는 것부터 보인다
+      shown.current = 0
+      leaving.current = false
+      return
+    }
     // ⚠️ **볼이 열리기 전에는 안 나온다** (`stageRefs.ballOpen`). 등판 연출과
     // 몸이 같은 값(`view.active`)을 보고 같은 프레임에 시작하던 탓에, 포켓몬이
     // 먼저 서 있고 그 뒤에 볼이 날아와 터졌다
     const opensAt = ballOpen[slot] ?? 0
     const waiting = battleClock.now() < opensAt
-    const want = mon && !fainted && !waiting ? 1 : 0
+    const want = mon && !fainted && !waiting && settled.current ? 1 : 0
     if (want === 0 && shown.current > 0.01) leaving.current = true
     if (want === 1) leaving.current = false
     shown.current +=
@@ -567,7 +643,8 @@ function Slot({
       <group ref={body} position={[0, GROUND, 0]}>
         {model ? (
           // BDSP 모델. 크기·자세·동작이 전부 롬에서 온다
-          <primitive object={model.root} />
+          // 몸이 바뀌면 열쇠도 바뀐다 — 앞 몸을 거두는 동안 붙어 있던 `<primitive>`를 새로 단다
+          <primitive key={model.root.uuid} object={model.root} />
         ) : art ? (
           /*
             모델이 없는 종만 여기로 온다 — 도트 한 장이다. 위 `useFrame`이
@@ -578,8 +655,9 @@ function Slot({
             <planeGeometry args={[art.scale, art.scale]} />
             <meshBasicMaterial map={art.map} transparent alphaTest={0.5} toneMapped={false} />
           </mesh>
-        ) : (
-          // 그림을 못 받았을 때만 도형으로 떨어진다. 종족 색은 롬에서 온다
+        ) : settledShown && (
+          // 그림을 **끝내** 못 받았을 때만 도형으로 떨어진다. 받는 중에는 아무것도 안 그린다
+          // (`settled`). 종족 색은 롬에서 온다
           <mesh castShadow>
             <capsuleGeometry args={[0.42, height, 6, 16]} />
             <meshStandardMaterial
@@ -665,6 +743,7 @@ export function BattleStage() {
   const view = useBattleStore((s) => s.view)
   const roster = useBattleStore((s) => s.roster)
   useSceneReady()
+  usePrefetchBodies()
   /**
    * 기술 표와 타격 박자표를 **무대가 서면서** 받아 둔다.
    *
@@ -724,12 +803,17 @@ export function BattleStage() {
     }
   }, [])
 
-  // 큰 종 앞에서는 카메라가 물러난다. 둘 중 큰 쪽이 화면을 정한다
-  const [tall, setTall] = useState({ p1: 0, p2: 0 })
+  // 큰 종 앞에서는 카메라가 물러난다. 선 몸 중 제일 큰 것이 화면을 정한다.
+  //
+  // ⚠️ **자리마다 지금 선 몸의 키를 든다 — 커지기만 하는 값이 아니다.** 쪽마다 「본 것 중
+  // 제일 큰 값」을 들던 때는 갸라도스 한 번 뒤에 모부기로 바꿔도 카메라가 갸라도스 거리에
+  // 남아서, 그 판 내내 모부기가 화면 속 점이었다. 한 마리 안에서 커지기만 하는 것은
+  // `Slot`의 `grown`이 맡는다(대기 동작에 출렁이지 않게)
+  const [tall, setTall] = useState<Record<SlotId, number>>({ p1a: 0, p1b: 0, p2a: 0, p2b: 0 })
   // ⚠️ **더블에서는 한 걸음 물러난다.** 무대에 넷이 서므로 싱글 화각 그대로면
   // 바깥 둘이 화면 밖으로 나간다. 짝을 벌린 만큼만 물러난다
   const doubles = useBattleStore((s) => s.doubles)
-  useBattleCamera(cameraFit(arena, Math.max(tall.p1, tall.p2)) * (doubles ? 1.35 : 1))
+  useBattleCamera(cameraFit(arena, Math.max(...Object.values(tall))) * (doubles ? 1.35 : 1))
 
   /** 그 개체의 폼. 명단이 임자다 — 뷰는 폼을 안 들고 있다 */
   const formOf = (mon: ViewMon | null): number =>
@@ -813,8 +897,7 @@ export function BattleStage() {
           mine={id.startsWith('p1')}
           shadow={shadow}
           onBody={(t) => {
-            const side = sideOf(id)
-            setTall((was) => (was[side] >= t ? was : { ...was, [side]: t }))
+            setTall((was) => (was[id] === t ? was : { ...was, [id]: t }))
           }}
         />
       ))}
@@ -868,7 +951,16 @@ export function BattleStage() {
  * 것**이다 (`moveImpact.camera` — `Func_ShakeBg`가 적힌 기술 서른 개)
  */
 function useBattleCamera(fit: number): void {
+  /** 지금 카메라가 선 거리 배율. 첫 프레임에는 목표 그대로 선다 */
+  const shownFit = useRef<number | null>(null)
+  const time = useRef(new ClockReader())
   useFrame(() => {
+    const dt = time.current.read(battleClock.now())
+    // ⚠️ **물러나는 것은 곧바로, 다가가는 것은 천천히.** 큰 몸이 서는데 늦게 물러나면 머리가
+    // 화면 위로 잘린다. 다가가는 쪽은 교체 순간 카메라가 튀지 않게 감쇠로 민다
+    const was = shownFit.current
+    const at = was === null || fit >= was ? fit : fit + (was - fit) * Math.exp(-dt / CAMERA_EASE)
+    shownFit.current = at
     // ⚠️ 대본이 배경을 흔들라고 적은 기술만 흔든다 (`Func_ShakeBg`, 30개).
     // 지진·땅가르기가 그것이고, 번개는 안 흔든다 — 위력이 아니라 대본이
     // 정한다. 연출이 끝나면 `t`가 1이라 0이 곱해진다
@@ -881,14 +973,23 @@ function useBattleCamera(fit: number): void {
     const [lx, ly, lz] = CAMERA.look
     battleStage.position
       .set(
-        lx + (CAMERA.position[0] - lx) * fit + quake,
-        ly + (CAMERA.position[1] - ly) * fit + quake * 0.7,
-        lz + (CAMERA.position[2] - lz) * fit,
+        lx + (CAMERA.position[0] - lx) * at + quake,
+        ly + (CAMERA.position[1] - ly) * at + quake * 0.7,
+        lz + (CAMERA.position[2] - lz) * at,
       )
       .add(STAGE_ORIGIN)
     battleStage.target.set(lx, ly, lz).add(STAGE_ORIGIN)
   })
 }
+
+/**
+ * 카메라가 작은 몸 쪽으로 다가가는 감쇠의 시간 상수(초).
+ *
+ * 원작 값이 아니다 — DS는 카메라가 안 움직이고 BDSP는 종마다 샷을 새로 잡는다. 우리는 한
+ * 자리 카메라가 몸 크기로 거리만 바꾸므로(`cameraFit`) 그 사이를 잇는 값을 따로 둔다.
+ * 0.6초면 남은 거리의 95%를 1.8초에 줄인다 — 교체 글 한 쪽이 넘어가는 동안이다
+ */
+const CAMERA_EASE = 0.6
 
 /** 설정의 "배틀 애니메이션"에서 **보는** 쪽 값 (`options_menu` 뱅크 13번) */
 const SHOW_SCENE = 0
@@ -954,6 +1055,35 @@ function useSceneReady(): void {
       cancelAnimationFrame(raf)
     }
   }, [leads, ready])
+}
+
+/**
+ * 판이 열린 뒤 **뒤에 나올 마리의 몸**을 미리 받는다 (명부 전원, 양쪽).
+ *
+ * ⚠️ **판 도중 처음 나오는 마리가 늦게 섰다.** `useSceneReady`는 첫 등판 두 마리만 기다리므로
+ * 벤치와 상대 후속 마리는 볼이 열릴 때 처음 glb를 받았다. 여기서 받아 두면 `Slot`이 같은
+ * `loadMonModel`을 부를 때 캐시에 걸린다 — 굽기(`warmBeforeShow`)만 그때 돈다.
+ *
+ * ⚠️ **`sceneReady`를 기다리게 하지 않는다.** 그 깃발이 막을 걷으므로 여기를 거기에 넣으면
+ * 판이 열리는 기다림이 파티 수만큼 길어진다. 판이 열린 **뒤에**, 한 마리씩 차례로 받는다 —
+ * 한꺼번에 걸면 등판 연출 도중에 파싱이 몰려 프레임이 끊긴다
+ */
+function usePrefetchBodies(): void {
+  const ready = useBattleStore((s) => s.sceneReady)
+  useEffect(() => {
+    if (!ready) return
+    let alive = true
+    const entries = Object.values(useBattleStore.getState().roster)
+    void entries.reduce<Promise<unknown>>(
+      (chain, entry) => chain.then(() => (alive
+        ? loadMonModel(entry.species, entry.form, { gender: entry.gender, shiny: entry.shiny }).catch(() => null)
+        : null)),
+      Promise.resolve(),
+    )
+    return () => {
+      alive = false
+    }
+  }, [ready])
 }
 
 /** 무대 모델이 서 있는가. React 상태로 두면 `Arena`가 그때마다 다시 그려진다 */

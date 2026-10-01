@@ -11,7 +11,7 @@ import { assets, type AssetPath } from '../../data/providers/assetProvider'
 import { normalizeModel, PLAYER_HEIGHT } from '../../engine/model/normalize'
 import { ClockReader, battleClock } from '../../engine/battle/presentationClock'
 import type { BattleView } from '../../engine/battle/view'
-import { useBattleStore } from '../../state/battleStore'
+import { hasTrainer, useBattleStore } from '../../state/battleStore'
 import { useSaveStore } from '../../state/saveStore'
 import { playerModelPath } from '../playerModelPath'
 import { trainerStandAt } from './battleBallMotion'
@@ -94,6 +94,8 @@ function TrainerActor({
   const host = useRef<Group>(null)
   const wrapper = useRef<Group>(null)
   const [model, setModel] = useState<Group | null>(null)
+  /** 몸 파일을 못 받았다. 그때만 구운 몸이 있는 사람도 절차형으로 선다 */
+  const [failed, setFailed] = useState(false)
   /**
    * 구운 클립을 도는 자. 클립이 없는 몸이면 null이고, 그때는 아래 절차형
    * 몸짓이 그대로 돈다 — **절차형을 지우지 않는다** (인물 106벌 중 치비로
@@ -113,6 +115,11 @@ function TrainerActor({
   const rest = useRef<(() => void) | null>(null)
   /** 내 쪽에서 본 결말. 누가 진 동작을 하는지는 `trainerLost`가 가른다 */
   const outcome = useBattleStore((state) => state.outcome)
+  /**
+   * 화면이 결판 박자까지 왔는가. ⚠️ `outcome`은 sim이 마지막 턴을 계산한 순간 서서
+   * 재생보다 앞선다 — 이걸 같이 봐야 마지막 기술이 나가기 전에 무너지지 않는다 (`trainerLost`)
+   */
+  const shownEnded = useBattleStore((state) => state.view?.ended ?? false)
   const origin = trainerStandAt(slot, paired)
   const facing = Math.atan2(-origin[0], -origin[2])
   const key = throwKey(view, mine, paired ? slot : null)
@@ -174,8 +181,8 @@ function TrainerActor({
 
   // 졌으면 진 동작. 이겼거나 잡기·도망이면 아무것도 안 한다
   useEffect(() => {
-    if (trainerLost(outcome, mine)) playClip(TRAINER_CLIP.lose)
-  }, [outcome, mine, playClip])
+    if (trainerLost(outcome, mine, shownEnded)) playClip(TRAINER_CLIP.lose)
+  }, [outcome, mine, shownEnded, playClip])
 
   const gl = useThree((s) => s.gl) as unknown as WebGPURenderer
   const r3fScene = useThree((s) => s.scene)
@@ -184,6 +191,7 @@ function TrainerActor({
   useEffect(() => {
     let alive = true
     setModel(null)
+    setFailed(false)
     if (!path)
       return () => {
         alive = false
@@ -231,7 +239,8 @@ function TrainerActor({
         }
       })
       .catch(() => {
-        /* The procedural trainer remains visible when an optional class model is absent. */
+        // 몸 파일을 못 받았다 — 빈 자리로 두지 않고 절차형으로 선다
+        if (alive) setFailed(true)
       })
     return () => {
       alive = false
@@ -269,16 +278,20 @@ function TrainerActor({
   })
 
   return (
+    // ⚠️ **발밑에 진영 고리를 안 깐다.** 파랑·빨강 고리가 있었는데 원작에도 BDSP에도 없는
+    // 표시라 무대가 디버그 화면처럼 보였다. 땅에 지는 것은 무대 조명의 몫이다
     <group position={[origin[0], 0, origin[2]]} rotation={[0, facing, 0]}>
       <group ref={host}>
         <group ref={wrapper}>
-          {model ? <primitive object={model} /> : <ProceduralTrainer trainerClass={trainerClass} />}
+          {/*
+            ⚠️ **절차형 몸은 몸이 아예 없는 분류와 받기에 실패한 사람만 쓴다** (`path === null` — DATA.md §2.16).
+            구운 몸이 있는 사람은 glb가 오는 동안 아무것도 안 그린다 — 안 그러면 캡슐 인형이
+            잠깐 섰다가 진짜 몸으로 바뀌었다
+          */}
+          {model ? <primitive object={model} />
+            : path === null || failed ? <ProceduralTrainer trainerClass={trainerClass} /> : null}
         </group>
       </group>
-      <mesh position={[0, 0.018, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.36, 0.43, 36]} />
-        <meshBasicMaterial color={mine ? '#75bfff' : '#ff8a91'} transparent opacity={0.32} />
-      </mesh>
     </group>
   )
 }
@@ -316,13 +329,14 @@ export function BattleTrainers() {
           path={partnerPath} trainerClass={partner.classId} mine view={view} slot="p1b" paired
         />
       )}
-      {kind === 'trainer' && (
+      {/* 배틀팩토리도 상대가 선다 (`hasTrainer`) */}
+      {hasTrainer(kind) && (
         <TrainerActor
           path={opponentPath} trainerClass={trainerClass} mine={false} view={view}
           slot="p2a" paired={second !== null}
         />
       )}
-      {kind === 'trainer' && second !== null && (
+      {hasTrainer(kind) && second !== null && (
         <TrainerActor
           path={secondPath} trainerClass={second.classId} mine={false} view={view} slot="p2b" paired
         />

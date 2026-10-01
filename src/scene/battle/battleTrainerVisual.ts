@@ -45,12 +45,20 @@ export const TRAINER_CLIP = {
 } as const
 
 /**
- * 이 편 트레이너가 졌는가.
+ * 이 편 트레이너가 **지금** 진 동작을 하는가.
  *
  * `outcome`은 **내 쪽에서 본 결말**이다 — 내가 지면(`loss`) 내 트레이너가,
  * 내가 이기면(`win`) 상대 트레이너가 진 동작을 한다. 잡기·도망(`caught`·
- * `fled`·`foeFled`)은 진 것이 아니라 아무도 안 한다
+ * `fled`·`foeFled`)은 진 것이 아니라 아무도 안 한다.
+ *
+ * ⚠️ **결말만 보면 안 된다 — `shownEnded`가 같이 서야 한다.** `outcome`은 sim이 마지막
+ * 턴을 계산한 그 순간 서고, 재생기는 그 뒤에 「○○의 몸통박치기!」·게이지·쓰러짐을
+ * 차례로 튼다. 결말만 보고 움직이면 상대 포켓몬이 아직 서 있는데 트레이너가 먼저
+ * 무너져서 결과가 미리 드러났다. 그래서 **화면 뷰(`view.ended`)** 를 같이 본다 — 그 값은
+ * 재생기가 `win`·`tie` 사건을 접는 박자에서만 서고(`engine/battle/view`), 그 박자는 마지막
+ * 쓰러짐과 경험치 줄 **뒤**다 (`battleStore.advance`가 보상을 쓰러짐 바로 뒤에 끼운다)
  */
-export function trainerLost(outcome: BattleFinish, mine: boolean): boolean {
+export function trainerLost(outcome: BattleFinish, mine: boolean, shownEnded: boolean): boolean {
+  if (!shownEnded) return false
   return mine ? outcome === 'loss' : outcome === 'win'
 }

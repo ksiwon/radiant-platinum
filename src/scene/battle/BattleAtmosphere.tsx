@@ -4,6 +4,8 @@ import { Object3D, type Group, type InstancedMesh, type Mesh } from 'three'
 import type { Status } from '../../engine/pokemon/instance'
 import type { BattleView, ViewMon } from '../../engine/battle/view'
 import type { SideId, SlotId } from '../../engine/battle/events'
+import { battleClock } from '../../engine/battle/presentationClock'
+import { ballOpen } from './stageRefs'
 
 type WeatherKind = 'none' | 'rain' | 'snow' | 'sand' | 'sun'
 
@@ -33,6 +35,21 @@ export function visibleSideConditions(conditions: ReadonlyMap<string, number>): 
     'spikes', 'toxicspikes', 'stealthrock',
   ])
   return [...conditions.keys()].filter((id) => known.has(id))
+}
+
+/**
+ * 이 자리에 몸에 붙는 연출(상태 고리·혼란·씨뿌리기·대타·색다른 반짝임)을 그리는가.
+ *
+ * ⚠️ **몸이 없는 자리에는 안 그린다.** 쓰러짐은 `presence`만 `down`으로 바꾸고 `volatiles`를
+ * 그대로 두며, 잡힌 볼은 `active`를 비우지 않는다 (`engine/battle/view` — 엔진 상태는 안 고친다).
+ * 그것을 그대로 따라 그리면 몸(`BattleStage`의 `Slot`)이 사라진 빈 자리에서 혼란 고리와
+ * 대타 인형이 계속 돌고, 색다른 포켓몬을 잡으면 반짝이가 볼 둘레를 돌았다
+ */
+export function auraShown(
+  mon: ViewMon | null, slot: SlotId, lastBall: BattleView['lastBall'],
+): mon is ViewMon {
+  if (!mon || mon.presence !== 'alive') return false
+  return !(lastBall?.caught === true && lastBall.slot === slot)
 }
 
 interface SpotProps {
@@ -110,7 +127,8 @@ function Weather({ weather }: { weather: string | null }) {
   )
 }
 
-function StatusAura({ mon, position }: { mon: ViewMon; position: [number, number] }) {
+function StatusAura({ mon, slot, position }: { mon: ViewMon; slot: SlotId; position: [number, number] }) {
+  const hostRef = useRef<Group>(null)
   const rootRef = useRef<Group>(null)
   const ringRef = useRef<Mesh>(null)
   const color = statusAuraColor(mon.status)
@@ -119,6 +137,9 @@ function StatusAura({ mon, position }: { mon: ViewMon; position: [number, number
   const substitute = mon.volatiles.has('substitute')
 
   useFrame(({ clock }) => {
+    // 몸은 볼이 열릴 때까지 안 나온다 (`stageRefs.ballOpen`) — 몸에 붙는 것도 같이 기다린다.
+    // 안 그러면 등판할 때 볼이 날아오기 전에 반짝이부터 보였다
+    if (hostRef.current) hostRef.current.visible = battleClock.now() >= (ballOpen[slot] ?? 0)
     const time = clock.elapsedTime
     if (rootRef.current) rootRef.current.rotation.y = time * 1.6
     if (ringRef.current) {
@@ -128,7 +149,7 @@ function StatusAura({ mon, position }: { mon: ViewMon; position: [number, number
   })
 
   return (
-    <group position={[position[0], 0, position[1]]}>
+    <group ref={hostRef} position={[position[0], 0, position[1]]}>
       {color && (
         <group ref={rootRef}>
           <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]}>
@@ -297,9 +318,10 @@ export function BattleAtmosphere({ view, spotAt }: {
   return (
     <group>
       <Weather weather={view.weather} />
-      {Object.entries(view.active).map(([slot, mon]) => mon && (
-        <StatusAura key={slot} mon={mon} position={spotAt(slot as SlotId)} />
-      ))}
+      {(Object.entries(view.active) as [SlotId, ViewMon | null][]).map(([slot, mon]) =>
+        auraShown(mon, slot, view.lastBall) && (
+          <StatusAura key={slot} mon={mon} slot={slot} position={spotAt(slot)} />
+        ))}
       <Barrier side="p1" conditions={view.sideConditions.p1} spotAt={spotAt} />
       <Barrier side="p2" conditions={view.sideConditions.p2} spotAt={spotAt} />
       <FieldConditions field={view.field} />

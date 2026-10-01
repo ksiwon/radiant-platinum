@@ -7,7 +7,7 @@
 // 지연 로딩 경계도 여기서 지나간다 — `startWild`가 `@pkmn/sim`을 처음 끌어온다.
 import 'fake-indexeddb/auto'
 import { afterAll, beforeAll, beforeEach, describe, it, expect } from 'vitest'
-import { useBattleStore } from './battleStore'
+import { hasTrainer, useBattleStore } from './battleStore'
 import { useSaveStore, createNewSave, dexHas } from './saveStore'
 import { Ball } from '../engine/battle/meta/capture'
 import { createWild, fillPp, statsOf, wildMoves } from '../engine/pokemon/instance'
@@ -819,3 +819,80 @@ describe('배틀 뒤에 남는 것', () => {
     expect(useSaveStore.getState().party[0]!.moves).toHaveLength(4)
   }, 60_000)
 })
+
+describe('배틀팩토리는 트레이너가 서는 판이다', () => {
+  // 원작의 프런티어 판은 `FRONTIER | TRAINER`다 (`constants/battle.h` 42~43)
+  it('트레이너전과 팩토리만 상대 트레이너가 선다', () => {
+    expect(hasTrainer('trainer')).toBe(true)
+    expect(hasTrainer('factory')).toBe(true)
+    expect(hasTrainer('wild')).toBe(false)
+    expect(hasTrainer('safari')).toBe(false)
+  })
+
+  // ⚠️ `trainerClass`가 비면 무대에 상대가 아예 안 서고 교체 볼이 빈 자리에서 날아온다
+  it('상대의 분류 번호가 무대 몫으로 서고, 사람 칸은 비워 둔다', async () => {
+    const species = await loadSpecies()
+    const moves = await loadMoves()
+    const pp = (id: number): number => moves.byId.get(id)?.pp ?? 5
+    const rental = (id: number) => {
+      const sp = species.get(id)
+      const mon = createWild({ species: sp, level: 50, rng: Math.random, otId: 1, otSecretId: 1 })
+      mon.hp = statsOf(mon, sp).hp
+      return fillPp(mon, pp)
+    }
+    // 프런티어 트레이너 자료의 `type`이 그대로 온다 — 값 자체는 여기서 상관없다
+    const ACE = 7
+    await useBattleStore.getState().startFactory({
+      team: [rental(STARLY), rental(RATTATA), rental(STARLY)],
+      foe: [rental(RATTATA), rental(STARLY), rental(RATTATA)],
+      label: '에이스트레이너 가', cls: '에이스트레이너', name: '가', classId: ACE,
+      ai: 0, doubles: false, defeat: null, victory: null,
+    })
+    const s = useBattleStore.getState()
+    expect(s.error).toBeNull()
+    expect(s.kind).toBe('factory')
+    expect(s.trainerClass).toBe(ACE)
+    // `foes`는 trdata 번호를 드는 칸이다 — 프런티어 번호를 넣으면 다른 사람이 된다
+    expect(s.foes).toEqual([])
+    useBattleStore.getState().close()
+  }, 30_000)
+})
+
+describe('명부가 무대 몫을 싣는다', () => {
+  // 내보낼 때 그 개체가 든 볼이 날아간다 (`BattleBallEffects`)
+  it('내 마리는 든 볼을, 볼이 안 적힌 상대는 빈 값을 싣는다', async () => {
+    const species = await loadSpecies()
+    const sp = species.get(STARLY)
+    const mon = createWild({ species: sp, level: 10, rng: Math.random, otId: 1, otSecretId: 1 })
+    mon.hp = statsOf(mon, sp).hp
+    mon.ball = Ball.ULTRA
+    useSaveStore.setState({ party: [mon] })
+
+    await useBattleStore.getState().startWild({ species: RATTATA, level: 2 })
+    const { roster, truth } = useBattleStore.getState()
+    const mine = roster[truth!.active.p1a!.key]!
+    expect(mine.ball).toBe(Ball.ULTRA)
+    // 몸 캐시는 성별까지 열쇠로 든다 — 화면 뷰와 같은 값이어야 미리 받은 몸이 걸린다
+    expect(mine.gender).toBe(truth!.active.p1a!.gender)
+    const foe = roster[truth!.active.p2a!.key]!
+    expect(foe.ball).toBeUndefined()
+    useBattleStore.getState().close()
+  }, 30_000)
+})
+
+describe('배틀을 못 열 때 화면 칸에는 사람 말만 간다', () => {
+  // 원문(트레이너 번호 · 예외 글)은 콘솔에만 남는다 — 「트레이너 #N은(는) 파티가 없다」가 뜨던 자리다
+  it('없는 트레이너로 열면 번호도 예외 원문도 안 뜬다', async () => {
+    const quiet = console.error
+    console.error = () => {}
+    try {
+      await useBattleStore.getState().startTrainer(99_999).catch(() => undefined)
+    } finally {
+      console.error = quiet
+    }
+    const { error, phase } = useBattleStore.getState()
+    expect(phase).toBe('off')
+    expect(error).toBe('배틀을 열지 못했습니다')
+  }, 30_000)
+})
+

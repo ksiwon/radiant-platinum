@@ -6,6 +6,7 @@ import { battleClock } from '../../engine/battle/presentationClock'
 import type { BattleView } from '../../engine/battle/view'
 import { ballOpen, clearBallOpen } from './stageRefs'
 import { useBattleStore } from '../../state/battleStore'
+import { Ball } from '../../engine/battle/meta/capture'
 import {
   CAPTURE_SEAL_TIME,
   CAPTURE_SHAKE_START,
@@ -32,7 +33,11 @@ type BallShot = {
 }
 
 const SEND_THROW_TIME = 0.48
-const SEND_RECALL_TIME = 0.3
+/**
+ * 앞 마리를 볼로 거두는 시간(초). 빔이 이만큼 서고, 무대의 앞 몸도 이만큼 줄어들며 사라진다
+ * (`BattleStage`의 `Slot` — 둘이 같은 값을 봐야 빔이 빈 자리에 쏘지 않는다)
+ */
+export const SEND_RECALL_TIME = 0.3
 const SEND_DURATION = 1.08
 let nextShotId = 1
 
@@ -243,6 +248,8 @@ export function BattleBallEffects({
   const wildFoe = kind === 'wild' || kind === 'safari'
   const [shots, setShots] = useState<BallShot[]>([])
   const activeKeys = useRef<Record<SlotId, string | null> | null>(null)
+  /** 자리마다 앞서 본 마리가 **서 있었는가** — 쓰러진 뒤의 교체는 거둘 몸이 없다 */
+  const standing = useRef<Record<SlotId, boolean>>({ p1a: false, p1b: false, p2a: false, p2b: false })
   const seenBall = useRef(0)
 
   useEffect(() => {
@@ -259,9 +266,20 @@ export function BattleBallEffects({
     }
     const previous = activeKeys.current
     activeKeys.current = current
+    const stood = standing.current
+    standing.current = {
+      p1a: view.active.p1a?.presence === 'alive',
+      p1b: view.active.p1b?.presence === 'alive',
+      p2a: view.active.p2a?.presence === 'alive',
+      p2b: view.active.p2b?.presence === 'alive',
+    }
+    // 볼은 **그 개체가 든 볼**이다 (`RosterEntry.ball`). 명부는 판이 열릴 때 한 번 서므로
+    // 값으로 읽는다 — 구독하면 이 효과가 명부 때문에 한 번 더 돈다
+    const roster = useBattleStore.getState().roster
     const started = nowSeconds()
     const added = SLOTS.flatMap((slot): BallShot[] => {
-      if (!current[slot] || current[slot] === previous?.[slot]) return []
+      const key = current[slot]
+      if (!key || key === previous?.[slot]) return []
       // ⚠️ **야생은 볼에서 안 나온다.** 던질 사람이 없다 — 풀숲에서 튀어나온다
       if (wildFoe && slot.startsWith('p2')) return []
       return [
@@ -269,10 +287,12 @@ export function BattleBallEffects({
           id: nextShotId++,
           kind: 'send',
           slot,
-          ball: 4,
+          ball: roster[key]?.ball ?? Ball.POKE,
           shakes: 0,
           caught: false,
-          replacement: previous?.[slot] != null,
+          // ⚠️ **거두는 빔은 서 있던 마리에게만 쏜다.** 쓰러진 뒤의 교체는 몸이 이미 졌고
+          // 원작도 쓰러진 마리를 거두지 않는다 — 앞 마리가 있었다는 것만 보면 빈 자리에 쐈다
+          replacement: previous?.[slot] != null && stood[slot],
           started,
         },
       ]
