@@ -1,11 +1,16 @@
 // 교체 화면이 파티를 제대로 읽는가 (PLAN §2.5)
 //
-// 여기서 지키는 것 둘: **벤치에 있는 애의 속사정이 요청에서 다 나온다**는 것과,
-// **프로토콜의 특성 아이디를 롬 번호로 되돌릴 수 있다**는 것.
+// 여기서 지키는 것 셋: **벤치에 있는 애의 속사정이 요청에서 다 나온다**는 것,
+// **프로토콜의 특성 아이디를 롬 번호로 되돌릴 수 있다**는 것, 그리고 기술 줄의
+// 상성 귀띔이 **기술 메뉴와 같은 규칙·같은 말**이라는 것.
 import { describe, it, expect } from 'vitest'
 import { partySummary } from '../../engine/battle/choice'
 import type { BattleRequest } from '../../engine/battle/events'
 import { romAbility } from '../../engine/battle/sim/bridge'
+import { TYPE } from '../../engine/battle/ai/typeChart'
+import { MATCH_LABEL, sharedMatch } from '../../engine/battle/movePreview'
+import type { Move, Stats } from '../../data/schema'
+import * as css from './switchScreen.css'
 
 const mon = (over: Partial<BattleRequest['side']['pokemon'][0]>) => ({
   ident: 'p1: turtwig',
@@ -85,5 +90,61 @@ describe('특성 아이디 → 롬 번호', () => {
 
   it('4세대에 없는 특성은 null', () => {
     expect(romAbility('justified')).toBeNull()
+  })
+})
+
+describe('교체 화면의 상성 귀띔', () => {
+  const thunder = (over: Partial<Move> = {}): Move => ({
+    id: 85, effect: 0, category: 'special', power: 95, type: TYPE.ELECTRIC,
+    accuracy: 100, alwaysHits: false, pp: 15, effectChance: 10, target: 0,
+    priority: 0, flags: 0, contact: false, protectable: true,
+    ...over,
+  })
+  const water = { types: [TYPE.WATER], known: true }
+  const flying = { types: [TYPE.FLYING], known: true }
+  const ground = { types: [TYPE.GROUND], known: true }
+  const grass = { types: [TYPE.GRASS], known: true }
+
+  it('싱글이면 그 상대 하나에 대고 잰다', () => {
+    expect(sharedMatch(thunder(), [water], null)).toBe('super')
+    expect(sharedMatch(thunder(), [grass], null)).toBe('resisted')
+    expect(sharedMatch(thunder(), [ground], null)).toBe('immune')
+  })
+
+  /**
+   * ⚠️ 한때 교체 화면은 처음 보는 상대에게도 약점을 띄웠다. 기술 메뉴는
+   * **상대해 본 종**에게만 띄운다 (§2.22) — 같은 배틀에서 규칙이 둘이었다
+   */
+  it('상대해 본 적 없는 종에게는 안 띄운다', () => {
+    expect(sharedMatch(thunder(), [{ types: [TYPE.WATER], known: false }], null)).toBeNull()
+  })
+
+  /** ⚠️ 한때 p2a 하나로만 쟀다. 왼쪽 상대에게는 거짓 귀띔이었다 */
+  it('더블에서 상대 둘의 결과가 같을 때만 띄운다', () => {
+    expect(sharedMatch(thunder(), [water, flying], null)).toBe('super')
+    expect(sharedMatch(thunder(), [water, ground], null)).toBeNull()
+    // 한쪽만 처음 보는 종이어도 비운다 — 같은 줄에 그쪽 약점이 묻어 나간다
+    expect(sharedMatch(thunder(), [water, { types: [TYPE.WATER], known: false }], null)).toBeNull()
+  })
+
+  it('잠재파워는 쓰는 쪽의 개체값으로, 발버둥은 아무 말 없이', () => {
+    const hp = thunder({ id: 237, type: TYPE.NORMAL, power: 0 })
+    const ivs: Stats = { hp: 31, atk: 31, def: 31, spa: 31, spd: 31, spe: 31 } // 악
+    const ghost = { types: [TYPE.GHOST], known: true }
+    expect(sharedMatch(hp, [ghost], null)).toBe('immune')
+    expect(sharedMatch(hp, [ghost], ivs)).toBe('super')
+    expect(sharedMatch(thunder({ id: 165, type: TYPE.NORMAL }), [ghost], null)).toBeNull()
+  })
+
+  it('상대가 없으면 비운다', () => {
+    expect(sharedMatch(thunder(), [], null)).toBeNull()
+  })
+
+  /** 말은 기술 메뉴의 표 하나에서 온다. 색 칸도 그 키를 그대로 쓴다 */
+  it('색 칸의 키가 기술 메뉴의 말과 같다', () => {
+    expect(Object.keys(css.hint).sort()).toEqual(Object.keys(MATCH_LABEL).sort())
+    expect(MATCH_LABEL).toEqual({
+      super: '효과가 굉장함', resisted: '효과가 별로임', immune: '효과가 없음',
+    })
   })
 })

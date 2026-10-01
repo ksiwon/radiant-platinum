@@ -74,3 +74,21 @@ export const MATCH_LABEL: Record<MoveMatch, string> = {
   resisted: '효과가 별로임',
   immune: '효과가 없음',
 }
+
+/**
+ * 상대가 여럿일 때 **한 줄로** 적을 수 있는 상성. 모두 같을 때만 그 값이다.
+ *
+ * 교체 화면이 쓴다 — 거기서는 아직 누구를 겨눌지 안 정했다. 더블에서 상대 둘의
+ * 타입이 다르면 한쪽에 대고 잰 값은 다른 쪽에 거짓말이 된다. 한쪽만 상대해 본
+ * 종이어도 갈린다(한쪽이 null) — 그러면 비운다. 처음 보는 쪽의 약점이 같은 줄에
+ * 묻어 나가지 않게 한다
+ */
+export function sharedMatch(
+  move: Move | undefined,
+  defenders: readonly { types: readonly number[] | null; known: boolean }[],
+  ivs: Stats | null,
+): MoveMatch | null {
+  const all = defenders.map((d) => moveMatch(move, d.types, ivs, d.known))
+  const first = all[0] ?? null
+  return all.every((m) => m === first) ? first : null
+}

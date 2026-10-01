@@ -44,7 +44,11 @@ export const card = style({
   ...WINDOW,
   position: 'relative',
   appearance: 'none',
-  display: 'block',
+  // 왼쪽에 아이콘, 오른쪽에 이름·막대·숫자 세 줄
+  display: 'grid',
+  gridTemplateColumns: 'auto minmax(0, 1fr)',
+  alignItems: 'center',
+  columnGap: GAP.small + 2,
   width: '100%',
   textAlign: 'left',
   padding: `${GAP.small + 1}px ${GAP.base + 2}px ${GAP.small + 2}px`,
@@ -69,6 +73,22 @@ export const cardOut = style({ opacity: 0.46 })
 /** 지금 나와 있는 칸. 흐리게 두되 나와 있다는 표시는 남긴다 */
 export const cardHere = style({
   borderColor: vars.state.good,
+})
+
+/**
+ * 포켓몬 아이콘 (`pokeIcon.monIcon`). 크기는 컴포넌트가 정한다 — 아틀라스
+ * 칸 크기와 한 짝이라 여기서 따로 적으면 둘이 갈린다
+ */
+export const icon = style({
+  flex: '0 0 auto',
+  imageRendering: 'pixelated',
+  backgroundRepeat: 'no-repeat',
+})
+
+/** 아이콘 옆 세 줄 */
+export const cardBody = style({
+  display: 'block',
+  minWidth: 0,
 })
 
 export const cardTop = style({
@@ -208,14 +228,17 @@ export const pp = style({
  *
  * ⚠️ **판정이 아니라 귀띔이다.** 실제 배틀 계산은 sim이 하고, 여기 뜨는 것은
  * 그 한 수가 상대의 타입에 몇 배인지를 우리 표로 미리 재 본 값이다
- * (`ai/typeChart`). 원작 교체 화면에도 같은 글이 뜬다
+ * (`ai/typeChart`). 원작 교체 화면에도 같은 글이 뜬다.
+ *
+ * 키는 `movePreview`의 `MoveMatch`와 같다 — 글도 그쪽 `MATCH_LABEL`을 쓴다.
+ * 기술 메뉴와 말끝이 갈리지 않게 한 표에서 받는다
  */
 const hintBase = { fontWeight: 800, fontSize: TEXT.tiny, flex: '0 0 auto' } as const
 
 export const hint = styleVariants({
   super: { ...hintBase, color: vars.match.superEff },
-  weak: { ...hintBase, color: vars.match.resisted },
-  none: { ...hintBase, color: vars.ink.faint },
+  resisted: { ...hintBase, color: vars.match.resisted },
+  immune: { ...hintBase, color: vars.match.immune },
 })
 
 export const ability = style({

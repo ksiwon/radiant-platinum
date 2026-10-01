@@ -9,16 +9,15 @@
 //
 // 값은 전부 배틀에서 온다. 벤치에 있는 애의 체력·기술·특성까지 요청(`|request|`)에
 // 실려 오므로 세이브를 다시 열 이유가 없다 (`battle/choice`의 `partySummary`).
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { BattleAction, PartySlot } from '../../engine/battle/choice'
-import { effectivenessOf } from '../../engine/battle/ai/typeChart'
+import { MATCH_LABEL, sharedMatch, shownType } from '../../engine/battle/movePreview'
 import { romAbility } from '../../engine/battle/sim/bridge'
-import { loadSpecies } from '../../data/gameData'
-import type { Move, Species } from '../../data/schema'
+import type { Move } from '../../data/schema'
 import type { RosterEntry } from '../../state/battleStore'
 import { useBattleStore } from '../../state/battleStore'
-import { useSaveStore } from '../../state/saveStore'
-import type { MoveSlot } from '../../engine/pokemon/instance'
+import { dexHas, useSaveStore } from '../../state/saveStore'
+import type { MoveSlot, PokemonInstance } from '../../engine/pokemon/instance'
 import { maxPpOf } from '../../engine/pokemon/instance'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import type { BattleNames } from './messages'
@@ -35,18 +34,27 @@ interface SwitchNames extends BattleNames {
   /** 특성 설명. 특성 이름과 같은 색인 */
   abilityText: string[]
   move(id: number): Move | undefined
+  /** 그 모습의 타입 둘. 기술 메뉴의 상성과 **같은 함수**다 (BattleScreen의 `Extras`) */
+  typesOf(species: number, form: number): readonly number[] | null
 }
 
-/** 이 기술이 상대에게 몇 배인가. 판정이 아니라 귀띔이다 (`switchScreen.css`의 `hint`) */
-function hintFor(move: Move | undefined, foeTypes: readonly number[] | null):
-{ text: string; kind: keyof typeof css.hint } | null {
-  if (!move || !foeTypes || foeTypes.length === 0) return null
-  if (move.category === 'status') return null
-  const x = effectivenessOf(move.type, foeTypes)
-  if (x === 0) return { text: '효과가 없다', kind: 'none' }
-  if (x > 1) return { text: '효과가 굉장함', kind: 'super' }
-  if (x < 1) return { text: '효과가 별로', kind: 'weak' }
-  return null
+/**
+ * 파티 자리 키(`p1-3`)가 가리키는 세이브의 한 마리. 종이 안 맞으면 없다.
+ *
+ * ⚠️ **요청의 차례(`PartySlot.index`)로 세이브를 찾지 않는다.** sim은 교체할
+ * 때마다 팀 차례를 바꾸고, 선두가 쓰러져 있으면 시작부터 당겨 세운다
+ * (`battleStore`의 `awake`) — 한때 그 차례로 찾아서 남의 PP가 떴다. 키는
+ * `aftermath.partyKey`가 붙인 세이브 자리 그대로다.
+ *
+ * 종까지 맞춰 보는 것은 대여 파티 때문이다. 팩토리에서는 배틀의 파티가 세이브의
+ * 파티가 아니다 — 그때 남의 개체값·알 표시를 빌려 오지 않는다
+ */
+function savedOf(
+  party: readonly PokemonInstance[], key: string, entry: RosterEntry | undefined,
+): PokemonInstance | undefined {
+  const n = Number(key.slice(3))
+  const mon = Number.isInteger(n) ? party[n] : undefined
+  return mon && entry && mon.species === entry.species ? mon : undefined
 }
 
 /** `12/20` 꼴. 세이브가 없으면 최대치만 */
@@ -86,28 +94,38 @@ export function SwitchScreen(
     cancel: onBack ?? undefined,
   })
 
-  const [species, setSpecies] = useState<((id: number) => Species | undefined) | null>(null)
-  useEffect(() => {
-    let alive = true
-    void loadSpecies()
-      .then((table) => { if (alive) setSpecies(() => (id: number) => table.byId.get(id)) })
-      .catch(() => { /* 못 받으면 타입 줄이 빈다 */ })
-    return () => { alive = false }
-  }, [])
-
   const saveParty = useSaveStore((s) => s.party)
+  // 기술 메뉴와 같은 규칙이다 — **상대해 본 종에게만** 상성을 적는다 (§2.22)
+  const battledDex = useSaveStore((s) => s.pokedex.battled)
 
-  // 상대의 타입. 기술이 얼마나 통하는지를 여기에 대고 잰다
-  const foe = useBattleStore((s) => s.view?.active.p2a ?? null)
-  const foeTypes = useMemo(
-    () => (foe?.species != null ? species?.(foe.species)?.types ?? null : null),
-    [foe, species],
-  )
+  // 상대 자리 둘. 싱글이면 p2b가 비어 있다
+  const foeA = useBattleStore((s) => s.view?.active.p2a ?? null)
+  const foeB = useBattleStore((s) => s.view?.active.p2b ?? null)
+  /**
+   * 기술이 얼마나 통하는지를 대고 잴 상대들.
+   *
+   * ⚠️ **오른쪽 하나로 몰지 않는다.** 한때 p2a만 봤다 — 더블에서 왼쪽 상대에게는
+   * 거짓 귀띔이었다. 둘 다 재고 같을 때만 적는다 (`sharedMatch`).
+   * 폼도 본다. 로토무는 모습마다 타입이 다르다
+   */
+  const foes = useMemo(() => {
+    const out: { types: readonly number[] | null; known: boolean }[] = []
+    for (const m of [foeA, foeB]) {
+      if (m === null || m.species === null || m.fainted) continue
+      out.push({
+        types: names?.typesOf(m.species, roster[m.key]?.form ?? 0) ?? null,
+        known: dexHas(battledDex, m.species),
+      })
+    }
+    return out
+  }, [foeA, foeB, names, roster, battledDex])
 
   const chosen = party[cursor] ?? null
   const entry = chosen ? roster[chosen.key] : undefined
-  const mon = entry ? species?.(entry.species) : undefined
-  const saved = chosen ? saveParty[chosen.index - 1] : undefined
+  const types = entry ? names?.typesOf(entry.species, entry.form) ?? null : null
+  const saved = chosen ? savedOf(saveParty, chosen.key, entry) : undefined
+  // 잠재파워는 **쓰는 쪽**의 개체값이 타입을 정한다. 세이브에 없으면 적힌 타입이다
+  const ivs = saved?.ivs ?? null
 
   const cards = party.map((slot, i): PartyCard => {
     const it = roster[slot.key]
@@ -115,6 +133,11 @@ export function SwitchScreen(
       slot,
       label: it?.nickname ?? (it ? names?.species[it.species] : null) ?? slot.key,
       level: it?.level ?? '?',
+      mon: it ? {
+        species: it.species,
+        form: it.form,
+        isEgg: savedOf(saveParty, slot.key, it)?.isEgg ?? false,
+      } : null,
       can: actionAt(i) !== null,
       note: slot.active ? '나와 있다' : null,
     }
@@ -161,7 +184,7 @@ export function SwitchScreen(
 
           <div className={css.row}>
             <span className={css.rowLabel}>타입</span>
-            {(mon?.types ?? []).filter((t, i, all) => all.indexOf(t) === i).map((t) => (
+            {(types ?? []).filter((t, i, all) => all.indexOf(t) === i).map((t) => (
               <span
                 key={t} className={css.typeChip}
                 style={{ ['--tint' as string]: typeColor(t) }}
@@ -176,19 +199,21 @@ export function SwitchScreen(
               // 남은 PP는 **세이브가 정본**이다. 요청에는 나와 있는 한 마리 것만
               // 실려 오고, 벤치에 있는 애의 PP는 배틀 중에 줄지 않는다
               const data = m.move === null ? undefined : names?.move(m.move)
-              const hint = hintFor(data, foeTypes)
+              const match = sharedMatch(data, foes, ivs)
+              // 칸 색과 타입 이름도 기술 메뉴처럼 **보이는 타입**이다 (잠재파워)
+              const type = data ? shownType(data, ivs) : 0
               return (
                 <div key={`${m.id}-${String(i)}`} className={css.move}>
                   <span
                     className={css.typeChip}
-                    style={{ ['--tint' as string]: typeColor(data?.type ?? 0) }}
+                    style={{ ['--tint' as string]: typeColor(type) }}
                   >
-                    {names?.types[data?.type ?? 0] ?? ''}
+                    {names?.types[type] ?? ''}
                   </span>
                   <span className={css.moveName}>
                     {(m.move === null ? null : names?.moves[m.move]) ?? m.id}
                   </span>
-                  {hint && <span className={css.hint[hint.kind]}>{hint.text}</span>}
+                  {match && <span className={css.hint[match]}>{MATCH_LABEL[match]}</span>}
                   <span className={css.pp}>{ppText(saved?.moves[i], data)}</span>
                 </div>
               )
