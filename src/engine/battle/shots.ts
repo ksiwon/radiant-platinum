@@ -9,7 +9,7 @@
 // (PLAN §4.3.1):
 //
 //   포켓몬   (0, 0, ±2.0~2.5)   크기 1·2·3에 따라 2.0 / 2.2 / 2.5
-//   트레이너 (±0.5, 0, ±5.8)
+//   트레이너 (±0.5, 0, ±5.8)   — 우리는 깊이(z)만 쓴다 (`battleBallMotion.trainerStandAt`)
 //   카메라   (−2.7, 0.7, 5.0) · 회전 Y 150° · **화각 30** · near 0.3
 //
 // 그전에는 카메라가 9.95m 밖에 화각 55로 서 있었다. 그때는 무대에 서는 것이
@@ -129,4 +129,38 @@ export function pairOffset(slot: `${Side}${'a' | 'b'}`): number {
 /** 그 점이 카메라 앞으로 얼마나 떨어졌는가(m, 수평). 같은 화면 x로 옮길 때의 척도다 */
 export function viewDepth(point: Vec3): number {
   return (CAMERA.position[0] - point[0]) * VIEW.x + (CAMERA.position[2] - point[2]) * VIEW.z
+}
+
+/**
+ * 그 점이 배틀 카메라의 화면 어디에 서는가 (NDC — 가운데 0, 가장자리 ±1, 위가 +).
+ *
+ * `fit`은 `BattleStage.useBattleCamera`가 거는 거리 배율이다 — 카메라가 보는 점(`CAMERA.look`)
+ * 쪽으로 그만큼 다가가거나 물러난다(실내 무대 0.88 · 더블 ×1.35). `aspect`는 화면의 가로÷세로.
+ * 카메라 뒤에 있으면 깊이가 0 이하라 둘 다 무한대로 준다 — 「화면 안」이 아니다
+ */
+export function battleNdc(point: Vec3, aspect: number, fit = 1): [number, number] {
+  const [lx, ly, lz] = CAMERA.look
+  const eye: Vec3 = [
+    lx + (CAMERA.position[0] - lx) * fit,
+    ly + (CAMERA.position[1] - ly) * fit,
+    lz + (CAMERA.position[2] - lz) * fit,
+  ]
+  const fx = lx - eye[0]
+  const fy = ly - eye[1]
+  const fz = lz - eye[2]
+  const fn = Math.hypot(fx, fy, fz)
+  const f = [fx / fn, fy / fn, fz / fn] as const
+  // 오른쪽 = 시선 × 위(0,1,0). 카메라가 안 기우니 땅과 나란하다
+  const rn = Math.hypot(f[2], f[0])
+  const r = [-f[2] / rn, 0, f[0] / rn] as const
+  // 위 = 오른쪽 × 시선
+  const u = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]] as const
+  const d = [point[0] - eye[0], point[1] - eye[1], point[2] - eye[2]] as const
+  const depth = d[0] * f[0] + d[1] * f[1] + d[2] * f[2]
+  if (!(depth > 0)) return [Infinity, Infinity]
+  const half = Math.tan((BATTLE_FOV / 2) * (Math.PI / 180)) * depth
+  return [
+    (d[0] * r[0] + d[1] * r[1] + d[2] * r[2]) / (half * aspect),
+    (d[0] * u[0] + d[1] * u[1] + d[2] * u[2]) / half,
+  ]
 }

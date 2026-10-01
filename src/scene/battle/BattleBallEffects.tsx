@@ -15,7 +15,9 @@ import {
   ballShakeAngle,
   captureDuration,
   captureResolveAt,
+  recallsBody,
   throwArc,
+  throwerOf,
   trainerStandAt,
   trainerThrowOrigin,
   type Point3,
@@ -29,6 +31,12 @@ type BallShot = {
   shakes: number
   caught: boolean
   replacement: boolean
+  /**
+   * 등장 장면에 선 트레이너가 던진 첫 볼인가. 참이면 그 사람이 선 자리(`trainerStandAt`)에서
+   * 날아오고, 거짓이면 화면 밖(`trainerThrowOrigin`)에서 온다 — 원작 트레이너는 첫 볼과 함께
+   * 물러나 지워진다 (`BattleTrainers`)
+   */
+  byTrainer: boolean
   started: number
 }
 
@@ -137,8 +145,8 @@ function ShotVisual({
   // 트레이너가 둘인 쪽은 **그 자리의 주인**이 던진다 (PARITY §2.2b)
   const paired = useBattleStore((s) => (shot.slot.startsWith('p1')
     ? s.partner !== null : s.foes.length > 1))
-  const source = shot.kind === 'capture'
-    ? trainerThrowOrigin('p1a')
+  const source = shot.kind === 'capture' || !shot.byTrainer
+    ? trainerThrowOrigin(shot.kind === 'capture' ? 'p1a' : shot.slot)
     : trainerStandAt(shot.slot, paired)
   const resultAt = captureResolveAt(shot.shakes)
 
@@ -251,10 +259,13 @@ export function BattleBallEffects({
   /** 자리마다 앞서 본 마리가 **서 있었는가** — 쓰러진 뒤의 교체는 거둘 몸이 없다 */
   const standing = useRef<Record<SlotId, boolean>>({ p1a: false, p1b: false, p2a: false, p2b: false })
   const seenBall = useRef(0)
+  /** 이미 첫 볼을 던지고 물러난 트레이너의 자리 (`throwerOf`) */
+  const thrown = useRef(new Set<SlotId>())
 
   useEffect(() => {
     if (!view) {
       activeKeys.current = null
+      thrown.current.clear()
       clearBallOpen()
       return
     }
@@ -275,13 +286,17 @@ export function BattleBallEffects({
     }
     // 볼은 **그 개체가 든 볼**이다 (`RosterEntry.ball`). 명부는 판이 열릴 때 한 번 서므로
     // 값으로 읽는다 — 구독하면 이 효과가 명부 때문에 한 번 더 돈다
-    const roster = useBattleStore.getState().roster
+    const { roster, partner, foes } = useBattleStore.getState()
     const started = nowSeconds()
+    // 이번에 던지기 **전에** 누가 이미 물러났는가 — 더블의 둘째 볼도 같은 사람의 첫 볼이다
+    const gone = new Set(thrown.current)
     const added = SLOTS.flatMap((slot): BallShot[] => {
       const key = current[slot]
       if (!key || key === previous?.[slot]) return []
       // ⚠️ **야생은 볼에서 안 나온다.** 던질 사람이 없다 — 풀숲에서 튀어나온다
       if (wildFoe && slot.startsWith('p2')) return []
+      const thrower = throwerOf(slot, slot.startsWith('p1') ? partner !== null : foes.length > 1)
+      thrown.current.add(thrower)
       return [
         {
           id: nextShotId++,
@@ -290,9 +305,10 @@ export function BattleBallEffects({
           ball: roster[key]?.ball ?? Ball.POKE,
           shakes: 0,
           caught: false,
-          // ⚠️ **거두는 빔은 서 있던 마리에게만 쏜다.** 쓰러진 뒤의 교체는 몸이 이미 졌고
-          // 원작도 쓰러진 마리를 거두지 않는다 — 앞 마리가 있었다는 것만 보면 빈 자리에 쐈다
-          replacement: previous?.[slot] != null && stood[slot],
+          // ⚠️ **거두는 빔은 서 있던 다른 마리에게만 쏜다** (`recallsBody`). 쓰러진 뒤의 교체는
+          // 몸이 이미 졌고 원작도 쓰러진 마리를 거두지 않는다. 변신은 열쇠가 같아 여기까지 안 온다
+          replacement: recallsBody({ key: previous?.[slot] ?? null, alive: stood[slot] }, key),
+          byTrainer: !gone.has(thrower),
           started,
         },
       ]
@@ -322,6 +338,7 @@ export function BattleBallEffects({
       shakes: event.shakes,
       caught: event.caught,
       replacement: false,
+      byTrainer: false,
       started,
     }
     setShots((old) =>

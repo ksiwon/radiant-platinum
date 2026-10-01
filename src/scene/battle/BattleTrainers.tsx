@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import {
-  AnimationMixer, Group, LoopOnce, LoopRepeat, Mesh, type AnimationClip, type Object3D,
+  AnimationMixer, Group, LoopOnce, LoopRepeat, Mesh, PerspectiveCamera, Vector3,
+  type AnimationClip, type Camera, type Object3D,
 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
@@ -14,7 +15,7 @@ import type { BattleView } from '../../engine/battle/view'
 import { hasTrainer, useBattleStore } from '../../state/battleStore'
 import { useSaveStore } from '../../state/saveStore'
 import { playerModelPath } from '../playerModelPath'
-import { trainerStandAt } from './battleBallMotion'
+import { TRAINER_GONE_AT, trainerSlide, trainerStandAt } from './battleBallMotion'
 import type { SlotId } from '../../engine/battle/events'
 import { TRAINER_CLIP, trainerFallbackPalette, trainerLost } from './battleTrainerVisual'
 import { trainerModelBundle } from '../../engine/actor/npcModels'
@@ -25,10 +26,42 @@ const loader = new GLTFLoader()
 
 function throwKey(view: BattleView | null, mine: boolean, only: SlotId | null = null): string {
   if (!view) return ''
-  // 한 쪽에 트레이너가 둘이면 **제 자리**의 교체에만 던지는 몸짓을 한다
+  // 한 쪽에 트레이너가 둘이면 **제 자리**의 교체에만 던지는 몸짓을 한다 (`battleBallMotion.throwerOf`)
   if (only !== null) return view.active[only]?.key ?? ''
   const side = mine ? 'p1' : 'p2'
-  return [view.active[`${side}a`]?.key ?? '', view.active[`${side}b`]?.key ?? ''].join('/')
+  // ⚠️ **빈 자리는 빼고 잇는다.** 둘 다 비었을 때 `'/'`가 나오면 아무도 안 나왔는데 던진 것으로 읽힌다
+  return [view.active[`${side}a`]?.key, view.active[`${side}b`]?.key].filter(Boolean).join('/')
+}
+
+/**
+ * 트레이너가 무대에 어떻게 서 있는가 — 원작 트레이너 그림의 미끄러짐이다.
+ *
+ * - `stand`: 등장 장면의 자리(`trainerStandAt`)에 선다
+ * - `out`: 첫 볼을 던지며 화면 밖으로 미끄러진다 (`Task_ThrowTrainerBall` — 상대는 오른쪽,
+ *   우리는 왼쪽으로 프레임마다 5px). 다 나가면 그림을 지운다
+ * - `gone`: 안 그린다. 그 뒤의 교체 볼은 화면 밖에서 온다 (`BattleBallEffects`)
+ * - `in`: 이긴 판에서 상대가 다시 들어온다 (`subscript_battle_won`의 `TrainerSlideIn`)
+ */
+type Presence = { mode: 'stand' | 'out' | 'gone' | 'in'; started: number }
+
+/** 프레임마다 다시 쓰는 셈 칸 */
+const scratch = new Vector3()
+const across = new Vector3()
+
+/**
+ * 선 자리가 **지금 카메라의** 화면 어디인가 (NDC x)와, NDC 1이 그 깊이에서 몇 미터인가.
+ * 카메라가 무대 크기·몸 키로 다가서고 물러나므로(`BattleStage.useBattleCamera`) 매 프레임 잰다.
+ * 카메라 뒤면 null
+ */
+function screenAt(stand: Group, x: number, z: number, camera: Camera): { ndc: number; unit: number } | null {
+  if (!(camera instanceof PerspectiveCamera) || !stand.parent) return null
+  scratch.set(x, 0, z)
+  stand.parent.localToWorld(scratch)
+  scratch.applyMatrix4(camera.matrixWorldInverse)
+  const depth = -scratch.z
+  if (!(depth > 0)) return null
+  const unit = depth * Math.tan((camera.fov * Math.PI) / 360) * camera.aspect
+  return { ndc: scratch.x / unit, unit }
 }
 
 function ProceduralTrainer({ trainerClass }: { trainerClass: number | null }) {
@@ -121,8 +154,15 @@ function TrainerActor({
    */
   const shownEnded = useBattleStore((state) => state.view?.ended ?? false)
   const origin = trainerStandAt(slot, paired)
-  const facing = Math.atan2(-origin[0], -origin[2])
+  /**
+   * 마주 선다 — 우리 쪽은 −z(상대 쪽), 상대는 +z. 원작 그림도 우리는 등, 상대는 앞모습이다.
+   * ⚠️ 무대 한가운데를 보게 두면 발판 옆에 선 우리 쪽이 화면에 옆모습으로 섰다
+   */
+  const facing = mine ? Math.PI : 0
   const key = throwKey(view, mine, paired ? slot : null)
+  /** 바깥 틀 — 미끄러짐과 숨김은 여기에만 건다 */
+  const stand = useRef<Group>(null)
+  const presence = useRef<Presence>({ mode: 'stand', started: 0 })
 
   /**
    * 클립 하나를 돌린다.
@@ -172,16 +212,37 @@ function TrainerActor({
     clips.current?.mixer.removeEventListener('finished', back as never)
   }
 
+  // 판이 닫히면 처음으로 — 다음 판에 다시 선다
+  useEffect(() => {
+    if (view !== null) return
+    seen.current = ''
+    presence.current = { mode: 'stand', started: 0 }
+  }, [view])
+
   useEffect(() => {
     if (!key || key === seen.current) return
+    const first = seen.current === ''
     seen.current = key
+    // ⚠️ **던지는 것은 첫 볼 한 번뿐이다.** 원작 트레이너는 그 볼과 함께 화면 밖으로 나가
+    // 지워지고(`Task_ThrowTrainerBall`), 그 뒤의 교체 볼은 사람 없이 날아온다
+    if (!first || presence.current.mode !== 'stand') return
     // 공을 던지며 지시한다. 클립이 없는 몸이면 절차형 팔이 그 자리를 맡는다
     if (!playClip(TRAINER_CLIP.order)) gestureStarted.current = battleClock.now()
+    presence.current = { mode: 'out', started: battleClock.now() }
   }, [key, playClip])
 
   // 졌으면 진 동작. 이겼거나 잡기·도망이면 아무것도 안 한다
   useEffect(() => {
-    if (trainerLost(outcome, mine, shownEnded)) playClip(TRAINER_CLIP.lose)
+    if (!trainerLost(outcome, mine, shownEnded)) return
+    const now = presence.current
+    if (now.mode === 'stand') {
+      playClip(TRAINER_CLIP.lose)
+      return
+    }
+    // ⚠️ **물러난 상대는 다시 들어와서 진다** — 「…와의 승부에서 이겼다!」 뒤의
+    // `TrainerSlideIn`이다. 진 주인공은 원작이 다시 안 세운다 (`subscript_battle_lost`)
+    if (mine) return
+    presence.current = { mode: 'in', started: battleClock.now() }
   }, [outcome, mine, shownEnded, playClip])
 
   const gl = useThree((s) => s.gl) as unknown as WebGPURenderer
@@ -258,9 +319,53 @@ function TrainerActor({
     if (model) playClip(TRAINER_CLIP.advent)
   }, [model, playClip])
 
+  /**
+   * 미끄러짐을 한 프레임 민다. 그릴 것이 없으면(`gone`) false.
+   *
+   * 원작이 **화면 픽셀**로 미는 것이라 NDC로 셈하고(`trainerSlide`), 지금 카메라의 그 깊이에서
+   * 미터로 바꿔 카메라의 오른쪽으로 민다 — 깊이가 그대로라 화면에서 곧게 옆으로 간다
+   */
+  const slideStand = (now: number): boolean => {
+    const node = stand.current
+    if (!node) return true
+    const state = presence.current
+    if (state.mode === 'gone') {
+      node.visible = false
+      return false
+    }
+    node.visible = true
+    if (state.mode === 'stand') {
+      node.position.set(origin[0], 0, origin[2])
+      return true
+    }
+    const at = screenAt(node, origin[0], origin[2], camera)
+    if (!at) return true
+    const edge = (mine ? -1 : 1) * TRAINER_GONE_AT
+    const elapsed = now - state.started
+    const step = state.mode === 'out'
+      ? trainerSlide(at.ndc, edge, elapsed)
+      : trainerSlide(edge, at.ndc, elapsed)
+    across.setFromMatrixColumn(camera.matrixWorld, 0)
+    across.y = 0
+    across.normalize().multiplyScalar((step.at - at.ndc) * at.unit)
+    node.position.set(origin[0] + across.x, 0, origin[2] + across.z)
+    if (!step.done) return true
+    if (state.mode === 'out') {
+      presence.current = { mode: 'gone', started: now }
+      node.visible = false
+      return false
+    }
+    // 다 들어왔다 — 그 자리에서 진 동작
+    presence.current = { mode: 'stand', started: now }
+    playClip(TRAINER_CLIP.lose)
+    return true
+  }
+
   useFrame(() => {
     const now = battleClock.now()
-    clips.current?.mixer.update(bodyTime.current.read(now))
+    const body = bodyTime.current.read(now)
+    if (!slideStand(now)) return
+    clips.current?.mixer.update(body)
     const node = host.current
     if (!node) return
     // 숨쉬는 흔들림. 쉬는 동작(`wait_b`)을 실은 뒤로는 **몸을 못 구운 사람**을
@@ -280,7 +385,7 @@ function TrainerActor({
   return (
     // ⚠️ **발밑에 진영 고리를 안 깐다.** 파랑·빨강 고리가 있었는데 원작에도 BDSP에도 없는
     // 표시라 무대가 디버그 화면처럼 보였다. 땅에 지는 것은 무대 조명의 몫이다
-    <group position={[origin[0], 0, origin[2]]} rotation={[0, facing, 0]}>
+    <group ref={stand} position={[origin[0], 0, origin[2]]} rotation={[0, facing, 0]}>
       <group ref={host}>
         <group ref={wrapper}>
           {/*
@@ -296,13 +401,16 @@ function TrainerActor({
   )
 }
 
-/** Player and opponent bodies placed behind their Pokémon on the 3D battle arena. */
 /** 그 분류의 몸 파일. 못 구운 분류면 null — 절차형 몸으로 선다 */
 function bodyOf(trainerClass: number | null): AssetPath | null {
   const bundle = trainerModelBundle(trainerClass)
   return bundle ? `models/npc/${bundle}.glb` : null
 }
 
+/**
+ * 배틀 무대의 트레이너들. 등장 장면에 제 포켓몬과 같은 화면 x에 서고(`trainerStandAt`),
+ * 첫 볼을 던지며 화면 밖으로 나간다 (`TrainerActor`의 `Presence`)
+ */
 export function BattleTrainers() {
   const kind = useBattleStore((state) => state.kind)
   const trainerClass = useBattleStore((state) => state.trainerClass)

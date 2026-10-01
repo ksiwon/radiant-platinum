@@ -342,6 +342,8 @@ export const useFactoryStore = create<FactoryState>((set, get) => ({
       label: [cls, name].filter(Boolean).join(' '),
       cls,
       name,
+      // 상대가 **분류의 몸**으로 서게 번호를 그대로 넘긴다 (`FactoryBout.classId`). 없으면 절차형 몸이다
+      classId: base?.type,
       ai: aiMaskFor(round.round, id),
       doubles: round.challenge === ChallengeType.DOUBLE,
       defeat: line(2),

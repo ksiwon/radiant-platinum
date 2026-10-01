@@ -42,7 +42,7 @@ import {
 import { BattleBallEffects, SEND_RECALL_TIME } from './BattleBallEffects'
 import { BattleTrainers } from './BattleTrainers'
 import { BattleWorldLabels } from './BattleWorldLabels'
-import { captureBodyScale } from './battleBallMotion'
+import { captureBodyScale, recallsBody } from './battleBallMotion'
 import { bodyColor } from './bodyColor'
 import { loadMonSprite, loadSpriteIndex, spriteFit } from './monSprite'
 import { loadMonModel, makeBody, play, type MonBody, type MotionName } from './monModel'
@@ -262,8 +262,9 @@ function Slot({
   const camera = useThree((s) => s.camera)
   useEffect(() => {
     let alive = true
-    // 서 있던 **다른 마리**로 바뀌면 앞 몸을 거둔다. 같은 마리의 폼 변화(`form`)는 거두지 않는다
-    const recall = hasBody.current && before.current.alive && before.current.key !== (mon?.key ?? null)
+    // 서 있던 **다른 마리**로 바뀌면 앞 몸을 거둔다. 같은 마리의 폼 변화(`form`)와 변신(`transform`)은
+    // 열쇠가 같고 종만 바뀌므로 거두지 않는다 — 빔(`BattleBallEffects`)과 같은 함수를 본다
+    const recall = hasBody.current && recallsBody(before.current, mon?.key ?? null)
     recallFrom.current = recall ? battleClock.now() : null
     if (!recall) {
       setModel(null)
