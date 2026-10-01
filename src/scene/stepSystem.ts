@@ -416,15 +416,47 @@ export const stepSystem = {
   },
 }
 
+/** 걸음이 멈춘 자리 — 원작 `Field_ProcessStep`이 `TRUE`를 돌려준 갈래. `null`이면 끝까지 돌았다 */
+type StepStop = 'poison' | 'hatch' | 'repel' | null
+
+/**
+ * 독 판정 뒤에 이 걸음이 어디까지 도는가 (`Field_ProcessStep`, `overlay005/field_control.c` 735-761).
+ *
+ * 원작 차례는 독 → 사파리 → 육성가 → VS시커 → 레이더 → 리펠 → 친밀도 → 상호교류광장이고,
+ * 앞의 것이 `TRUE`를 돌려주면 뒤는 **그 걸음에 안 돈다.**
+ *
+ * ⚠️ **독으로 1까지 내려간 걸음은 독에서 끝난다** (`Field_UpdatePoison`의 `FLDPSN_FAINTED`).
+ * 사파리 걸음도 육성가도 부화도 그 걸음에 안 돈다 — 한때 육성가를 먼저 돌려서, 독 스크립트가
+ * 걸릴 걸음에 알이 깨거나 알 걸음이 한 칸 더 갔다. 그래서 `after`를 **부르지도 않는다.**
+ *
+ * ⚠️ **리펠은 리펠 차례에 닿아야 깎인다** (`Field_UpdateRepel`). 독이나 부화에서 멈춘 걸음은
+ * 남은 걸음을 그대로 둔다 — 깎아 두면 마지막 한 걸음이 그 걸음과 겹칠 때 알림 없이 끝난다.
+ *
+ * `got`은 독·리펠·친밀도를 한꺼번에 잰 결과(`engine/actor/steps`)라 여기서 차례대로 쓴다.
+ * 육성가는 판을 건드리므로 `after.daycare`로 받는다 — 알이 깨면 참이다
+ */
+export function walkAfterPoison(
+  got: Pick<ReturnType<typeof stepOnce>, 'poison' | 'repelSteps' | 'repelExpired'>,
+  repelBefore: number,
+  after: { safari: () => void, daycare: () => boolean },
+): { stop: StepStop, repelSteps: number } {
+  // ⚠️ 깎이기만 한 걸음(`FLDPSN_POISONED`)은 원작이 `FALSE`를 돌려줘서 아래가 같은 걸음에 이어 돈다
+  if (poisonRunsScript(got.poison)) return { stop: 'poison', repelSteps: repelBefore }
+  after.safari()
+  if (after.daycare()) return { stop: 'hatch', repelSteps: repelBefore }
+  if (got.repelExpired) return { stop: 'repel', repelSteps: got.repelSteps }
+  return { stop: null, repelSteps: got.repelSteps }
+}
+
 /**
  * 한 걸음 (`Field_ProcessStep`).
  *
  * 참을 돌려주면 이 틱은 거기서 끝난다 — 알이 깼거나 스크립트가 걸린 것이고,
- * 원작도 첫 참에서 돌아온다
+ * 원작도 첫 참에서 돌아온다. 무엇이 어디서 끊기는지는 `walkAfterPoison`이 정한다
  */
 function oneStep(): boolean {
   // 포켓치 만보기가 한 걸음 는다 (PARITY §7.3). 만보기를 안 받았으면
-  // `poketchStep`이 앞에서 막는다
+  // `poketchStep`이 앞에서 막는다. 원작도 독보다 먼저 보낸다
   poketchStep()
 
   // VS시커 배터리가 한 걸음 찬다 (`VsSeeker_UpdateStepCount`, PARITY §7.9) —
@@ -440,19 +472,10 @@ function oneStep(): boolean {
   // 원작도 칸이 바뀔 때마다 절두체로 잰다 (PARITY §4.6)
   berryPatchesStep()
 
-  // 사파리는 걸음 오백을 센다 (`Field_UpdateSafari`, PARITY §7.7).
-  // 볼이나 걸음이 떨어지면 롬의 스크립트가 안내원을 부른다
-  safariFieldStep()
-
-
   const save = useSaveStore.getState()
   const vars = fieldScripts.vars
-  // ⚠️ **상호교류광장 걸음은 광장 안에서만 세는 것이 아니다** (PARITY §7.8).
-  // 원작이 어느 맵에서든 한 칸마다 올리고, 광장에 들어설 때 스크립트가
-  // 0으로 지운다 — 그래서 「들어온 뒤 몇 걸음」이 된다
-  vars.set(VAR_AMITY_STEPS, amityStep(vars.get(VAR_AMITY_STEPS)))
-  // 걸은 수를 센다 (PARITY §7.5). ⚠️ **여기 말고 셀 자리가 없다** —
-  // 원작도 `Field_ProcessStep` 한 자리에서 올린다
+  // 걸은 수를 센다 (PARITY §7.5). ⚠️ **여기 말고 셀 자리가 없다**. 원작은
+  // `Field_ProcessStep` 밖(`player_move.c`)에서 올려서 독으로 멈춘 걸음도 센다
   useSaveStore.setState((st) => ({ records: addRecord(st.records, RECORD_STEPS, 1) }))
   const got = stepOnce({
     party: save.party,
@@ -475,51 +498,57 @@ function oneStep(): boolean {
     void music.playEffect(SFX.FIELD_POISON)
   }
 
-  // 육성가와 알도 같은 한 걸음에 돈다 (`Daycare_Update`)
-  const now = new Date()
-  const table = speciesTable
-  if (!table) {
-    vars.set(VARS_START + VAR_FRIENDSHIP_STEPS, got.friendshipSteps)
-    useSaveStore.setState({
-      party: got.party,
-      steps: { poison: got.poisonSteps, repel: got.repelSteps },
-      vars: Uint16Array.from(vars.saved),
-    })
-    return false
-  }
-  const bred = daycareStep({
-    daycare: save.daycare,
-    party: got.party,
-    month: now.getMonth() + 1,
-    day: now.getDate(),
-    abilityOf: monAbility,
-    dataOf: (id) => table.get(id),
-    rng: Math.random,
-    coin: () => Math.random() < 0.5,
+  // 육성가와 알 (`Daycare_Update`). 종족 표가 아직 없으면 육성가만 쉰다
+  let party = got.party
+  let daycare = save.daycare
+  const walked = walkAfterPoison(got, save.steps.repel, {
+    // 사파리는 걸음 오백을 센다 (`Field_UpdateSafari`, PARITY §7.7).
+    // 볼이나 걸음이 떨어지면 롬의 스크립트가 안내원을 부른다
+    safari: safariFieldStep,
+    daycare: () => {
+      const table = speciesTable
+      if (!table) return false
+      const now = new Date()
+      const bred = daycareStep({
+        daycare: save.daycare,
+        party: got.party,
+        month: now.getMonth() + 1,
+        day: now.getDate(),
+        abilityOf: monAbility,
+        dataOf: (id) => table.get(id),
+        rng: Math.random,
+        coin: () => Math.random() < 0.5,
+      })
+      party = bred.party
+      daycare = bred.daycare
+      if (bred.hatched < 0) return false
+      // 알을 깬 수 (PARITY §7.5)
+      useSaveStore.setState((st) => ({ records: addRecord(st.records, RECORD_EGGS_HATCHED, 1) }))
+      useHatchStore.getState().open(bred.hatched)
+      return true
+    },
   })
 
   vars.set(VARS_START + VAR_FRIENDSHIP_STEPS, got.friendshipSteps)
+  // ⚠️ **상호교류광장 걸음은 광장 안에서만 세는 것이 아니다** (PARITY §7.8).
+  // 원작이 어느 맵에서든 한 칸마다 올리고, 광장에 들어설 때 스크립트가
+  // 0으로 지운다 — 그래서 「들어온 뒤 몇 걸음」이 된다. 원작 차례의 맨 끝이라
+  // 앞에서 멈춘 걸음은 안 센다
+  if (walked.stop === null) vars.set(VAR_AMITY_STEPS, amityStep(vars.get(VAR_AMITY_STEPS)))
   useSaveStore.setState({
-    party: bred.party,
-    daycare: bred.daycare,
-    steps: { poison: got.poisonSteps, repel: got.repelSteps },
+    party,
+    daycare,
+    steps: { poison: got.poisonSteps, repel: walked.repelSteps },
     vars: Uint16Array.from(vars.saved),
   })
 
-  // 알이 깼다. 원작도 여기서 걸음을 멈추고 부화 장면으로 넘어간다
-  if (bred.hatched >= 0) {
-    // 알을 깬 수 (PARITY §7.5)
-    useSaveStore.setState((st) => ({ records: addRecord(st.records, RECORD_EGGS_HATCHED, 1) }))
-    useHatchStore.getState().open(bred.hatched)
-    return true
-  }
-
+  // 알이 깼다. 부화 장면은 위에서 열었다
+  if (walked.stop === 'hatch') return true
+  if (walked.stop === null) return false
   // 알리는 것은 하나뿐이다 — 원작도 `Field_ProcessStep`이 첫 참에서 돌아온다
   const scripts = mapById(mapWorld.mapId)?.scripts
-  if (scripts === undefined) return false
-  // ⚠️ **1까지 내려간 걸음에서만 건다** (`poisonRunsScript`). 깎이기만 한 걸음은
-  // 원작이 `FALSE`를 돌려줘서 아래 리펠 검사가 같은 걸음에 이어 돈다
-  if (poisonRunsScript(got.poison)) { start(COMMON_SCRIPT_POISON, scripts); return true }
-  if (got.repelExpired) { start(COMMON_SCRIPT_REPEL, scripts); return true }
-  return false
+  if (scripts !== undefined) {
+    start(walked.stop === 'poison' ? COMMON_SCRIPT_POISON : COMMON_SCRIPT_REPEL, scripts)
+  }
+  return true
 }
