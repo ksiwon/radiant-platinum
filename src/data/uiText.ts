@@ -213,6 +213,79 @@ export async function loadUiText(
  */
 export const START_MENU = {
   pokedex: 0, party: 1, bag: 2, trainerCard: 3, save: 4, options: 5, exit: 6,
+  /** 사파리존의 「포기한다」와 남은 볼 창 (`StartMenu_Text_Retire` · `_SafariBalls` · `_ParkBalls`) */
+  retire: 8, safariBalls: 9, parkBalls: 10,
+  /**
+   * "{N}개 남음" (`StartMenu_Text_BallStock`).
+   *
+   * ⚠️ **칸은 0이다.** 부호가 `{STRVAR_1 51, 0, 0}`인데 51은 「수」라는 종류고 칸이
+   * 아니다 — 원작도 `StringTemplate_SetNumber(template, 0, …)`로 채운다
+   * (`start_menu.c`). `fillMenuText(글, [String(남은 수)])`
+   */
+  ballStock: 11,
+} as const
+
+/**
+ * 가방의 갈래 메뉴와 버리기 흐름 (`bag` 뱅크).
+ *
+ * 무엇이 메뉴에 오르는지는 `applications/bag/main.c`의 `MakeItemActionsMenu`가
+ * 정한다 — 쓰는 쪽이 `ui/menu/BagScreen`의 `bagActions`다. 「쓴다」 자리는 물건에
+ * 따라 글이 바뀐다(자전거를 타고 있으면 내린다 · 메일 주머니는 본다 · 빈 밭 앞의
+ * 나무열매는 심는다 · 포핀케이스는 연다). 예·아니오는 이 뱅크의 82·83이 아니라
+ * `YES_NO`다 — 가방도 `Menu_MakeYesNoChoice`(메뉴 뱅크)로 묻는다
+ */
+export const BAG_MENU = {
+  use: 0, trash: 1, register: 2, give: 3, checkTag: 4, walk: 6, cancel: 8,
+  check: 16, deselect: 18, plant: 95, open: 96,
+  /** "{도구}\n어떻게 할까요?" — 메뉴 위에 뜨는 물음 (`Bag_Text_ItemIsSelected`) */
+  selected: 42,
+  /** 「건네준다」로 열린 가방에서 중요한 물건을 고르면 (`Bag_Text_ItemCantBeHeld`) */
+  cantHold: 46,
+  /** 버리기 — 개수 · 다 버렸다 · 괜찮나 · 개수 칸 `x{052}` (`Bag_Text_ThrowAway*`) */
+  trashHowMany: 52, trashed: 53, trashOk: 54, trashCount: 84,
+} as const
+
+/**
+ * 파티 메뉴 뱅크에서 도구·메일을 지니게 할 때의 줄.
+ *
+ * 가방의 「건네준다」는 원작에서 파티 화면으로 넘어가 `ProcessItemApplication`이
+ * 말한다. 메일박스의 「지니게 한다」는 `PartyMenu_GiveMail`이 말한다.
+ * 칸은 0 별명 · 1 도구 · 2 새 도구다
+ */
+export const PARTY_GIVE = {
+  /** "어느 포켓몬에게 건네줄까?" (`PartyMenu_Text_GiveToWhichMon`) */
+  which: 31,
+  mustRemoveMail: 77,
+  /** "{0} 이미 {1} 지니고 있습니다 … 교환하겠습니까?" */
+  swapAsk: 78,
+  /** "{1} 가져오고 {2} 지니게 했습니다!" */
+  swapped: 84,
+  /** "{0}에게 {1} 지니게 했다!" */
+  given: 118,
+  /** 메일박스에서 — "박스에서 메일을 옮겼습니다" · "이미 도구를 지니고 있으므로…" */
+  mailMoved: 127,
+  mailHeld: 128,
+  /** 백금옥을 기라티나가 아닌 마리에게 (`PartyMenu_Text_MonCannotHoldItem`) */
+  cannotHold: 203,
+} as const
+
+/**
+ * 메일박스 (`mailbox` 뱅크 · `unk_020722AC.c`).
+ *
+ * 1~4가 갈래 넷이고 그 차례가 원작 목록의 반환값(0 읽는다 · 1 지운다 · 2 지니게
+ * 한다 · 3 그만둔다)이다. 6~11은 `6 + 번호`로 집어 쓰는 말 여섯이다
+ */
+export const MAILBOX_TEXT = {
+  title: 0, read: 1, erase: 2, give: 3, cancel: 4,
+  /** "{주인 이름}의\n메일을 어떻게 하겠습니까?" */
+  ask: 6,
+  /** "내용은 지워져 버립니다\n괜찮겠습니까?" */
+  eraseAsk: 7,
+  /** "내용을 지웠습니다\r포켓몬에게 지니게 하겠습니까?" */
+  erasedGive: 8,
+  toBag: 9, bagFull: 10,
+  /** "메일을 지니게 하지 않았습니다" — 지니게 할 마리를 안 고르고 물러났을 때 */
+  notGiven: 11,
 } as const
 
 /**
@@ -341,6 +414,33 @@ export const BOX_TEXT = {
   lastMon: 6,
   boxFull: 13,
   noItem: 20,
+  /** "{별명} 어떻게 하겠습니까?" · "마킹해 주십시오" (`BoxText_MonSelected` · `_MarkMon`) */
+  monSelected: 0,
+  markMon: 1,
+  /**
+   * 놓아주기 (`BoxAppMan_ReleaseMonAction`).
+   *
+   * ⚠️ **원작은 한 번만 묻는다** — "정말 놓아주겠습니까?"에 예·아니오, 커서는
+   * **아니오**에서 시작한다(`BoxMenu_FillYesNo(…, 1)`). 놓은 뒤 "{별명} 밖에
+   * 놓아주었다" → "바이바이, {별명}!"이 이어진다
+   */
+  releaseAsk: 2,
+  released: 3,
+  releasedBye: 4,
+  /**
+   * 묻기 전에 막는 줄 (`BoxAppMan_CheckReleaseMonValid`) — 알 · 메일 · 볼캡슐.
+   * 마지막 마리는 위의 `lastMon`이다
+   */
+  releaseEgg: 31,
+  releaseMail: 30,
+  releaseCapsule: 29,
+  /**
+   * 비전기술 — **묻고 난 뒤에** 갈린다 (`BoxAppMan_CheckShouldMonReturn`).
+   * 그 기술(`sReleaseBlockingMoves`)을 아는 마지막 마리면 "되돌아와 버렸다!" →
+   * "걱정했었나..."로 놓아주기가 무른다
+   */
+  releaseReturned: 32,
+  releaseWorried: 33,
 } as const
 
 /** PC 메뉴의 항목 (`menu_entries`). 65 + 갈래 번호가 보관 시스템의 다섯 갈래다 */

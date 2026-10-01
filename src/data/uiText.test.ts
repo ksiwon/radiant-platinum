@@ -9,9 +9,10 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { bankIndex, type TextBankName } from '../import/platinum/textBanks'
 import {
-  fillMenuText, MAIN_MENU, OPTIONS_TEXT, POKEDEX_TEXT, SAVE_TEXT, START_MENU, UI_BANK, YES_NO,
+  BAG_MENU, BOX_TEXT, fillMenuText, MAILBOX_TEXT, MAIN_MENU, OPTIONS_TEXT, PARTY_GIVE, POKEDEX_TEXT,
+  SAVE_TEXT, START_MENU, UI_BANK, YES_NO,
 } from './uiText'
-import { withData } from './romData.testkit'
+import { withData, withDecomp } from './romData.testkit'
 
 /** uiText의 키 → textBanks의 이름 */
 const NAMED: Record<keyof typeof UI_BANK, TextBankName> = {
@@ -186,5 +187,87 @@ maybe('한국어 글이 제자리에 있다', () => {
     expect(bank(UI_BANK.speciesHeight)[387]?.trim()).toBe('0.4m')
     expect(bank(UI_BANK.speciesWeight)[387]?.trim()).toBe('10.2kg')
     expect(bank(UI_BANK.dexEntry)[387]).toContain('등껍질')
+  })
+})
+
+/**
+ * 줄 번호를 디컴프의 이름과 맞댄다 (`res/text/*.json`의 `messages[].id`).
+ *
+ * 줄 번호 하나가 어긋나면 「버린다」 자리에 「등록」이 뜨는데, 글자가 나오기는
+ * 하므로 눈으로 넘어가기 쉽다. 원작 이름은 지어낸 것이 아니라 그 자리의 뜻이다
+ */
+const TEXT_DIR = resolve(__dirname, '../../raw/decomp/res/text')
+const decompIds = (name: string): string[] =>
+  (JSON.parse(readFileSync(resolve(TEXT_DIR, `${name}.json`), 'utf8')) as { messages: { id: string }[] })
+    .messages.map((m) => m.id)
+
+withDecomp('res/text/bag.json', 'res/text/party_menu.json', 'res/text/box_messages.json', 'res/text/start_menu.json')(
+  '줄 번호가 디컴프의 이름과 맞는다', () => {
+    it('가방 갈래와 버리기 (`Bag_Text_*`)', () => {
+      const ids = decompIds('bag')
+      const want: Record<keyof typeof BAG_MENU, string> = {
+        use: 'Use', trash: 'Trash', register: 'Register', give: 'Give', checkTag: 'CheckTag', walk: 'Walk',
+        cancel: 'Cancel', check: 'Check', deselect: 'Deselect', plant: 'Plant', open: 'Open',
+        selected: 'ItemIsSelected', cantHold: 'ItemCantBeHeld', trashHowMany: 'ThrowAwayHowMany',
+        trashed: 'ThrewAwayItem', trashOk: 'ThrowAwayOK', trashCount: 'ThrowAwayCount',
+      }
+      for (const [key, id] of Object.entries(want)) {
+        expect(ids[BAG_MENU[key as keyof typeof BAG_MENU]]).toBe(`Bag_Text_${id}`)
+      }
+    })
+
+    it('건네줄 때의 파티 메뉴 줄 (`PartyMenu_Text_*`)', () => {
+      const ids = decompIds('party_menu')
+      const want: Record<keyof typeof PARTY_GIVE, string> = {
+        which: 'GiveToWhichMon', mustRemoveMail: 'MustRemoveMail',
+        swapAsk: 'MonAlreadyHoldingItemsSwitchItems', swapped: 'ItemWasTakenAndReplacedWithItem',
+        given: 'MonWasGivenItem', mailMoved: 'MailWasTransferredFromMailbox',
+        mailHeld: 'MonHoldingItemCannotHoldMail', cannotHold: 'MonCannotHoldItem',
+      }
+      for (const [key, id] of Object.entries(want)) {
+        expect(ids[PARTY_GIVE[key as keyof typeof PARTY_GIVE]]).toBe(`PartyMenu_Text_${id}`)
+      }
+    })
+
+    it('박스의 놓아주기 줄 (`BoxText_*`)', () => {
+      const ids = decompIds('box_messages')
+      const want: Partial<Record<keyof typeof BOX_TEXT, string>> = {
+        monSelected: 'MonSelected', markMon: 'MarkMon', releaseAsk: 'ReleaseMon', released: 'MonReleased',
+        releasedBye: 'GoodbyeForever', lastMon: 'LastMon', releaseEgg: 'CantReleaseEgg',
+        releaseMail: 'RemoveMail', releaseCapsule: 'DetachBallCapsule', releaseReturned: 'MonReturned',
+        releaseWorried: 'MonWasWorried', partyFull: 'PartyFull', boxFull: 'BoxFull', noItem: 'NoItem',
+      }
+      for (const [key, id] of Object.entries(want)) {
+        expect(ids[BOX_TEXT[key as keyof typeof BOX_TEXT]]).toBe(`BoxText_${id}`)
+      }
+    })
+
+    it('사파리의 남은 볼 (`StartMenu_Text_*`)', () => {
+      const ids = decompIds('start_menu')
+      expect(ids[START_MENU.retire]).toBe('StartMenu_Text_Retire')
+      expect(ids[START_MENU.safariBalls]).toBe('StartMenu_Text_SafariBalls')
+      expect(ids[START_MENU.parkBalls]).toBe('StartMenu_Text_ParkBalls')
+      expect(ids[START_MENU.ballStock]).toBe('StartMenu_Text_BallStock')
+    })
+  },
+)
+
+maybe('한국어 판의 새 줄', () => {
+  const bank = (at: number): string[] => JSON.parse(readFileSync(resolve(DATA, `${String(at)}.json`), 'utf8'))
+
+  it('사파리볼 남은 수는 0번 칸에 수를 넣는다', () => {
+    // 부호의 51은 「수」라는 종류고 칸이 아니다 — 51번 칸에 넣으면 빈 글이 나온다
+    expect(fillMenuText(bank(UI_BANK.startMenu)[START_MENU.ballStock]!, ['12'])).toBe('12개 남음')
+  })
+
+  it('버리기 물음에 도구 이름과 조사가 붙는다', () => {
+    const bag = bank(UI_BANK.bag)
+    expect(fillMenuText(bag[BAG_MENU.trashOk]!, ['상처약', '3'])).toBe('상처약을\n3개 버려도 괜찮겠습니까?')
+    expect(fillMenuText(bag[BAG_MENU.trashed]!, ['몬스터볼', '2'])).toBe('몬스터볼을\n2개 버렸습니다')
+  })
+
+  it('메일박스의 물음에 주인 이름이 들어간다', () => {
+    expect(fillMenuText(bank(UI_BANK.mailbox)[MAILBOX_TEXT.ask]!, ['빛나']))
+      .toBe('빛나의\n메일을 어떻게 하겠습니까?')
   })
 })
