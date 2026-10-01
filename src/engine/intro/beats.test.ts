@@ -6,7 +6,10 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { fillMenuText, INTRO_TEXT, UI_BANK } from '../../data/uiText'
-import { INFO_CHOICES, INFO_CONTROLS, infoLines, INTRO, RIVAL_NAME_CHOICES } from './beats'
+import {
+  INFO_CHOICES, INFO_CONTROLS, infoLines, INTRO, introOutro, OUTRO, OUTRO_FRAMES, outroLook,
+  RIVAL_NAME_CHOICES, SHRINK_HEIGHTS,
+} from './beats'
 import { controlPages } from './controlText'
 import { withData } from '../../data/romData.testkit'
 
@@ -29,6 +32,7 @@ describe('인트로 박자', () => {
       'say', // SoYoure — 라이벌이 선다
       'name', // 라이벌
       'say', // EndDialogue — 마박사의 마지막 말
+      'outro', // 마박사가 사라지고 주인공이 작아진다
       'done',
     ])
   })
@@ -46,9 +50,10 @@ describe('인트로 박자', () => {
     const rivalName = INTRO.findIndex((s) => s.kind === 'name' && s.who === 'rival')
     const end = INTRO.findIndex((s) => s.kind === 'say' && s.line === INTRO_TEXT.end)
     expect(end).toBeGreaterThan(rivalName)
-    // 그리고 그것이 마지막 말이다
+    // 그리고 그것이 마지막 말이다 — 뒤에는 닫는 박자만 남는다
     expect(INTRO.at(-1)?.kind).toBe('done')
-    expect(INTRO.at(-2)).toEqual({ kind: 'say', line: INTRO_TEXT.end })
+    expect(INTRO.at(-2)?.kind).toBe('outro')
+    expect(INTRO.at(-3)).toEqual({ kind: 'say', line: INTRO_TEXT.end })
   })
 
   it('말줄 번호가 뱅크의 그 자리다', () => {
@@ -88,6 +93,72 @@ describe('인트로 박자', () => {
     for (const skipped of INTRO_TEXT.controlsSkipped) {
       expect(used, `${String(skipped)}번을 쓰고 있다`).not.toContain(skipped)
     }
+  })
+})
+
+describe('닫는 박자 (RI_STATE_FADE_OUT_ROWAN_END → RI_STATE_END)', () => {
+  // 마디 끝 프레임. 원작 상태 차례로 더한다
+  const avatarIn = OUTRO.layerFade + OUTRO.delay + OUTRO.load
+  const shrinkAt = avatarIn + OUTRO.layerFade + OUTRO.delay
+  const blackAt = shrinkAt + OUTRO.shrink
+
+  it('마디 길이가 원작 함수를 부르는 횟수다', () => {
+    // FadeBgLayer: INIT 1 + 16단 + 0을 본 1 + END 1 · Delay(30): 31 · 그림 넷 × 9 + 끝 1
+    expect(OUTRO.layerFade).toBe(1 + 16 + 1 + 1)
+    expect(OUTRO.delay).toBe(30 + 1)
+    expect(OUTRO.shrink).toBe(4 * OUTRO.shrinkStep + 1)
+    expect(OUTRO.shrinkStep).toBe(1 + 8)
+    // 19 + 31 + 1 + 19 + 31 + 37 + 1 + 6 — 60프레임에 1초라 2.4초쯤이다
+    expect(OUTRO_FRAMES).toBe(145)
+  })
+
+  it('마박사가 16단으로 사라지고 그 끝에 대사창이 지워진다', () => {
+    expect(outroLook(0, 'boy').rowan).toBe(1)
+    expect(outroLook(1, 'boy').rowan).toBe(15 / 16)
+    expect(outroLook(16, 'boy').rowan).toBe(0)
+    expect(outroLook(OUTRO.layerFade - 2, 'boy').box).toBe(true)
+    expect(outroLook(OUTRO.layerFade - 1, 'boy').box).toBe(false)
+  })
+
+  it('빈 화면에서 기다린 뒤에야 주인공이 떠오른다', () => {
+    // 마박사가 사라진 뒤 Delay(30)과 그림 얹기 동안 주인공은 아직 없다
+    expect(outroLook(avatarIn - 1, 'girl').avatar).toBeNull()
+    expect(outroLook(avatarIn - 1, 'girl').rowan).toBe(0)
+    expect(outroLook(avatarIn, 'girl').avatar).toBe(0)
+    expect(outroLook(avatarIn + 8, 'girl').avatar).toBe(0.5)
+    expect(outroLook(avatarIn + 16, 'girl').avatar).toBe(1)
+  })
+
+  it('머문 뒤 9프레임마다 그림 하나씩 줄어든다', () => {
+    const boy = SHRINK_HEIGHTS.boy
+    expect(outroLook(shrinkAt - 1, 'boy').scale).toBe(1)
+    // 첫 프레임에 바로 42번으로 간다 (`progressCounter++`가 먼저다)
+    expect(outroLook(shrinkAt, 'boy').scale).toBeCloseTo(boy[1]! / boy[0]!)
+    expect(outroLook(shrinkAt + 8, 'boy').scale).toBeCloseTo(boy[1]! / boy[0]!)
+    expect(outroLook(shrinkAt + 9, 'boy').scale).toBeCloseTo(boy[2]! / boy[0]!)
+    expect(outroLook(shrinkAt + 27, 'boy').scale).toBeCloseTo(boy[4]! / boy[0]!)
+    // 끝 표지를 만나도 마지막 그림은 안 지운다 — 그 위로 검은 페이드가 덮인다
+    expect(outroLook(OUTRO_FRAMES, 'boy').scale).toBeCloseTo(boy[4]! / boy[0]!)
+  })
+
+  it('남녀 그림이 저마다의 키로 준다', () => {
+    expect(SHRINK_HEIGHTS.boy).toHaveLength(5)
+    expect(SHRINK_HEIGHTS.girl).toHaveLength(5)
+    for (const heights of [SHRINK_HEIGHTS.boy, SHRINK_HEIGHTS.girl]) {
+      for (let i = 1; i < heights.length; i++) expect(heights[i]).toBeLessThan(heights[i - 1]!)
+    }
+    expect(outroLook(OUTRO_FRAMES, 'girl').scale).toBeCloseTo(24 / 116)
+  })
+
+  it('줄어든 뒤 6프레임에 검게 닫히고 그때 끝난다', () => {
+    expect(outroLook(blackAt, 'boy').black).toBe(0)
+    expect(outroLook(blackAt + 3, 'boy').black).toBe(0.5)
+    expect(outroLook(blackAt + OUTRO.black, 'boy').black).toBe(1)
+    expect(OUTRO_FRAMES).toBe(blackAt + OUTRO.end + OUTRO.black)
+  })
+
+  it('시계는 닫는 중이 아닐 때 −1이다', () => {
+    expect(introOutro.frame).toBe(-1)
   })
 })
 

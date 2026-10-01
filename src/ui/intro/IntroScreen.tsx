@@ -4,8 +4,10 @@
 // 글자 인쇄기는 필드 대사창이 쓰는 것을 그대로 쓴다 — 설정의 글자 속도가
 // 여기서도 먹는다.
 //
-// 끝나면 세이브에 이름·성별·라이벌 이름을 적고 새 게임 상태를 세운 뒤 필드로
-// 넘긴다. 시작 자리는 원작이 `location.c`에 적어 둔 그대로다.
+// 마지막 말 뒤에는 원작의 닫는 박자가 돈다 — 마박사가 사라지고 주인공이 떠올라
+// 작아진 뒤 검게 닫힌다 (`engine/intro/beats`의 `outroLook`). 그다음 세이브에
+// 이름·성별·라이벌 이름을 적고 새 게임 상태를 세운 뒤 필드로 넘긴다. 시작 자리는
+// 원작이 `location.c`에 적어 둔 그대로다.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { loadDialogueBank } from '../../data/gameData'
@@ -16,6 +18,10 @@ import {
   INFO_CONTROLS,
   infoLines,
   INTRO,
+  introOutro,
+  OUTRO,
+  OUTRO_FRAMES,
+  outroLook,
   RIVAL_NAME_CHOICES,
   type IntroStep,
 } from '../../engine/intro/beats'
@@ -36,18 +42,32 @@ import * as css from './intro.css'
 /** 원작 이름 칸이 7글자다 (`TrainerInfo`의 이름 버퍼) */
 const NAME_MAX = 7
 
+/** 예/아니오에서 「아니오」의 자리 (`choiceLabels`가 예 → 아니오로 늘어놓는다) */
+const NO = 1
+
+/** 원작 한 프레임 (밀리초). 닫는 박자는 원작 프레임 수로 센다 */
+const FRAME_MS = 1000 / 60
+
 /**
  * 라이벌이 화면에 서기 시작하는 박자. 그런 말줄이 없으면 −1이다.
  *
  * 「…라고 하는가! 여기 있는 이 소년은 자네의 친구였지?」(`soYoure`)가 그 자리라
- * 번호가 아니라 **그 줄을 찾아서** 정한다. 지금 박자표에는 그 줄이 없어서
- * (`beats.ts` — 마박사의 소개를 안 튼다) 라이벌은 제 이름을 물을 때만 선다.
+ * 번호가 아니라 **그 줄을 찾아서** 정한다.
  * ⚠️ **−1을 그대로 견주면 안 된다** — 첫 박자부터 `at >= -1`이라 우리 인사에
  * 라이벌이 서 버린다
  */
 const RIVAL_ENTERS = INTRO.findIndex(
   (s) => s.kind === 'say' && s.line === INTRO_TEXT.soYoure,
 )
+
+/**
+ * 라이벌이 내려가는 박자 — 라이벌 이름을 정하는 자리. 그 뒤 말줄은 마박사가 한다.
+ *
+ * 원작이 이름을 확인하면 라이벌을 지우고 마박사를 다시 세운다
+ * (`RI_STATE_FADE_OUT_RIVAL` → `RI_STATE_FADE_IN_ROWAN_AFTER_RIVAL`). ⚠️ **안 그러면
+ * 마지막 말을 라이벌이 하고, 닫는 박자에서 사라지는 것도 마박사가 아니게 된다**
+ */
+const RIVAL_LEAVES = INTRO.findIndex((s) => s.kind === 'name' && s.who === 'rival')
 
 type Stage =
   | { kind: 'say'; at: number }
@@ -68,6 +88,13 @@ type Stage =
   | { kind: 'rivalChoice'; at: number }
   | { kind: 'nameEntry'; at: number; who: 'player' | 'rival' }
   | { kind: 'nameConfirm'; at: number; who: 'player' | 'rival' }
+  /**
+   * 닫는 박자. `text`는 마지막 말의 마지막 쪽이다.
+   *
+   * ⚠️ **글을 여기 붙들어 둔다.** 원작은 마박사가 다 사라질 때까지 대사창을
+   * 그대로 두는데, 인쇄기를 다시 세우면 여러 쪽짜리 말이 첫 쪽부터 다시 뜬다
+   */
+  | { kind: 'outro'; at: number; text: string }
 
 export function IntroScreen() {
   const navigate = useNavigate()
@@ -83,6 +110,8 @@ export function IntroScreen() {
   const [rival, setRival] = useState('')
   const [boy, setBoy] = useState(false)
   const [cursor, setCursor] = useState(0)
+  /** 닫는 박자를 시작한 지 몇 프레임째인가. 닫는 중이 아니면 −1이다 */
+  const [outroFrame, setOutroFrame] = useState(-1)
   const [draft, setDraft] = useState('')
   const [text, setText] = useState('')
   /** 지금 글을 다 찍었나. 고를 것은 이때만 뜬다 */
@@ -97,12 +126,19 @@ export function IntroScreen() {
     }
   }, [mountStage])
 
+  const outro = stage.kind === 'outro' ? outroLook(outroFrame, boy ? 'boy' : 'girl') : null
+  /** 닫는 박자에서 마박사가 내려가고 주인공 그림을 얹었는가 (`RI_STATE_LOAD_MINI_AVATAR`) */
+  const outroAvatar = outro !== null && outro.avatar !== null
+
   useEffect(() => {
     const visual = useIntroStageStore.getState()
     const selectedGender =
       stage.kind === 'gender' ? (cursor === 0 ? 'boy' : 'girl') : boy ? 'boy' : 'girl'
     visual.setGender(selectedGender)
-    if (stage.kind === 'pokeBall') visual.show(stage.opened ? 'buneary' : 'ball')
+    // 닫는 박자: 마박사가 사라지는 동안은 마박사, 그림을 얹은 뒤는 주인공 하나.
+    // 진하기와 크기는 3D가 시계(`introOutro`)를 읽어 맞춘다
+    if (stage.kind === 'outro') visual.show(outroAvatar ? 'player' : 'rowan')
+    else if (stage.kind === 'pokeBall') visual.show(stage.opened ? 'buneary' : 'ball')
     else if (stage.kind === 'gender' || stage.kind === 'genderConfirm') visual.show('gender')
     else if ((stage.kind === 'nameEntry' || stage.kind === 'nameConfirm') && stage.who === 'player')
       visual.show('player')
@@ -113,11 +149,12 @@ export function IntroScreen() {
       // 라이벌이 서는데, 그 앞에 박자를 하나라도 끼우면 번호가 통째로 밀린다 —
       // 실제로 우리 인사(`ours`)를 맨 앞에 넣으면서 한 칸 밀렸다. 무엇을 찍는
       // 박자인지로 판정하면 순서를 바꿔도 안 깨진다
-      (RIVAL_ENTERS >= 0 && stage.kind === 'say' && stage.at >= RIVAL_ENTERS)
+      (RIVAL_ENTERS >= 0 && stage.kind === 'say' && stage.at >= RIVAL_ENTERS &&
+        stage.at < RIVAL_LEAVES)
     )
       visual.show('rival')
     else visual.show('rowan')
-  }, [stage, cursor, boy])
+  }, [stage, cursor, boy, outroAvatar])
   /**
    * 이번 프레임에 A를 눌렀는가.
    *
@@ -237,6 +274,9 @@ export function IntroScreen() {
         return stage.who === 'player'
           ? line(boy ? INTRO_TEXT.confirmNameMale : INTRO_TEXT.confirmNameFemale)
           : line(INTRO_TEXT.confirmRivalName)
+      // 닫는 박자는 새 글이 없다 — 마지막 말을 `stage.text`로 붙들고 있다
+      case 'outro':
+        return null
     }
     // `locale`은 우리 인사가 본다 — 뱅크 쪽은 `line`이 이미 그 언어로 받아 온다
   }, [stage, line, naming, boy, locale])
@@ -299,6 +339,40 @@ export function IntroScreen() {
     navigate('/play')
   }, [player, boy, rival, navigate])
 
+  /**
+   * 닫는 박자의 시계.
+   *
+   * 마지막 말을 넘기는 순간 곡을 50프레임에 걸쳐 끈다(`Sound_FadeOutBGM(0, 50)`).
+   * 그다음은 `outroLook`이 프레임마다 화면을 정하고, 다 돌면 필드로 간다 — 닫는
+   * 박자 뒤는 `done`뿐이다(`beats.test`가 잠근다).
+   *
+   * ⚠️ **화면 주사율이 아니라 지난 시간으로 센다.** rAF 횟수로 세면 144Hz 화면에서
+   * 두 배 넘게 빨라진다
+   */
+  const outroAt = stage.kind === 'outro' ? stage.at : -1
+  useEffect(() => {
+    if (outroAt < 0) return
+    music.fadeVolume(0, OUTRO.music)
+    const start = performance.now()
+    let raf = 0
+    const tick = (): void => {
+      const frame = Math.floor((performance.now() - start) / FRAME_MS)
+      introOutro.frame = frame
+      setOutroFrame(frame)
+      if (frame >= OUTRO_FRAMES) {
+        finish()
+        return
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    introOutro.frame = 0
+    raf = requestAnimationFrame(tick)
+    return () => {
+      cancelAnimationFrame(raf)
+      introOutro.frame = -1
+    }
+  }, [outroAt, finish])
+
   /** 곧게 흐르는 자리에서 다음 박자로 */
   const step = useCallback(
     (at: number): void => {
@@ -332,12 +406,16 @@ export function IntroScreen() {
               : { kind: 'nameEntry', at: at + 1, who: 'player' },
           )
           break
+        case 'outro':
+          setOutroFrame(0)
+          setStage({ kind: 'outro', at: at + 1, text })
+          break
         case 'done':
           finish()
           break
       }
     },
-    [finish],
+    [finish, text],
   )
 
   const advance = (): void => {
@@ -368,11 +446,12 @@ export function IntroScreen() {
     }
   }
 
-  const pick = (): void => {
+  /** 고른다. `chosen`은 고른 자리 — X가 「아니오」를 고를 때만 커서와 다르다 */
+  const pick = (chosen = cursor): void => {
     if (rush()) return
     switch (stage.kind) {
       case 'infoMenu': {
-        const choice = INFO_CHOICES[cursor]?.value ?? 2
+        const choice = INFO_CHOICES[chosen]?.value ?? 2
         // 조작 설명만 우리 글이다 — 나머지는 원작 뱅크 줄을 그대로 읽는다
         const lines = choice === INFO_CONTROLS
           ? controlPages(locale)
@@ -385,12 +464,12 @@ export function IntroScreen() {
         break
       }
       case 'gender':
-        setBoy(cursor === 0)
-        setStage({ kind: 'genderConfirm', at: stage.at, boy: cursor === 0 })
+        setBoy(chosen === 0)
+        setStage({ kind: 'genderConfirm', at: stage.at, boy: chosen === 0 })
         setCursor(0)
         break
       case 'genderConfirm':
-        if (cursor === 0) step(stage.at)
+        if (chosen === 0) step(stage.at)
         else {
           setStage({ kind: 'gender', at: stage.at })
           setCursor(0)
@@ -398,18 +477,18 @@ export function IntroScreen() {
         break
       case 'rivalChoice': {
         // 마지막 칸이 "스스로 결정한다!"다
-        if (cursor >= RIVAL_NAME_CHOICES.length) {
+        if (chosen >= RIVAL_NAME_CHOICES.length) {
           setDraft('')
           setStage({ kind: 'nameEntry', at: stage.at, who: 'rival' })
           return
         }
-        setRival(bank[RIVAL_NAME_CHOICES[cursor]!] ?? '')
+        setRival(bank[RIVAL_NAME_CHOICES[chosen]!] ?? '')
         setStage({ kind: 'nameConfirm', at: stage.at, who: 'rival' })
         setCursor(0)
         break
       }
       case 'nameConfirm':
-        if (cursor === 0) step(stage.at)
+        if (chosen === 0) step(stage.at)
         else if (stage.who === 'player') {
           setDraft(player)
           setStage({ kind: 'nameEntry', at: stage.at, who: 'player' })
@@ -439,6 +518,16 @@ export function IntroScreen() {
 
   const typing = stage.kind === 'nameEntry' && ready
   const choices = ready ? choiceLabels(stage, bank) : null
+  /**
+   * 지금 고르는 것이 예/아니오 물음인가 — 성별 확인과 이름 확인 둘(주인공·라이벌).
+   *
+   * 원작은 이 자리에서만 B(`MENU_CANCEL`)를 「아니오」와 같은 갈래로 보낸다
+   * (`rowan_intro_app.c`의 `RI_STATE_GENDR_CONFIRM_CHOICE_BOX` ·
+   * `RI_STATE_NAME_CONFIRM_CHOICE_BOX` · `RI_STATE_RIVAL_NAME_CONFIRM_CHOICE_BOX` —
+   * 셋 다 `case 2: case MENU_CANCEL`). ⚠️ **성별 고르기와 되묻기에는 물러날 곳이
+   * 없다** — 원작도 거기서는 B를 안 받는다
+   */
+  const yesNo = choices !== null && (stage.kind === 'genderConfirm' || stage.kind === 'nameConfirm')
 
   useMenuKeys(
     {
@@ -461,8 +550,17 @@ export function IntroScreen() {
         if (choices) pick()
         else advance()
       },
+      // X·Backspace·Esc는 「아니오」다. 커서도 그리로 옮긴다 — 아니오가 되돌아온
+      // 물음에서는 커서를 다시 0에 두므로 남는 것은 없지만, 고른 칸이 한 순간도
+      // 「예」에 켜져 있으면 안 된다
+      cancel: () => {
+        if (!yesNo) return false
+        setCursor(NO)
+        pick(NO)
+      },
     },
-    !typing,
+    // ⚠️ **닫는 박자에는 손이 안 닿는다.** 원작 상태 기계도 그동안 키를 안 본다
+    !typing && stage.kind !== 'outro',
   )
 
   const step_ = INTRO[stageAt(stage)]
@@ -491,11 +589,14 @@ export function IntroScreen() {
 
       <div
         className={css.box}
+        // 마박사가 다 사라지는 프레임에 원작이 대사창을 지운다 (BG0). 자리는 남겨
+        // 두어야 3D 화면이 위아래로 안 밀린다
+        style={outro && !outro.box ? { visibility: 'hidden' } : undefined}
         onClick={() => {
           if (!typing && !choices) advance()
         }}
       >
-        <div className={css.text}>{text}</div>
+        <div className={css.text}>{stage.kind === 'outro' ? stage.text : text}</div>
 
         {typing && (
           <form
@@ -553,12 +654,30 @@ export function IntroScreen() {
       <div className={css.hint}>
         {typing
           ? `${String(NAME_MAX)}글자까지 · Enter 결정`
-          : stage.kind === 'pokeBall' && !stage.opened
-            ? '볼 가운데의 버튼을 누른다 — 클릭 · Z·Enter'
-            : choices
-              ? '←→ 고르기 · Z·Enter 결정'
-              : 'Z·Enter 넘기기'}
+          : stage.kind === 'outro'
+            ? ''
+            : stage.kind === 'pokeBall' && !stage.opened
+              ? '볼 가운데의 버튼을 누른다 — 클릭 · Z·Enter'
+              : yesNo
+                ? '←→ 고르기 · Z·Enter 결정 · X 아니오'
+                : choices
+                  ? '←→ 고르기 · Z·Enter 결정'
+                  : 'Z·Enter 넘기기'}
       </div>
+
+      {/*
+        닫는 박자의 끝 — `RowanIntro_Main`이 `RI_STATE_END`에서 거는 검은 밝기
+        페이드(`COLOR_BLACK` · 6단). 3D 화면까지 통째로 덮어야 하므로 맨 뒤에 둔다
+      */}
+      {outro && outro.black > 0 && (
+        <div
+          aria-hidden
+          style={{
+            position: 'fixed', inset: 0, background: '#000',
+            opacity: outro.black, pointerEvents: 'none',
+          }}
+        />
+      )}
     </div>
   )
 }

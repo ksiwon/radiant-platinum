@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Group, MeshStandardMaterial } from 'three'
+import { Group, Mesh, MeshStandardMaterial, type Material, type Object3D } from 'three'
+import { introOutro, outroLook } from '../engine/intro/beats'
 import { createRig, updateLocomotion, type Rig } from '../engine/actor/locomotion'
 import { RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { normalizeModel, PLAYER_HEIGHT } from '../engine/model/normalize'
@@ -14,17 +15,61 @@ import { NPC_BUNDLE } from '../engine/actor/npcModels'
 import { usePersonModel } from './personModel'
 import { INTRO_BALL, INTRO_CAMERA } from './introPlace'
 
+/**
+ * 사람 하나를 `alpha`만큼 비친다 — 원작 BG1 알파 블렌드(`RowanIntro_FadeBgLayer`)의 자리.
+ *
+ * ⚠️ **재질을 이 사람 몫으로 복제한 뒤에 비친다.** 받은 모델의 재질은 복제본끼리
+ * 참조로 나눠 갖고(`personModel`), 절차형 몸의 재질은 R3F가 쥐고 있다 — 그대로
+ * 투명하게 만들면 다음에 서는 사람까지 비친다. 늦게 온 모델 조각도 다음 프레임에
+ * 같은 길을 탄다
+ */
+function fadePerson(root: Object3D, alpha: number, owned: Map<Material, number>): void {
+  root.visible = alpha > 0
+  root.traverse((object) => {
+    if (!(object instanceof Mesh)) return
+    const list = (Array.isArray(object.material) ? object.material : [object.material]) as Material[]
+    const mine = list.map((material) => {
+      if (owned.has(material)) return material
+      const copy = material.clone()
+      copy.transparent = true
+      owned.set(copy, material.opacity)
+      return copy
+    })
+    object.material = Array.isArray(object.material) ? mine : mine[0]!
+    for (const material of mine) material.opacity = (owned.get(material) ?? 1) * alpha
+  })
+}
+
 function Person({
   path,
   position,
   selected = true,
+  outro,
 }: {
   path: AssetPath
   position: readonly [number, number, number]
   selected?: boolean
+  /**
+   * 닫는 박자에서 맡는 일 (`engine/intro/beats`의 `outroLook`). `leave`는 사라지는
+   * 마박사, `arrive`는 떠올라 작아지는 주인공이다. 시계(`introOutro`)가 −1이면
+   * 아무 일도 안 한다
+   */
+  outro?: 'leave' | 'arrive'
 }) {
   const wrapper = useRef<Group>(null)
   const host = useRef<Group>(null)
+  /** 닫는 박자가 비치고 줄이는 몸 전체 (발밑 원까지) */
+  const body = useRef<Group>(null)
+  /** 비치려고 복제한 재질과 그 원래 진하기 */
+  const owned = useRef(new Map<Material, number>())
+  const gender = useIntroStageStore((state) => state.gender)
+  useEffect(() => {
+    const copies = owned.current
+    return () => {
+      for (const material of copies.keys()) material.dispose()
+      copies.clear()
+    }
+  }, [])
   /**
    * 서 있는 자세.
    *
@@ -49,38 +94,50 @@ function Person({
 
   useFrame(({ clock }, delta) => {
     if (rig.current) updateLocomotion(rig.current, delta, 0, WALK_SPEED, RUN_SPEED)
+    const node = body.current
+    if (outro && node && introOutro.frame >= 0) {
+      const look = outroLook(introOutro.frame, gender)
+      const alpha = outro === 'leave' ? look.rowan : (look.avatar ?? 0)
+      // 다 진한 채로 한 번도 안 비친 몸은 재질을 안 건드린다
+      if (alpha < 1 || owned.current.size > 0) fadePerson(node, alpha, owned.current)
+      // ⚠️ **발을 붙인 채 줄인다** — 원작 그림은 줄면서 뜨지만 우리는 바닥 위에
+      // 서 있다 (`SHRINK_HEIGHTS` 머리말)
+      node.scale.setScalar(outro === 'arrive' ? look.scale : 1)
+    }
     if (!host.current) return
     host.current.position.y = Math.sin(clock.elapsedTime * 1.5 + position[0]) * 0.018
   })
 
   return (
     <group position={position} scale={selected ? 1 : 0.88}>
-      <group ref={host}>
-        <group ref={wrapper}>
-          {model ? (
-            <primitive object={model} />
-          ) : (
-            <group position={[0, 0.78, 0]}>
-              <mesh castShadow>
-                <capsuleGeometry args={[0.28, 0.82, 8, 18]} />
-                <meshStandardMaterial color="#74849d" roughness={0.82} />
-              </mesh>
-              <mesh position={[0, 0.72, 0]} castShadow>
-                <sphereGeometry args={[0.25, 16, 12]} />
-                <meshStandardMaterial color="#e6c4a5" roughness={0.78} />
-              </mesh>
-            </group>
-          )}
+      <group ref={body}>
+        <group ref={host}>
+          <group ref={wrapper}>
+            {model ? (
+              <primitive object={model} />
+            ) : (
+              <group position={[0, 0.78, 0]}>
+                <mesh castShadow>
+                  <capsuleGeometry args={[0.28, 0.82, 8, 18]} />
+                  <meshStandardMaterial color="#74849d" roughness={0.82} />
+                </mesh>
+                <mesh position={[0, 0.72, 0]} castShadow>
+                  <sphereGeometry args={[0.25, 16, 12]} />
+                  <meshStandardMaterial color="#e6c4a5" roughness={0.78} />
+                </mesh>
+              </group>
+            )}
+          </group>
         </group>
+        <mesh position={[0, 0.018, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.42, 0.49, 42]} />
+          <meshBasicMaterial
+            color={selected ? '#ffe8a6' : '#6f819e'}
+            transparent
+            opacity={selected ? 0.72 : 0.25}
+          />
+        </mesh>
       </group>
-      <mesh position={[0, 0.018, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.42, 0.49, 42]} />
-        <meshBasicMaterial
-          color={selected ? '#ffe8a6' : '#6f819e'}
-          transparent
-          opacity={selected ? 0.72 : 0.25}
-        />
-      </mesh>
     </group>
   )
 }
@@ -227,6 +284,20 @@ export function IntroStage() {
   const gender = useIntroStageStore((state) => state.gender)
 
   /**
+   * 닫는 박자가 돌고 있는가 (`introOutro` 시계가 0 이상).
+   *
+   * ⚠️ **주인공을 마박사가 사라지기 시작할 때 미리 세운다.** 원작은 그림을 얹는
+   * 한 프레임(`RI_STATE_LOAD_MINI_AVATAR`) 뒤 바로 떠오르는데, 그때 모델을
+   * 받기 시작하면 떠오르는 19프레임 동안 절차형 몸이 선다. 진하기 0으로 먼저
+   * 세워 두면 마박사가 사라지고 기다리는 50프레임 사이에 다 온다
+   */
+  const [outro, setOutro] = useState(false)
+  useFrame(() => {
+    const on = introOutro.frame >= 0
+    if (on !== outro) setOutro(on)
+  })
+
+  /**
    * ⚠️ **발이 대사창에 가려 있었다.** 화면 한가운데를 사람의 가슴(1.05m)에
    * 두었더니 발밑이 창 뒤로 들어갔다 — 원작은 사람을 **위 화면**에 통째로
    * 놓으므로 가리는 것이 없다. 우리는 한 화면이니 겨눔과 눈높이를 같이 0.5m
@@ -270,9 +341,13 @@ export function IntroStage() {
       <directionalLight position={[-4, 7, 5]} intensity={1.85} color="#eaf2ff" castShadow />
       <pointLight position={[0, 2.4, 2.5]} intensity={0.65} color="#8cbcff" distance={8} />
 
-      {scene === 'rowan' && <Person path={`models/npc/${NPC_BUNDLE.gentleman}.glb`} position={[0, 0, 0]} />}
+      {scene === 'rowan' && (
+        <Person path={`models/npc/${NPC_BUNDLE.gentleman}.glb`} position={[0, 0, 0]} outro="leave" />
+      )}
       {scene === 'rival' && <Person path={`models/npc/${NPC_BUNDLE.rival}.glb`} position={[0, 0, 0]} />}
-      {scene === 'player' && <Person path={playerModelPath(gender)} position={[0, 0, 0]} />}
+      {(scene === 'player' || outro) && (
+        <Person path={playerModelPath(gender)} position={[0, 0, 0]} outro="arrive" />
+      )}
       {scene === 'gender' && (
         <>
           <Person
