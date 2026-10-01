@@ -41,6 +41,8 @@ interface FieldStat {
   /** 원작 좌표의 x · z 범위 */
   box: [number, number, number, number]
   bytes: number
+  /** 실내 바닥 밑에서 잘라 낸 삼각형 (위 `ROOM_INNER`) */
+  carved: number
   problems: string[]
 }
 
@@ -98,12 +100,258 @@ function columnMajor(m: Mat4): number[] {
   return out
 }
 
+// ── 문 너머 가짜 실내의 바닥 밑을 도려낸다 ─────────────────────────────────────
+//
+// ⚠️ BDSP 집 · 관문은 문 너머에 **가짜 실내**를 세운다 — 재질 이름 `M_C_001_RoomInner_##`, 바닥 하나에 낮은 벽 넷(높이 2)뿐인
+// 상자다. 관문(`P_C_001_BarrierGate_01`)은 8×5.5칸짜리 체크 바닥을, 집은 문 뒤 2.5×1.75칸을 든다. 그 바닥이 **바깥 땅과 같은
+// 높이로 겹친다** — 지역 14곳의 구운 glb에서 RoomInner 바닥 위 0.25칸 표본 59,140자리 중 57,819자리를 같은 높이(2mm 안)의 바깥 면이
+// 덮는다(나머지 1,321자리는 밑이 비었거나 더 낮다). 덮은 쪽은 거의 땅(`Ground` · `GroundTile` · `Soil` · 바닷물 판)이다.
+// 원작은 재질의 `_ZOffset`(RoomInner · 관문 껍데기 −1e‑5, 땅 0)으로 실내를 앞으로 당겨 이긴다. glTF에는 깊이 밀기가 없어서
+// 1인칭으로 문간에 서면 체크 바닥과 풀이 얼룩으로 싸웠다. 그래서 굽기에서 **실내 바닥 발자국 안의 같은 높이 면을 잘라 낸다** —
+// 원작 화면에서 보이는 것(실내 바닥)만 남는다.
+//
+// ⚠️ 사본으로 세운 메시(인스턴싱)는 안 자른다 — 한 벌을 자르면 모든 자리가 같이 뚫린다. 겹치는 사본은 문 앞 빛 웅덩이
+// (`PokeCenLight`, 더해서 그린다) · 풀 이음매 · 길 · 문 문턱 몇 조각뿐이다. 잘라 낸 뒤 같은 표본에서 같은 높이로 덮인 자리는
+// 1,403이고 전부 이 사본들이다. 바닥 발자국 밖에서 덮개를 잃은 자리는 0이다 (14곳 · 바닥 상자를 1칸 넓힌 무작위 표본 168,787)
+
+/** 가짜 실내 재질 */
+const ROOM_INNER = /RoomInner/
+/** 야외 지역 번들 이름 (`convert.fieldBundles`와 같은 꼴) */
+const FIELD_NAME = /^(area\d+|safari)$/
+/** 같은 높이로 보는 차(칸). 겹친 자리는 다 2mm 안이다 */
+const COPLANAR = 0.01
+/** 수평으로 보는 면 — 법선 y 성분 */
+const LEVEL = 0.9
+/** 버리는 조각 넓이(칸²) — 구멍 삼각형 이음매의 부동소수점 부스러기 */
+const SLIVER = 1e-6
+
+/** xz 평면의 점 */
+type Pt = [number, number]
+
+/** 도려낼 실내 바닥 삼각형 하나 (원작 좌표 · xz는 반시계) */
+export interface Hole {
+  xz: [Pt, Pt, Pt]
+  y: [number, number, number]
+  box: [number, number, number, number]
+}
+
+const cross2 = (a: Pt, b: Pt, p: Pt): number => (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
+function area2(poly: readonly Pt[]): number {
+  let s = 0
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]!, b = poly[(i + 1) % poly.length]!
+    s += a[0] * b[1] - b[0] * a[1]
+  }
+  return s / 2
+}
+
+/** 볼록 다각형을 반평면 하나로 자른다 — `keep`이 1이면 a→b 왼쪽, −1이면 오른쪽을 남긴다 (Sutherland–Hodgman) */
+function clipHalf(poly: readonly Pt[], a: Pt, b: Pt, keep: 1 | -1): Pt[] {
+  const out: Pt[] = []
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i]!, q = poly[(i + 1) % poly.length]!
+    const dp = keep * cross2(a, b, p), dq = keep * cross2(a, b, q)
+    if (dp >= 0) out.push(p)
+    if ((dp > 0 && dq < 0) || (dp < 0 && dq > 0)) {
+      const t = dp / (dp - dq)
+      out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t])
+    }
+  }
+  return out
+}
+
+/**
+ * 볼록 다각형 `poly`에서 반시계 삼각형 `cut`을 뺀 나머지 — 서로 안 겹치는 볼록 조각들.
+ * 변마다 바깥쪽을 떼어 내고 안쪽만 이어 자르면 끝에 남는 것이 `cut` 안이다(버린다). 감기 방향은 `poly`를 따른다
+ */
+export function subtractTriangle(poly: readonly Pt[], cut: readonly [Pt, Pt, Pt]): Pt[][] {
+  const pieces: Pt[][] = []
+  let rest: Pt[] = [...poly]
+  for (let e = 0; e < 3 && rest.length >= 3; e++) {
+    const a = cut[e]!, b = cut[(e + 1) % 3]!
+    const outside = clipHalf(rest, a, b, -1)
+    if (outside.length >= 3 && Math.abs(area2(outside)) > SLIVER) pieces.push(outside)
+    rest = clipHalf(rest, a, b, 1)
+  }
+  return pieces
+}
+
+/** 원작 좌표의 실내 바닥 삼각형 — 수평인 것만 (가짜 실내에는 천장이 없다) */
+export function holeOf(p0: readonly number[], p1: readonly number[], p2: readonly number[]): Hole | null {
+  const ux = p1[0]! - p0[0]!, uy = p1[1]! - p0[1]!, uz = p1[2]! - p0[2]!
+  const vx = p2[0]! - p0[0]!, vy = p2[1]! - p0[1]!, vz = p2[2]! - p0[2]!
+  const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx
+  const len = Math.hypot(nx, ny, nz)
+  if (len < 1e-9 || Math.abs(ny) < LEVEL * len) return null
+  let xz: [Pt, Pt, Pt] = [[p0[0]!, p0[2]!], [p1[0]!, p1[2]!], [p2[0]!, p2[2]!]]
+  let y: [number, number, number] = [p0[1]!, p1[1]!, p2[1]!]
+  if (area2(xz) < 0) { xz = [xz[0], xz[2], xz[1]]; y = [y[0], y[2], y[1]] }
+  const xs = xz.map((p) => p[0]), zs = xz.map((p) => p[1])
+  return { xz, y, box: [Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)] }
+}
+
+/** 실내 바닥 삼각형의 그 자리 높이 */
+function holeHeight(h: Hole, x: number, z: number): number {
+  const [a, b, c] = h.xz
+  const det = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+  const l1 = ((b[1] - c[1]) * (x - c[0]) + (c[0] - b[0]) * (z - c[1])) / det
+  const l2 = ((c[1] - a[1]) * (x - c[0]) + (a[0] - c[0]) * (z - c[1])) / det
+  return l1 * h.y[0] + l2 * h.y[1] + (1 - l1 - l2) * h.y[2]
+}
+
+/** 칸 4개 크기 격자에 구멍을 나눠 둔다 — 땅 삼각형마다 구멍 전부를 훑지 않게 */
+const BIN = 4
+export class HoleIndex {
+  private readonly bins = new Map<string, Hole[]>()
+  // ⚠️ 매개변수 속성(`constructor(readonly …)`)을 안 쓴다 — 노드 굽는 쪽이 타입만 벗겨 돌린다(`--experimental-strip-types`)
+  constructor(holes: readonly Hole[]) {
+    for (const h of holes) {
+      for (let i = Math.floor(h.box[0] / BIN); i <= Math.floor(h.box[2] / BIN); i++) {
+        for (let k = Math.floor(h.box[1] / BIN); k <= Math.floor(h.box[3] / BIN); k++) {
+          const key = `${String(i)},${String(k)}`
+          const list = this.bins.get(key)
+          if (list) list.push(h)
+          else this.bins.set(key, [h])
+        }
+      }
+    }
+  }
+
+  near(box: readonly number[]): Hole[] {
+    const seen = new Set<Hole>()
+    for (let i = Math.floor(box[0]! / BIN); i <= Math.floor(box[2]! / BIN); i++) {
+      for (let k = Math.floor(box[1]! / BIN); k <= Math.floor(box[3]! / BIN); k++) {
+        for (const h of this.bins.get(`${String(i)},${String(k)}`) ?? []) {
+          if (h.box[0] <= box[2]! && h.box[2] >= box[0]! && h.box[1] <= box[3]! && h.box[3] >= box[1]!) seen.add(h)
+        }
+      }
+    }
+    return [...seen]
+  }
+}
+
+/** 잘라 낸 메시 — 정점은 제 좌표(유니티, x 안 뒤집음) 그대로 늘어난다 */
+interface Carved {
+  pos: Float32Array
+  nrm: Float32Array
+  uv: Float32Array
+  count: number
+  subs: Uint32Array[]
+  /** 손댄 삼각형 수 */
+  touched: number
+}
+
+/**
+ * 한 자리에 선 메시에서 실내 바닥과 같은 높이로 겹치는 부분을 잘라 낸다.
+ *
+ * `toWorld`는 제 좌표 정점 번호 → 원작 좌표 점이다. 잘린 조각의 새 정점은 원래 삼각형 안의 무게중심 좌표로 위치 · 법선 · UV를
+ * 고루 섞는다 — 땅은 평면이라 위치는 그 평면 위에 그대로 남는다. `skip`인 부분 메시는 건드리지 않는다
+ */
+export function carveMesh(
+  pos: Float32Array, nrm: Float32Array, uv: Float32Array, count: number,
+  subs: readonly Uint32Array[], skip: readonly boolean[],
+  toWorld: (i: number) => [number, number, number], index: { near: (box: readonly number[]) => Hole[] },
+): Carved | null {
+  const world: [number, number, number][] = []
+  for (let i = 0; i < count; i++) world.push(toWorld(i))
+  // 새로 생긴 정점만 모은다 — 원래 정점은 끝에 앞으로 붙인다
+  const P: number[] = [], N: number[] = [], U: number[] = []
+  let n = count
+  let touched = 0
+  const out: Uint32Array[] = []
+  for (let s = 0; s < subs.length; s++) {
+    const tri = subs[s]!
+    if (skip[s]) { out.push(tri); continue }
+    const kept: number[] = []
+    for (let t = 0; t + 2 < tri.length; t += 3) {
+      const i0 = tri[t]!, i1 = tri[t + 1]!, i2 = tri[t + 2]!
+      const a = world[i0]!, b = world[i1]!, c = world[i2]!
+      const box = [Math.min(a[0], b[0], c[0]), Math.min(a[2], b[2], c[2]), Math.max(a[0], b[0], c[0]), Math.max(a[2], b[2], c[2])]
+      const near = index.near(box)
+      // 땅 평면의 높이 — xz 무게중심 좌표로 잰다. 선 면(수직)은 높이가 없다
+      const det = (b[2] - c[2]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[2] - c[2])
+      if (near.length === 0 || Math.abs(det) < 1e-9) { kept.push(i0, i1, i2); continue }
+      const bary = (x: number, z: number): [number, number, number] => {
+        const l1 = ((b[2] - c[2]) * (x - c[0]) + (c[0] - b[0]) * (z - c[2])) / det
+        const l2 = ((c[2] - a[2]) * (x - c[0]) + (a[0] - c[0]) * (z - c[2])) / det
+        return [l1, l2, 1 - l1 - l2]
+      }
+      const heightAt = (x: number, z: number): number => {
+        const [l1, l2, l3] = bary(x, z)
+        return l1 * a[1] + l2 * b[1] + l3 * c[1]
+      }
+      let pieces: Pt[][] = [[[a[0], a[2]], [b[0], b[2]], [c[0], c[2]]]]
+      let cut = false
+      const whole: Pt[] = [[a[0], a[2]], [b[0], b[2]], [c[0], c[2]]]
+      for (const h of near) {
+        // 높이는 **겹친 자리에서만** 잰다 — 바닥 삼각형(8칸)이 땅 삼각형보다 크면 땅 평면을 바닥 꼭짓점까지 늘려 재는 것은
+        // 조금만 기울어도 어긋난다. 5cm 아래 깔린 큰 밑판(`area002` 땅 `Ground_01_01` y 2.95 · 그 위 실내 바닥 3.0)은 같은 높이가 아니다 — 안 자른다
+        let overlap = whole
+        for (let e = 0; e < 3 && overlap.length >= 3; e++) overlap = clipHalf(overlap, h.xz[e]!, h.xz[(e + 1) % 3]!, 1)
+        if (overlap.length < 3 || Math.abs(area2(overlap)) <= SLIVER) continue
+        if (overlap.some(([x, z]) => Math.abs(heightAt(x, z) - holeHeight(h, x, z)) > COPLANAR)) continue
+        const next: Pt[][] = []
+        for (const p of pieces) next.push(...subtractTriangle(p, h.xz))
+        pieces = next
+        cut = true
+        if (pieces.length === 0) break
+      }
+      if (!cut) { kept.push(i0, i1, i2); continue }
+      touched++
+      const corner = [i0, i1, i2]
+      for (const piece of pieces) {
+        const ids = piece.map(([x, z]) => {
+          const l = bary(x, z)
+          // 원래 꼭짓점이면 그 정점을 그대로 쓴다
+          for (let k = 0; k < 3; k++) if (Math.abs(l[k]! - 1) < 1e-9) return corner[k]!
+          for (let d = 0; d < 3; d++) P.push(l[0] * pos[i0 * 3 + d]! + l[1] * pos[i1 * 3 + d]! + l[2] * pos[i2 * 3 + d]!)
+          const nx = l[0] * nrm[i0 * 3]! + l[1] * nrm[i1 * 3]! + l[2] * nrm[i2 * 3]!
+          const ny = l[0] * nrm[i0 * 3 + 1]! + l[1] * nrm[i1 * 3 + 1]! + l[2] * nrm[i2 * 3 + 1]!
+          const nz = l[0] * nrm[i0 * 3 + 2]! + l[1] * nrm[i1 * 3 + 2]! + l[2] * nrm[i2 * 3 + 2]!
+          const len = Math.hypot(nx, ny, nz) || 1
+          N.push(nx / len, ny / len, nz / len)
+          for (let d = 0; d < 2; d++) U.push(l[0] * uv[i0 * 2 + d]! + l[1] * uv[i1 * 2 + d]! + l[2] * uv[i2 * 2 + d]!)
+          return n++
+        })
+        for (let k = 1; k + 1 < ids.length; k++) kept.push(ids[0]!, ids[k]!, ids[k + 1]!)
+      }
+    }
+    out.push(Uint32Array.from(kept))
+  }
+  if (touched === 0) return null
+  const grow = (base: Float32Array, more: number[], k: number): Float32Array => {
+    const all = new Float32Array(n * k)
+    all.set(base.subarray(0, count * k))
+    all.set(more, count * k)
+    return all
+  }
+  return { pos: grow(pos, P, 3), nrm: grow(nrm, N, 3), uv: grow(uv, U, 2), count: n, subs: out, touched }
+}
+
+/** 원작 좌표(x 뒤집은 행렬 `m`)로 옮긴 제 좌표 정점 — 정점은 유니티 그대로라 x를 먼저 뒤집는다 */
+function placeFlipped(m: Mat4, pos: Float32Array, i: number): [number, number, number] {
+  const x = -pos[i * 3]!, y = pos[i * 3 + 1]!, z = pos[i * 3 + 2]!
+  return [
+    m[0]! * x + m[1]! * y + m[2]! * z + m[3]!,
+    m[4]! * x + m[5]! * y + m[6]! * z + m[7]!,
+    m[8]! * x + m[9]! * y + m[10]! * z + m[11]!,
+  ]
+}
+
 export async function exportField(
   env: Environment,
   encodePng: (rgba: Uint8Array, width: number, height: number) => Promise<Uint8Array>,
-  options: { name?: string, maxSize?: number | null, share?: ImageShare } = {},
+  options: {
+    name?: string, maxSize?: number | null, share?: ImageShare,
+    /**
+     * 가짜 실내 바닥 밑을 도려낼까 (위 `ROOM_INNER`). 기본은 **야외 지역 이름**(`area###` · `safari`)일 때만 — 던전(`d##…`)도
+     * 이 함수를 지나가는데, 던전 산출물은 이 고침과 상관없이 바이트가 그대로여야 한다
+     */
+    carve?: boolean
+  } = {},
 ): Promise<{ glb: Uint8Array, stat: FieldStat }> {
   const name = options.name ?? 'field'
+  const carve = options.carve ?? FIELD_NAME.test(name)
   const filters = env.ofType('MeshFilter')
   if (filters.length === 0) throw new FieldError('MeshFilter가 없다')
 
@@ -171,29 +419,71 @@ export async function exportField(
   let instanced = 0
   let lowX = Infinity, highX = -Infinity, lowZ = Infinity, highZ = -Infinity
   const ordered = [...groups.values()].sort((a, b) => a.meshPid - b.meshPid || a.slots.join().localeCompare(b.slots.join()))
+  const subsOf = (g: Group): Uint32Array[] => g.mesh.subMeshes.map((sub) => {
+    const first = Math.floor(sub.firstByte / (g.wide ? 4 : 2))
+    return g.mesh.indices.subarray(first, first + sub.indexCount)
+  })
+  const isInner = (g: Group, s: number): boolean => {
+    const mat = s < g.slots.length ? materialName.get(g.slots[s]!) : undefined
+    return mat !== undefined && ROOM_INNER.test(mat)
+  }
+
+  // ── 가짜 실내 바닥 (위 `ROOM_INNER`) — 사본으로 선 것까지 자리마다 모은다 ──
+  let holeIndex: HoleIndex | null = null
+  if (carve) {
+    const holes: Hole[] = []
+    for (const g of ordered) {
+      const subs = subsOf(g)
+      const rawPos = g.mesh.attributes.get(CHANNEL.position)
+      if (!rawPos || !subs.some((_, s) => isInner(g, s))) continue
+      const src = lanes(rawPos, g.mesh.dimensions.get(CHANNEL.position), g.mesh.vertexCount, 3, [0, 0, 0])
+      for (const w of g.worlds) {
+        const m = flipped(w)
+        subs.forEach((tri, s) => {
+          if (!isInner(g, s)) return
+          for (let t = 0; t + 2 < tri.length; t += 3) {
+            const h = holeOf(placeFlipped(m, src, tri[t]!), placeFlipped(m, src, tri[t + 1]!), placeFlipped(m, src, tri[t + 2]!))
+            if (h) holes.push(h)
+          }
+        })
+      }
+    }
+    if (holes.length > 0) holeIndex = new HoleIndex(holes)
+  }
+  let carved = 0
+
   for (const g of ordered) {
-    const n = g.mesh.vertexCount
+    let n = g.mesh.vertexCount
     const rawPos = g.mesh.attributes.get(CHANNEL.position)
     if (!rawPos) continue
-    const src = lanes(rawPos, g.mesh.dimensions.get(CHANNEL.position), n, 3, [0, 0, 0])
+    let src = lanes(rawPos, g.mesh.dimensions.get(CHANNEL.position), n, 3, [0, 0, 0])
+    let rawNrm = lanes(g.mesh.attributes.get(CHANNEL.normal), g.mesh.dimensions.get(CHANNEL.normal), n, 3, [0, 1, 0])
+    let rawUv = lanes(g.mesh.attributes.get(CHANNEL.uv0), g.mesh.dimensions.get(CHANNEL.uv0), n, 2, [0, 0])
+    let subs = subsOf(g)
+    // 한 자리에만 선 메시(땅)만 자른다 — 위 `ROOM_INNER`의 ⚠️
+    if (holeIndex && g.worlds.length === 1) {
+      const m = flipped(g.worlds[0]!)
+      const from = src
+      const cut = carveMesh(src, rawNrm, rawUv, n, subs, subs.map((_, s) => isInner(g, s)), (i) => placeFlipped(m, from, i), holeIndex)
+      if (cut) {
+        src = cut.pos; rawNrm = cut.nrm; rawUv = cut.uv; n = cut.count; subs = cut.subs
+        carved += cut.touched
+      }
+    }
     const pos = new Float32Array(n * 3)
     for (let i = 0; i < n; i++) { pos[i * 3] = -src[i * 3]!; pos[i * 3 + 1] = src[i * 3 + 1]!; pos[i * 3 + 2] = src[i * 3 + 2]! }
-    const rawNrm = lanes(g.mesh.attributes.get(CHANNEL.normal), g.mesh.dimensions.get(CHANNEL.normal), n, 3, [0, 1, 0])
     const nrm = new Float32Array(n * 3)
     for (let i = 0; i < n; i++) {
       const x = -rawNrm[i * 3]!, y = rawNrm[i * 3 + 1]!, z = rawNrm[i * 3 + 2]!
       const len = Math.hypot(x, y, z) || 1
       nrm[i * 3] = x / len; nrm[i * 3 + 1] = y / len; nrm[i * 3 + 2] = z / len
     }
-    const rawUv = lanes(g.mesh.attributes.get(CHANNEL.uv0), g.mesh.dimensions.get(CHANNEL.uv0), n, 2, [0, 0])
     const aPos = buf.add(pos, 'VEC3', FLOAT, ARRAY_BUFFER, true)
     const aNrm = buf.add(nrm, 'VEC3', FLOAT, ARRAY_BUFFER)
     const uvAccessor = new Map<string, number>()
     const primitives: Record<string, unknown>[] = []
-    for (let s = 0; s < g.mesh.subMeshes.length; s++) {
-      const sub = g.mesh.subMeshes[s]!
-      const first = Math.floor(sub.firstByte / (g.wide ? 4 : 2))
-      const tri = g.mesh.indices.subarray(first, first + sub.indexCount)
+    for (let s = 0; s < subs.length; s++) {
+      const tri = subs[s]!
       if (tri.length < 3) continue
       const pid = s < g.slots.length ? g.slots[s]! : 0
       const mat = materialName.get(pid)
@@ -282,6 +572,7 @@ export async function exportField(
       materials: materials.length,
       box: [Math.floor(lowX), Math.floor(lowZ), Math.ceil(highX), Math.ceil(highZ)],
       bytes: glb.byteLength,
+      carved,
       problems: verifyGlb(glb),
     },
   }
