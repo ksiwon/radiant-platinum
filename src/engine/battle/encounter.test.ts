@@ -10,8 +10,8 @@ import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
   LAND_SLOT_RATES, ROD_SLOT_RATES, WATER_SLOT_RATES, encounterKind, graceSteps, hooksFish,
-  isLandEncounterTile, isSurfEncounterTile, newEncounterState, rollLand, rollRod, rollWater,
-  shouldEncounter, timedLand, type EncounterTable,
+  isLandEncounterTile, isSurfEncounterTile, mudEncounter, newEncounterState, rollLand, rollRod,
+  rollsOnMudPress, rollWater, shouldEncounter, timedLand, type EncounterTable,
 } from './encounter'
 import { Behavior } from '../map/zone'
 import { TimeOfDay } from '../map/timeOfDay'
@@ -288,5 +288,25 @@ maybe('인카운터 표', () => {
         expect(names[s.species], `종족 ${s.species} 이름 없음`).toBeTruthy()
       }
     }
+  })
+})
+
+// `FieldTask_StuckInDeepMud` (`overlay005/ov5_021DFB54.c`) — 붙드는 칸과 굴리는 칸이 다르다
+describe('깊은 진흙에서 버둥거릴 때의 조우', () => {
+  it('굴리는 칸은 깊은 풀숲 하나다 — 붙드는 칸(870줄)보다 좁다 (929줄)', () => {
+    expect(rollsOnMudPress(Behavior.MUD_DEEP_WITH_GRASS)).toBe(true)
+    for (const b of [Behavior.MUD_DEEP, Behavior.MUD, Behavior.MUD_WITH_GRASS, Behavior.TALL_GRASS]) {
+      expect(rollsOnMudPress(b), `0x${b.toString(16)}`).toBe(false)
+    }
+  })
+
+  it('두 칸 다 걷는 조우 칸이기도 하다 — 들어서는 걸음에서도 굴린다', () => {
+    expect(isLandEncounterTile(Behavior.MUD_DEEP_WITH_GRASS)).toBe(true)
+    // 풀 없는 깊은 진흙은 걷는 조우가 없다 (`TILE_BEHAVIOR_FLAG_ENCOUNTER`가 안 붙었다)
+    expect(isLandEncounterTile(Behavior.MUD_DEEP)).toBe(false)
+  })
+
+  it('다리는 비어서 온다 — 걷는 조우를 쥔 쪽이 채운다', () => {
+    expect(mudEncounter.roll).toBeNull()
   })
 })

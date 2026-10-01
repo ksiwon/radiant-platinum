@@ -4,7 +4,7 @@ import { Suspense, useEffect, useLayoutEffect, useRef } from 'react'
 import { useFrame, useLoader } from '@react-three/fiber'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import {
-  AnimationMixer, LoopOnce, LoopRepeat, Quaternion,
+  AnimationMixer, LoopOnce, LoopRepeat, Mesh, Quaternion,
   type AnimationClip, type Group, type Object3D,
 } from 'three'
 import { normalizeModel, PLAYER_HEIGHT } from '../engine/model/normalize'
@@ -12,6 +12,8 @@ import { createRig } from '../engine/actor/locomotion'
 import { GaitPlayer, measureCycle, pickGaitClips, snapshotPose } from '../engine/actor/clipGait'
 import { HERO_CLIP_NONE, tickHeroClip, type HeroClipState } from '../engine/actor/heroClips'
 import { worldState } from '../state/worldState'
+import { deepMud, terrainSink } from '../engine/actor/player'
+import { activeZone, isMud, isMudWithGrass } from '../engine/map/zone'
 import { fishing } from './fishingSystem'
 import { flyTransitionPhase } from './flyTransition'
 import { wateringActive } from './berryPatches'
@@ -40,8 +42,33 @@ interface ClipSet {
   rest: Map<Object3D, Quaternion>
 }
 
+/**
+ * 땅에 묻힌 몸이 제 깊이로 따라붙는 빠르기 (1/초).
+ *
+ * ⚠️ **원작은 한 번에 옮긴다** — 걸음이 시작하고 끝나는 순간 `MapObject_SinkIntoTerrain`이
+ * 깊이를 갈아 끼운다. 원작은 그 순간이 칸 가운데라 안 보이지만 우리는 칸 경계에서 갈리므로,
+ * 그대로 옮기면 진흙 가장자리에서 몸이 0.875칸 툭 떨어진다. 0.1초 남짓에 따라붙게 둔다
+ */
+const SINK_RATE = 14
+
+/**
+ * 이 칸에서 몸을 묻는가 · 그림자를 숨기는가 — **진흙 넷만** 본다.
+ *
+ * ⚠️ **눈은 아직 안 묻는다.** `terrainSink`는 원작 함수를 통째로 옮겨 깊은 눈 셋(−12 ·
+ * −14 · −16)까지 답하지만, 216·217번도로의 BDSP 눈 바닥이 이미 발을 덮는 모양인지 화면으로
+ * 아직 안 봤다. 보고 켠다
+ */
+function sinksHere(behavior: number): boolean {
+  return isMud(behavior) || isMudWithGrass(behavior)
+}
+
 export function PlayerModel() {
   const groupRef = useRef<Group>(null)
+  /** 땅에 묻히는 깊이 (`terrainSink`). 엔진이 쓰는 바깥 그룹 · 타는 것이 드는 높이와 갈라 둔다 */
+  const sinkRef = useRef<Group>(null)
+  /** 그림자를 지는 조각들. 진흙에서는 그림자를 숨긴다 (`sub_02063B20`) */
+  const casters = useRef<Mesh[]>([])
+  const shadowHidden = useRef(false)
   const normRef = useRef<Group>(null)
   /** 타는 것이 몸을 드는 높이. 정규화와 갈라 둔다 — 아래 그림 부분의 경고 */
   const mountRef = useRef<Group>(null)
@@ -66,6 +93,10 @@ export function PlayerModel() {
     // 여기 씬은 `useLoader`가 캐시해 세션 내내 하나뿐이라 두 번 걸릴 일이 없다
     // 오프닝·명예의 전당과 **같은 손질**이다 (`scene/personModel`)
     preparePersonModel(gltf.scene)
+    const found: Mesh[] = []
+    gltf.scene.traverse((o) => { if (o instanceof Mesh && o.castShadow) found.push(o) })
+    casters.current = found
+    shadowHidden.current = false
   }, [gltf])
 
   // 정규화는 머티리얼 처리 이후, 그리고 씬 등록 이전에 한 번
@@ -129,6 +160,29 @@ export function PlayerModel() {
       sceneRefs.playerClip = false
     }
   }, [gltf, modelPath])
+
+  /**
+   * **진흙에 묻힌다** (`MapObject_SinkIntoTerrain` · `actor/player`의 `terrainSink`).
+   *
+   * 깊은 진흙과 깊은 풀숲은 14/16칸, 진흙과 풀숲은 12/16칸이다. 깊은 진흙에서 다섯 번 버둥거려
+   * 뛰어 나오면 「안 가라앉음」이 켜져 그 칸을 떠날 때까지 떠 있다 (`deepMud.doNotSink`).
+   *
+   * 그림자는 **깊이와 따로** 숨는다 — 원작의 그림자 판정(`sub_02063B20`)은 「안 가라앉음」을
+   * 안 보고 진흙이면 숨긴다. 뛰어 나와 떠 있는 동안에도 그림자는 없다
+   */
+  useFrame((_, delta) => {
+    const sink = sinkRef.current
+    if (!sink) return
+    const p = worldState.player
+    const behavior = activeZone.grid?.behaviorAtWorld(p.position.x, p.position.z) ?? null
+    const muddy = behavior !== null && !p.surfing && sinksHere(behavior)
+    const target = muddy ? terrainSink(behavior, deepMud.doNotSink) : 0
+    sink.position.y += (target - sink.position.y) * Math.min(1, delta * SINK_RATE)
+    if (muddy !== shadowHidden.current) {
+      for (const mesh of casters.current) mesh.castShadow = !muddy
+      shadowHidden.current = muddy
+    }
+  })
 
   /**
    * 구운 필드 동작을 돌린다 (`engine/actor/heroClips`).
@@ -199,13 +253,20 @@ export function PlayerModel() {
         돈다 — 그쪽에 들어 올린 값을 쓰면 같은 프레임 안에서 지워진다.
         실측으로 파도타기 몸은 물에 떠 있는데 사람은 물 높이에 선 채였다
       */}
-      <group ref={mountRef}>
-        <group ref={normRef}>
-          <primitive object={gltf.scene} />
+      {/*
+        ⚠️ **땅에 묻히는 깊이는 따로 한 겹이다.** 바깥 그룹은 엔진이, 타는 높이(`mountRef`)는
+        `FieldActionEffects`가 매 프레임 덮어쓴다. 1인칭 눈높이는 `mountRef`를 따르므로 묻혀도
+        눈은 안 내려간다 — 내려가면 눈이 진흙 바닥 밑으로 들어간다
+      */}
+      <group ref={sinkRef}>
+        <group ref={mountRef}>
+          <group ref={normRef}>
+            <primitive object={gltf.scene} />
+          </group>
         </group>
+        {/* 자전거는 정규화 밖이다 — 번들 단위 그대로고 발밑이 원점이다 */}
+        <Suspense fallback={null}><BikeModel /></Suspense>
       </group>
-      {/* 자전거는 정규화 밖이다 — 번들 단위 그대로고 발밑이 원점이다 */}
-      <Suspense fallback={null}><BikeModel /></Suspense>
       <FieldActionEffects bodyRef={mountRef} />
     </group>
   )

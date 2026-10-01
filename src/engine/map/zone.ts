@@ -288,9 +288,24 @@ export function isMud(behavior: number): boolean {
   return behavior === Behavior.MUD || behavior === Behavior.MUD_DEEP
 }
 
-/** `TileBehavior_IsDeepMud` (491줄) */
+/**
+ * `TileBehavior_IsDeepMud` (491줄).
+ *
+ * ⚠️ **붙드는 칸은 이것만이 아니다** — `FieldSystem_TryGetStuckInDeepMud`가 이것과
+ * `isDeepMudWithGrass`를 **둘 다** 묻는다 (`actor/player`의 `deepMud`)
+ */
 export function isDeepMud(behavior: number): boolean {
   return behavior === Behavior.MUD_DEEP
+}
+
+/**
+ * `TileBehavior_IsDeepMudWithGrass` (501줄) — 대습초원의 깊은 풀숲 584칸.
+ *
+ * 붙들린 채 방향을 바꿀 때마다 조우를 굴리는 것은 **이 칸뿐이다**
+ * (`FieldTask_StuckInDeepMud`, `overlay005/ov5_021DFB54.c` 929줄)
+ */
+export function isDeepMudWithGrass(behavior: number): boolean {
+  return behavior === Behavior.MUD_DEEP_WITH_GRASS
 }
 
 /** `TileBehavior_IsMudWithGrass` (496줄) — 대습초원의 풀숲 3,094칸 */

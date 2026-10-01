@@ -5,11 +5,17 @@
 // 보던 사람이 V를 누르면 화면도 몸도 북쪽으로 홱 돌았고, 워프가 정해 준 도착
 // 방향(`ScrCmd_Warp`)도 다음 스텝에 지워졌다 — 집에서 나오자마자 방금 나온 문을
 // 보고 W를 누르면 그 문으로 되돌아 들어갔다.
-import { afterEach, describe, expect, it } from 'vitest'
-import { playerSystem } from './player'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import {
+  DEEP_MUD_PRESSES, MUD_JUMP_TIME, MUD_TURN_FRAMES, deepMud, mudPressDir, playerSystem,
+  resetDeepMud, stuckInDeepMud, terrainSink,
+} from './player'
 import { cameraSystem } from './camera'
+import { drainBikeCues } from './bikeTerrain'
 import { facingFromYaw } from '../input/mouse'
-import { activeZone } from '../map/zone'
+import { activeZone, Behavior, isDeepMudWithGrass, type CollisionGrid } from '../map/zone'
+import { mudEncounter } from '../battle/encounter'
+import { DIR } from '../script/movement'
 import { worldState } from '../../state/worldState'
 
 /** 원작 방향 번호로 접는다 — 남 0 · 동 1 · 북 2 · 서 3 (`turnInPlace.test`와 같다) */
@@ -121,5 +127,186 @@ describe('1인칭은 몸이 보던 쪽에서 출발한다', () => {
     worldState.camera.yaw = 1.234
     stand(3)
     expect(worldState.camera.yaw).toBe(1.234)
+  })
+})
+
+// ── 깊은 진흙 (`FieldTask_StuckInDeepMud`, `overlay005/ov5_021DFB54.c` 861~956줄) ──
+
+/** SDAT 목차 번호 — 우리가 구운 `public/data/sound/index.json`에서 이름으로 찾았다 */
+const ZUPO = 1617
+const ZUPO2 = 1618
+const DANSA = 1547
+const SUTYA2 = 1607
+
+/** (5,5) 한 칸만 `mud`이고 나머지는 평지인 판 */
+function marsh(mud: number): CollisionGrid {
+  const at = (tx: number, tz: number) => (tx === 5 && tz === 5 ? mud : Behavior.NORMAL)
+  return {
+    isBlockedAtWorld: () => false,
+    behaviorAtWorld: (x, z) => at(Math.floor(x), Math.floor(z)),
+    heightAtWorld: () => 0,
+    bakedHeightAtWorld: () => 0,
+    behavior: at,
+    isBlocked: () => false,
+  }
+}
+
+/** 그 쪽으로 `frames`프레임 누른다 (3인칭이라 월드 축 그대로다) */
+function hold([x, z]: readonly [number, number], frames: number): void {
+  worldState.input.move.set(x, z)
+  stand(frames)
+  worldState.input.move.set(0, 0)
+}
+const EAST = [1, 0] as const
+const NORTH = [0, -1] as const
+
+/** 진흙 서쪽 칸 (4,5)에 동쪽을 보고 세워 두고, 동쪽으로 걸어 들어가 붙들린다 */
+function walkIn(mud: number): void {
+  reset('third', Math.PI / 2)
+  activeZone.grid = marsh(mud)
+  worldState.player.position.set(4.5, 0, 5.5)
+  worldState.player.prevPosition.copy(worldState.player.position)
+  resetDeepMud()
+  stand()
+  drainBikeCues()
+  hold(EAST, 30)
+}
+
+describe('깊은 진흙은 붙든다', () => {
+  beforeEach(() => { mudEncounter.roll = null })
+  afterEach(() => {
+    mudEncounter.roll = null
+    activeZone.grid = null
+    resetDeepMud()
+    drainBikeCues()
+  })
+
+  it('붙드는 칸은 깊은 진흙과 깊은 풀숲 둘이다 (870줄)', () => {
+    expect(stuckInDeepMud(Behavior.MUD_DEEP)).toBe(true)
+    expect(stuckInDeepMud(Behavior.MUD_DEEP_WITH_GRASS)).toBe(true)
+    expect(stuckInDeepMud(Behavior.MUD)).toBe(false)
+    expect(stuckInDeepMud(Behavior.MUD_WITH_GRASS)).toBe(false)
+    // `TileBehavior_IsDeepMudWithGrass` (`map_tile_behavior.c` 501줄)
+    expect(isDeepMudWithGrass(Behavior.MUD_DEEP_WITH_GRASS)).toBe(true)
+    expect(isDeepMudWithGrass(Behavior.MUD_DEEP)).toBe(false)
+  })
+
+  it('들어서면 칸 가운데까지 걸어 들어가 붙들리고 ZUPO가 난다 (896줄)', () => {
+    walkIn(Behavior.MUD_DEEP)
+    const p = worldState.player
+    expect(deepMud.stuck).toBe(true)
+    expect([p.position.x, p.position.z]).toEqual([5.5, 5.5])
+    expect(drainBikeCues()).toEqual([ZUPO])
+    // ⚠️ 지금 얼굴과 같은 쪽은 안 센다 (920줄) — 동쪽을 아무리 밀어도 그대로다
+    hold(EAST, 120)
+    expect(deepMud.presses).toBe(0)
+    expect([p.position.x, p.position.z]).toEqual([5.5, 5.5])
+  })
+
+  it('방향을 바꿔 다섯 번 — 넷은 제자리 걸음, 다섯째는 제자리 뛰기로 빠져나온다 (905~945줄)', () => {
+    walkIn(Behavior.MUD_DEEP)
+    drainBikeCues()
+    const p = worldState.player
+    const turns = [NORTH, EAST, NORTH, EAST] as const
+    turns.forEach((d, i) => {
+      // 걸음이 끝날 때까지는 다음 누름을 안 받는다 — 눌러 둔 채라도 한 번이다
+      hold(d, MUD_TURN_FRAMES + 2)
+      expect(deepMud.presses).toBe(i + 1)
+      expect(p.hop.active).toBe(false)
+    })
+    expect(Math.round(p.facing / (Math.PI / 2))).toBe(1) // 마지막이 동쪽
+    expect(terrainSink(Behavior.MUD_DEEP, deepMud.doNotSink)).toBe(-14 / 16)
+    hold(NORTH, 1)
+    expect(deepMud.presses).toBe(DEEP_MUD_PRESSES)
+    expect(p.hop.active).toBe(true)
+    // 「안 가라앉음」은 뛰기 시작할 때 켠다 (945줄)
+    expect(deepMud.doNotSink).toBe(true)
+    expect(terrainSink(Behavior.MUD_DEEP, deepMud.doNotSink)).toBe(0)
+    stand(Math.ceil(MUD_JUMP_TIME * 60) + 3)
+    expect(drainBikeCues()).toEqual([DANSA, SUTYA2, ZUPO2])
+    expect(deepMud.stuck).toBe(false)
+    expect(deepMud.escaped).toBe(true)
+    // 자리는 끝내 그 칸 가운데다
+    expect([p.position.x, p.position.z]).toEqual([5.5, 5.5])
+  })
+
+  it('빠져나온 뒤에는 걸어 나가고, 그 칸을 떠나면 깃발 둘을 지운다 (`player_move.c` 275~278줄)', () => {
+    walkIn(Behavior.MUD_DEEP)
+    for (const d of [NORTH, EAST, NORTH, EAST, NORTH]) hold(d, MUD_TURN_FRAMES + 2)
+    stand(30)
+    expect(deepMud.escaped).toBe(true)
+    // 같은 칸 안에서는 아직 켜져 있다 — 여기서 지우면 그 자리에서 다시 붙든다
+    hold(EAST, 3)
+    expect(Math.floor(worldState.player.position.x)).toBe(5)
+    expect(deepMud.escaped).toBe(true)
+    expect(deepMud.stuck).toBe(false)
+    hold(EAST, 30)
+    expect(Math.floor(worldState.player.position.x)).toBeGreaterThan(5)
+    expect([deepMud.escaped, deepMud.doNotSink]).toEqual([false, false])
+  })
+
+  it('깊은 풀숲은 누를 때마다 조우를 굴리고, 걸리면 돌지 않고 놓는다 (929~938줄)', () => {
+    let rolls = 0
+    mudEncounter.roll = () => ++rolls === 2
+    walkIn(Behavior.MUD_DEEP_WITH_GRASS)
+    hold(NORTH, MUD_TURN_FRAMES + 2)
+    expect(rolls).toBe(1)
+    const facing = worldState.player.facing
+    // 한 프레임만 누른다 — 놓인 뒤로도 누르고 있으면 그대로 걸어 나간다
+    hold(EAST, 1)
+    expect(rolls).toBe(2)
+    expect(deepMud.stuck).toBe(false)
+    expect(deepMud.escaped).toBe(true)
+    // 걸린 누름은 몸을 안 돌린다 — 굴림이 돌기 앞이다
+    expect(worldState.player.facing).toBe(facing)
+    // 가라앉은 채다 — 「안 가라앉음」은 다섯째에만 켠다
+    expect(deepMud.doNotSink).toBe(false)
+  })
+
+  it('풀 없는 깊은 진흙은 굴리지 않는다', () => {
+    let rolls = 0
+    mudEncounter.roll = () => { rolls++; return true }
+    walkIn(Behavior.MUD_DEEP)
+    for (const d of [NORTH, EAST, NORTH]) hold(d, MUD_TURN_FRAMES + 2)
+    expect(rolls).toBe(0)
+    expect(deepMud.presses).toBe(3)
+  })
+
+  it('⚠️ 그 칸에 새로 서면 안 붙든다 — 주인공을 새로 세울 때 깃발을 켠다 (`player_avatar.c` 161줄)', () => {
+    reset('third', 0)
+    activeZone.grid = marsh(Behavior.MUD_DEEP)
+    resetDeepMud()
+    stand()
+    // 워프·불러오기가 진흙 위에 세웠다 — 한 칸 넘게 튀었다
+    worldState.player.position.set(5.5, 0, 5.5)
+    stand()
+    expect(deepMud.stuck).toBe(false)
+    expect(deepMud.escaped).toBe(true)
+    hold(EAST, 30)
+    expect(Math.floor(worldState.player.position.x)).toBeGreaterThan(5)
+  })
+
+  it('진흙 깊이는 원작 fx32 유닛을 16으로 나눈 값이다 (`map_object_move.c` 32~36 · 270~310줄)', () => {
+    expect(terrainSink(Behavior.MUD_DEEP, false)).toBe(-14 / 16)
+    expect(terrainSink(Behavior.MUD_DEEP_WITH_GRASS, false)).toBe(-14 / 16)
+    expect(terrainSink(Behavior.MUD, false)).toBe(-12 / 16)
+    expect(terrainSink(Behavior.MUD_WITH_GRASS, false)).toBe(-12 / 16)
+    expect(terrainSink(Behavior.SNOW_DEEPEST, false)).toBe(-1)
+    expect(terrainSink(Behavior.SNOW_DEEPER, false)).toBe(-14 / 16)
+    expect(terrainSink(Behavior.SNOW_DEEP, false)).toBe(-12 / 16)
+    expect(terrainSink(Behavior.SNOW_SHALLOW, false)).toBe(0)
+    expect(terrainSink(Behavior.NORMAL, false)).toBe(0)
+    for (const b of [Behavior.MUD_DEEP, Behavior.MUD, Behavior.SNOW_DEEPEST]) {
+      expect(terrainSink(b, true)).toBe(0)
+    }
+  })
+
+  it('누른 방향은 지금 얼굴과 다를 때만 센다', () => {
+    expect(mudPressDir({ x: 0, z: -1 }, DIR.east)).toBe(DIR.north)
+    expect(mudPressDir({ x: 1, z: 0 }, DIR.east)).toBe(-1)
+    expect(mudPressDir({ x: 0, z: 0 }, DIR.east)).toBe(-1)
+    // 비스듬하면 크게 민 쪽, 같으면 위아래다
+    expect(mudPressDir({ x: -0.9, z: 0.3 }, DIR.north)).toBe(DIR.west)
+    expect(mudPressDir({ x: 0.707, z: 0.707 }, DIR.north)).toBe(DIR.south)
   })
 })

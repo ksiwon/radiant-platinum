@@ -5,7 +5,7 @@
 //
 // RNG를 주입받는 이유: 테스트에서 결과를 고정해야 하고, 나중에 저장 파일 기반
 // 재현 가능한 시드로 바꿀 여지를 남겨 둔다.
-import { Behavior } from '../map/zone'
+import { Behavior, isDeepMudWithGrass } from '../map/zone'
 import { RADAR_SLOTS } from '../world/pokeRadar'
 import { SPECIES_GASTRODON, SPECIES_SHELLOS, SPECIES_UNOWN } from '../pokemon/form'
 import { TimeOfDay, type TimeOfDayId } from '../map/timeOfDay'
@@ -488,6 +488,38 @@ export function isTuftTile(behavior: number): boolean {
   return isGrassTile(behavior)
     || behavior === Behavior.MUD_WITH_GRASS
     || behavior === Behavior.MUD_DEEP_WITH_GRASS
+}
+
+// ── 깊은 진흙에서 버둥거릴 때 (`WildEncounters_TryMudEncounter`) ─────────────────
+
+/**
+ * 붙들린 채 방향을 바꿔 누를 때마다 조우를 굴리는 칸인가 (`FieldTask_StuckInDeepMud`,
+ * `overlay005/ov5_021DFB54.c` 929줄).
+ *
+ * ⚠️ **깊은 풀숲 하나뿐이다.** 풀 없는 깊은 진흙(0xA5)도 붙들지만 굴리지는 않는다 —
+ * 원작이 붙드는 칸은 `IsDeepMud || IsDeepMudWithGrass`로 묻고(870줄) 굴리는 칸은
+ * `IsDeepMudWithGrass` 하나로 묻는다
+ */
+export function rollsOnMudPress(behavior: number): boolean {
+  return isDeepMudWithGrass(behavior)
+}
+
+/**
+ * 버둥거릴 때의 조우를 굴리는 자리 (`WildEncounters_TryMudEncounter`,
+ * `overlay006/wild_encounters.c` 559줄). 걸렸으면 참이고, 그때 배틀이 열린다.
+ *
+ * 걷는 조우와 **같은 길이다** — 선 칸의 출현률(`GetTileEncounterRateAndType`) · 선두
+ * 보정 · 피리 · 지닌 물건 · `ShouldGetRandomEncounter`(유예 구간과 40% 관문) · 배회 ·
+ * 사파리 · 대습초원 오늘의 포켓몬 · 동행 더블까지 다 거친다. 다른 것은 **레이더를 안
+ * 본다**는 것 하나다(`radarData.isRadarEncounter = FALSE`).
+ *
+ * ⚠️ **그래서 여기서 굴리지 않고 다리만 둔다.** 유예 구간을 세는 값이 걷는 조우와
+ * **하나다**(`fieldSystem->wildBattleMetadata.encounterAttempts`) — 따로 세면 버둥거린
+ * 수가 걷는 조우의 유예를 안 깎고, 버둥거리다 만난 뒤에도 걷는 쪽 유예가 안 열린다.
+ * 그 값을 쥔 쪽(`battle/encounterSystem`)이 채운다. 비어 있으면 굴리지 않는다
+ */
+export const mudEncounter = {
+  roll: null as (() => boolean) | null,
 }
 
 // ── 야생의 폼 (PARITY §3.4 · `AddWildMonToParty`) ─────────────────────────────

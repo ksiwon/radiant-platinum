@@ -57,6 +57,8 @@ export function walkEffects(s: StepSurface): number[] {
   if (isOnSnow(s.next, s.onBridge) || isSnowWithShadows(s.next)) out.push(SFX.SNOW_STEP)
   if (isPuddle(s.next)) out.push(SFX.PUDDLE_STEP)
   if (isShallowWater(s.next)) out.push(SFX.SHALLOW_WATER_STEP)
+  // 깊은 진흙은 걸음 소리 대신 **붙들리는 소리**다 — `SEQ_SE_DP_ZUPO`·`ZUPO2`는 걸음이
+  // 아니라 붙드는 과제가 낸다 (`actor/player`의 `deepMud`)
   if (isMud(s.next) && !isDeepMud(s.next)) out.push(SFX.MUD_STEP)
   if (!s.walkOnSpotSlow && (isVeryTallGrass(s.next) || isVeryTallGrass(s.cur))) {
     out.push(SFX.GRASS_BRUSH)

@@ -1,7 +1,10 @@
 // 플레이어 이동 — fixedUpdate에서 적분, 렌더는 prev/current 보간
 import { Vector3 } from 'three'
 import { worldState } from '../../state/worldState'
-import { activeZone, isOnWater } from '../map/zone'
+import {
+  activeZone, Behavior, isDeepMud, isDeepMudWithGrass, isMud, isMudWithGrass, isOnWater,
+} from '../map/zone'
+import { mudEncounter, rollsOnMudPress } from '../battle/encounter'
 import { MapGrid } from '../map/grid'
 import { standableSpot } from '../map/world'
 import { distortionHop, HOP_RISE, HOP_TIME, HOP_TWICE_TIME, ledgeHop } from './ledge'
@@ -297,6 +300,288 @@ function seatLook(facing: number): boolean {
   return true
 }
 
+// ── 깊은 진흙 (`FieldTask_StuckInDeepMud`, `overlay005/ov5_021DFB54.c` 861~956줄) ──────
+//
+// 대습초원의 깊은 진흙에 들어서면 **붙들린다.** 걸음이 막히고, 방향을 바꿔 다섯 번
+// 눌러야 뛰어 나온다. 원작은 이것을 걸음이 아니라 필드 과제 하나로 돌린다 —
+// 과제가 도는 동안은 걷기·말 걸기가 다 멈춘다.
+//
+//   붙든다     걸음이 칸 가운데서 끝났고 그 칸이 깊은 진흙 · 깊은 풀숲이며
+//              「빠져나왔다」 깃발이 꺼져 있다 (`FieldSystem_TryGetStuckInDeepMud`, 861줄)
+//   0          `SEQ_SE_DP_ZUPO` (896줄)
+//   1          동작이 끝나기를 기다린다. 다섯 번 눌렀으면 `SEQ_SE_DP_ZUPO2`를 내고
+//              깃발을 켜고 놓는다 (905~910줄)
+//   2          **지금 얼굴과 다른 쪽**을 누를 때만 센다 (920줄). 깊은 풀숲이면 그때마다
+//              조우를 굴리고(929줄) 걸리면 깃발을 켜고 배틀로 간다. 다섯째 전까지는
+//              제자리 빠른 걸음, 다섯째는 제자리 뛰기에 「안 가라앉음」을 켠다 (941~945줄)
+//   지운다     다음 걸음을 떼면 두 깃발을 끈다 (`PlayerAvatar_EnableTileBehaviorCheck`,
+//              `player_move.c` 272~278줄)
+//
+// ⚠️ **우리 걸음은 연속이다.** 원작의 「걸음이 칸 가운데서 끝났다」는 몸 가운데가 그
+// 칸에 들어선 순간 칸 가운데로 마저 걸어 들어가는 것으로 옮겼고, 「다음 걸음을 뗐다」는
+// 그 칸을 벗어난 순간으로 옮겼다. 같은 칸 안에서 지우면 그 자리에서 곧바로 다시 붙든다.
+//
+// ⚠️ **진흙 클립이 아직 없다.** BDSP 치비의 `swamp_fit_in`·`swamp_loop`·`swamp_end`를 안
+// 구웠다(docs/3D_GAP_AUDIT.md). 그래서 제자리 빠른 걸음은 **걷는 자세를 그 프레임만큼**
+// 돌리는 것으로, 제자리 뛰기는 턱 넘기와 같은 도약 자세로 물러서 둔다
+
+/** `SEQ_SE_DP_ZUPO` — 붙들릴 때 (896줄). 우리가 구운 SDAT 목차에서 이름으로 찾은 번호다 */
+const SEQ_SE_DP_ZUPO = 1617
+/** `SEQ_SE_DP_ZUPO2` — 다섯 번 버둥거린 끝에 빠져나올 때 (906줄) */
+const SEQ_SE_DP_ZUPO2 = 1618
+/** `SEQ_SE_DP_DANSA` — 제자리 뛰기가 뜰 때 (`MovementAction_InitJump`의 기본 소리, `unk_020655F4.c` 813줄) */
+const SEQ_SE_DP_DANSA = 1547
+/** `SEQ_SE_DP_SUTYA2` — 제자리 뛰기가 내려설 때 (`MovementAction_Jump_Step1` 끝, 869줄) */
+const SEQ_SE_DP_SUTYA2 = 1607
+
+/** 빠져나오려면 방향을 바꿔 누를 수 (`stepCounter >= 5`, 905줄) */
+export const DEEP_MUD_PRESSES = 5
+/**
+ * 제자리 빠른 걸음 하나가 먹는 프레임 (`MOVEMENT_ACTION_WALK_ON_SPOT_FASTER_*`).
+ *
+ * `InitWalkOnSpot(…, 2, …)`이 `duration + 1` = 3을 두고(`unk_020655F4.c` 642줄) 한
+ * 프레임에 하나씩 깎는다. 첫 단계가 참을 돌려주면 같은 프레임에 다음 단계로 가므로
+ * (`MapObject_DoMovementAction`의 `do … while`) 시작한 프레임도 하나를 깎는다 — 3프레임이다
+ */
+export const MUD_TURN_FRAMES = 3
+/**
+ * 제자리 뛰기의 시간(초). 원작은 8프레임이다 (`MOVEMENT_ACTION_JUMP_ON_SPOT_FAST_*`,
+ * `InitJump(…, 0, 8, …)` · `unk_020655F4.c` 903줄).
+ *
+ * ⚠️ **턱 넘기와 같은 비율로 늘렸다.** 턱은 원작 16프레임을 `HOP_TIME`(0.4초)으로 늘려
+ * 두었고 높이표도 같은 `sJumpHeights_High`다 — 한쪽만 원작 값이면 진흙에서만 뛰는 것이
+ * 튄다(`WALK_SPEED` 머리말)
+ */
+export const MUD_JUMP_TIME = HOP_TIME * (8 / 16)
+
+/**
+ * 깊은 진흙에 붙들린 상태 (`StuckInDeepMudTaskEnv`, 116줄 · 그리고 깃발 둘).
+ *
+ * 그리는 쪽이 「안 가라앉음」을 읽는다 (`scene/PlayerModel`의 `terrainSink`)
+ */
+export const deepMud = {
+  /** 과제가 도는 중인가 — 붙들려 있다 */
+  stuck: false,
+  /** 칸 가운데로 마저 걸어 들어가는 중. 다 들어가야 `ZUPO`가 난다 */
+  settling: false,
+  /** `stepCounter` — 방향을 바꿔 누른 수 */
+  presses: 0,
+  /** 지금 도는 제자리 걸음이 남은 프레임 */
+  wait: 0,
+  /** 제자리 뛰기 중 — 내려서면 `SUTYA2` 다음 프레임에 `ZUPO2`다 */
+  jumping: false,
+  /** `AVATAR_MOVE_ESCAPED_FROM_DEEP_MUD` (`player_avatar.c` 1082~1096줄) */
+  escaped: false,
+  /** `MAP_OBJ_DO_NOT_SINK_INTO_TERRAIN` (`MapObject_SetFlagDoNotSinkIntoTerrain`) */
+  doNotSink: false,
+  /** 붙든 칸. 이 칸을 벗어나면 깃발 둘을 지운다 */
+  tileX: 0,
+  tileZ: 0,
+  /**
+   * 붙들릴 때마다 부른다 — 원작은 여기서 `RECORD_TIMES_STUCK_IN_DEEP_MUD`를 하나 올린다
+   * (886줄). 기록은 세이브에 살아서 엔진이 직접 못 쓴다(PLAN §3.2) — 씬이 채운다
+   */
+  onStuck: null as (() => void) | null,
+}
+
+/** 지난 스텝에 서 있던 칸. 처음이면 `NaN`이다 (`noteAvatarTile`) */
+let seenX = NaN
+let seenZ = NaN
+
+/** 깊은 진흙 상태를 처음으로 — 시험이 부른다. 다음 스텝이 주인공을 새로 세운 것으로 친다 */
+export function resetDeepMud(): void {
+  Object.assign(deepMud, {
+    stuck: false, settling: false, presses: 0, wait: 0, jumping: false,
+    escaped: false, doNotSink: false, tileX: 0, tileZ: 0,
+  })
+  seenX = NaN
+  seenZ = NaN
+}
+
+/**
+ * 주인공을 **새로 세웠다** (`PlayerAvatar_Init`, `player_avatar.c` 161줄).
+ *
+ * ⚠️ **「빠져나왔다」를 켠 채로 선다.** 원작은 맵에 들어설 때마다(워프 · 불러오기 ·
+ * 공중날기) 그리고 **배틀에서 돌아올 때마다** 필드를 새로 짓고 주인공도 새로 세운다 —
+ * 그래서 깊은 진흙 위에서 불러오거나 그 칸에서 야생을 만나고 돌아오면 그 칸에서는 안
+ * 붙들리고, 몸은 가라앉은 채다(새 맵 객체라 「안 가라앉음」이 꺼져 있다)
+ */
+function avatarInit(tx: number, tz: number): void {
+  Object.assign(deepMud, {
+    stuck: false, settling: false, presses: 0, wait: 0, jumping: false,
+    escaped: true, doNotSink: false, tileX: tx, tileZ: tz,
+  })
+}
+
+/**
+ * 스텝마다 선 칸을 적고, **한 칸 넘게 건너뛰었으면** 주인공을 새로 세운 것으로 친다.
+ *
+ * 우리는 워프해도 필드를 새로 안 짓는다 — 그래서 원작의 「새로 세웠다」를 자리가 튄 것으로
+ * 알아챈다. 걸음·턱 넘기·스크립트 걸음은 한 스텝에 한 칸을 못 넘으니 여기 안 걸린다
+ */
+function noteAvatarTile(x: number, z: number): void {
+  const tx = Math.floor(x), tz = Math.floor(z)
+  // NaN과의 비교는 늘 거짓이라 `!(… <= 1)`로 묻는다 — 처음 스텝도 새로 세운 것이다
+  if (!(Math.max(Math.abs(tx - seenX), Math.abs(tz - seenZ)) <= 1)) avatarInit(tx, tz)
+  seenX = tx
+  seenZ = tz
+}
+
+/** 붙드는 칸인가 (`FieldSystem_TryGetStuckInDeepMud`의 870줄) */
+export function stuckInDeepMud(behavior: number): boolean {
+  return isDeepMud(behavior) || isDeepMudWithGrass(behavior)
+}
+
+/**
+ * 몸이 땅에 묻히는 깊이(타일, 음수) — `MapObject_SinkIntoTerrain` (`map_object_move.c` 270~310줄).
+ *
+ * 원작 값은 fx32 유닛이고 한 칸이 16유닛이다 (32~36줄): 깊은 진흙 −14 · 진흙 −12 ·
+ * 제일 깊은 눈 −16 · 더 깊은 눈 −14 · 깊은 눈 −12. **차례가 그대로 중요하다** — 깊은 진흙을
+ * 먼저 묻는다. `IsMud`가 깊은 진흙(0xA5)까지 품고 있어서 뒤집으면 −12가 된다.
+ *
+ * ⚠️ **사람 키가 원작과 거의 같아서 값을 그대로 쓴다.** 원작 인물 그림은 두 칸(32유닛)
+ * 높이에 몸이 그 대부분을 채우고, 우리 몸은 1.5칸이다(`PLAYER_HEIGHT`) — 14/16칸이면
+ * 둘 다 몸의 절반 남짓이 묻힌다
+ */
+export function terrainSink(behavior: number, doNotSink: boolean): number {
+  if (doNotSink) return 0
+  if (isDeepMud(behavior) || isDeepMudWithGrass(behavior)) return -14 / 16
+  if (isMud(behavior) || isMudWithGrass(behavior)) return -12 / 16
+  if (behavior === Behavior.SNOW_DEEPEST) return -16 / 16
+  if (behavior === Behavior.SNOW_DEEPER) return -14 / 16
+  if (behavior === Behavior.SNOW_DEEP) return -12 / 16
+  return 0
+}
+
+/** `facing`(0이 남쪽) → `DIR`. `FACING_STEP`의 차례가 남 · 동 · 북 · 서다 */
+const DIR_OF_QUARTER = [DIR.south, DIR.east, DIR.north, DIR.west] as const
+
+/**
+ * 붙들린 채 누른 방향 (`PlayerAvatar_CalcFaceDirection`, 920줄). 세지 않을 누름이면 −1.
+ *
+ * ⚠️ **지금 얼굴과 같은 쪽은 안 센다** — 한 방향을 꾹 누르고 있어서는 못 빠져나온다.
+ *
+ * 원작은 네 방향 키라 대각선이 드물다. 둘 다 눌렸으면 **크게 민 쪽**이고 같으면
+ * 위아래다 — `bumpDirection`과 같은 잣대다
+ *
+ * @param push   밀고 있는 방향 (`pushDirection`)
+ * @param facing 지금 얼굴 (`DIR`)
+ */
+export function mudPressDir(push: { x: number, z: number }, facing: number): number {
+  const ax = Math.abs(push.x), az = Math.abs(push.z)
+  let want = -1
+  if (ax > 0.2 && ax > az) want = push.x > 0 ? DIR.east : DIR.west
+  else if (az > 0.2) want = push.z > 0 ? DIR.south : DIR.north
+  return want === facing ? -1 : want
+}
+
+/**
+ * 붙들린 동안의 한 프레임. 이 프레임을 진흙이 먹었으면 참이다 — 그때는 걷지 않는다.
+ *
+ * 깨어진 세계·자전거·파도타기에서는 안 본다 — 깊은 진흙이 대습초원에만 있고 거기는
+ * 자전거가 금지다(`CanUseBicycle`)
+ */
+function deepMudStep(dt: number, push: { x: number, z: number }): boolean {
+  const p = worldState.player
+  const m = deepMud
+  const grid = activeZone.grid
+  if (!grid || p.cycling || p.surfing || distortionBridge.inWorld?.() === true) {
+    m.stuck = false
+    return false
+  }
+  const tx = Math.floor(p.position.x), tz = Math.floor(p.position.z)
+  // 다음 걸음을 뗐다 — 깃발 둘을 지운다 (`player_move.c` 275~278줄)
+  if ((m.escaped || m.doNotSink) && (tx !== m.tileX || tz !== m.tileZ)) {
+    m.escaped = false
+    m.doNotSink = false
+  }
+  const here = grid.behavior(tx, tz)
+  if (!m.stuck) {
+    if (m.escaped || !stuckInDeepMud(here)) return false
+    Object.assign(m, { stuck: true, settling: true, presses: 0, wait: 0, jumping: false, tileX: tx, tileZ: tz })
+    m.onStuck?.()
+  } else if (tx !== m.tileX || tz !== m.tileZ) {
+    // 스크립트·워프가 몸을 옮겼다. 과제는 그 칸에 매여 있었다
+    m.stuck = false
+    m.jumping = false
+    return false
+  }
+
+  p.velocity.set(0, 0, 0)
+  const ground = grid.heightAtWorld(p.position.x, p.position.z, p.position.y)
+  if (ground !== null) p.position.y = ground
+  const step = FACING_STEP[quarterOf(p.facing)]!
+
+  if (m.settling) {
+    // 칸 가운데로 마저 들어간다 — 원작의 걸음이 거기서 끝난다
+    const dx = tx + 0.5 - p.position.x, dz = tz + 0.5 - p.position.z
+    const left = Math.hypot(dx, dz)
+    const reach = playerSpeed() * dt
+    if (left > reach) {
+      p.position.x += (dx / left) * reach
+      p.position.z += (dz / left) * reach
+      // 걷는 자세가 이어지게 속도를 둔다 — 자리는 위에서 옮겼다
+      p.velocity.set((dx / left) * playerSpeed(), 0, (dz / left) * playerSpeed())
+      return true
+    }
+    p.position.x = tx + 0.5
+    p.position.z = tz + 0.5
+    // 얼굴도 네 방향 중 하나로 접어 둔다 — 비스듬히 들어왔어도 원작의 얼굴은 늘 네 방향이고,
+    // 「지금 얼굴과 다른 쪽」을 그 넷으로 묻는다
+    p.facing = Math.atan2(step.x, step.z)
+    m.settling = false
+    pushBikeCue(SEQ_SE_DP_ZUPO)
+  }
+
+  // 1 — 동작이 끝나기를 기다린다
+  if (m.jumping) {
+    m.jumping = false
+    pushBikeCue(SEQ_SE_DP_SUTYA2)
+    return true
+  }
+  if (m.wait > 0) {
+    m.wait -= 1
+    // 제자리 걸음이라 자리는 그대로고 발만 걷는다 (위 머리말의 ⚠️)
+    p.velocity.set(step.x * WALK_SPEED, 0, step.z * WALK_SPEED)
+    return true
+  }
+  if (m.presses >= DEEP_MUD_PRESSES) {
+    pushBikeCue(SEQ_SE_DP_ZUPO2)
+    m.escaped = true
+    m.stuck = false
+    return true
+  }
+
+  // 2 — 다른 쪽을 눌렀을 때만 센다
+  const want = mudPressDir(push, DIR_OF_QUARTER[quarterOf(p.facing)]!)
+  if (want < 0) return true
+  m.presses += 1
+  // ⚠️ **돌기 전에 굴린다** — 걸리면 얼굴을 안 바꾸고 곧바로 배틀이다 (929~938줄).
+  // 몸은 가라앉은 채다: 「안 가라앉음」은 다섯째에만 켠다
+  if (rollsOnMudPress(here) && mudEncounter.roll?.() === true) {
+    m.escaped = true
+    m.stuck = false
+    return true
+  }
+  const turn = DIR_STEP[want]!
+  p.facing = Math.atan2(turn.x, turn.z)
+  if (m.presses < DEEP_MUD_PRESSES) {
+    m.wait = MUD_TURN_FRAMES
+    p.velocity.set(turn.x * WALK_SPEED, 0, turn.z * WALK_SPEED)
+    return true
+  }
+  // 다섯째 — 제자리 뛰기에 「안 가라앉음」(945줄)
+  m.doNotSink = true
+  m.jumping = true
+  p.hop = {
+    active: true, t: 0, time: MUD_JUMP_TIME, rise: HOP_RISE,
+    fromX: p.position.x, fromZ: p.position.z, fromY: p.position.y,
+    toX: p.position.x, toZ: p.position.z,
+  }
+  pushBikeCue(SEQ_SE_DP_DANSA)
+  return true
+}
+
 export const playerSystem = {
   fixedUpdate(dt: number) {
     const p = worldState.player
@@ -307,12 +592,15 @@ export const playerSystem = {
     // 갈래로 빠져나가도 낡은 값이 남지 않게 여기서 먼저 비운다 — 타거나 뛰는
     // 동안은 조작이 아예 안 먹으므로 그 갈래들은 −1로 나가는 것이 맞다
     p.bumpDir = -1
+    noteAvatarTile(p.position.x, p.position.z)
 
     // 조우 컷인이 도는 동안은 발이 묶인다 (`MapObjectMan_PauseAllMovement`,
     // `encounter.c` 168줄). 안 묶으면 화면이 찢어지는 동안 계속 걸어가서
     // 배틀이 열릴 때 서 있는 칸이 조우한 칸이 아니다
     if (p.riding || p.flying || cutInFrame.now !== null) {
       p.velocity.set(0, 0, 0)
+      // 배틀로 간다 — 원작은 돌아올 때 주인공을 새로 세운다 (`avatarInit`)
+      if (cutInFrame.now !== null) avatarInit(Math.floor(p.position.x), Math.floor(p.position.z))
       /**
        * ⚠️ **빠져나가는 갈래에서도 `prevPosition`을 맞춰 둔다.**
        *
@@ -380,6 +668,13 @@ export const playerSystem = {
       // 뜨면 안 되고, 오르는 높이는 지형이 준다 (`script/field`의 `hopTo`)
       p.position.y = (ground ?? p.position.y) + p.hop.rise * 4 * k * (1 - k)
       if (p.hop.t >= 1) p.hop.active = false
+      worldState.time.elapsed += dt
+      return
+    }
+
+    // 깊은 진흙에 붙들려 있으면 걷지 않는다. 뛰는 판정 **뒤에** 둔다 — 빠져나오는
+    // 제자리 뛰기가 `hop`으로 돈다
+    if (deepMudStep(dt, dir)) {
       worldState.time.elapsed += dt
       return
     }
