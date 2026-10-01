@@ -130,3 +130,38 @@ export function rockVariant(x: number, z: number): number {
   const s = Math.sin(x * 127.1 + z * 311.7 + 17.3) * 43758.5453
   return Math.floor((s - Math.floor(s)) * ROCK_RECIPES.length) % ROCK_RECIPES.length
 }
+
+/**
+ * 덩이가 **실제로** 차지하는 폭 (폭 1 기준).
+ *
+ * ⚠️ **1이 아니다.** 둘레 표(`bumps`)가 반지름을 최대 1.14배까지 밀어서 실루엣이
+ * 폭 1을 넘는다 — 그대로 세우면 한 칸짜리 바위가 옆 칸을 문다. 칸 하나를
+ * 막고 선 바위(`NpcSprites`의 괴력 바위·바위깨기 바위)는 이 값으로 나눠 폭을
+ * 원작 그림의 불투명한 폭에 맞춘다. 높이와 상관없는 값이다 (링의 x·z만 본다)
+ */
+export function rockSpan(recipe: RockRecipe): number {
+  const p = rockPositions(recipe, 1, 0)
+  let half = 0
+  for (let i = 0; i < p.length; i += 3) {
+    half = Math.max(half, Math.abs(p[i]!), Math.abs(p[i + 2]!))
+  }
+  return 2 * half
+}
+
+/**
+ * 수평 회전의 폭 (라디안).
+ *
+ * ⚠️ **한 바퀴 다 돌리면 안 된다.** 앞면에 원작 문양을 폈으므로(`rockPaint`)
+ * 아무 방향으로나 돌리면 그 문양이 등 뒤로 간다. 줄지어 선 것을 흩는 몫이라
+ * 이만큼이면 된다 (`Rocks`의 `SPIN`과 같은 값)
+ */
+export const ROCK_SPIN = Math.PI / 9
+
+/**
+ * 자리에서 고른 수평 회전 (−`ROCK_SPIN` ~ +`ROCK_SPIN`). 같은 바위는 늘 같은
+ * 각으로 선다 — 밀려서 자리가 바뀌는 바위는 **배치표의 처음 자리**를 넘긴다
+ */
+export function rockSpin(x: number, z: number): number {
+  const s = Math.sin(x * 127.1 + z * 311.7 + 5 * 74.7) * 43758.5453
+  return ((s - Math.floor(s)) * 2 - 1) * ROCK_SPIN
+}

@@ -149,3 +149,22 @@ export function rockUvs(position: Float32Array, tall: number): Float32Array {
   }
   return out
 }
+
+/**
+ * **사람 판때기 그림 한 장**에서 바위 그림을 잘라 온다 — 괴력 바위
+ * (`STRENGTH_BOULDER` 84)와 바위깨기 바위(`ROCK_SMASH` 85)가 이 길이다.
+ *
+ * 그 그림은 맵 그림판이 아니라 `data/npc/<gfx>.png` 한 장이고, 장이 가로로
+ * 이어 붙어 있다(`NpcSprite.frames`). 바위는 장이 하나뿐이라 첫 장만 쓴다.
+ * 자르고 메우는 것은 맵 바위와 같은 `rockCrop`이 한다
+ *
+ * @param pixels 그림 전체의 RGBA (캔버스에서 읽은 그대로)
+ * @param frameW 한 장의 폭(텍셀)
+ */
+export function spriteRockCrop(
+  pixels: Uint8ClampedArray, width: number, height: number, frameW: number, frameH: number,
+): RockCrop | null {
+  if (pixels.length < width * height * 4) return null
+  const item = { x: 0, y: 0, w: Math.min(frameW, width), h: Math.min(frameH, height) }
+  return rockCrop({ width, height, items: [], pixels }, item, 0, 1, 0, 1)
+}

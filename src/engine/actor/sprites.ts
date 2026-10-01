@@ -206,6 +206,25 @@ export function castsFootShadow(sprite: NpcSprite): boolean {
   return !NO_SHADOW.has(sprite.name)
 }
 
+/** 몸빛 단계의 끝 (`SPRITE_PALETTE_MAX_TINT_LEVEL`, `ov9_02249960.c`) */
+const MAX_TINT = 16
+
+/**
+ * 몸빛 단계(`Movable.darkness`, 0~16)를 **색 배율**로 (sRGB).
+ *
+ * 원작은 팔레트 16색을 하나씩 `base + ((0 − base) · level >> 4)`로 검정 쪽에 섞는다
+ * (`CalculateTintedColor(…, COLOR_BLACK, level)`). 검정이 0이라 그 식은 곧
+ * `base · (1 − level/16)`이고, 5비트 sRGB 값에 거는 것이라 배율도 sRGB다 — 선형
+ * 색에 그대로 곱하면 중간 단계가 너무 어둡다. 입체 몬(`NpcMonModels`)과 판때기
+ * (`NpcSprites`)가 같은 값을 쓴다.
+ *
+ * ⚠️ **팔레트 반올림은 안 옮긴다.** 원작은 채널마다 `>> 4`로 내림하므로 한 칸쯤
+ * 더 어둡다 — 팔레트를 안 들고 있는 우리는 곱 하나로 건다
+ */
+export function darknessTint(level: number): number {
+  return 1 - Math.min(MAX_TINT, Math.max(0, level)) / MAX_TINT
+}
+
 /** `TILE_BEHAVIOR_REFLECTIVE` — 열거형에서 0x2C번째다 (`map_tile_behaviors.h`) */
 const REFLECTIVE = 0x2c
 

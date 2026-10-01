@@ -1,7 +1,10 @@
 // 바위 그림 (FIRST_PERSON §6.3).
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { rockCrop, rockUvs } from './rockPaint'
-import { rockPositions, ROCK_RECIPES } from './rockShape'
+import { rockCrop, rockUvs, spriteRockCrop } from './rockPaint'
+import { rockAspect, rockPositions, ROCK_RECIPES } from './rockShape'
+import { DATA, decodePng, withData } from '../data/romData.testkit'
+import { TEXELS_PER_TILE } from '../engine/actor/sprites'
 import type { TexSheet } from './chunkMesh'
 
 /** 가운데만 불투명한 8×8 한 장 */
@@ -121,4 +124,50 @@ describe('UV', () => {
     }
     expect(flat).toBe(0)
   })
+})
+
+describe('사람 판때기 그림에서 바위 잘라 오기 (`spriteRockCrop`)', () => {
+  /** 두 장이 가로로 붙은 4×4 그림. 첫 장만 가운데 2×2가 불투명하다 */
+  function strip(): Uint8ClampedArray {
+    const w = 8, h = 4
+    const px = new Uint8ClampedArray(w * h * 4)
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const o = (y * w + x) * 4
+        const first = x >= 1 && x <= 2 && y >= 1 && y <= 2
+        // 둘째 장은 통째로 불투명 — 딸려 오면 비율이 1이 된다
+        const second = x >= 4
+        px[o] = 90; px[o + 1] = 80; px[o + 2] = 70
+        px[o + 3] = first || second ? 255 : 0
+      }
+    }
+    return px
+  }
+
+  it('첫 장만 잘라 온다 — 옆 장이 딸려 오지 않는다', () => {
+    const crop = spriteRockCrop(strip(), 8, 4, 4, 4)!
+    expect(crop.width).toBe(4)
+    expect(crop.height).toBe(4)
+    expect(crop.rows).toBeCloseTo(2 / 4, 6)
+    expect(crop.cols).toBeCloseTo(2 / 4, 6)
+  })
+
+  it('픽셀이 모자라면 안 만든다', () => {
+    expect(spriteRockCrop(new Uint8ClampedArray(12), 8, 4, 4, 4)).toBeNull()
+  })
+})
+
+withData('npc/84.png', 'npc/85.png')('괴력 바위 · 바위깨기 바위의 실제 그림', () => {
+  // 폭과 높이가 여기서 나온다 (`NpcSprites`의 `rockKitOf`). 두 그림 다 16×16에서
+  // 위아래 한 줄 · 좌우 한 칸씩 비어 14×14가 바위다 — 손으로 센 값과 맞댄다
+  for (const [gfx, name] of [[84, '괴력 바위'], [85, '바위깨기 바위']] as const) {
+    it(`${name}(${String(gfx)})는 16칸 중 14칸이라 폭 0.875칸 · 높이는 폭의 0.414배다`, () => {
+      const png = decodePng(resolve(DATA, `npc/${String(gfx)}.png`))
+      const crop = spriteRockCrop(png.pixels, png.width, png.height, 16, 16)!
+      expect(crop.rows).toBeCloseTo(14 / 16, 6)
+      expect(crop.cols).toBeCloseTo(14 / 16, 6)
+      expect((16 / TEXELS_PER_TILE) * crop.cols).toBeCloseTo(0.875, 6)
+      expect(rockAspect(crop.rows, crop.cols)).toBeCloseTo(Math.SQRT2 - 1, 6)
+    })
+  }
 })

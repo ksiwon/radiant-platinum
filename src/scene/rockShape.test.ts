@@ -1,7 +1,7 @@
 // 바위 모양 (FIRST_PERSON §6.3).
 import { describe, expect, it } from 'vitest'
 import {
-  ROCK_RECIPES, ROCK_SIDES, rockAspect, rockPositions, rockVariant,
+  ROCK_RECIPES, ROCK_SIDES, ROCK_SPIN, rockAspect, rockPositions, rockSpan, rockSpin, rockVariant,
 } from './rockShape'
 
 const tris = (p: Float32Array): number => p.length / 9
@@ -101,5 +101,55 @@ describe('실루엣에서 높이를 받는다', () => {
   it('판때기도 기둥도 안 된다', () => {
     expect(rockAspect(0.01, 1)).toBeGreaterThanOrEqual(0.22)
     expect(rockAspect(1, 0.05)).toBeLessThanOrEqual(0.95)
+  })
+})
+
+describe('실제로 차지하는 폭 (`rockSpan`)', () => {
+  it('둘레 표가 반지름을 밀어서 폭 1을 넘는다 — 그대로 세우면 옆 칸을 문다', () => {
+    for (const r of ROCK_RECIPES) expect(rockSpan(r), r.id).toBeGreaterThan(1)
+  })
+
+  it('높이와 상관없다 — 링의 x·z만 본다', () => {
+    for (const r of ROCK_RECIPES) {
+      const p = rockPositions(r, 0.9, 0.1)
+      let half = 0
+      for (let i = 0; i < p.length; i += 3) half = Math.max(half, Math.abs(p[i]!), Math.abs(p[i + 2]!))
+      expect(2 * half, r.id).toBeCloseTo(rockSpan(r), 6)
+    }
+  })
+
+  it('`span`으로 나눠 세우면 폭이 정확히 원하는 폭이고 높이는 폭의 `aspect`배다', () => {
+    // `NpcSprites`가 괴력 바위·바위깨기 바위를 세우는 셈 그대로다
+    const width = 0.875, aspect = rockAspect(14 / 16, 14 / 16)
+    for (const r of ROCK_RECIPES) {
+      const span = rockSpan(r)
+      const s = width / span
+      const p = rockPositions(r, aspect * span, 0)
+      let half = 0, top = 0
+      for (let i = 0; i < p.length; i += 3) {
+        half = Math.max(half, Math.abs(p[i]!), Math.abs(p[i + 2]!))
+        top = Math.max(top, p[i + 1]!)
+      }
+      expect(2 * half * s, r.id).toBeCloseTo(width, 6)
+      expect(top * s, r.id).toBeCloseTo(aspect * width, 6)
+    }
+  })
+})
+
+describe('수평 회전 (`rockSpin`)', () => {
+  it('자리가 같으면 늘 같은 각이다', () => {
+    expect(rockSpin(805, 451)).toBe(rockSpin(805, 451))
+  })
+
+  it('앞면 문양이 등 뒤로 안 가게 폭 안에서만 돈다', () => {
+    let lo = 0, hi = 0
+    for (let i = 0; i < 300; i++) {
+      const a = rockSpin(i * 1.3, i * 0.7)
+      expect(Math.abs(a)).toBeLessThanOrEqual(ROCK_SPIN)
+      lo = Math.min(lo, a); hi = Math.max(hi, a)
+    }
+    // 한쪽으로만 쏠리면 흩는 뜻이 없다
+    expect(lo).toBeLessThan(-ROCK_SPIN / 2)
+    expect(hi).toBeGreaterThan(ROCK_SPIN / 2)
   })
 })

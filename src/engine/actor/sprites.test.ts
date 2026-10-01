@@ -5,15 +5,17 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { Object3D, PerspectiveCamera } from 'three'
 import {
-  artDir, cameraQuadrant, castsFootShadow, footShadow, footShadowOpacity, frameOf,
-  hidesFootShadow, loadNpcSprites, npcSprite, plateQuadrant, SHADOW_OFFSET, stepFootShadow,
-  type NpcSprite,
+  artDir, cameraQuadrant, castsFootShadow, darknessTint, footShadow, footShadowOpacity,
+  frameOf, hidesFootShadow, loadNpcSprites, npcSprite, plateQuadrant, SHADOW_OFFSET,
+  stepFootShadow, type NpcSprite,
 } from './sprites'
 import { Behavior } from '../map/zone'
 import { TimeOfDay } from '../map/timeOfDay'
 import { withData } from '../../data/romData.testkit'
 import { plateShade } from '../../scene/NpcSprites'
+import { faceCamera } from '../../scene/billboard'
 import { NIGHT_FLOOR, TIME_LOOKS } from '../../scene/fx/sky'
 
 /** 닌자꼬마와 같은 모양의 최소 표본 — 16장, 방향마다 4장 */
@@ -208,6 +210,59 @@ describe('판때기 밝기 (`plateShade`)', () => {
   })
 })
 
+describe('몸빛 단계 (`darknessTint`)', () => {
+  it('0이면 그대로, 16이면 새까맣다', () => {
+    expect(darknessTint(0)).toBe(1)
+    expect(darknessTint(16)).toBe(0)
+  })
+
+  it('원작 식 `base + ((0 − base) · level >> 4)`의 배율이다', () => {
+    // 5비트 31에 8단계면 원작은 31 − 16 = 15다 (>>4가 음수를 내림한다). 곱은 15.5 —
+    // 반올림 한 칸 안이다
+    expect(darknessTint(8)).toBe(0.5)
+    expect(Math.abs(31 * darknessTint(8) - (31 + ((0 - 31) * 8 >> 4)))).toBeLessThanOrEqual(1)
+  })
+
+  it('16을 넘거나 음수면 끝에서 멈춘다 (`SPRITE_PALETTE_MAX_TINT_LEVEL`)', () => {
+    expect(darknessTint(40)).toBe(0)
+    expect(darknessTint(-3)).toBe(1)
+  })
+})
+
+describe('판때기 세우기 (`faceCamera`)', () => {
+  /** 한 칸 앞, 눈이 발보다 1.2칸 위 — 1인칭에서 한 칸 앞 사람을 보는 자리 */
+  const near = (): { plate: Object3D, eye: PerspectiveCamera } => {
+    const plate = new Object3D()
+    plate.position.set(0, 0, 0)
+    const eye = new PerspectiveCamera()
+    eye.position.set(0, 1.2, 1)
+    return { plate, eye }
+  }
+
+  it('3인칭은 카메라를 통째로 본다 — 내려다보는 각만큼 뒤로 눕는다', () => {
+    const { plate, eye } = near()
+    faceCamera(plate, eye)
+    expect(plate.rotation.x).toBeCloseTo(-Math.atan2(1.2, 1), 6)
+  })
+
+  it('1인칭은 좌우로만 돈다 — 한 칸 앞 사람이 뒤로 안 눕는다', () => {
+    const { plate, eye } = near()
+    faceCamera(plate, eye, true)
+    expect(plate.rotation.x).toBe(0)
+    expect(plate.rotation.z).toBe(0)
+  })
+
+  it('좌우로 도는 각은 두 렌즈가 같다', () => {
+    const a = near(), b = near()
+    a.eye.position.set(3, 1.2, -2)
+    b.eye.position.set(3, 1.2, -2)
+    faceCamera(a.plate, a.eye)
+    faceCamera(b.plate, b.eye, true)
+    expect(b.plate.rotation.y).toBeCloseTo(a.plate.rotation.y, 6)
+    expect(b.plate.rotation.y).toBeCloseTo(Math.atan2(3, -2), 6)
+  })
+})
+
 // ── 뽑아 둔 진짜 자료와 맞댄다 ──────────────────────────────────────────────
 const FILE = resolve(__dirname, '../../../public/data/npcSprites.json')
 const maybe = withData('npcSprites.json')
@@ -294,6 +349,29 @@ maybe('뽑아 둔 표', () => {
     expect([...orphans], '그림도 없고 프롭도 아닌 배치가 있다').toEqual([])
     expect(drawn).toBe(3128)
     expect(props).toBe(427)
+  })
+
+  it('리조트 왼쪽 집 안에 서는 판때기는 사람 그림이 아니다 — 열매밭 둘이다 (I-p18-5)', () => {
+    // 그 집 창·벽에 비치던 도트 조각의 주인을 배치표에서 찾는다. 리조트(맵 457)의
+    // 배치는 436번 파일이고, 집은 BDSP `M_D_014_House_01`(815.1~818.9 × 467.0~470.0
+    // — `BerryPatchProps`의 `BDSP_COVERED`가 잰 상자)이다. 칸 한가운데가 그 안이면
+    // 집 안이다
+    const events = JSON.parse(
+      readFileSync(resolve(__dirname, '../../../public/data/events.json'), 'utf8'),
+    ) as { events: Record<string, { npcs: { sprite: number, x: number, z: number }[] }> }
+    const inside = events.events['436']!.npcs.filter((n) =>
+      n.x + 0.5 > 815.1 && n.x + 0.5 < 818.9 && n.z + 0.5 > 467.0 && n.z + 0.5 < 470.0)
+    // 둘 다 `OBJ_EVENT_GFX_BERRY_SOIL`(100)이라 `NpcSprites`는 안 세운다 — 그
+    // 판은 `BerryPatchProps`가 자란 나무열매 그림으로 세운 것이다
+    expect(inside.map((n) => [n.x, n.z, n.sprite])).toEqual([[816, 469, 100], [817, 469, 100]])
+    for (const n of inside) expect(data[String(n.sprite)], `${n.x},${n.z}`).toBeUndefined()
+  })
+
+  it('입체로 세우는 바위 둘은 16×16 한 장이다 — 덩이 폭이 한 칸 상자에서 나온다', () => {
+    // `NpcSprites`가 이 둘을 판때기 대신 덩이로 세우고, 폭을 `w / 16`칸 상자에서 잰다.
+    // 원작 판도 둘 다 16×16유닛이다 (`rock_smash.nsbmd` = `generic_16x16.nsbmd`)
+    expect(npcSprite(84)).toMatchObject({ name: 'STRENGTH_BOULDER', w: 16, h: 16, frames: 1 })
+    expect(npcSprite(85)).toMatchObject({ name: 'ROCK_SMASH', w: 16, h: 16, frames: 1 })
   })
 
   it('닌자꼬마가 서 있는 네 장이 .1 .5 .9 .13이다', () => {

@@ -12,14 +12,20 @@ import type { Camera, Object3D } from 'three'
  * 바닥에 누운 것처럼 보였다.
  *
  * ⚠️ **발은 안 뜬다.** 판의 원점이 아래 모서리라 X축 회전이 그 모서리를 축으로
- * 돈다. 도는 차례는 `YXZ`여야 한다 — 좌우를 먼저 돌고 그 자리에서 뒤로 눕는다
+ * 돈다. 도는 차례는 `YXZ`여야 한다 — 좌우를 먼저 돌고 그 자리에서 뒤로 눕는다.
+ *
+ * ⚠️ **1인칭(`upright`)은 좌우로만 돈다.** 눈이 판의 발보다 한 칸 넘게 높아서,
+ * 한 칸 앞에 선 사람을 보면 판이 눈을 향해 **50도쯤 뒤로 눕는다** — 사람이
+ * 바닥에 비스듬히 누운 그림이 된다. 1인칭에서 사람은 눈높이에서 보이므로
+ * 세워 둔 채 돌리는 편이 맞고, 위의 64%가 눌리는 문제는 내려다보는 3인칭
+ * 렌즈의 것이다
  */
-export function faceCamera(mesh: Object3D, camera: Camera): void {
+export function faceCamera(mesh: Object3D, camera: Camera, upright = false): void {
   const toCamX = camera.position.x - mesh.position.x
   const toCamZ = camera.position.z - mesh.position.z
   const toCamY = camera.position.y - mesh.position.y
   mesh.rotation.set(
-    -Math.atan2(toCamY, Math.hypot(toCamX, toCamZ)),
+    upright ? 0 : -Math.atan2(toCamY, Math.hypot(toCamX, toCamZ)),
     Math.atan2(toCamX, toCamZ), 0, 'YXZ')
 }
 
