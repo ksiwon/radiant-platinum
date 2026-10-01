@@ -11,10 +11,10 @@
 // **글은 롬의 배틀 글 뱅크(us 368)에서 온다** — 원작 진화 화면도 그 뱅크를 연다
 // (`Evolution_PrintString`). 뱅크가 안 왔으면 같은 말을 `ui/korean`으로 조사만 골라 짓는다.
 //
-// **소리도 원작 차례다** (`Evolution_Main`): 옛 종의 울음 → 다 울면 진화 곡
-// (`SEQ_SHINKA`) → 마디마다 효과음 넷(`evolutionSoundCues`) → 새 종의 울음 → 다 울면
-// 축하 줄과 팡파르(`SEQ_FANFA5`). 멈추면 곡을 끊고 옛 종이 다시 운다. 화면을 닫으면
-// 들어올 때의 곡으로 돌아간다.
+// **소리도 원작 차례다** (`Evolution_Main`): 옛 종의 울음과 「...오잉!?」 → 다 울면 진화 곡
+// (`SEQ_SHINKA`) → 20프레임 뒤 연출의 0프레임(`START_FADE`) → 마디마다 효과음 넷
+// (`evolutionSoundCues`) → 새 종의 울음 → 다 울면 축하 줄과 팡파르(`SEQ_FANFA5`).
+// 멈추면 곡을 끊고 옛 종이 다시 운다. 화면을 닫으면 들어올 때의 곡으로 돌아간다.
 //
 // 멈춰도 **다음에 또 물어본다** — 원작에 "진화 안 함" 표식이 없다. 다음 레벨업에
 // 이 화면이 다시 뜬다.
@@ -60,7 +60,7 @@ import { fieldBgm } from '../../engine/audio/songs'
 import { useEvolutionStore } from '../../state/evolutionStore'
 import { addRecord, RECORD_POKEMON_EVOLVED } from '../../engine/world/gameRecords'
 import { useMenuStore } from '../../state/menuStore'
-import { useCinematicStore } from '../../state/cinematicStore'
+import { useCinematicStore, type MonVisual } from '../../state/cinematicStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { useSessionStore } from '../../state/sessionStore'
@@ -97,6 +97,14 @@ type DoneLine =
 /** 지금 무엇을 보여 주고 있는가 */
 type Stage =
   | { kind: 'idle' }
+  /**
+   * 연출이 열리기 전 — 옛 종이 울고 「...오잉!?」이 떠 있다. 울음이 끝나면 진화 곡을 틀고
+   * 20프레임 뒤에 `changing`으로 간다 (`WAIT_PRINT_POKEMON_IS_EVOLVING` → `START_FADE`)
+   */
+  | {
+    kind: 'announce'; slot: number; mon: PokemonInstance; evo: EvoResult
+    before: MonVisual; after: MonVisual
+  }
   | { kind: 'changing'; slot: number; mon: PokemonInstance; evo: EvoResult }
   | { kind: 'done'; slot: number; to: number; form: number; lines: DoneLine[]; at: number }
   /** `ready`는 옛 종이 다 울었는가 — 원작은 그 뒤에야 「얼라리...?」를 찍는다 */
@@ -123,13 +131,18 @@ const EVO_LINE = {
 /**
  * 진화 곡 (`SEQ_SHINKA`).
  *
- * ⚠️ **직접 틀지 않는다.** 곡을 고르는 자리가 하나뿐이라(`MusicDirector`) 여기서
- * `music.play`를 부르면 다음 초에 지휘자가 필드 곡을 다시 얹는다 — 교환 장면처럼
- * 가로채기 칸에 놓고 맡긴다
+ * ⚠️ **장면 칸에 쥐고, 그 자리에서도 튼다.** 곡을 고르는 자리가 하나뿐이라
+ * (`MusicDirector`) `music.play`만 부르면 다음 초에 지휘자가 필드 곡을 다시 얹는다 —
+ * 그래서 `fieldBgm.scene`에 쥔다. 가로채기 칸(`override`)이 아닌 것은 그 칸이 파도타기
+ * 곡보다 뒤라서다(`songForMap`). 그런데 지휘자는 1초마다 고르므로 그것만으로는 곡이
+ * 연출의 0프레임보다 늦게 깔린다 — 원작은 곡을 틀고 20프레임 뒤에 연출을 연다.
+ * 같은 곡을 다시 틀면 `music.play`가 아무것도 안 하므로 둘이 안 부딪친다
  */
 const EVOLUTION_BGM = 1141
 
 const FRAME_MS = 1000 / 60
+/** 진화 곡을 틀고 연출을 열기까지 (`Sound_PlayBasicBGM(SEQ_SHINKA)` 뒤의 `delay = 20`) */
+const SHINKA_LEAD_FRAMES = 20
 
 /**
  * 울음소리가 다 끝나면 `then`을 부른다. 걷는 함수를 돌려준다.
@@ -192,6 +205,8 @@ export function EvolutionScreen() {
   const pendingMoves = useRef<number[]>([])
   /** 새 종의 울음을 낸 진화. 효과가 다시 돌아도 두 번 울지 않게 */
   const grownCry = useRef<Stage | null>(null)
+  /** 진화 곡을 튼 진화와 그 시각. 효과가 다시 돌아도 20프레임을 처음부터 다시 안 센다 */
+  const shinka = useRef<{ stage: Stage; at: number } | null>(null)
   /** 배틀 글 뱅크 — 진화 줄이 여기 있다 (`EVO_LINE`) */
   const battleLines = useRomLines(BATTLE_BANK)
 
@@ -211,13 +226,13 @@ export function EvolutionScreen() {
     }
   }, [locale])
 
-  // 들어올 때의 곡 가로채기를 쥐고 있다가 나갈 때 돌려놓는다 — 스크립트가 건
-  // 곡이 있었으면 그 곡으로, 없었으면 맵의 곡으로 돌아간다
+  // 들어올 때의 장면 곡 칸을 쥐고 있다가 나갈 때 돌려놓는다 — 가로채기 칸은 안 건드리므로
+  // 스크립트가 건 곡이 있었으면 그 곡으로, 없었으면 맵의 곡으로 돌아간다
   useEffect(() => {
-    const override = fieldBgm.override
+    const scene = fieldBgm.scene
     return () => {
       useCinematicStore.getState().clear()
-      fieldBgm.override = override
+      fieldBgm.scene = scene
     }
   }, [])
 
@@ -263,23 +278,23 @@ export function EvolutionScreen() {
           holdEffect,
         })
       if (!evo) continue
-      useCinematicStore.getState().startEvolution(
-        {
-          species: mon.species,
-          form: mon.form,
-          gender: genderOf(mon.pid, tables.species.get(mon.species).genderRatio),
-          shiny: isShiny(mon.pid, mon.otId, mon.otSecretId),
-        },
-        {
-          species: evo.to,
-          form: mon.form,
-          gender: genderOf(mon.pid, tables.species.get(evo.to).genderRatio),
-          shiny: isShiny(mon.pid, mon.otId, mon.otSecretId),
-        },
-      )
-      // 옛 종이 먼저 운다 (`PRINT_POKEMON_IS_EVOLVING`). 진화 곡은 이 울음이 끝나야 깔린다
+      const before: MonVisual = {
+        species: mon.species,
+        form: mon.form,
+        gender: genderOf(mon.pid, tables.species.get(mon.species).genderRatio),
+        shiny: isShiny(mon.pid, mon.otId, mon.otSecretId),
+      }
+      const after: MonVisual = {
+        species: evo.to,
+        form: mon.form,
+        gender: genderOf(mon.pid, tables.species.get(evo.to).genderRatio),
+        shiny: isShiny(mon.pid, mon.otId, mon.otSecretId),
+      }
+      // 옛 몸만 세운다 — 연출은 아직이다. 옛 종이 먼저 울고(`PRINT_POKEMON_IS_EVOLVING`)
+      // 진화 곡은 이 울음이 끝나야 깔린다
+      useCinematicStore.getState().announceEvolution(before, after)
       void music.playCry(mon.species)
-      setStage({ kind: 'changing', slot, mon, evo })
+      setStage({ kind: 'announce', slot, mon, evo, before, after })
       return
     }
   }, [tables, take, closeAll, mapId])
@@ -354,6 +369,31 @@ export function EvolutionScreen() {
     if (tables && stage.kind === 'idle') advance()
   }, [tables, stage.kind, advance])
 
+  // 옛 종이 다 울면 진화 곡을 틀고(`WAIT_PRINT_POKEMON_IS_EVOLVING` → `Sound_PlayBasicBGM(SEQ_SHINKA)`)
+  // 20프레임 뒤에 연출의 0프레임을 연다 (`START_FADE`). 그래서 옛 울음과 W025가 안 겹친다
+  useEffect(() => {
+    if (stage.kind !== 'announce') return undefined
+    let lead: ReturnType<typeof setTimeout> | null = null
+    const stopCry = whenCryEnds(() => {
+      let played = shinka.current
+      if (played?.stage !== stage) {
+        played = { stage, at: performance.now() }
+        shinka.current = played
+        fieldBgm.scene = EVOLUTION_BGM
+        void music.play(EVOLUTION_BGM)
+      }
+      const waited = performance.now() - played.at
+      lead = setTimeout(() => {
+        useCinematicStore.getState().startEvolution(stage.before, stage.after)
+        setStage({ kind: 'changing', slot: stage.slot, mon: stage.mon, evo: stage.evo })
+      }, Math.max(0, SHINKA_LEAD_FRAMES * FRAME_MS - waited))
+    })
+    return () => {
+      stopCry()
+      if (lead !== null) clearTimeout(lead)
+    }
+  }, [stage])
+
   // 모습이 바뀌는 동안. 이 사이에 X를 누르면 멈춘다
   //
   // ⚠️ **시각은 무대의 시계로 잰다** (`cinematicStore`의 `startedAt`). 이 효과가 도중에
@@ -363,8 +403,6 @@ export function EvolutionScreen() {
     if (stage.kind !== 'changing') return
     const elapsed = performance.now() - useCinematicStore.getState().startedAt
     const stops: (() => void)[] = []
-    // 옛 종이 다 울면 진화 곡 (`WAIT_PRINT_POKEMON_IS_EVOLVING` → `Sound_PlayBasicBGM(SEQ_SHINKA)`)
-    stops.push(whenCryEnds(() => { fieldBgm.override = EVOLUTION_BGM }))
     for (const cue of evolutionSoundCues(EVO_BEATS)) {
       const wait = (cue.frame * 1000) / 60 - elapsed
       if (wait < -FRAME_MS) continue
@@ -409,8 +447,10 @@ export function EvolutionScreen() {
     if (!evolutionCanCancel(frame, EVO_BEATS)) return
     if (timer.current) clearTimeout(timer.current)
     useCinematicStore.getState().cancelEvolution()
-    // `CANCEL_EVOLUTION` — 진화 곡을 끊고(`Sound_StopBGM(SEQ_SHINKA)`) 옛 종이 다시 운다
-    fieldBgm.override = 'stop'
+    // `CANCEL_EVOLUTION` — 진화 곡을 끊고(`Sound_StopBGM(SEQ_SHINKA)`) 옛 종이 다시 운다.
+    // 지휘자를 안 기다리고 그 자리에서 끊는다 — 1초 늦으면 울음 위로 곡이 흐른다
+    fieldBgm.scene = 'stop'
+    music.stop()
     void music.playCry(stage.mon.species)
     setStage({ kind: 'canceled', name: nameOf(stage.mon), ready: false })
   }, [stage, nameOf])
@@ -439,9 +479,12 @@ export function EvolutionScreen() {
     setStage({ kind: 'idle' })
   }, [stage])
 
+  // 연출이 열리기 전(`announce`)에도 키를 쥔다 — 원작은 그때 B를 안 받고, 받는 것은
+  // 교대하는 동안뿐이다 (`cancel`이 마디로 거른다)
+  const running = stage.kind === 'announce' || stage.kind === 'changing'
   useMenuKeys(
-    { confirm: next, cancel: stage.kind === 'changing' ? cancel : next },
-    stage.kind === 'done' || stage.kind === 'canceled' || stage.kind === 'changing',
+    { confirm: next, cancel: running ? cancel : next },
+    stage.kind === 'done' || stage.kind === 'canceled' || running,
   )
 
   // ⚠️ **폼은 진화해도 그대로다** (PARITY §3.4). 도롱충이가 입고 있던 옷감이
@@ -450,7 +493,7 @@ export function EvolutionScreen() {
   const line = useMemo(() => {
     const evolving = (name: string): string =>
       romLine(battleLines, EVO_LINE.evolving, name) ?? `...오잉!?\n${name}의 모습이...!`
-    if (stage.kind === 'changing') return evolving(nameOf(stage.mon))
+    if (stage.kind === 'announce' || stage.kind === 'changing') return evolving(nameOf(stage.mon))
     if (stage.kind === 'done') {
       const at = stage.lines[stage.at]
       return at === undefined ? '' : doneText(at, battleLines)
@@ -482,7 +525,7 @@ export function EvolutionScreen() {
   }
 
   return (
-    <MenuScreen title="진화" foot={stage.kind === 'changing' ? 'X 그만둔다' : 'Z 넘기기'}>
+    <MenuScreen title="진화" foot={running ? 'X 그만둔다' : 'Z 넘기기'}>
       <div className={own.stage}>
         <EvolutionFrame running={stage.kind === 'changing'} />
         {/* 롬 글은 한 쪽 안에서 줄을 바꾼다(`\n`) — 줄마다 끊어 놓는다 */}

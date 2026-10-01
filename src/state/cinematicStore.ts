@@ -1,7 +1,14 @@
 import { create } from 'zustand'
 
 export type CinematicScene = 'off' | 'evolution' | 'hatch' | 'trade'
-export type EvolutionPhase = 'changing' | 'done' | 'canceled'
+/**
+ * 진화 장면의 마디 (`evolution.c`).
+ *
+ * `announce`는 연출이 **시작하기 전**이다 — 옛 종이 울고 「...오잉!?」이 뜬 채
+ * 울음이 끝나기를 기다리고(`WAIT_PRINT_POKEMON_IS_EVOLVING`), 진화 곡을 틀고 20프레임을
+ * 더 센다(`START_FADE`의 `delay = 20`). 연출의 0프레임은 그다음 `changing`이 연다
+ */
+export type EvolutionPhase = 'announce' | 'changing' | 'done' | 'canceled'
 export type HatchPhase = 'shaking' | 'born'
 /**
  * 교환 장면의 세 마디 (`overlay095`).
@@ -13,7 +20,7 @@ export type HatchPhase = 'shaking' | 'born'
  */
 export type TradePhase = 'sending' | 'transit' | 'arriving'
 
-interface MonVisual {
+export interface MonVisual {
   species: number
   form: number
   gender?: 'male' | 'female' | 'genderless'
@@ -34,6 +41,16 @@ interface CinematicStore {
    * 시작 시각을 여기 하나로 두면 둘이 같은 프레임을 센다 (PARITY §3.1)
    */
   startedAt: number
+  /**
+   * 진화 장면을 세우되 연출은 아직 안 연다 (`announce`). 옛 몸이 온전히 서 있다
+   */
+  announceEvolution: (before: MonVisual, after: MonVisual) => void
+  /**
+   * 연출의 0프레임을 **지금**으로 잡는다 (`START_FADE`) — `startedAt`이 여기서 선다.
+   *
+   * ⚠️ **장면을 세운 때가 0프레임이 아니다.** 한동안 그렇게 잡아서 옛 종의 울음과
+   * 첫 효과음(W025)이 같은 때 났다. 원작은 울음이 다 끝나고 진화 곡을 튼 뒤 20프레임에 연다
+   */
   startEvolution: (before: MonVisual, after: MonVisual) => void
   finishEvolution: () => void
   cancelEvolution: () => void
@@ -56,6 +73,9 @@ const OFF = {
 /** DOM 이벤트 화면과 영속 WebGL Canvas 사이의 작은 상태 다리. */
 export const useCinematicStore = create<CinematicStore>()((set) => ({
   ...OFF,
+  announceEvolution: (before, after) => {
+    set({ scene: 'evolution', phase: 'announce', before, after, startedAt: performance.now() })
+  },
   startEvolution: (before, after) => {
     set({ scene: 'evolution', phase: 'changing', before, after, startedAt: performance.now() })
   },

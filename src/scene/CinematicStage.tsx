@@ -303,7 +303,10 @@ export function CinematicStage() {
     if (scene === 'evolution') {
       // ⚠️ **시작 시각을 가게에서 받는다** — DOM 쪽 가림 띠·흰 막이 같은 마디표를
       // 보고 그리므로, 각자 제 시계를 재면 프레임이 밀린다 (`cinematicStore`)
-      const frame = Math.max(0, ((performance.now() - startedAt) * 60) / 1000)
+      //
+      // `announce`는 연출이 아직 안 열린 때다 — 옛 몸이 온전히 서서 운다. 0프레임의
+      // 자세(크기 1·0, 흰색 0)를 그대로 든다
+      const frame = phase === 'announce' ? 0 : Math.max(0, ((performance.now() - startedAt) * 60) / 1000)
       const pose = evolutionPose(phase as EvolutionPhase, frame, beats)
       white.current = pose.white
       // ⚠️ **높이를 되돌린다.** 교환 장면이 몸을 띄워 놓고 끝나므로, 안 되돌리면
@@ -391,7 +394,8 @@ export function CinematicStage() {
           />
         )}
       </group>
-      {scene === 'evolution' && phase !== 'canceled' && evoFile && (
+      {/* 입자는 연출의 0프레임(`START_FADE`)에 처음 선다 — 옛 종이 우는 동안은 없다 */}
+      {scene === 'evolution' && phase !== 'canceled' && phase !== 'announce' && evoFile && (
         <EvolutionParticles file={evoFile} seq={startedAt} />
       )}
       {scene === 'hatch' && eggFile && <HatchParticles file={eggFile} seq={startedAt} />}

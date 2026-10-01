@@ -9,9 +9,10 @@ import { readFileSync } from 'node:fs'
 import { bytesSource, narcEntry, openNds } from '../../import/platinum/nds'
 import { romPath, withRom } from '../../data/romData.testkit'
 import { readSpa } from '../battle/spl/resource'
+import { SFX } from '../audio/sfx'
 import {
-  EVO_BEATS, EVO_EMITTERS, EVO_MEMBER, evolutionBeats, evolutionBodyWhite,
-  evolutionCanCancel, evolutionClamp, evolutionScales, evolutionVeil,
+  EVO_BEATS, EVO_CLAMP_FRAMES, EVO_EMITTERS, EVO_MEMBER, evolutionBeats, evolutionBodyWhite,
+  evolutionCanCancel, evolutionClamp, evolutionScales, evolutionSoundCues, evolutionVeil,
 } from './evolutionBeat'
 
 const NARC = '/demo/shinka/data/particle/shinka_demo_particle.narc'
@@ -83,6 +84,29 @@ describe('진화 마디 — 자료 없이', () => {
     expect(evolutionVeil(EVO_BEATS.swap - 1, EVO_BEATS)).toBe(0)
     expect(evolutionVeil(EVO_BEATS.swap + 48, EVO_BEATS)).toBeCloseTo(1)
     expect(evolutionVeil(EVO_BEATS.end, EVO_BEATS)).toBeCloseTo(0)
+  })
+
+  it('효과음 넷이 이미터 마디 넷과 같은 프레임에 난다 (`Evolution_Main`)', () => {
+    // 원작은 이미터를 세우는 그 상태 안에서 소리도 낸다 — START_FADE(W025) ·
+    // CLAMP_IN 끝(W060C) · 교대 끝(W062) · CLAMP_OUT_AND_FADE(W080)
+    const cues = evolutionSoundCues(EVO_BEATS)
+    expect(cues).toEqual([
+      { frame: 0, sound: 'EVO_FADE' },
+      { frame: EVO_CLAMP_FRAMES, sound: 'EVO_ALTERNATE' },
+      { frame: EVO_BEATS.swap, sound: 'EVO_SWAP' },
+      { frame: EVO_BEATS.clampOut, sound: 'EVO_REVEAL' },
+    ])
+    // 소리 마디가 이미터 마디와 한 프레임도 안 어긋난다
+    const emitterFrames = [...new Set(EVO_BEATS.cues.map((cue) => cue.frame))]
+    expect(cues.map((cue) => cue.frame)).toEqual(emitterFrames)
+    // 이름이 `SFX`에 없으면 화면이 `undefined`를 틀어 조용히 아무 소리도 안 난다
+    for (const cue of cues) expect(SFX[cue.sound], cue.sound).toBeTypeOf('number')
+    expect(new Set(cues.map((cue) => SFX[cue.sound])).size).toBe(4)
+  })
+
+  it('자료에서 뽑은 마디를 받으면 소리도 그 마디를 따른다', () => {
+    const beats = { ...EVO_BEATS, swap: 250, clampOut: 306 }
+    expect(evolutionSoundCues(beats).map((cue) => cue.frame)).toEqual([0, EVO_CLAMP_FRAMES, 250, 306])
   })
 
   it('몸이 하얘졌다 되돌아온다', () => {

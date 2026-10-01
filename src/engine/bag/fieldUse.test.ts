@@ -92,8 +92,17 @@ maybe('필드 도구', () => {
   })
 
   it('리펠은 남아 있으면 새로 못 쓴다', () => {
-    expect(fieldAction(named('ITEM_REPEL'), town())).toEqual({ kind: 'repel', steps: 100 })
+    expect(fieldAction(named('ITEM_REPEL'), town())).toMatchObject({ kind: 'repel', steps: 100 })
     expect(fieldAction(named('ITEM_REPEL'), town({ repelSteps: 1 })).kind).toBe('blocked')
+  })
+
+  it('리펠을 뿌리면 `SEQ_SE_DP_CARD2`가 난다 — 셋 다 같은 소리다 (`TryUseRepel`)', () => {
+    const sounds = ['ITEM_REPEL', 'ITEM_SUPER_REPEL', 'ITEM_MAX_REPEL'].map((name) => {
+      const action = fieldAction(named(name), town())
+      if (action.kind !== 'repel') throw new Error(`${name}이 리펠 갈래가 아니다`)
+      return action.sound
+    })
+    expect(new Set(sounds).size).toBe(1)
   })
 
   it('탈출로프는 **동굴이면서 허락된** 맵에서만 된다', () => {
@@ -284,5 +293,22 @@ maybe('필드 도구', () => {
       expect(got.kind, `갈래 ${String(kind)}`).toBeTruthy()
     }
     expect(kinds.size).toBe(25)
+  })
+})
+
+withData('items.json', 'sound/index.json')('리펠 소리', () => {
+  it('번호가 구운 SDAT 목차에서 `SEQ_SE_DP_CARD2`다', () => {
+    const file = itemFileSchema.parse(
+      JSON.parse(readFileSync(resolve(DATA, 'items.json'), 'utf8')),
+    )
+    const repel = file.items.find((x) => x.constant === 'ITEM_REPEL')!
+    const action = fieldAction(repel, {
+      mapId: 411, mapType: 1, escapeRopeAllowed: false, repelSteps: 0, waterAhead: false,
+    })
+    if (action.kind !== 'repel') throw new Error('리펠 갈래가 아니다')
+    const songs = (JSON.parse(readFileSync(resolve(DATA, 'sound/index.json'), 'utf8')) as {
+      songs: ({ name: string | null } | null)[]
+    }).songs
+    expect(songs[action.sound]?.name).toBe('SEQ_SE_DP_CARD2')
   })
 })

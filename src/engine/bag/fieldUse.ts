@@ -45,6 +45,15 @@ export const FieldUse = {
   GRACIDEA: 24,
 } as const
 
+/**
+ * `SEQ_SE_DP_CARD2` — 리펠을 뿌리는 소리 (`applications/bag/main.c`의 `TryUseRepel`).
+ *
+ * ⚠️ **걸음을 세운 때만 난다.** 효과가 남아 있어 막힌 자리(`RepelEffectsLinger`)에서는
+ * 원작도 소리가 없다. 번호는 우리가 구운 SDAT 목차에서 이름으로 찾았다
+ * (`public/data/sound/index.json`의 1536째)
+ */
+const SEQ_SE_DP_CARD2 = 1536
+
 /** `MAP_TYPE_CAVE` (`enum MapType`) */
 export const MAP_TYPE_CAVE = 3
 
@@ -84,8 +93,11 @@ export const COMMON_SCRIPT_AZURE_FLUTE = 2039
 export type FieldItemAction =
   /** 누구에게 쓸지 골라야 한다. 파티 화면이 열린다 */
   | { kind: 'party'; use: PartyItemUse }
-  /** 리펠 부류. `steps`걸음 동안 약한 야생이 안 나온다 */
-  | { kind: 'repel'; steps: number }
+  /**
+   * 리펠 부류. `steps`걸음 동안 약한 야생이 안 나온다.
+   * `sound`는 뿌리는 순간 나는 효과음이다 (`TryUseRepel`의 `SEQ_SE_DP_CARD2`)
+   */
+  | { kind: 'repel'; steps: number; sound: number }
   /** 검은·하얀 피리. 이 맵을 벗어날 때까지 출현률이 바뀐다 */
   | { kind: 'flute'; factor: number }
   /** 동굴탈출로프 */
@@ -334,7 +346,7 @@ export function fieldAction(item: Item, ctx: FieldContext): FieldItemAction {
       if (steps === null) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
       // `TryUseRepel` — 남아 있으면 새로 안 쓴다. 개수도 안 깎는다
       if (ctx.repelSteps > 0) return { kind: 'blocked', why: '아직 효과가 남아 있다.' }
-      return { kind: 'repel', steps }
+      return { kind: 'repel', steps, sound: SEQ_SE_DP_CARD2 }
     }
 
     default: {

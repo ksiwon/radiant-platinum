@@ -94,6 +94,16 @@ export function wildSongFor(species: number, mapId: number): number {
  */
 export const fieldBgm = {
   override: null as number | 'stop' | null,
+  /**
+   * 장면이 쥔 곡 — 진화(`SEQ_SHINKA`)·교환(`SEQ_KOUKAN`)처럼 필드를 떠난 화면의 곡.
+   *
+   * ⚠️ **가로채기와 다른 칸이다.** 원작 장면은 곡을 바로 틀고(`Sound_PlayBasicBGM` ·
+   * `Sound_SetSceneAndPlayBGM`) `FieldBGM_GetEffective`를 안 거친다 — 그래서 파도타기
+   * 곡보다도 앞이다. 가로채기(`FieldBGM_SetOverride`)는 파도타기 **뒤**라, 둘을 한 칸에
+   * 두면 물 위에서 진화할 때 진화 곡 대신 파도타기 곡이 흐른다. 스크립트도 이 칸을 안
+   * 본다(`musicOverride`). 장면이 열 때 쥐고 닫을 때 돌려놓는다. `'stop'`은 `Sound_StopBGM`이다
+   */
+  scene: null as number | 'stop' | null,
 }
 
 /** `SEQ_NAMINORI` — 파도타기 곡 */
@@ -158,11 +168,14 @@ export interface FieldSongState {
  *
  * 원작 차례 그대로다 — ① 파도타기면 파도타기 곡(깨어진 세계만 빼고) ② 헤더의 낮/밤 곡 ③ 이야기 깃발이
  * 갈아 끼운 곡 ④ 자전거로드 문에서 들어섰으면 자전거로드 곡 ⑤ 스크립트·자전거가 가로챈 곡.
- * 레이더 곡은 레이더가 가로채기로 건다 (`scene/pokeRadar`). `'stop'`(`StopMusic`)은 무엇보다 먼저다
+ * 레이더 곡은 레이더가 가로채기로 건다 (`scene/pokeRadar`). `'stop'`(`StopMusic`)은 그 넷보다 먼저다.
+ * 장면이 쥔 곡(`fieldBgm.scene`)은 이 함수 바깥의 것이라 **다섯보다 다 먼저**다
  *
  * ⚠️ **파도타기 곡이 가로채기보다 앞이다.** 원작이 파도타기를 가장 먼저 보고 곧바로 돌려준다
  */
 export function songForMap(mapId: number, hour: number, field?: FieldSongState): number | null {
+  if (fieldBgm.scene === 'stop') return null
+  if (fieldBgm.scene !== null) return fieldBgm.scene
   if (fieldBgm.override === 'stop') return null
   if (field?.surfing === true && !DISTORTION_FLOORS.has(mapId)) return SURF_SONG
   if (fieldBgm.override !== null) return fieldBgm.override

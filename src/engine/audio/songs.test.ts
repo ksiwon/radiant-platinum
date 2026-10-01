@@ -138,6 +138,23 @@ maybe('배틀 효과음', () => {
     expect(songs[SFX.BALL_SHAKE]?.name).toBe('SEQ_SE_DP_KON')
   })
 
+  it('진화 소리 넷과 팡파르 둘이 제 이름을 집는다 (`evolution.c`)', () => {
+    const songs = index().songs
+    expect(songs[SFX.EVO_FADE]?.name).toBe('SEQ_SE_DP_W025')
+    expect(songs[SFX.EVO_ALTERNATE]?.name).toBe('SEQ_SE_DP_W060C')
+    expect(songs[SFX.EVO_SWAP]?.name).toBe('SEQ_SE_DP_W062')
+    expect(songs[SFX.EVO_REVEAL]?.name).toBe('SEQ_SE_DP_W080')
+    // `{CALLBACK 3}`이 FANFA5, `{CALLBACK 5}`가 FANFA1이다 — 번호 차례와 거꾸로다
+    expect(songs[SFX.FANFARE_EVOLVED]?.name).toBe('SEQ_FANFA5')
+    expect(songs[SFX.FANFARE_LEARNED]?.name).toBe('SEQ_FANFA1')
+  })
+
+  it('필드 독과 계산대가 제 이름을 집는다', () => {
+    const songs = index().songs
+    expect(songs[SFX.FIELD_POISON]?.name).toBe('SEQ_SE_DP_DOKU2')
+    expect(songs[SFX.CASH_REGISTER]?.name).toBe('SEQ_SE_DP_REGI')
+  })
+
   it('전부 실재하는 곡이다 — 없는 번호를 적으면 조용히 아무 소리도 안 난다', () => {
     const songs = index().songs
     for (const [name, id] of Object.entries(SFX)) {
@@ -159,6 +176,23 @@ maybe('원작이 헤더 곡 위에 얹는 것 (`FieldBGM_GetEffective`)', () => 
     fieldBgm.override = null
     // 깨어진 세계 1F(573)는 물 위에서도 제 곡이다
     expect(songForMap(573, 12, field({ surfing: true }))).toBe(world.maps[573]!.bgmDay)
+    world.maps = null
+  })
+
+  it('⚠️ 장면 곡(진화·교환)은 파도타기 곡보다 앞이다 — 필드 곡이 아니다', () => {
+    // 원작 진화는 `Sound_PlayBasicBGM(SEQ_SHINKA)`로 곡을 바로 틀고 `FieldBGM_GetEffective`를
+    // 안 거친다. 그래서 물 위에서 레벨이 올라 진화해도 진화 곡이다
+    world.maps = maps().maps
+    fieldBgm.scene = 1141
+    fieldBgm.override = 1152
+    expect(nameOf(songForMap(350, 12, field({ surfing: true })))).toBe('SEQ_SHINKA')
+    // 멈추면(`Sound_StopBGM(SEQ_SHINKA)`) 물 위에서도 조용하다
+    fieldBgm.scene = 'stop'
+    expect(songForMap(350, 12, field({ surfing: true }))).toBeNull()
+    // 장면이 끝나면 원작 차례로 돌아온다 — 파도타기 곡이 가로채기보다 앞
+    fieldBgm.scene = null
+    expect(nameOf(songForMap(350, 12, field({ surfing: true })))).toBe('SEQ_NAMINORI')
+    fieldBgm.override = null
     world.maps = null
   })
 
