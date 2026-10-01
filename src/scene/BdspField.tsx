@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { AdditiveBlending, Mesh, Vector3, type Group, type Material, type Object3D } from 'three'
+import { AdditiveBlending, Mesh, MeshStandardMaterial, Vector3, type Group, type Material, type Object3D } from 'three'
 import { MeshStandardNodeMaterial, type Node } from 'three/webgpu'
 import {
   cameraPosition, color, cos, dot, float, mix, normalize, positionWorld, pow, saturate, time,
@@ -22,6 +22,7 @@ import {
 } from 'three/tsl'
 import { assets } from '../data/providers/assetProvider'
 import { worldState } from '../state/worldState'
+import { firstPersonView } from '../engine/actor/camera'
 import { fieldFade, type FieldFade } from './fieldFade'
 import { bdspLights, type BdspLights } from './bdspLights'
 import { disposeTree } from './disposeTree'
@@ -107,8 +108,74 @@ export function useBdspFields(outdoor: boolean): { fields: readonly FieldEntry[]
   return { fields, near }
 }
 
-/** 창빛 · 조명 줄기 — 더해지는 빛으로 (`BdspRoom`과 같은 사정) */
-const isLightShaft = (m: Material): boolean => /_(Window)?Light_\d/.test(m.name)
+/**
+ * 창빛 · 조명 줄기 · 입구 빛 — 더해지는 빛으로 (`BdspRoom`과 같은 규칙).
+ * `GuideLight` · `StreetLight` · `OutLight` · `PokeCenLight`는 줄기가 아니다 — 앞이 `_`가 아니라서 안 걸린다
+ */
+export const isLightShaft = (m: Material): boolean =>
+  /_(Window|Spot)?Light_\d/.test(m.name) || /EntranceLight/.test(m.name)
+
+// ── 풀 · 꽃 ──────────────────────────────────────────────────────────────────────────────────────────────
+//
+// ⚠️ **1인칭에서 풀포기가 새까만 실루엣이었다** (I-p05-4 · I-p12-5 · I-p19-6 · I-p08-19). 굽는 쪽(`import/bdsp/arena.ts`)은
+// 모든 재질을 양면(`doubleSided`)으로 싣는데, three는 양면 재질의 **뒷면에서 법선을 뒤집는다**(`negateOnBackSide`). 풀 판의
+// 법선은 처음부터 위를 본다 — 지역 13벌을 재 보면 `ComGrass_01_1`은 세운 삼각형 144개가 전부 위 법선이다(굽는 쪽은 원작
+// 법선을 x만 뒤집어 그대로 싣는다 — `field.ts`). 뒤에서 보면 그 법선이 아래로 뒤집혀
+//
+//   · 위에서 오는 빛(해 · 채움 · 뒤채움)이 0이 되어 반구 빛의 땅 색만 남고 — 아래 보는 면은 윗면의 11.8%다(`fx/sky`의 `faceLight`)
+//   · 그림자를 찾는 자리도 그 법선을 따라(`ShadowNode`의 `normalWorld × normalBias`) **땅 밑**으로 내려가 땅의 그림자에 든다
+//
+// 3인칭(위에서 내려다본다)에서는 앞면만 보여 초록이고, 눈높이에서 돌아서면 검었다. `GimGrass`처럼 옆 법선인 잎은 해를 등진
+// 쪽이 같은 꼴로 검다.
+//
+// 그래서 풀 · 꽃 재질만 노드 재질로 옮겨 **법선을 월드 위쪽으로 박는다**(`normalNode`는 뒷면 뒤집기를 안 탄다 — 물과 같은 길).
+// 풀은 그림자도 **안 드리운다** — 두께 없는 판이 저와 옆 포기를 가렸다. 받기는 그대로 둔다: 나무 · 건물 그늘의 풀은 그늘이어야
+// 하고, 법선이 위라 그림자 찾는 자리도 땅 위에 남는다.
+//
+// ⚠️ **알파 컷 · 양면으로 고르지 않는다.** 지역 재질 이름 430벌 중 360벌이 `MASK`이고 1,473벌 모두 양면이다 — 집 · 땅 ·
+// 절벽까지 걸린다. 이름으로 고른다. 땅에 깔린 풀(`CliffGrass` · `PondGrass` · `GrassSeam`)은 땅이라 그대로, 나무(`Tree_*`)는
+// 줄기와 잎이 한 재질이라 그대로다.
+//
+// 거울 인스턴스(행렬식 < 0)는 앞뒤가 바뀌어 같은 꼴로 검을 수 있지만 지역 13벌 59,644자리 중 0이다(시험이 잰다)
+
+/** 풀포기 · 꽃 · 잎 재질 — 세운 판이라 법선을 위로 박는다 */
+export const isFoliage = (m: Material): boolean => /_(Com|Gim)Grass_|Flower_\d|_Leaf_\d/.test(m.name)
+
+/** 풀의 법선 — 월드 위쪽. 재질마다 같은 노드를 나눠 쓴다 */
+export const FOLIAGE_NORMAL = transformNormalToView(vec3(0, 1, 0))
+
+/** 풀 재질 하나 — 그림 · 색 · 컷 · 양면은 그대로, 법선만 위로 */
+export function foliageMaterial(was: Material): MeshStandardNodeMaterial {
+  const m = new MeshStandardNodeMaterial().copy(was)
+  // ⚠️ `NodeMaterial.copy`는 `alphaTest`를 놓친다 — `Material`의 접근자(`_alphaTest`)라 제 원형에도, 제 속성에도 없다.
+  // 안 옮기면 풀이 오려지지 않고 네모 판으로 선다
+  m.alphaTest = was.alphaTest
+  m.normalNode = FOLIAGE_NORMAL
+  return m
+}
+
+/**
+ * `root` 아래 풀 · 꽃 재질을 갈아 끼우고 그 메시는 그림자를 안 드리운다. 같은 재질을 나눠 쓰는 메시는 새 재질도 나눠 쓴다.
+ * 갈아 끼운 수를 돌려준다
+ */
+export function liveFoliage(root: Object3D): number {
+  const swapped = new Map<Material, MeshStandardNodeMaterial>()
+  root.traverse((o) => {
+    if (!(o instanceof Mesh)) return
+    const list = (Array.isArray(o.material) ? o.material : [o.material]) as Material[]
+    if (!list.some((x) => x instanceof MeshStandardMaterial && isFoliage(x))) return
+    const next = list.map((x) => {
+      if (!(x instanceof MeshStandardMaterial) || !isFoliage(x)) return x
+      let n = swapped.get(x)
+      if (!n) { n = foliageMaterial(x); swapped.set(x, n) }
+      return n
+    })
+    o.material = Array.isArray(o.material) ? next : next[0]!
+    o.castShadow = false
+  })
+  for (const old of swapped.keys()) old.dispose()
+  return swapped.size
+}
 
 // ── 물 ───────────────────────────────────────────────────────────────────────────────────────────────────
 //
@@ -200,7 +267,12 @@ export function waterMaterial(was: Material, look: WaterLook): MeshStandardNodeM
 
 /**
  * `root` 아래 물 재질을 갈아 끼운다. 같은 재질을 나눠 쓰는 메시는 새 재질도 나눠 쓴다. 버린 재질은 놓는다.
- * 갈아 끼운 수를 돌려준다
+ * 갈아 끼운 수를 돌려준다.
+ *
+ * ⚠️ **물은 그림자를 드리우지도 받지도 않는다.** 부르는 쪽(`BdspField` · `BdspRoom` · `BdspDungeon`)이 메시마다 그림자를 켠 뒤에
+ * 부르므로 여기서 끈다. 두께 없는 수면이 저에게 그림자를 드리워 파이트에어리어 바다에 가로 줄무늬가 졌다(I-p18-6).
+ * 그곳 바다 두 판(area014 메시 34 · 83)은 y 0.5에서 (32~92, 8~36)이 겹치지만 같은 재질이라 한 노드 재질을 나눠 쓴다 —
+ * 색은 월드 자리와 눈으로만 정해지므로(`waterMaterial`) 어느 판이 이겨도 같은 픽셀이다
  */
 export function liveWater(root: Object3D): number {
   const swapped = new Map<Material, MeshStandardNodeMaterial>()
@@ -216,6 +288,8 @@ export function liveWater(root: Object3D): number {
       return n
     })
     o.material = Array.isArray(o.material) ? next : next[0]!
+    o.castShadow = false
+    o.receiveShadow = false
   })
   for (const old of swapped.keys()) old.dispose()
   return swapped.size
@@ -277,6 +351,7 @@ function build(scene: Group): Built {
     }
   })
   liveWater(scene)
+  liveFoliage(scene)
   // ⚠️ **흐림이 먼저다.** `fieldFade`가 건물 재질을 복제해 갈아 끼우므로, 빛을 먼저 펴면 발광을 맞추는 쪽이 버려진 재질을 쥔다
   const fade = fieldFade(scene)
   const lights = bdspLights(scene)
@@ -299,7 +374,8 @@ function FieldArea({ name }: { name: string }) {
       const p = worldState.player.position
       camera.getWorldPosition(cam.current)
       aim.current.set(p.x, p.y + AIM, p.z)
-      b.fade.aim(cam.current, aim.current, worldState.camera.mode !== 'first')
+      // 설정이 아니라 지금 렌즈다 (`firstPersonView`) — 컷신이 카메라를 쥔 동안은 1인칭이어도 3인칭 렌즈라 비켜 줘야 한다
+      b.fade.aim(cam.current, aim.current, !firstPersonView())
     }
     b.fade.step(dt)
   })

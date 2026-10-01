@@ -1,10 +1,11 @@
-// BDSP 지역 (`BdspField`) — 세우는 거리 · 쥐었다 다시 붙이기 · 물
+// BDSP 지역 (`BdspField`) — 세우는 거리 · 쥐었다 다시 붙이기 · 물 · 풀 · 빛 줄기
+import { closeSync, existsSync, openSync, readdirSync, readSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
-import { Group, Mesh, MeshStandardMaterial, PlaneGeometry } from 'three'
+import { DoubleSide, Group, Mesh, MeshStandardMaterial, PlaneGeometry, Texture } from 'three'
 import { MeshStandardNodeMaterial } from 'three/webgpu'
 import {
-  boxDistance, HELD, heldFields, holdField, liveWater, pickFields, reachFor, takeField, WATER_LOOKS, WATER_METALNESS,
-  WATER_ROUGHNESS, waterLookOf, waterMaterial,
+  boxDistance, FOLIAGE_NORMAL, foliageMaterial, HELD, heldFields, holdField, isFoliage, isLightShaft, liveFoliage, liveWater,
+  pickFields, reachFor, takeField, WATER_LOOKS, WATER_METALNESS, WATER_ROUGHNESS, waterLookOf, waterMaterial,
 } from './BdspField'
 import { DAY } from './fx/sky'
 import type { BdspLights } from './bdspLights'
@@ -117,5 +118,132 @@ describe('BDSP 물', () => {
   it('양면은 원래 재질을 따른다', () => {
     const was = new MeshStandardMaterial({ name: 'M_C_001_Water_03', side: 2 })
     expect(waterMaterial(was, WATER_LOOKS.M_C_001_Water_03!).side).toBe(2)
+  })
+
+  it('⚠️ 물은 그림자를 드리우지도 받지도 않는다 — 켜 둔 뒤에 불러도 끈다 (파이트에어리어 바다 줄무늬)', () => {
+    const root = new Group()
+    const sea = new Mesh(new PlaneGeometry(), new MeshStandardMaterial({ name: 'M_C_001_SeaWater_03' }))
+    const ground = new Mesh(new PlaneGeometry(), new MeshStandardMaterial({ name: 'M_C_001_Ground_01_01' }))
+    root.add(sea, ground)
+    for (const o of [sea, ground]) { o.castShadow = true; o.receiveShadow = true }
+    liveWater(root)
+    expect(sea.castShadow).toBe(false)
+    expect(sea.receiveShadow).toBe(false)
+    expect(ground.castShadow).toBe(true)
+    expect(ground.receiveShadow).toBe(true)
+  })
+})
+
+describe('BDSP 풀 · 꽃', () => {
+  it('세운 풀 · 꽃 · 잎만 고른다 — 땅에 깔린 풀 · 나무 · 집은 아니다', () => {
+    for (const name of [
+      'M_C_001_ComGrass_01_1', 'M_C_001_GimGrass_03', 'M_C_001_GimGrass_07', 'M_C_001_ComFlower_01', 'M_C_001_Flower_02c',
+      'M_T_005_Flower_04b', 'M_C_001_Leaf_01',
+    ]) expect(isFoliage(new MeshStandardMaterial({ name })), name).toBe(true)
+    for (const name of [
+      'M_C_001C_CliffGrass_01', 'M_C_001_PondGrass_01', 'M_C_001_GrassSeam_01', 'M_C_001_Tree_05', 'M_C_001_TreeSeam_01',
+      'M_T_002_House_01', 'M_C_001_Ground_01_01',
+    ]) expect(isFoliage(new MeshStandardMaterial({ name })), name).toBe(false)
+  })
+
+  it('⚠️ 법선을 월드 위쪽으로 박는다 — 뒷면에서 뒤집혀 검게 칠해지지 않는다. 그림 · 색 · 컷 · 양면은 그대로', () => {
+    const map = new Texture()
+    const was = new MeshStandardMaterial({
+      name: 'M_C_001_ComGrass_01_1', map, color: 0x80c040, alphaTest: 0.5, side: DoubleSide, roughness: 0.9, metalness: 0,
+    })
+    const m = foliageMaterial(was)
+    expect(m).toBeInstanceOf(MeshStandardNodeMaterial)
+    expect(m.normalNode).toBe(FOLIAGE_NORMAL)
+    expect(m.name).toBe(was.name)
+    expect(m.map).toBe(map)
+    expect(m.color.getHex()).toBe(0x80c040)
+    expect(m.alphaTest).toBe(0.5)
+    expect(m.side).toBe(DoubleSide)
+    expect(m.roughness).toBe(0.9)
+  })
+
+  it('풀은 그림자를 안 드리우고 받기는 그대로다 · 나눠 쓰던 재질은 새 것도 나눠 쓴다 · 나무와 땅은 안 건드린다', () => {
+    const root = new Group()
+    const grass = new MeshStandardMaterial({ name: 'M_C_001_GimGrass_01' })
+    const tree = new MeshStandardMaterial({ name: 'M_C_001_Tree_05' })
+    const ground = new MeshStandardMaterial({ name: 'M_C_001C_CliffGrass_02' })
+    const a = new Mesh(new PlaneGeometry(), grass)
+    const b = new Mesh(new PlaneGeometry(), grass)
+    const c = new Mesh(new PlaneGeometry(), tree)
+    const d = new Mesh(new PlaneGeometry(), ground)
+    root.add(a, b, c, d)
+    root.traverse((o) => { o.castShadow = true; o.receiveShadow = true })
+    expect(liveFoliage(root)).toBe(1)
+    expect(a.material).toBe(b.material)
+    expect((a.material as unknown as MeshStandardNodeMaterial).normalNode).toBe(FOLIAGE_NORMAL)
+    expect(a.castShadow).toBe(false)
+    expect(a.receiveShadow).toBe(true)
+    expect(c.material).toBe(tree)
+    expect(c.castShadow).toBe(true)
+    expect(d.material).toBe(ground)
+    expect(d.castShadow).toBe(true)
+  })
+
+  // 거울 인스턴스는 three가 인스턴스마다 앞뒤를 바꿔 주지 않아 같은 꼴로 검을 수 있다 (`field.ts`의 `decompose`가 거울을 배율 x의
+  // 부호로 남긴다). 구운 지역에 거울이 하나도 없음을 잰다 — 생기면 이 시험이 먼저 안다
+  const FIELD_DIR = 'public/models/field'
+  it.skipIf(!existsSync(FIELD_DIR))('구운 지역에 거울(행렬식 < 0) 인스턴스가 없다', () => {
+    let total = 0
+    const mirrored: string[] = []
+    for (const file of readdirSync(FIELD_DIR).filter((f) => /^area\d+\.glb$/.test(f))) {
+      const fd = openSync(`${FIELD_DIR}/${file}`, 'r')
+      try {
+        const read = (at: number, n: number): Buffer => {
+          const out = Buffer.alloc(n)
+          readSync(fd, out, 0, n, at)
+          return out
+        }
+        const jsonLength = read(12, 4).readUInt32LE(0)
+        const gltf = JSON.parse(read(20, jsonLength).toString('utf8')) as {
+          nodes: { mesh?: number, matrix?: number[], extensions?: { EXT_mesh_gpu_instancing?: { attributes: { SCALE?: number } } } }[]
+          accessors: { bufferView: number, byteOffset?: number, count: number }[]
+          bufferViews: { byteOffset?: number, byteStride?: number }[]
+        }
+        const bin = 20 + jsonLength + 8
+        for (const [i, n] of gltf.nodes.entries()) {
+          if (n.mesh === undefined) continue
+          const scale = n.extensions?.EXT_mesh_gpu_instancing?.attributes.SCALE
+          if (scale !== undefined) {
+            const a = gltf.accessors[scale]!
+            const v = gltf.bufferViews[a.bufferView]!
+            const stride = v.byteStride ?? 12
+            const raw = read(bin + (v.byteOffset ?? 0) + (a.byteOffset ?? 0), stride * a.count)
+            for (let k = 0; k < a.count; k++) {
+              total++
+              const s = [0, 1, 2].map((c) => raw.readFloatLE(k * stride + c * 4))
+              if (s[0]! * s[1]! * s[2]! < 0) mirrored.push(`${file} 노드 ${String(i)} #${String(k)}`)
+            }
+            continue
+          }
+          total++
+          const m = n.matrix
+          if (!m) continue
+          const det = m[0]! * (m[5]! * m[10]! - m[6]! * m[9]!) - m[4]! * (m[1]! * m[10]! - m[2]! * m[9]!)
+            + m[8]! * (m[1]! * m[6]! - m[2]! * m[5]!)
+          if (det < 0) mirrored.push(`${file} 노드 ${String(i)}`)
+        }
+      } finally { closeSync(fd) }
+    }
+    expect(total).toBeGreaterThan(0)
+    expect(mirrored).toEqual([])
+  })
+})
+
+describe('빛 줄기', () => {
+  it('창빛 · 조명 · 입구 빛은 줄기다 — `BdspRoom`과 같은 규칙', () => {
+    for (const name of ['M_C_001_WindowLight_01', 'M_C_001_SpotLight_04', 'M_D_005_SpotLight_01', 'M_C_001_EntranceLight_01']) {
+      expect(isLightShaft(new MeshStandardMaterial({ name })), name).toBe(true)
+    }
+  })
+
+  it('길잡이 등 · 가로등 · 바깥 등 · 입구 빛 웅덩이는 줄기가 아니다', () => {
+    for (const name of [
+      'M_T_012_GuideLight_01', 'M_C_001_StreetLight_01', 'M_C_001_OutLight_01', 'M_C_001_PokeCenLight_01', 'M_D_006_MachineLight_01',
+    ]) expect(isLightShaft(new MeshStandardMaterial({ name })), name).toBe(false)
   })
 })
