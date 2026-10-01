@@ -3,11 +3,13 @@
 // 원작 실내는 저폴리 상자에 작은 그림을 입힌 것이라 가까이서 보면 가구가 판때기다. BDSP는 같은 방을 입체로 다시 지었고
 // (`Environments/prefab_map` — 225벌이 우리 맵 이름과 짝이 맞는다), 방 이름이 원작 내부 맵 이름과 같다(`C01R0101`).
 //
-// ⚠️ **좌표를 옮기지 않는다.** BDSP 방은 원작 칸 좌표 그대로 지어져 있다 — 방송국 1층(`c01r0101`)의 사람 셋과 워프 셋이
+// ⚠️ **좌표는 대개 옮기지 않는다.** BDSP 방은 원작 칸 좌표 그대로 지어져 있다 — 방송국 1층(`c01r0101`)의 사람 셋과 워프 셋이
 // 원작과 같은 칸에 서고(`PlaceData_C01R0101` · `MapWarp_C01R0101`), 바닥이 x 1~20 · z 3~13으로 우리 칸 경계와 같다.
 // 그래서 행렬 원점에 그대로 놓는다. 충돌 · 높이 · 워프 · 사람은 여전히 원작 자료가 쥔다 — 이 층은 그림만이다.
+// 통째로 칸 단위만큼 밀려 지어진 방만 옮긴다(`placementOf`).
 //
 // ⚠️ **천장은 1인칭에서만 보인다.** BDSP는 부감 게임이라 방에 천장이 덮여 있고(`Ceil*`), 3인칭 카메라는 그 위에 있다.
+// 부감이 안 보여 준 자리(남쪽 벽 · 문간 · 천장 없는 홀)는 그 방의 재질로 메운다(`roomShell`).
 //
 // ⚠️ **방이 없는 맵은 원작 그림 그대로다.** 짝은 이름이 먼저고, 없으면 같은 원작 방 모양(행렬)을 쓰는 다른 맵의 방을 빌린다 —
 // 포켓몬센터 · 상점은 BDSP에 잔모래마을 것 한 벌씩뿐이고(`t02pc0101` · `t02fs0101`) 원작도 방 모양을 돌려쓴다
@@ -18,27 +20,22 @@
 import { useEffect, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import {
-  AdditiveBlending, Box3, BufferAttribute, BufferGeometry, DoubleSide, Mesh, MeshStandardMaterial, Vector3,
-  type Group, type Material, type Object3D,
-} from 'three'
+import { Box3, BufferAttribute, BufferGeometry, Mesh, Vector3, type Group, type Material, type Object3D } from 'three'
 import { assets } from '../data/providers/assetProvider'
+import { firstPersonView } from '../engine/actor/camera'
+import { npcActors, type NpcActor } from '../engine/actor/npcs'
 import { mapById, warpsOf, world } from '../engine/map/world'
 import { liftForMap } from '../engine/world/platformLift'
 import { PASTORIA_GYM_MAP } from '../engine/world/pastoriaGym'
 import { sunyshoreRoomOf } from '../engine/world/sunyshoreGym'
 import { disposeTree } from './disposeTree'
-import { DOOR_OPEN } from './roomWalls'
-import { worldState } from '../state/worldState'
 import { useBdspMark } from './bdspReady'
 import { liveWater } from './BdspField'
 import { holdBdspDoors } from './DoorAnimations'
 import { holdBdspSigns } from './ObjectProps'
+import { shellRoom } from './roomShell'
 
 const loader = new GLTFLoader()
-
-/** 빛 줄기의 세기 — 더해지는 빛이라 1이면 바닥이 하얗게 탄다 */
-const LIGHT_SHAFT = 0.35
 
 /** 구워 둔 방 이름들 (`models/room/index.json`). 없는 설치본이면 빈 목록 — 그때는 다들 원작 그림이다 */
 let index: Promise<ReadonlySet<string>> | null = null
@@ -60,8 +57,31 @@ function roomIndex(): Promise<ReadonlySet<string>> {
  *   시계 한가운데 (11, 13)가 BDSP 바닥 밖이다
  * · `c07gym0101` 장막 — 입구 매트가 z 25.7인데 원작 워프는 z 30이고, 바닥이 z 26에서 끝나 원작 사람 (13, 29)가 바닥 밖에 선다.
  *   BDSP 타이어 열(바닥에 누운 것)과 원작 타이어 더미 열하나는 (8, 10) 한 곳만 겹친다
+ * · `c05gym0101` · `c05gym0104` 연고 체육관 입구 · 넷째 방 — BDSP는 두 이름에 같은 한 방(바닥 x 1~18 · z 0~23, 문 매트
+ *   (9, 22))을 구웠다. 원작 입구 방은 바깥 문이 (4, 8)이고 넷째 방은 (4, 13)으로 돌아간다 — 문만 x 5 · z 14칸 어긋난다
+ * · `c01r0601` GTS — BDSP 문 매트는 (10, 15)인데 원작 문은 (13, 18)이다. 방을 (3, 3) 옮겨도 원작 사람 (24, 7) · (25, 12) ·
+ *   (3, 9) · (3, 13)이 바닥(옮긴 뒤 x 4~23) 밖이다 — 원작 방이 더 넓다(행렬 205 건물이 x 26.5까지)
+ * · `c07r0101` 게임코너(맵 136) — BDSP는 게임코너를 없앴고 이 이름에 **옷가게**를 지었다(옷걸이 · 마네킹 · 매대). 칸은 맞지만
+ *   슬롯 · 코인 교환대가 하나도 없다 (PARITY §7.6 — 슬롯은 돈다)
  */
-export const MISFIT_ROOMS: ReadonlySet<string> = new Set(['c02gym0101', 'c04gym0101', 'c07gym0101'])
+export const MISFIT_ROOMS: ReadonlySet<string> = new Set([
+  'c02gym0101', 'c04gym0101', 'c07gym0101', 'c05gym0101', 'c05gym0104', 'c01r0601', 'c07r0101',
+])
+
+/**
+ * **칸 단위로 통째 밀려 지어진 방** — 그만큼 옮겨 놓는다 (칸, [x, z]). 잰 법: 바깥으로 나가는 문 워프 칸 한가운데 ↔ 같은 x의
+ * 문 매트(`M_C_001_Mat_*`, 바닥에 누운 것) z 한가운데. 맞는 방은 매트가 칸 한가운데보다 0.21 남쪽이다(`t01r0301` 8.71 ↔ 문
+ * (4, 8) · `c07r0201` 12.71 ↔ (10, 12) — 방 83벌이 같다).
+ * · `c04r0201` 갤럭시단 빌딩 1층(맵 72 · 같은 행렬의 572) — 매트 z 12.71 ↔ 문 (11, 15) 15.5: −2.79 = −3.00 − (−0.21). 계단
+ *   (`Stair_01` z 2.95~4.79)도 원작 계단 워프 (14, 6)과 같은 3칸이다
+ */
+const ROOM_PLACEMENT: Readonly<Record<string, readonly [number, number]>> = { c04r0201: [0, 3] }
+
+/** 그 방을 놓을 자리 (칸) — 대개 원점이다 */
+export function placementOf(room: string): { x: number, z: number } {
+  const p = ROOM_PLACEMENT[room]
+  return p ? { x: p[0], z: p[1] } : { x: 0, z: 0 }
+}
 
 /** 이 맵이 쓸 방. 이름이 먼저 · 없으면 같은 행렬의 다른 맵 방 · 둘 다 없으면 `null`. 생김이 다른 방(`MISFIT_ROOMS`)은 안 쓴다 */
 export function roomFor(mapId: number, rooms: ReadonlySet<string>): string | null {
@@ -123,231 +143,85 @@ export function useBdspRoom(mapId: number): string | null {
   return rooms ? roomFor(mapId, rooms) : null
 }
 
-/** 천장 조각인가 — BDSP 재질 이름이 `…_Ceil_…`이다 */
-const isCeiling = (m: Material): boolean => /_Ceil_/.test(m.name)
+/**
+ * 사천왕 방문 그림 번호 (`OBJ_EVENT_GFX_ELITE_FOUR_ROOM_DOOR` — `generated/object_events_gfx.txt` 210째 줄, 0부터 209)
+ */
+export const ELITE_FOUR_DOOR_GFX = 209
+
+/** 사천왕 방 넷 (맵 177 · 179 · 181 · 183 — 나무 · 대지 · 불꽃 · 사념) */
+const ELITE_FOUR_ROOM = /^c10r010[3579]$/
 
 /**
- * 창으로 드는 빛 · 조명 줄기 — **더해지는 빛**이다(`…_WindowLight_…` · `…_Light_…`). 반투명 판으로 그리면 하얀 널빤지가 화면을
- * 가로지른다(3인칭에서 찍혔다). 빛은 뒤를 가리지 않으므로 깊이도 안 쓴다
+ * **사천왕 방문 — BDSP 문짝을 원작 문 객체에 매단다.** 원작은 방문 둘이 객체다(`LOCALID_ENTRANCE_DOOR` (8, 12) ·
+ * `LOCALID_EXIT_DOOR` (8, 2), `FLAG_HIDE_POKEMON_LEAGUE_*_DOOR`) — 들어오면 뒷문이 닫히고 이기면 앞문이 열린다(객체가 사라진다).
+ * BDSP는 두 문짝을 **닫힌 채 한 조각**(`M_D_047_DoorInner_01`, z 2.40~2.46 · 12.40~12.46)으로 구웠고, 원작 문 객체는 BDSP 위에서
+ * 안 선다(`ObjectProps`의 `BDSP_BAKED_KINDS`) — 그대로 두면 이긴 뒤에도 앞문이 닫힌 채 그 속으로 걸어 나갔다.
+ *
+ * 그래서 문짝을 z로 둘로 갈라 각자 그 칸의 문 객체가 서 있을 때만 보인다(`eliteDoorShown`). 갈라 둔 조각은 `holdBdspDoors`가
+ * 문짝 하나씩으로 잡는다
  */
-const isLightShaft = (m: Material): boolean => /_(Window)?Light_\d/.test(m.name) || /EntranceLight/.test(m.name)
-
-/**
- * **남쪽 벽을 세운다 — 1인칭에서만.** BDSP는 카메라가 남쪽 위에 있어서 그쪽 벽을 무릎 높이 굽도리로만 두고 지붕도 안 덮었다
- * (주인공 방에서 남쪽을 보면 굽도리 위가 새까맣다). 원작 실내의 앞벽과 같은 사정이라 같은 원칙으로 메운다
- * (`roomWalls` 머리말): 바닥 남쪽 끝을 따라 천장 높이까지 세우고, **문간 칸에는 인방만** 남긴다(`DOOR_OPEN`).
- * 그림은 그 방의 벽 재질을 쓴다. 3인칭에서는 카메라와 방 사이에 서므로 안 그린다
- */
-/** 남쪽 벽을 쪼개는 칸 (타일) */
-const CELL = 0.125
-/** 북쪽 벽 가장자리에서 봐주는 틈 (무게중심 좌표) — 삼각형 이음매 위의 점이 밖으로 새지 않게 */
-const EDGE = 0.02
-
-function southWall(scene: Object3D, mapId: number): Mesh | null {
-  let floor: Box3 | null = null
-  const all = new Box3()
-  scene.updateMatrixWorld(true)
-  const walls: Mesh[] = []
-  scene.traverse((o) => {
+export function splitEliteFourDoors(root: Object3D, room: string): { mesh: Mesh, x: number, z: number }[] {
+  if (!ELITE_FOUR_ROOM.test(room)) return []
+  const found: Mesh[] = []
+  root.traverse((o) => {
     if (!(o instanceof Mesh)) return
-    const mats = Array.isArray(o.material) ? o.material : [o.material]
-    const box = new Box3().setFromObject(o)
-    if (mats.some((m: Material) => /_Floor_/.test(m.name))) floor = floor ? floor.union(box) : box.clone()
-    if (!mats.some(isLightShaft) && !/RootShadow/.test(mats[0]?.name ?? '')) all.union(box)
-    if (mats.some((m: Material) => /_Wall_/.test(m.name))) walls.push(o)
+    const mats = (Array.isArray(o.material) ? o.material : [o.material]) as Material[]
+    if (mats.length === 1 && /_DoorInner_\d/.test(mats[0]!.name)) found.push(o)
   })
-  const f = floor as Box3 | null
-  if (!f || walls.length === 0) return null
-  const north = northFace(walls, f.min.z)
-  if (!north) return null
-  const x0 = Math.round(f.min.x), x1 = Math.round(f.max.x), z = f.max.z
-  const top = Math.max(DOOR_OPEN + 0.5, Math.min(all.max.y, north.top))
-  const doors = new Set(warpsOf(mapId).filter((w) => w.z + 1 >= Math.round(z) - 1).map((w) => w.x))
-  const pos: number[] = [], uv: number[] = []
-  const mirrorZ = (zz: number): number => z + (f.min.z - zz)
-  // ① **북쪽 벽을 거울로 옮긴다** — 박공 지붕선 · 몰딩 · 굽도리가 그대로 따라온다. 문간 칸은 바닥에서 `DOOR_OPEN`까지 오려 낸다.
-  // ⚠️ 북쪽 벽 그림에 구워진 가구 그림자도 같이 온다(주인공 방 TV 자리 둘레의 어두운 얼룩) — 원작에 없는 벽이라 베낄 것이 이것뿐이다
-  const holes = [...doors].map((d) => ({ x0: d, x1: d + 1, y1: DOOR_OPEN }))
-  for (const t of north.tris) {
-    for (const poly of cutDoors([t.a, t.b, t.c], holes)) {
-      for (let i = 1; i + 1 < poly.length; i++) {
-        for (const q of [poly[0]!, poly[i]!, poly[i + 1]!]) { pos.push(q[0]!, q[1]!, mirrorZ(q[2]!)); uv.push(q[3]!, q[4]!) }
+  const out: { mesh: Mesh, x: number, z: number }[] = []
+  for (const o of found) {
+    const g = (o.geometry as BufferGeometry).index ? (o.geometry as BufferGeometry).toNonIndexed() : o.geometry as BufferGeometry
+    const pos = g.getAttribute('position')
+    g.computeBoundingBox()
+    const mid = (g.boundingBox!.min.z + g.boundingBox!.max.z) / 2
+    const halves: [number[], number[]] = [[], []]
+    for (let i = 0; i + 2 < pos.count; i += 3) {
+      const cz = (pos.getZ(i) + pos.getZ(i + 1) + pos.getZ(i + 2)) / 3
+      halves[cz < mid ? 0 : 1].push(i)
+    }
+    if (halves[0].length === 0 || halves[1].length === 0) continue
+    const parent = o.parent
+    if (!parent) continue
+    for (const tris of halves) {
+      const piece = new BufferGeometry()
+      for (const [key, attr] of Object.entries(g.attributes)) {
+        const a = attr as BufferAttribute
+        const arr = new (a.array.constructor as new (n: number) => Float32Array)(tris.length * 3 * a.itemSize)
+        for (const [k, i] of tris.entries()) {
+          for (let v = 0; v < 3 * a.itemSize; v++) arr[k * 3 * a.itemSize + v] = a.array[i * a.itemSize + v]!
+        }
+        piece.setAttribute(key, new BufferAttribute(arr, a.itemSize, a.normalized))
       }
+      const mesh = new Mesh(piece, o.material)
+      mesh.name = `${o.name} (${String(out.length)})`
+      mesh.position.copy(o.position); mesh.quaternion.copy(o.quaternion); mesh.scale.copy(o.scale)
+      mesh.receiveShadow = o.receiveShadow; mesh.castShadow = o.castShadow
+      parent.add(mesh)
+      mesh.updateMatrixWorld(true)
+      const c = new Box3().setFromObject(mesh).getCenter(new Vector3())
+      // 방 그룹 안 좌표 — 놓을 자리(`placementOf`)는 아직 안 걸었다
+      out.push({ mesh, x: Math.floor(c.x), z: Math.floor(c.z) })
     }
-  }
-  // ② **북쪽 벽의 구멍(TV · 창 자리)만** 칸으로 메운다 — 그 기둥에서 벽이 닿는 높이 아래인데 삼각형이 없는 칸이다.
-  // 그림은 깨끗한 기둥의 무늬를 가로로 이은 것이다 (`north.fillAt`)
-  const cols = Math.round(1 / CELL)
-  for (let x = x0; x < x1; x++) {
-    const ya = doors.has(x) ? DOOR_OPEN : 0
-    for (let c = 0; c < cols; c++) {
-      const xa = x + c / cols, xb = x + (c + 1) / cols, xm = (xa + xb) / 2
-      const reach = north.reach(xm, top)
-      for (let y0 = ya; y0 + CELL <= reach; y0 += CELL) {
-        if (north.uvAt(xm, y0 + CELL / 2).inside) continue
-        const q = [north.fillAt(xa, y0), north.fillAt(xb, y0), north.fillAt(xb, y0 + CELL), north.fillAt(xa, y0 + CELL)]
-        const [p0, p1, p2, p3] = q as [number, number][]
-        pos.push(xa, y0, z, xb, y0, z, xb, y0 + CELL, z, xa, y0, z, xb, y0 + CELL, z, xa, y0 + CELL, z)
-        uv.push(p0[0], p0[1], p1[0], p1[1], p2[0], p2[1], p0[0], p0[1], p2[0], p2[1], p3[0], p3[1])
-      }
-    }
-  }
-  if (pos.length === 0) return null
-  const geometry = new BufferGeometry()
-  geometry.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3))
-  geometry.setAttribute('uv', new BufferAttribute(new Float32Array(uv), 2))
-  geometry.computeVertexNormals()
-  const material = north.material.clone()
-  material.side = DoubleSide
-  const mesh = new Mesh(geometry, material)
-  mesh.name = '방 남쪽 벽 (1인칭)'
-  mesh.receiveShadow = true
-  return mesh
-}
-
-/** 볼록 다각형을 반평면 `sign·(q[axis] − at) ≥ 0`으로 자른다. 꼭짓점의 UV도 같이 잇는다 */
-function clipPoly(poly: number[][], axis: 0 | 1, at: number, sign: 1 | -1): number[][] {
-  const out: number[][] = []
-  for (let i = 0; i < poly.length; i++) {
-    const p = poly[i]!, q = poly[(i + 1) % poly.length]!
-    const dp = sign * (p[axis]! - at), dq = sign * (q[axis]! - at)
-    if (dp >= 0) out.push(p)
-    if ((dp >= 0) !== (dq >= 0)) {
-      const t = dp / (dp - dq)
-      out.push(p.map((v, k) => v + (q[k]! - v) * t))
-    }
+    parent.remove(o)
+    if (g !== o.geometry) g.dispose()
+    o.geometry.dispose()
   }
   return out
 }
 
-/**
- * 삼각형에서 문간 구멍(x0 ≤ x ≤ x1 · y ≤ y1)을 오려 낸 조각들. 구멍 밖은 세 조각이다 — 왼쪽 · 오른쪽 · 가운데 위
- */
-function cutDoors(tri: number[][], holes: readonly { x0: number, x1: number, y1: number }[]): number[][][] {
-  let pieces = [tri]
-  for (const h of holes) {
-    const next: number[][][] = []
-    for (const p of pieces) {
-      const left = clipPoly(p, 0, h.x0, -1)
-      const right = clipPoly(p, 0, h.x1, 1)
-      const mid = clipPoly(clipPoly(clipPoly(p, 0, h.x0, 1), 0, h.x1, -1), 1, h.y1, 1)
-      for (const q of [left, right, mid]) if (q.length >= 3) next.push(q)
-    }
-    pieces = next
-  }
-  return pieces
-}
-
-/**
- * 북쪽 벽(바닥 북쪽 끝에 선 벽 조각의 삼각형들) — 그 (x, 높이)의 UV를 되묻는다. 남쪽 벽은 북쪽 벽과 같은 몰딩 · 굽도리라
- * 같은 자리의 UV를 베끼면 그림이 이어진다. 그 자리에 삼각형이 없으면 가장 가까운 삼각형의 무게중심 UV
- */
-function northFace(walls: readonly Mesh[], minZ: number): {
-  material: MeshStandardMaterial, top: number
-  /** 북쪽 벽 삼각형 — 꼭짓점마다 [x, y, z, u, v] */
-  tris: readonly { a: number[], b: number[], c: number[] }[]
-  uvAt: (x: number, y: number) => { uv: [number, number], inside: boolean }
-  /**
-   * 벽 밖(구멍) 자리를 메울 UV — 같은 높이에서 **옆으로 가장 가까운 벽 자리**의 UV를 그 자리의 기울기로 이어 간다. 벽 그림은
-   * 가로로 되풀이되므로(반복 감기) 무늬가 끊기지 않는다. 가장 가까운 한 점의 UV를 늘려 쓰면 잿빛으로 번졌다
-   */
-  fillAt: (x: number, y: number) => [number, number]
-  /** 그 x에서 벽이 닿는 가장 높은 자리 (`top` 아래에서 훑는다). 벽이 없으면 0 */
-  reach: (x: number, top: number) => number
-} | null {
-  const tris: { a: number[], b: number[], c: number[] }[] = []
-  let material: MeshStandardMaterial | null = null
-  let top = 0
-  const v = new Vector3()
-  for (const mesh of walls) {
-    const g = mesh.geometry as BufferGeometry
-    const p = g.getAttribute('position'), t = g.getAttribute('uv')
-    if (!p || !t) continue
-    const idx = g.getIndex()
-    const n = idx ? idx.count : p.count
-    const vert = (i: number): number[] => {
-      const k = idx ? idx.getX(i) : i
-      v.fromBufferAttribute(p, k).applyMatrix4(mesh.matrixWorld)
-      return [v.x, v.y, v.z, t.getX(k), t.getY(k)]
-    }
-    for (let i = 0; i + 2 < n; i += 3) {
-      const a = vert(i), b = vert(i + 1), c = vert(i + 2)
-      // 북쪽 끝에 붙어 선 세로 삼각형만
-      if ([a, b, c].some((q) => Math.abs(q[2]! - minZ) > 0.6)) continue
-      if (Math.abs(a[1]! - b[1]!) + Math.abs(b[1]! - c[1]!) + Math.abs(a[1]! - c[1]!) < 1e-3) continue
-      tris.push({ a, b, c })
-      top = Math.max(top, a[1]!, b[1]!, c[1]!)
-      const m = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material
-      if (!material && m instanceof MeshStandardMaterial) material = m
-    }
-  }
-  const paint = material as MeshStandardMaterial | null
-  if (!paint || tris.length === 0) return null
-  /** 그 자리의 UV와 벽 안인가 — 가장자리 칸이 걸치는 것은 봐준다(`EDGE`). 밖이면 가장 가까운 삼각형의 UV */
-  const uvAt = (x: number, y: number): { uv: [number, number], inside: boolean } => {
-    let best: [number, number] = [0, 0], far = Infinity
-    for (const { a, b, c } of tris) {
-      // x · y 평면에서 무게중심 좌표
-      const d = (b[1]! - c[1]!) * (a[0]! - c[0]!) + (c[0]! - b[0]!) * (a[1]! - c[1]!)
-      if (Math.abs(d) < 1e-9) continue
-      const l1 = ((b[1]! - c[1]!) * (x - c[0]!) + (c[0]! - b[0]!) * (y - c[1]!)) / d
-      const l2 = ((c[1]! - a[1]!) * (x - c[0]!) + (a[0]! - c[0]!) * (y - c[1]!)) / d
-      const l3 = 1 - l1 - l2
-      const outside = Math.max(0, -l1) + Math.max(0, -l2) + Math.max(0, -l3)
-      if (outside < far) {
-        far = outside
-        const w = [Math.max(0, l1), Math.max(0, l2), Math.max(0, l3)]
-        const sum = w[0]! + w[1]! + w[2]! || 1
-        best = [
-          (a[3]! * w[0]! + b[3]! * w[1]! + c[3]! * w[2]!) / sum,
-          (a[4]! * w[0]! + b[4]! * w[1]! + c[4]! * w[2]!) / sum,
-        ]
-        if (outside === 0) break
-      }
-    }
-    return { uv: best, inside: far <= EDGE }
-  }
-  const reach = (x: number, ceiling: number): number => {
-    for (let y = ceiling; y > 0; y -= CELL / 2) if (uvAt(x, y).inside) return y
-    return 0
-  }
-  const reachOf = (x: number): number => reach(x, top)
-  /**
-   * 깨끗한 기둥 — 바닥에서 벽 꼭대기까지 **빈틈없이** 벽인 x들. 구멍 가장자리는 가구 그림자가 그림에 구워져 있어서
-   * (주인공 방 TV 자리) 거기서 이어 붙이면 어두운 나비 모양이 찍혔다. 구멍과 **한 칸 넘게** 떨어진 기둥만 기준으로 쓴다
-   */
-  const clean: number[] = []
-  {
-    const xs = tris.flatMap((t) => [t.a[0]!, t.b[0]!, t.c[0]!])
-    const lo = Math.min(...xs), hi = Math.max(...xs)
-    const holeX: number[] = []
-    for (let x = lo + CELL / 2; x < hi; x += CELL) {
-      const r = reachOf(x)
-      let full = r > 0
-      for (let y = CELL / 2; y < r && full; y += CELL) if (!uvAt(x, y).inside) full = false
-      if (full) clean.push(x); else holeX.push(x)
-    }
-    for (let i = clean.length - 1; i >= 0; i--) {
-      if (holeX.some((h) => Math.abs(h - clean[i]!) < 1)) clean.splice(i, 1)
-    }
-  }
-  const fillAt = (x: number, y: number): [number, number] => {
-    const here = uvAt(x, y)
-    if (here.inside || clean.length === 0) return here.uv
-    const xc = clean.reduce((b, c) => (Math.abs(c - x) < Math.abs(b - x) ? c : b), clean[0]!)
-    const at = uvAt(xc, y), step = uvAt(xc + CELL, y)
-    if (!at.inside || !step.inside) return here.uv
-    // 그 기둥의 가로 기울기로 이어 간다 — 벽 그림은 가로로 되풀이된다(반복 감기)
-    const du = (step.uv[0] - at.uv[0]) / CELL, dv = (step.uv[1] - at.uv[1]) / CELL
-    return [at.uv[0] + du * (x - xc), at.uv[1] + dv * (x - xc)]
-  }
-  return { material: paint, top, tris, uvAt, fillAt, reach }
+/** 그 칸에 사천왕 방문 객체가 서 있는가 — 깃발로 숨은 문은 배치표에서 아예 안 선다 */
+export function eliteDoorShown(list: readonly NpcActor[], x: number, z: number): boolean {
+  return list.some((a) => a.gfx === ELITE_FOUR_DOOR_GFX && a.x === x && a.z === z && a.visible)
 }
 
 export function BdspRoom({ name, mapId }: { name: string, mapId: number }) {
   const [scene, setScene] = useState<Group | null>(null)
   const [failed, setFailed] = useState(false)
-  const [ceilings, setCeilings] = useState<readonly Object3D[]>([])
+  /** 렌즈마다 켜고 끌 것 (`shellRoom`) · 문 객체에 매단 사천왕 방문 */
+  const [lens, setLens] = useState<{
+    first: readonly Object3D[], hanging: readonly Object3D[], shafts: readonly Object3D[]
+    doors: readonly { mesh: Mesh, x: number, z: number }[]
+  }>({ first: [], hanging: [], shafts: [], doors: [] })
   useBdspMark(name, scene !== null, failed)
 
   useEffect(() => {
@@ -361,27 +235,25 @@ export function BdspRoom({ name, mapId }: { name: string, mapId: number }) {
       .then((gltf) => {
         if (!alive) { disposeTree(gltf.scene); return }
         held = gltf.scene
-        const top: Object3D[] = []
-        gltf.scene.traverse((o) => {
-          if (!(o instanceof Mesh)) return
-          o.receiveShadow = true
-          const mats = Array.isArray(o.material) ? o.material : [o.material]
-          if (mats.some(isCeiling)) top.push(o)
-          for (const m of mats) {
-            if (!isLightShaft(m)) continue
-            m.blending = AdditiveBlending
-            m.transparent = true
-            m.depthWrite = false
-            m.opacity = LIGHT_SHAFT
-          }
-          if (mats.some(isLightShaft)) { o.castShadow = false; o.receiveShadow = false; o.renderOrder = 10 }
-        })
         hideDevices(gltf.scene, mapId)
         liveWater(gltf.scene)
-        const south = southWall(gltf.scene, mapId)
-        if (south) { gltf.scene.add(south); top.push(south) }
+        const at = placementOf(name)
+        const doors = splitEliteFourDoors(gltf.scene, name)
+          .map((d) => ({ mesh: d.mesh, x: d.x + at.x, z: d.z + at.z }))
+        // 껍데기는 방 그룹 안 좌표로 짓는다 — 워프도 그 좌표로 옮겨 넘긴다
+        const shell = shellRoom(gltf.scene, warpsOf(mapId).map((w) => ({ x: w.x - at.x, z: w.z - at.z })))
+        gltf.scene.position.set(at.x, 0, at.z)
+        // 문짝 · 간판 자리는 세계 좌표로 잡는다 — 놓을 자리를 건 뒤에
         release = [holdBdspDoors(gltf.scene), holdBdspSigns(gltf.scene)]
-        setCeilings(top)
+        // 문빛(`EntranceLight`)은 줄기이면서 바닥 남쪽 끝 너머에 매달려 있다 — 어느 렌즈에서도 안 그린다
+        const both = shell.shafts.filter((s) => shell.hanging.includes(s))
+        for (const o of both) o.visible = false
+        setLens({
+          first: shell.first,
+          hanging: shell.hanging.filter((o) => !both.includes(o)),
+          shafts: shell.shafts.filter((o) => !both.includes(o)),
+          doors,
+        })
         setScene(gltf.scene)
       })
       .catch((e: unknown) => {
@@ -397,8 +269,14 @@ export function BdspRoom({ name, mapId }: { name: string, mapId: number }) {
   }, [name, mapId])
 
   useFrame(() => {
-    const first = worldState.camera.mode === 'first'
-    for (const c of ceilings) c.visible = first
+    // ⚠️ **눈이 실제로 어디 있나로 가른다** (`firstPersonView`) — 설정 값을 보면 컷신 동안 3인칭 카메라가 천장에 막힌다
+    const first = firstPersonView()
+    for (const c of lens.first) c.visible = first
+    // 바닥 남쪽 끝 너머 문 · 문턱 · 문빛은 부감에서 방 앞 허공에 매달린다
+    for (const c of lens.hanging) c.visible = first
+    // 빛 줄기는 눈높이에서 사람 모양 흰 덩이로 읽힌다
+    for (const c of lens.shafts) c.visible = !first
+    for (const d of lens.doors) d.mesh.visible = eliteDoorShown(npcActors.list, d.x, d.z)
   })
 
   return scene ? <primitive object={scene} /> : null
