@@ -7,7 +7,7 @@
 // 지연 로딩 경계도 여기서 지나간다 — `startWild`가 `@pkmn/sim`을 처음 끌어온다.
 import 'fake-indexeddb/auto'
 import { afterAll, beforeAll, beforeEach, describe, it, expect } from 'vitest'
-import { hasTrainer, useBattleStore } from './battleStore'
+import { hasTrainer, moneyPenalty, useBattleStore } from './battleStore'
 import { useSaveStore, createNewSave, dexHas } from './saveStore'
 import { Ball } from '../engine/battle/meta/capture'
 import { createWild, fillPp, statsOf, wildMoves } from '../engine/pokemon/instance'
@@ -16,6 +16,8 @@ import { loadItems, loadMoves, loadSpecies, loadTrainers } from '../data/gameDat
 import { quantity } from '../engine/bag/bag'
 import { installNodeAssets } from '../data/romData.testkit'
 import { newRoamers } from '../engine/world/roamer'
+import { fadeAlpha, resetFade, tickFade } from '../engine/script/fade'
+import { useEvolutionStore } from './evolutionStore'
 
 // gameData는 AssetProvider로 받는다. 시험에서는 디스크에서 읽는 Provider로 바꾼다.
 //
@@ -737,7 +739,7 @@ describe('트레이너전', () => {
     useBattleStore.getState().close()
   }, 60_000)
 
-  it('졌으면 상금이 없다', async () => {
+  it('졌으면 상금이 없고 도리어 잃는다 (`BattleSystem_CalcMoneyPenalty`)', async () => {
     // 5레벨 하나로 강석에게 덤빈다
     useSaveStore.setState({ party: [] })
     const before = useSaveStore.getState().money
@@ -745,8 +747,15 @@ describe('트레이너전', () => {
     await playToEnd(120)
 
     expect(useBattleStore.getState().outcome, '이겨 버렸다 — 이 테스트가 공허하다').toBe('loss')
-    expect(useSaveStore.getState().money).toBe(before)
+    // 뱃지 0 · 최고 레벨 5 → 5 × 4 × 2
+    const lost = Math.min(before, 5 * 4 * 2)
+    expect(lost, '가진 돈이 0이라 잰 것이 없다').toBeGreaterThan(0)
+    expect(useSaveStore.getState().money).toBe(before - lost)
+    // 끝 줄(「상금으로 …원을 지불했다」)이 이 값을 말한다
+    expect(useBattleStore.getState().penalty).toBe(lost)
+    expect(useBattleStore.getState().events.some((e) => e.kind === 'prize')).toBe(false)
     useBattleStore.getState().close()
+    expect(useBattleStore.getState().penalty).toBe(0)
   }, 60_000)
 })
 
@@ -818,6 +827,123 @@ describe('배틀 뒤에 남는 것', () => {
     // 기술칸이 다섯 개가 되면 안 된다
     expect(useSaveStore.getState().party[0]!.moves).toHaveLength(4)
   }, 60_000)
+})
+
+describe('진 판에 잃는 돈 (`BattleSystem_CalcMoneyPenalty`)', () => {
+  const mon = (level: number, isEgg = false) => ({ species: 387, isEgg, level })
+
+  it('파티 최고 레벨 × 4 × 뱃지 배수다', () => {
+    // 뱃지 0개는 2배, 8개는 30배 (`badgeMul`)
+    expect(moneyPenalty([mon(5), mon(12)], 0, 99999)).toBe(12 * 4 * 2)
+    expect(moneyPenalty([mon(50)], 0xff, 99999)).toBe(50 * 4 * 30)
+    // 셋 — 0b111
+    expect(moneyPenalty([mon(20)], 0b111, 99999)).toBe(20 * 4 * 9)
+  })
+
+  it('알은 안 센다 — `Party_GetMaxLevel`이 알을 건너뛴다', () => {
+    expect(moneyPenalty([mon(5), mon(1, true)], 0, 99999)).toBe(5 * 4 * 2)
+  })
+
+  it('가진 돈보다 많이 안 잃는다', () => {
+    expect(moneyPenalty([mon(50)], 0, 100)).toBe(100)
+    expect(moneyPenalty([mon(50)], 0, 0)).toBe(0)
+  })
+})
+
+describe('경험치 막대와 레벨업', () => {
+  it('우리 쪽 등판이 그 레벨 안의 경험치 진행도를 싣는다', async () => {
+    const species = await loadSpecies()
+    const sp = species.get(STARLY)
+    const mon = createWild({ species: sp, level: 10, rng: Math.random, otId: 1, otSecretId: 1 })
+    mon.hp = statsOf(mon, sp).hp
+    // 10과 11 사이의 한가운데
+    mon.exp = Math.floor((expForLevel(sp.growthRate, 10) + expForLevel(sp.growthRate, 11)) / 2)
+    useSaveStore.setState({ party: [mon] })
+    await useBattleStore.getState().startWild({ species: RATTATA, level: 2 })
+    const out = useBattleStore.getState().events.find((e) => e.kind === 'switch' && e.actor.side === 'p1')
+    expect(out?.kind === 'switch' && out.expProgress).toBeCloseTo(0.5, 1)
+    // 상대 쪽은 안 싣는다 — 원작도 상대 체력판에는 경험치 줄이 없다
+    const foe = useBattleStore.getState().events.find((e) => e.kind === 'switch' && e.actor.side === 'p2')
+    expect(foe?.kind === 'switch' && foe.expProgress).toBeUndefined()
+    useBattleStore.getState().close()
+  }, 30_000)
+
+  it('레벨이 오르면 레벨마다 능력치 둘과 막대 값이 실리고, 판도 새 최대 HP를 안다', async () => {
+    const species = await loadSpecies()
+    const sp = species.get(STARLY)
+    const mon = createWild({ species: sp, level: 4, rng: Math.random, otId: 1, otSecretId: 1 })
+    mon.hp = statsOf(mon, sp).hp
+    mon.moves = [{ move: 33, pp: 35, ppUps: 0 }]
+    mon.exp = expForLevel(sp.growthRate, 5) - 1
+    mon.level = 4
+    useSaveStore.setState({ party: [mon] })
+
+    await useBattleStore.getState().startWild({ species: RATTATA, level: 2 })
+    await playToEnd(30)
+    const reward = useBattleStore.getState().events.find((e) => e.kind === 'reward')
+    expect(reward?.kind, '보상이 없다').toBe('reward')
+    if (reward?.kind !== 'reward') return
+    expect(reward.levels.length, '레벨이 안 올랐다 — 이 시험이 공허하다').toBeGreaterThan(0)
+    const step = reward.levels[0]!
+    expect(typeof step).toBe('object')
+    if (typeof step === 'number') return
+    expect(step.level).toBe(5)
+    // 오르기 전 값은 4레벨, 오른 뒤 값은 5레벨의 능력치다
+    expect(step.before).toEqual(statsOf(mon, sp))
+    expect(step.after!.hp).toBeGreaterThanOrEqual(step.before!.hp)
+    expect(reward.expFrom).toBeCloseTo(1, 1)
+    expect(reward.expTo).toBeGreaterThanOrEqual(0)
+    expect(reward.expTo).toBeLessThan(1)
+
+    // 정본이 새 최대 HP를 들고 있어야 다음 체력 줄이 옛 값으로 안 덮는다
+    const after = useSaveStore.getState().party[0]!
+    const top = statsOf(after, sp).hp
+    expect(useBattleStore.getState().truth?.active.p1a?.maxHp).toBe(top)
+    useBattleStore.getState().close()
+    // 체력도 는 만큼 붙은 채 돌아온다 — 다치지 않은 판이면 새 최대다
+    expect(useSaveStore.getState().party[0]!.hp).toBeLessThanOrEqual(top)
+  }, 60_000)
+})
+
+describe('여는 중에 닫기', () => {
+  it('닫은 뒤에 늦게 끝난 여는 길이 판을 되살리지 않는다', async () => {
+    const opening = useBattleStore.getState().startWild({ species: RATTATA, level: 2 })
+    expect(useBattleStore.getState().phase).toBe('loading')
+    // 「필드로 돌아가기」
+    useBattleStore.getState().close()
+    await opening
+    expect(useBattleStore.getState().phase).toBe('off')
+    // 다음 판은 멀쩡히 열린다
+    await useBattleStore.getState().startWild({ species: RATTATA, level: 2 })
+    expect(useBattleStore.getState().phase).toBe('running')
+    useBattleStore.getState().close()
+  }, 30_000)
+})
+
+describe('닫으면 필드가 검정에서 밝아진다 (`FieldTransition_FadeIn`)', () => {
+  it('이긴 판은 6프레임에 걸쳐 걷힌다', async () => {
+    resetFade()
+    // 앞 시험들이 진화 큐에 남긴 것이 있으면 진화 화면이 먼저 서고 덮개는 안 깔린다
+    useEvolutionStore.setState({ pending: [] })
+    await giveStrongParty([483])
+    await useBattleStore.getState().startWild({ species: RATTATA, level: 2 })
+    await playToEnd(30)
+    expect(useBattleStore.getState().outcome).toBe('win')
+    useBattleStore.getState().close()
+    expect(fadeAlpha(), '검정에서 시작하지 않는다').toBe(1)
+    for (let i = 0; i < 6; i++) tickFade()
+    expect(fadeAlpha()).toBe(0)
+    resetFade()
+  }, 30_000)
+
+  it('진 판은 안 연다 — 눈앞이 캄캄해진 뒤의 길이 화면을 맡는다', async () => {
+    resetFade()
+    await useBattleStore.getState().startWild({ species: STARLY, level: 40 })
+    await playToEnd(60)
+    expect(useBattleStore.getState().outcome, '이겨 버렸다 — 이 시험이 공허하다').toBe('loss')
+    useBattleStore.getState().close()
+    expect(fadeAlpha()).toBe(0)
+  }, 30_000)
 })
 
 describe('배틀팩토리는 트레이너가 서는 판이다', () => {

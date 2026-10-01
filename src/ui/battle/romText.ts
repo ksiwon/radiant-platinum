@@ -353,15 +353,19 @@ export const MSG = {
    * 진 판의 세 줄 (`subscript_battle_lost.s`).
    *
    * ⚠️ **원작은 한 줄이 아니라 셋을 잇는다** — 「싸울 수 있는 포켓몬이
-   * 없다!」(36) 다음에 「... ... ... ...」(38)이 한 창을 다 쓰고 나서야
-   * 「눈앞이 캄캄해졌다!」(37)다. 우리는 마지막 하나만 띄우고 있었다.
-   *
-   * 그 사이의 상금 줄(34·35)은 **아직 못 놓는다** — 진 판에 돈이 깎이는 일
-   * 자체가 아직 없어서 넣을 수가 없다 (`blackOut` 서비스가 비어 있다)
+   * 없다!」(36) 다음에 잃은 돈 줄(34·35)이 오고, 「... ... ... ...」(38)이 한 창을
+   * 다 쓰고 나서야 「눈앞이 캄캄해졌다!」(37)다
    */
   playerIsOutOfUsablePokemon: 36,
   /** 「{이름}은 / 눈앞이 캄캄해졌다!」 */ playerBlackedOut: 37,
   /** 「... ... ... ...」 — 칸이 없는 한 창 */ blackedOutDotDotDot: 38,
+  /**
+   * 진 판에 잃은 돈 (`BtlCmd_PayPrizeMoney` → `BattleSystem_CalcMoneyPenalty`).
+   * 야생에서 지면 「당황해서 … 잃어버렸다!」, 트레이너에게 지면 「… 지불했다」다
+   * (`subscript_battle_lost.s` — `BATTLE_TYPE_TRAINER`로 가른다). 0원이면 둘 다 안 뜬다
+   */
+  playerDroppedMoneyInPanic: 34,
+  /** 〃 트레이너에게 졌다 */ playerPaidOutMoneyToTheWinner: 35,
   /**
    * 「{상대}의 / 승부에서 비겼다!」 (789).
    *
@@ -422,10 +426,21 @@ export const MSG = {
   /** 〃 */ no: 941,
 
   // ── 명령 첫 단 (`battle_subscreen.c`) ────────────────────────────────────
+  /**
+   * 명령을 묻는 줄 — 「{이름}은 무엇을 할까?」. 끝의 `{SCREEN 0}`은 아래 화면을 여는
+   * 부호라 `tokensToText`가 지운다. 원작은 명령 창이 뜰 때마다 글창에 이 줄을 띄우고
+   * (`battle_display.c`의 `Task_PlayerSetCommandSelection`), 기술 창에서도 같은 줄을
+   * 다시 찍는다 (`Task_PlayerShowMoveSelectMenu`)
+   */
+  whatWillPokemonDo: 921,
+  /** 사파리에서 묻는 줄 — 「{주인공}은 무엇을 던질까?」 */ whatWillPlayerThrow: 922,
   /** 싸운다 */ fight: 924,
   /** 가방 */ bag: 925,
   /** 포켓몬 */ pokemon: 926,
   /** 도망간다 */ run: 927,
+  /** 사파리 명령 — 볼 · 먹이 · 진흙 (`battle_subscreen.c` 1467) */ ball: 931,
+  /** 〃 */ bait: 932,
+  /** 〃 */ mud: 933,
 
   // ── 도구와 변신 (PARITY §2.24) ──────────────────────────────────────────────
   //

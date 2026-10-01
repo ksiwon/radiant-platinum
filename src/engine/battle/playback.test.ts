@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Actor, BattleEvent } from './events'
 import { buildBeats, drainFrames } from './playback'
-import { MOVE_FRAMES } from './vfx'
+import { MOVE_FRAMES, statusAnimFrames } from './vfx'
 import { applyEvents, emptyView } from './view'
 
 const p1: Actor = { slot: 'p1a', side: 'p1', name: 'party-0' }
@@ -429,4 +429,58 @@ describe('타격 정보 — 소리가 이걸 보고 난다', () => {
     expect(effectAt).toBeGreaterThan(damageAt)
   })
 
+})
+
+describe('부분 연출이 도는 만큼 선다 (`PlayBattleAnimation … / Wait`)', () => {
+  const told = (e: BattleEvent): string | null => {
+    if (e.kind === 'status') return '독에 걸렸다!'
+    if (e.kind === 'boost') return '공격이 올라갔다!'
+    if (e.kind === 'cant') return '쿨쿨 잠들어 있다'
+    if (e.kind === 'damage' && e.from !== null) return '독의 데미지를 입었다!'
+    return say(e)
+  }
+  const poisoned: BattleEvent = { kind: 'status', actor: p2, status: 'psn' }
+
+  it('걸리는 자리는 연출이 먼저고 글이 뒤다 — 연출 길이만큼 못 건너뛰고 선다', () => {
+    // `subscript_poison.s` _130 — `PlayBattleAnimation / Wait` 다음에 「독에 걸렸다!」
+    const beats = buildBeats([enter(p2, 20), poisoned], told)
+    const anim = beats.findIndex((b) => b.events.includes(poisoned))
+    const line = beats.findIndex((b) => b.text === '독에 걸렸다!')
+    expect(anim).toBeLessThan(line)
+    expect(beats[anim]!.hold).toBe(statusAnimFrames('poisoned'))
+    expect(beats[anim]!.presentation).toBe(true)
+  })
+
+  it('못 움직이는 자리는 글이 먼저고 연출이 뒤다', () => {
+    // `subscript_sleeping.s` — 「쿨쿨 잠들어 있다」 → `WaitButtonABTime 30` → `PlayBattleAnimation`
+    const asleep: BattleEvent = { kind: 'cant', actor: p2, reason: 'slp', move: null, moveName: '' }
+    const beats = buildBeats([enter(p2, 20), asleep], told)
+    const line = beats.findIndex((b) => b.text === '쿨쿨 잠들어 있다')
+    const anim = beats.findIndex((b) => b.events.includes(asleep))
+    expect(line).toBeLessThan(anim)
+    expect(beats[anim]!.hold).toBe(statusAnimFrames('asleep'))
+  })
+
+  it('한 기술의 둘째 능력 변화는 글만이다 — 연출이 안 서니 쉬지도 않는다', () => {
+    const atk: BattleEvent = { kind: 'boost', actor: p1, stat: 'atk', amount: 1 }
+    const def: BattleEvent = { kind: 'boost', actor: p1, stat: 'def', amount: 1 }
+    const beats = buildBeats([enter(p1, 20), move(p1, '벌크업'), atk, def], told)
+    expect(beats.find((b) => b.events.includes(atk))!.hold).toBe(statusAnimFrames('statBoost'))
+    const second = beats.find((b) => b.events.includes(def))!
+    expect(second.hold).toBe(0)
+    expect(second.presentation).toBeUndefined()
+  })
+
+  it('독 피해는 글 → 게이지에 연출 길이만큼 더 선다', () => {
+    const poison: BattleEvent = {
+      kind: 'damage', actor: p2, condition: { hp: 17, maxHp: 20, status: 'psn' },
+      from: { kind: 'status', id: null, name: 'psn' },
+    }
+    const beats = buildBeats([enter(p2, 20), poison], told)
+    const drain = beats.findIndex((b) => b.events.includes(poison))
+    expect(beats[drain]!.gauge).toBe(true)
+    const tail = beats[drain + 1]!
+    expect(tail.presentation).toBe(true)
+    expect(tail.hold).toBe(statusAnimFrames('poisoned'))
+  })
 })

@@ -525,6 +525,15 @@ export const buttonOn = style({
 })
 
 /**
+ * 고른 칸의 밑줄도 고른 칸의 글자색을 따른다.
+ *
+ * ⚠️ **`subLine`은 제 색을 든다** (밝은 창 위의 청회색). 그래서 고른 칸의 `pick.text`가
+ * 이 줄까지 안 내려와서, 금빛 바탕 위의 「기술을 고른다」가 바탕에 묻혔다. 상성 표시
+ * (`matchTone`)는 이 줄 안에서도 제 색을 따로 든다
+ */
+globalStyle(`${buttonOn} ${subLine}`, { color: vars.pick.text })
+
+/**
  * 커서 화살표.
  *
  * 칸 **바깥** 왼쪽에 선다. 안에 두면 글자를 밀어내서 고를 때마다 이름이 흔들린다.
@@ -734,11 +743,23 @@ export const levelPanel = style({
  * 명령 칸 아래 조작 안내.
  *
  * 키보드로 고를 수 있다는 것을 화면이 말해 주지 않으면 마우스로만 쓰게 된다 —
- * 원작에는 마우스가 없었으니 키가 주인공이어야 한다
+ * 원작에는 마우스가 없었으니 키가 주인공이어야 한다.
+ *
+ * ⚠️ **뒤가 무대다.** 어두운 글씨 바탕을 전제한 옅은 글자(`onDarkDim`)만 두었더니 밝은
+ * 체육관 바닥 위에서 안 읽혔다. 원작에 없는 우리 글이라 읽히는 쪽이 이긴다 — 테두리 없는
+ * 반투명 받침을 깔고 밝은 글자로 쓴다. 상자가 아니라 글 한 줄의 그늘이다
  */
 export const keyHint = style({
   marginTop: 2,
-  fontSize: TEXT.tiny,
-  color: vars.ink.onDarkDim,
+  alignSelf: 'flex-end',
+  padding: '2px 10px',
+  borderRadius: RADIUS.cell,
+  background: vars.scrim.deep,
+  fontSize: TEXT.small,
+  color: vars.ink.onDark,
   textAlign: 'right',
+  selectors: {
+    // 넘길 것이 없을 때는 빈 줄이다 — 받침만 남지 않게 한다
+    '&:empty': { display: 'none' },
+  },
 })

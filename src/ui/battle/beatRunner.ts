@@ -89,7 +89,7 @@ export interface LevelPanelShot {
 
 /** 박자에 창이 달려 있으면 그것. 박자를 만드는 쪽(`playback`)이 레벨 줄 뒤에 단다 */
 function levelPanelOf(beat: Beat): LevelPanelShot | null {
-  return (beat as Beat & { levelPanel?: LevelPanelShot }).levelPanel ?? null
+  return beat.levelPanel ?? null
 }
 
 /** 재생기가 바깥에 알리는 것. 훅이 상태로 받고 시험은 배열로 받는다 */

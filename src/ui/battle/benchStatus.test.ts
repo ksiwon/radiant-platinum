@@ -48,6 +48,30 @@ describe('물러난 마리의 상태를 남긴다', () => {
     expect(map.has('p1-0')).toBe(false)
   })
 
+  it('상대가 아로마테라피·치유방울을 쓰면 그 상대의 벤치가 낫는다', () => {
+    let view = applyEvents(emptyView(), [send(foeA, 'psn')])
+    let map = foldBenchStatus(new Map(), view, [])
+    view = applyEvents(view, [send(foeB)])
+    map = foldBenchStatus(map, view, [])
+    expect(map.get('p2-0')).toBe('psn')
+    // 아로마테라피는 `-cureteam`이다
+    const aroma: BattleEvent = { kind: 'cureteam', actor: foeB, from: null }
+    expect(foldBenchStatus(map, view, [], [aroma]).has('p2-0')).toBe(false)
+    // 치유방울은 `-activate`로 온다
+    const bell: BattleEvent = {
+      kind: 'activate', actor: foeB, of: null, extra: { num: null, move: null, moveName: null },
+      effect: { id: 'healbell', kind: 'move', num: 215, name: 'Heal Bell' },
+    }
+    expect(foldBenchStatus(map, view, [], [bell]).has('p2-0')).toBe(false)
+  })
+
+  it('남의 파티는 안 낫는다 — 원작은 쓴 쪽 트레이너의 파티만 고친다', () => {
+    const mine: Actor = { slot: 'p1a', side: 'p1', name: 'p1-0' }
+    const map = foldBenchStatus(new Map([['p2-0', 'psn']]), null, [])
+    const aroma: BattleEvent = { kind: 'cureteam', actor: mine, from: null }
+    expect(foldBenchStatus(map, null, [], [aroma]).get('p2-0')).toBe('psn')
+  })
+
   it('바뀐 것이 없으면 같은 지도다', () => {
     const map = foldBenchStatus(new Map(), null, [slot('p1-1', 'psn')])
     expect(foldBenchStatus(map, null, [slot('p1-1', 'psn')])).toBe(map)

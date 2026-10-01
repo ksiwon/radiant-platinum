@@ -232,6 +232,8 @@ const NAMED: Record<keyof typeof MSG, string> = {
   playerIsOutOfUsablePokemon: "PlayerIsOutOfUsablePokemon",
   playerBlackedOut: "PlayerBlackedOut",
   blackedOutDotDotDot: "BlackedOutDotDotDot",
+  playerDroppedMoneyInPanic: "PlayerDroppedMoneyInPanic",
+  playerPaidOutMoneyToTheWinner: "PlayerPaidOutMoneyToTheWinner",
   playerDrewAgainstLinkTr: "PlayerDrewAgainstLinkTr",
   theTrainerBlockedTheBall: "TheTrainerBlockedTheBall",
   youreInChargePokemon: "YoureInChargePokemon",
@@ -264,10 +266,15 @@ const NAMED: Record<keyof typeof MSG, string> = {
   battlePokemonLearnedMove: "BattlePokemonLearnedMove",
   yes: "Yes",
   no: "No",
+  whatWillPokemonDo: "WhatWillPokemonDo",
+  whatWillPlayerThrow: "WhatWillPlayerThrow",
   fight: "Fight",
   bag: "Bag",
   pokemon: "Pokemon",
   run: "Run",
+  ball: "Ball",
+  bait: "Bait",
+  mud: "Mud",
   pokemonTransformedIntoPokemon: "PokemonTransformedIntoPokemon_AllyAlly",
   pokemonStolePokemonsItem: "PokemonStolePokemonsItem_AllyAlly",
   pokemonObtainedOneItem: "PokemonObtainedOneItem_Ally",
@@ -482,6 +489,29 @@ withData('dialogue/ko/' + String(BATTLE_BANK) + '.json')('진 판의 세 줄', (
     expect(romLine(lines, MSG.playerBlackedOut, null)).toBeNull()
     // 칸이 없는 줄은 이름과 상관없이 뜬다
     expect(romLine(lines, MSG.blackedOutDotDotDot)).not.toBeNull()
+  })
+
+  it('잃은 돈 두 줄이 이름과 금액을 받는다 — 야생과 트레이너가 다르다', () => {
+    expect(romLine(lines, MSG.playerDroppedMoneyInPanic, '빛나', '40'))
+      .toBe('빛나는 당황해서\n40원을 잃어버렸다!')
+    expect(romLine(lines, MSG.playerPaidOutMoneyToTheWinner, '빛나', '40'))
+      .toBe('빛나는 상금으로\n40원을 지불했다')
+  })
+})
+
+withData('dialogue/ko/' + String(BATTLE_BANK) + '.json')('명령을 묻는 줄', () => {
+  const lines = JSON.parse(
+    readFileSync(resolve(DATA, 'dialogue/ko/' + String(BATTLE_BANK) + '.json'), 'utf8'),
+  ) as string[]
+
+  it('이름을 받고, 아래 화면을 여는 부호는 글에 안 남는다', () => {
+    expect(romLine(lines, MSG.whatWillPokemonDo, '모부기')).toBe('모부기는 무엇을 할까?')
+    expect(romLine(lines, MSG.whatWillPlayerThrow, '빛나')).toBe('빛나는 무엇을 던질까?')
+  })
+
+  it('사파리 명령 넷은 롬의 이름이다', () => {
+    expect([MSG.ball, MSG.bait, MSG.mud, MSG.run].map((at) => romLine(lines, at)))
+      .toEqual(['볼', '먹이', '진흙', '도망간다'])
   })
 })
 

@@ -26,7 +26,7 @@ import { captureFrames, captureTailFrames } from './captureTiming'
 import type { BattleEvent, CuredBy, LevelStep, SlotId } from './events'
 import { rewardSteps } from './events'
 import { BODY_FADE_SECONDS, FRAME_SECONDS } from './presentationClock'
-import { moveFramesOf } from './vfx'
+import { moveFramesOf, statusAnimFrames } from './vfx'
 import { applyEvents, emptyView, slotOfKey, type BattleView } from './view'
 
 /**
@@ -222,6 +222,15 @@ export function drainFrames(delta: number, maxHp: number): number {
   return Math.ceil((delta * GAUGE_CELLS) / Math.min(maxHp, GAUGE_CELLS))
 }
 
+/**
+ * 글을 먼저 읽히고 연출을 트는 사건 — 못 움직임(잠·얼음·마비)과 「혼란하고 있다!」
+ * (`subscript_sleeping.s`·`frozen`·`fully_paralyzed` · `subscript_confused.s` — `PrintMessage /
+ * WaitButtonABTime 30 / PlayBattleAnimation`). 걸리는 자리는 반대로 연출이 먼저다
+ */
+function textFirst(e: BattleEvent): boolean {
+  return e.kind === 'cant' || (e.kind === 'activate' && e.effect.id === 'confusion')
+}
+
 /** 글이 없고 멈추지도 않는 사건. 앞뒤 박자 사이로 스며든다 */
 function isSilent(e: BattleEvent): boolean {
   return e.kind === 'turn' || e.kind === 'request' || e.kind === 'start'
@@ -370,9 +379,40 @@ export function buildBeats(
   const isSwap = (e: BattleEvent): boolean => (e.kind === 'item' || e.kind === 'enditem')
     && e.from?.kind === 'move' && /^(trick|switcheroo)$/i.test(e.from.name)
 
-  /** 글이 붙는 보통 사건 하나 — 연출이 먼저고 글이 뒤다 (`PlayBattleAnimation` → `PrintMessage`) */
+  /**
+   * 방금 접은 박자가 부분 연출을 세웠으면 그 연출이 도는 만큼 박자를 늘린다.
+   *
+   * 걸림·능력 변화·못 움직임의 연출(`view.lastEffect` · `vfx.STATUS_ANIMS`)은 원작이
+   * `PlayBattleAnimation … / Wait`로 **끝까지 기다린다** — 쉼이 0이면 무대가 아직 도는데 글이 넘어갔다.
+   * 길이는 무대와 같은 자리에서 나온다 (`statusAnimFrames`). 연출이 안 섰으면(대타 뒤 · 같은 기술의
+   * 둘째 능력 변화 · 잠자기) 늘리지 않는다 — 그 거름은 뷰가 원작대로 한다
+   */
+  const holdEffect = (before: BattleView): void => {
+    const now = view.lastEffect
+    if (now === null || now.seq === before.lastEffect?.seq) return
+    const beat = out[out.length - 1]
+    if (!beat) return
+    beat.hold = Math.max(beat.hold, statusAnimFrames(now.key))
+    beat.presentation = true
+  }
+
+  /**
+   * 글이 붙는 보통 사건 하나 — 연출이 먼저고 글이 뒤다 (`PlayBattleAnimation` → `PrintMessage` —
+   * `subscript_poison.s` _130 · `subscript_update_stat_stage.s` _018).
+   *
+   * ⚠️ **못 움직임과 「혼란하고 있다」는 거꾸로다** — 글을 30프레임 읽힌 뒤에 연출이 돈다
+   * (`subscript_sleeping.s` · `subscript_confused.s`)
+   */
   const plain = (told: BattleEvent): void => {
+    const was = view
+    if (textFirst(told)) {
+      say(text(told), HOLD_MESSAGE)
+      show([told], 0)
+      holdEffect(was)
+      return
+    }
     show([told], 0)
+    holdEffect(was)
     say(text(told), HOLD_MESSAGE)
   }
 
@@ -405,7 +445,14 @@ export function buildBeats(
         const marked = e.kind === 'damage' && inMove && e.from === null
           ? { ...e, hit: hitOf() }
           : e
+        const was = view
         show([marked], drainFor(e), 'gauge')
+        // 독·화상 피해의 연출 (`subscript_poison_damage.s` 23줄 · `subscript_burn_damage.s` 17줄).
+        // 원작은 글 → 연출 → 게이지 차례인데, 뷰가 연출과 체력을 한 사건에서 같이 접어서
+        // 무대에서는 게이지와 함께 돈다 — 다음 글이 연출 위로 넘어가지 않게 그 길이만큼 더 선다
+        if (view.lastEffect !== null && view.lastEffect.seq !== was.lastEffect?.seq) {
+          out.push({ text: null, events: [], hold: statusAnimFrames(view.lastEffect.key), presentation: true })
+        }
         break
       }
 

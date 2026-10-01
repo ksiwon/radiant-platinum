@@ -1,9 +1,10 @@
-// 판의 첫 줄과 끝 줄 (PARITY §2.24 · §2.2b).
+// 판의 첫 줄과 끝 줄, 명령을 묻는 줄 (PARITY §2.24 · §2.2b).
 //
 // 사건이 아니라 **판 자체의 사실**이라 사건 줄기(`messages.battleText`) 밖에서
-// 만든다 — 누가 걸어왔는지, 이긴 뒤 상대가 무슨 말을 하는지, 상금이 얼마인지.
+// 만든다 — 누가 걸어왔는지, 무엇을 할지, 이긴 뒤 상대가 무슨 말을 하는지, 상금이 얼마인지.
 // 트레이너가 둘인 판은 원작이 두 사람을 **한 창에** 담는 줄을 따로 들고 있다
 // (`battle_display.c` 6010 `LoadBattleStartMessage` · `subscript_battle_won.s` _087).
+import { withTopic } from '../korean'
 import { romLine } from './romLine'
 import { MSG } from './romText'
 
@@ -26,6 +27,11 @@ interface Bookends {
   /** 배틀팩토리에서 졌을 때 상대의 말 (`battleStore`의 `foeWinLines`) */
   foeWinLines: readonly string[]
   prize: number
+  /**
+   * 진 판에 잃은 돈 (`BattleSystem_CalcMoneyPenalty` · `battleStore`의 `penalty`).
+   * 0이면 그 줄이 없다 — 원작도 `BTLVAR_MSG_TEMP`가 0이면 건너뛴다
+   */
+  penalty?: number
   playerName: string | null
 }
 
@@ -58,6 +64,22 @@ export function openingLine(b: Bookends): string | null {
 }
 
 /**
+ * 명령을 기다리는 동안 글창의 줄 — 「{이름}은 무엇을 할까?」. 물을 마리가 없으면 null.
+ *
+ * 원작은 명령 창(`battle_display.c`의 `Task_PlayerSetCommandSelection`)과 기술 창
+ * (`Task_PlayerShowMoveSelectMenu`)이 뜰 때마다 이 줄을 글창에 찍는다. 묻는 마리의 별명이고,
+ * 사파리는 주인공의 이름으로 「무엇을 던질까?」다 (`BATTLE_TYPE_SAFARI` 갈래 — 물을 마리가 없다).
+ * 롬 줄이 없으면 같은 말로 물러선다 — 지난 턴의 줄이 남는 것보다 낫다
+ */
+export function askLine(
+  a: { lines: readonly string[]; kind: Bookends['kind']; who: string | null; playerName: string | null },
+): string | null {
+  if (a.kind === 'safari') return romLine(a.lines, MSG.whatWillPlayerThrow, a.playerName)
+  if (a.who === null) return null
+  return romLine(a.lines, MSG.whatWillPokemonDo, a.who) ?? `${withTopic(a.who)} 무엇을 할까?`
+}
+
+/**
  * 판이 끝나고 나오는 줄들. **하나가 아니라 여럿이다.**
  *
  * 이긴 트레이너전은 「이겼다!」 → **상대마다의 끝말**(`TRMSG_DEFEAT`) → 상금 차례다
@@ -65,9 +87,10 @@ export function openingLine(b: Bookends): string | null {
  * 둘의 끝말이 차례로 붙는다(_087). 상금은 사건 자리가 아니라 여기서 찍는다 —
  * 사건 자리에 두면 「이겼다!」보다 먼저 뜬다.
  *
- * 진 판은 원작이 창 셋을 잇는다 (`subscript_battle_lost.s`) — 「싸울 수 있는
- * 포켓몬이 없다!」 → 「... ... ... ...」 → 「눈앞이 캄캄해졌다!」.
- * ⚠️ 사이의 상금 줄(34·35)은 아직 못 놓는다 — 진 판에 돈이 깎이는 일 자체가 없다.
+ * 진 판은 원작이 창을 잇는다 (`subscript_battle_lost.s`) — 「싸울 수 있는
+ * 포켓몬이 없다!」 → 잃은 돈 → 「... ... ... ...」 → 「눈앞이 캄캄해졌다!」.
+ * 잃은 돈 줄은 야생이면 「당황해서 잃어버렸다」, 트레이너전이면 「지불했다」다
+ * (`BATTLE_TYPE_TRAINER`로 가른다 — 팩토리는 그 앞에서 `_068`로 빠진다).
  *
  * 포획·도망은 이미 그 순간의 사건이 말했다. 여기서 또 말하지 않는다
  */
@@ -95,8 +118,13 @@ export function closingLines(b: Bookends): string[] {
     // 프런티어에서 지면 상대가 이긴 말 한 줄뿐이다 (`subscript_battle_lost.s`의 `_068`)
     out.push(...b.foeWinLines)
   } else if (b.outcome === 'loss') {
+    out.push(romLine(b.lines, MSG.playerIsOutOfUsablePokemon, b.playerName))
+    if ((b.penalty ?? 0) > 0) {
+      out.push(romLine(b.lines,
+        b.kind === 'trainer' ? MSG.playerPaidOutMoneyToTheWinner : MSG.playerDroppedMoneyInPanic,
+        b.playerName, String(b.penalty ?? 0)))
+    }
     out.push(
-      romLine(b.lines, MSG.playerIsOutOfUsablePokemon, b.playerName),
       romLine(b.lines, MSG.blackedOutDotDotDot),
       romLine(b.lines, MSG.playerBlackedOut, b.playerName),
     )

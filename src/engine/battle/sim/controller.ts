@@ -22,7 +22,7 @@ import { healAmount, type TrainerItems } from '../meta/trainerItems'
 import {
   badgeCount, checkObedience, damageVariance, idleFlavor, selfHitDamage,
 } from '../meta/obedience'
-import type { Item } from '../../../data/schema'
+import type { Item, Stats } from '../../../data/schema'
 import type { Status } from '../../pokemon/instance'
 import { statsOf } from '../../pokemon/instance'
 import { isOriginalTrainer, type TrainerIdentity } from '../../pokemon/origin'
@@ -185,6 +185,12 @@ export class BattleController {
    * 말해 주고 묻기 때문이다 — 무엇이 나올지 모르면 바꿀지 말지 정할 수가 없다
    */
   private asking: { action: BattleAction; key: string } | null = null
+  /**
+   * 「교체」에서 예를 골라 **공짜 교체 화면이 열려 있다.** 기절해서 바꾸는 자리와
+   * 화면이 같아서(교체만 고를 수 있다) 이 깃발로만 가른다 — 이쪽은 물러설 수 있다
+   * (`cancelShift`)
+   */
+  private shifting = false
   /**
    * 우리가 일부러 비운 턴. 그쪽에서 오는 물장구를 그 수만큼 삼킨다 (`hushIdle`).
    *
@@ -788,6 +794,7 @@ export class BattleController {
     const heard = this.obey(actions)
     if (heard.send) this.sendP1(heard.actions)
     this.request.p1 = null
+    this.shifting = false
     const step = await this.advance()
     return { events: [...heard.events, ...step.events], view: step.view }
   }
@@ -1111,10 +1118,46 @@ export class BattleController {
     const ask = this.asking
     if (!ask) return { events: [], view: this.view }
     this.asking = null
-    if (change) this.session.freeSwitch('p1')
+    if (change) this.shifting = this.session.freeSwitch('p1')
     this.session.send(`p2 ${encodeAction(ask.action)}`)
     this.request.p2 = null
     return this.advance()
+  }
+
+  /** 「교체」의 예로 열린 파티 화면인가 — 물러설 수 있는 교체다 (`cancelShift`) */
+  get freeShift(): boolean {
+    return this.shifting
+  }
+
+  /**
+   * 「교체」에서 예를 고른 뒤 파티 화면에서 **물러섰다.**
+   *
+   * 원작은 `WaitPokemonMenuResult _060`으로 건너뛰어 교체 없이 상대의 다음 마리만
+   * 내보낸다 (`subscript_replace_fainted.s`). 아니오를 고른 것과 같은 자리로 간다 —
+   * 상대의 교체 명령은 이미 들어가 있고, 우리 쪽은 깃발을 내린 채 넘긴다
+   */
+  async cancelShift(): Promise<BattleStep> {
+    if (!this.shifting) return { events: [], view: this.view }
+    this.shifting = false
+    this.session.cancelFreeSwitch('p1')
+    this.session.send('p1 pass')
+    this.request.p1 = null
+    return this.advance()
+  }
+
+  /**
+   * 레벨이 오른 우리 마리를 판에도 올린다 (`BattleSystem_ReloadPokemon`).
+   *
+   * 세이브를 고치는 쪽(`state/battleStore`의 `grantRewards`)이 부른다. sim의 개체와
+   * 우리 뷰를 같이 고친다 — 뷰의 레벨은 말을 듣는지(`obey`)도 정한다
+   *
+   * @returns 최대 HP가 는 폭. 그 마리가 판에 없으면 null
+   */
+  levelUp(key: string, level: number, stats: Stats): number | null {
+    const grew = this.session.levelUp('p1', key, level, stats)
+    if (grew === null) return null
+    this.view = applyEvent(this.view, { kind: 'levelup', key, level, before: null, after: stats })
+    return grew
   }
 
   /** 우리 쪽이 지금 공짜로 바꿀 수 있는가 — 서 있는 애가 멀쩡하고 벤치가 남았을 때 */

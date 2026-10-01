@@ -14,6 +14,7 @@ import { Ball } from '../meta/capture'
 import { embargoBlocks } from '../meta/bagItem'
 import { TrainerItems } from '../meta/trainerItems'
 import type { Item } from '../../../data/schema'
+import { isShiny, shinyPersonality } from '../../pokemon/instance'
 import { BattleController } from './controller'
 import { movesById, rng, spawn } from './fixtures.testkit'
 
@@ -269,6 +270,52 @@ describe('볼과 도망', () => {
   }, 30_000)
 })
 
+describe('색이 다른 개체', () => {
+  it('등판 줄이 개체의 색을 싣는다 — 무대가 그 줄로 몸을 고른다', async () => {
+    const shiny = spawn(TURTWIG, 10, 401, 'p1-0')
+    // `spawn`의 원트레이너(1234 · 5678)와 맞물리는 성격값
+    shiny.mon.pid = shinyPersonality(((5678 << 16) | 1234) >>> 0, (n) => n - 1)
+    expect(isShiny(shiny.mon.pid, 1234, 5678)).toBe(true)
+    const { controller, step } = await BattleController.start({
+      player: { name: '빛나', team: [shiny] },
+      foe: { name: '야생', team: [spawn(RATTATA, 3, 402, 'p2-0')] },
+      seed: [41, 42, 43, 44],
+      random: rng(41),
+    })
+    const shown = (key: string): boolean | undefined => {
+      const e = step.events.find((x) => x.kind === 'switch' && x.actor.name === key)
+      return e?.kind === 'switch' ? e.shiny : undefined
+    }
+    expect(shown('p1-0')).toBe(true)
+    expect(shown('p2-0')).toBe(isShiny(spawn(RATTATA, 3, 402).mon.pid, 1234, 5678))
+    controller.destroy()
+  }, 30_000)
+})
+
+describe('레벨이 오르면 판도 안다 (`BattleSystem_ReloadPokemon`)', () => {
+  it('최대 HP가 는 만큼 체력이 붙고, 결과와 뷰가 새 값을 든다', async () => {
+    const me = spawn(TURTWIG, 20, 301, 'p1-0')
+    const { controller } = await BattleController.start({
+      player: { name: '빛나', team: [me] },
+      foe: { name: '야생', team: [spawn(RATTATA, 3, 302, 'p2-0')] },
+      seed: [31, 32, 33, 34],
+      random: rng(31),
+    })
+    const was = controller.results('p1')[0]!
+    const stats = { hp: was.maxHp + 3, atk: 40, def: 40, spa: 30, spd: 30, spe: 25 }
+    expect(controller.levelUp('p1-0', 21, stats)).toBe(3)
+
+    const now = controller.results('p1')[0]!
+    expect(now.maxHp).toBe(was.maxHp + 3)
+    expect(now.hp).toBe(was.hp + 3)
+    expect(controller.state.active.p1a?.level).toBe(21)
+    expect(controller.state.active.p1a?.maxHp).toBe(was.maxHp + 3)
+    // 판에 없는 마리는 건드리지 않는다
+    expect(controller.levelUp('p1-5', 21, stats)).toBeNull()
+    controller.destroy()
+  }, 30_000)
+})
+
 describe('시합규칙 「교체」', () => {
   /** 상대가 둘, 우리도 둘. 첫 마리를 쓰러뜨리면 물어볼 자리가 생긴다 */
   const two = (shift: boolean) => BattleController.start({
@@ -339,6 +386,36 @@ describe('시합규칙 「교체」', () => {
     expect(step.events.some((e) => e.kind === 'switch' && e.actor.name === 'p2-1'),
       '상대가 안 나왔다').toBe(true)
     expect(controller.state.active.p1a?.key, '우리 쪽이 바뀌었다').toBe('p1-0')
+    controller.destroy()
+  }, 30_000)
+
+  it('예를 고르고 파티 화면에서 물러서면 교체 없이 상대만 나온다', async () => {
+    // 원작 `subscript_replace_fainted.s` — 예 뒤 `WaitPokemonMenuResult _060`이 취소다
+    const { controller } = await two(true)
+    await hitUntilAsked(controller)
+    const before = controller.state.turn
+    await controller.answerShift(true)
+    expect(controller.freeShift, '공짜 교체 화면인 줄 모른다').toBe(true)
+
+    const step = await controller.cancelShift()
+    expect(controller.freeShift).toBe(false)
+    expect(step.events.some((e) => e.kind === 'switch' && e.actor.name === 'p2-1'),
+      '상대가 안 나왔다').toBe(true)
+    expect(step.events.some((e) => e.kind === 'move'), '물러섰는데 턴이 흘렀다').toBe(false)
+    expect(controller.state.active.p1a?.key, '우리 쪽이 바뀌었다').toBe('p1-0')
+    expect(controller.state.turn).toBe(before + 1)
+    // 다음 턴은 평소대로 기술을 고른다
+    expect(controller.actions.some((a) => a.type === 'move'), '다음 턴 명령이 안 왔다').toBe(true)
+    controller.destroy()
+  }, 30_000)
+
+  it('기절한 뒤의 교체는 물러설 수 없다 — 깃발이 안 선다', async () => {
+    const { controller } = await two(true)
+    await hitUntilAsked(controller)
+    await controller.answerShift(false)
+    expect(controller.freeShift).toBe(false)
+    const nothing = await controller.cancelShift()
+    expect(nothing.events).toHaveLength(0)
     controller.destroy()
   }, 30_000)
 

@@ -17,7 +17,7 @@ import {
   type SpeciesLookup,
   type SpeciesTable,
 } from '../data/gameData'
-import type { Item, Species } from '../data/schema'
+import type { Item, Species, Stats } from '../data/schema'
 import {
   allyKey, foe2Key, foeKey, ownerOfKey, partyKey, applyResults,
 } from '../engine/battle/aftermath'
@@ -37,13 +37,16 @@ import { Terrain, terrainOf, type TerrainId } from '../engine/battle/terrain'
 import { frameStats, SPAN } from '../engine/loop/frameStats'
 import { burmyCloak, SPECIES_BURMY, SPECIES_UNOWN } from '../engine/pokemon/form'
 import type { BattleAction, PartySlot } from '../engine/battle/choice'
-import type { BattleEvent, SideId } from '../engine/battle/events'
+import type { BattleEvent, LevelStep, SideId } from '../engine/battle/events'
 import type { BallId } from '../engine/battle/meta/capture'
 import { Ball } from '../engine/battle/meta/capture'
 import {
   applyReward, evYieldOf, expFor, expPool, HOLD_EFFECT_EXP_SHARE, HOLD_EFFECT_EXP_UP, learnMoves,
 } from '../engine/battle/meta/reward'
 import { afterBattle as pokerusAfterBattle, doublesEvs } from '../engine/pokemon/pokerus'
+import { levelProgress } from '../engine/pokemon/exp'
+import { badgeCount } from '../engine/battle/meta/obedience'
+import { coverScreen, startFade } from '../engine/script/fade'
 import { MAX_MONEY, prizeFor } from '../engine/battle/meta/prize'
 import type { Trainer } from '../data/schema'
 import { trainerMonToInstance } from '../engine/battle/meta/trainerParty'
@@ -355,6 +358,13 @@ interface BattleState {
    */
   prize: number
   /**
+   * 진 판에 잃은 돈 (`BtlCmd_PayPrizeMoney` → `BattleSystem_CalcMoneyPenalty`).
+   *
+   * 지는 그 순간 리포트에서 빠지고(`moneyPenalty`), 끝 줄이 이 값을 말한다
+   * (`ui/battle/bookends`의 `closingLines`). 지지 않았거나 잃을 돈이 없으면 0이다
+   */
+  penalty: number
+  /**
    * **화면에 보이는** 뷰. sim이 내놓은 최종 상태가 아니라 재생기가 여기까지
    * 접은 것이다 (`engine/battle/playback.ts`).
    *
@@ -462,6 +472,13 @@ interface BattleState {
   /** 재생기가 박자 하나분을 화면에 접는다. 이것 말고는 `view`를 건드리는 곳이 없다 */
   playEvents: (events: readonly BattleEvent[]) => void
   /**
+   * 재생기가 **마지막으로 접은** 사건들 (`playEvents`).
+   *
+   * 뷰는 서 있는 네 자리만 든다 — 벤치까지 닿는 일(치유방울·아로마테라피)은 뷰에 안
+   * 남아서, 그것을 읽는 쪽(`ui/battle/benchStatus`)이 여기서 본다
+   */
+  played: readonly BattleEvent[]
+  /**
    * 시합규칙 「교체」에서 물어볼 것이 남아 있으면 상대가 내보내려는 마리의 키.
    *
    * 이게 있는 동안 화면은 "포켓몬을 교체하겠습니까?"를 띄운다
@@ -469,6 +486,15 @@ interface BattleState {
   shiftAsk: string | null
   /** 그 물음에 답한다. `true`면 우리도 한 마리 바꾼다 — 턴을 안 쓴다 */
   answerShift: (change: boolean) => Promise<void>
+  /**
+   * 지금 뜬 교체 화면이 「교체」의 **예**로 열린 것인가 (`controller.freeShift`).
+   *
+   * 기절한 뒤의 교체와 화면이 같다 — 고를 것이 교체뿐이다. 이쪽만 물러설 수 있다
+   * (`cancelShift`)
+   */
+  freeShift: boolean
+  /** 그 교체 화면에서 물러선다. 교체 없이 상대의 다음 마리만 나온다 (`subscript_replace_fainted.s` _060) */
+  cancelShift: () => Promise<void>
   /**
    * 앞 자리로 되돌아간다 (더블). 첫 자리면 아무것도 안 하고 false.
    *
@@ -488,6 +514,14 @@ interface BattleState {
 
 /** 컨트롤러는 직렬화되지 않는다 — 스토어 밖에 둔다 */
 let current: BattleController | null = null
+/**
+ * 판 번호. 자리를 잡을 때와 닫을 때마다 하나씩 오른다.
+ *
+ * ⚠️ **여는 길은 기다림이 길다** — 규칙기·자료·심판을 받는 사이에 「필드로 돌아가기」로
+ * 닫으면(`close`), 늦게 돌아온 여는 길이 `phase`를 `'running'`으로 되살려 닫힌 판이
+ * 다시 떴다. 기다림마다 이 번호가 그대로인지 보고, 바뀌었으면 손을 뗀다
+ */
+let ticket = 0
 /** 이번 배틀에서 한 번이라도 나온 우리 개체의 키. 경험치를 나눠 가질 인원이다 */
 let participants = new Set<string>()
 /**
@@ -629,6 +663,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   foeWinLines: [],
   downKeys: [],
   prize: 0,
+  penalty: 0,
   view: null,
   truth: null,
   actions: [],
@@ -645,6 +680,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   ally: null,
   error: null,
   shiftAsk: null,
+  freeShift: false,
+  played: [],
   safari: null,
 
   startTutorial: async (t) => {
@@ -669,15 +706,19 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     // 까닭이다. 받는 동안 `phase`가 `'off'`면 필드가 그 틈에 새 스크립트를 건다
     const paired = wild.second !== undefined && (wild.partner ?? 0) !== 0
     let ally: Awaited<ReturnType<typeof partnerOf>> = null
+    let mine: number | null = null
     if (paired) {
       if (get().phase !== 'off') return
       set({ phase: 'loading', sceneReady: false, kind: 'wild', error: null })
+      mine = ++ticket
       try {
         ally = await partnerOf(wild.partner!)
       } catch (e) {
         // 편을 못 세우면 야생 한 마리와의 싱글로 연다 — 조우를 통째로 버리지 않는다
         console.error('동행 트레이너를 못 읽었다', e)
       }
+      // 기다리는 사이에 닫혔다 (`ticket`)
+      if (mine !== ticket) return
       if (ally) set({ partner: ally.tag })
     }
     await open(
@@ -760,7 +801,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       undefined,
       ally !== null && wild.second !== undefined,
       // 둘일 때는 위에서 자리를 이미 잡았다
-      paired,
+      mine,
       ally ? { partner: ally.build, partnerAi: ally.trainer.ai } : {},
     )
   },
@@ -797,8 +838,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       trainerId, trainerClass: null, foes: [], partner: null, defeatLines: [], downKeys: [],
       view: null, truth: null, actions: [], party: [], canSpendTurn: false, doubles: false,
       atSlot: 0, pending: [], events: [], roster: {}, outcome: null, error: null,
-      shiftAsk: null, safari: null,
+      shiftAsk: null, safari: null, penalty: 0, freeShift: false, played: [],
     })
+    const mine = ++ticket
     try {
       const locale = gameLocale()
       const [table, names, classes, said] = await Promise.all([
@@ -808,6 +850,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         // 이긴 뒤 상대가 하는 말 (`TRMSG_DEFEAT`). 없어도 배틀은 돈다 — 그 줄만 빈다
         loadDialogueBank(locale, TRAINER_MESSAGE_BANK).catch(() => [] as string[]),
       ])
+      // 기다리는 사이에 닫혔다 (`ticket`)
+      if (mine !== ticket) return
       const trainer = table.get(trainerId)
       metTrainer = trainerId
       // ⚠️ **둘째 상대가 첫 상대와 다를 때만 2vs2다.** 같은 번호면 한 사람의
@@ -858,6 +902,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       // `BattleControllerPlayer_InitAI`가 도구 칸을 안 채운다). 태그 더블(편 없음)은
       // 두 트레이너가 **저마다** 제 도구를 쓴다
       const bank = await loadItems()
+      if (mine !== ticket) return
       const kit = (t: Trainer): ControllerItems | undefined => (!ally && t.items.length > 0
         ? { bag: new TrainerItems(t.items, bank), item: (id) => bank.get(id) }
         : undefined)
@@ -917,7 +962,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         items,
         doubles,
         // 자리는 위에서 이미 잡았다 (머리말)
-        true,
+        mine,
         {
           ...(other ? { foe2: build(other, secondId, foe2Key), ai2: other.ai, items2 } : {}),
           ...(ally ? { partner: build(ally, allyId, allyKey), partnerAi: ally.ai } : {}),
@@ -926,6 +971,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     } catch (e) {
       // 원문은 콘솔에 남긴다. 화면 칸(`error`)에는 사람이 읽는 말만 간다 (`OPEN_FAILED`)
       console.error('트레이너전을 못 열었다', e)
+      // 이미 닫힌 판이면 그 뒤에 선 것(필드나 다음 판)을 건드리지 않는다
+      if (mine !== ticket) return
       set({ phase: 'off', trainerId: null, trainerClass: null, error: OPEN_FAILED })
       throw e
     }
@@ -971,10 +1018,13 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       trainerId: null, trainerClass: null, foes: [], partner: null, defeatLines: [], downKeys: [],
       view: null, truth: null, actions: [], party: [], canSpendTurn: false, doubles: false,
       atSlot: 0, pending: [], events: [], roster: {}, outcome: null, error: null,
-      shiftAsk: null, safari: null,
+      shiftAsk: null, safari: null, penalty: 0, freeShift: false, played: [],
     })
+    const mine = ++ticket
     try {
       const species = await loadSpecies()
+      // 기다리는 사이에 닫혔다 (`ticket`)
+      if (mine !== ticket) return
       speciesTable = species
       participants = new Set()
       roamerMet = null
@@ -1035,6 +1085,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       })
     } catch (e) {
       console.error('사파리 판을 못 열었다', e)
+      if (mine !== ticket) return
       safariRun = null
       set({ phase: 'off', error: OPEN_FAILED })
     }
@@ -1080,6 +1131,11 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   answerShift: async (change) => {
     if (!current?.shiftAsk) return
     await advance(set, get, (c) => c.answerShift(change))
+  },
+
+  cancelShift: async () => {
+    if (!current?.freeShift) return
+    await advance(set, get, (c) => c.cancelShift())
   },
 
   /**
@@ -1210,7 +1266,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       if ((e.kind === 'heal' || e.kind === 'switch') && down.includes(e.actor.name)
         && e.condition.hp > 0) down = down.filter((k) => k !== e.actor.name)
     }
-    set({ view: applyEvents(get().view ?? emptyView(), events), downKeys: down })
+    set({ view: applyEvents(get().view ?? emptyView(), events), downKeys: down, played: events })
   },
 
   learnMove: (key, move, forget) => {
@@ -1228,6 +1284,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   },
 
   close: () => {
+    // 여는 중이던 판은 여기서 손을 뗀다 (`ticket`)
+    ticket++
     const controller = current
     // ⚠️ **사파리는 파티를 통째로 건너뛴다** (PARITY §2.19). 내보낸 마리가
     // 없으니 되돌릴 체력도 PP도 없고, 경험치·상금·포켓루스·도롱마담도 안 돈다
@@ -1284,8 +1342,10 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       set({
         phase: 'off', kind: 'wild', foeName: null, foeClass: null, foeTrainer: null, prize: 0, trainerId: null, trainerClass: null,
         view: null, truth: null, actions: [], party: [], canSpendTurn: false, events: [],
-        roster: {}, outcome: null, shiftAsk: null, safari: null,
+        roster: {}, outcome: null, shiftAsk: null, safari: null, penalty: 0, freeShift: false, played: [],
       })
+      // 볼이 떨어진 판은 안내원 스크립트가 화면을 맡는다
+      if (!spent) fadeInField()
       // ⚠️ **볼이 떨어졌으면 놀이가 그 자리에서 끝난다** (`FieldTask_SafariEncounter`의
       // 마지막 마디가 특별 자리로 되돌려 보낸다). 우리는 롬의 안내원 스크립트를
       // 돌린다 — 글도 워프도 그쪽이 갖고 있다
@@ -1297,6 +1357,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     // 노트·포켓루스·도롱마담 옷감도 프론티어 판에서는 안 돈다. 여기를 안
     // 막으면 **빌린 마리가 내 파티를 덮어쓴다**
     if (controller && rentalParty) {
+      // 잡는 법 강습은 필드로 돌아가며 검정에서 밝아진다 (`FieldTask_CatchingTutorialEncounter`의
+      // `FieldTransition_FadeIn`). 팩토리는 시설 스크립트가 화면을 맡는다
+      const tutorial = tutorialAlly !== null
       controller.destroy()
       current = null
       rentalParty = null
@@ -1306,8 +1369,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       set({
         phase: 'off', kind: 'wild', foeName: null, foeClass: null, foeTrainer: null, prize: 0, trainerId: null, trainerClass: null,
         view: null, truth: null, actions: [], party: [], canSpendTurn: false, events: [],
-        roster: {}, outcome: null, shiftAsk: null, ally: null,
+        roster: {}, outcome: null, shiftAsk: null, ally: null, penalty: 0, freeShift: false, played: [],
       })
+      if (tutorial) fadeInField()
       return
     }
     if (controller) {
@@ -1441,11 +1505,20 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       controller.destroy()
       current = null
     }
+    // 여는 중에 닫힌 판은 컨트롤러가 없어도 빌린 셋을 들고 있을 수 있다 — 다음 판에 새지 않게 놓는다
+    rentalParty = null
+    tutorialAlly = null
     participants = new Set()
     leveledUp = new Set()
+    const lost = get().outcome === 'loss'
     // 진화할 마리가 있으면 필드로 돌아가기 전에 그 장면이 먼저다. 원작도
     // 배틀 화면이 닫히면서 바로 이 화면으로 넘어간다
-    if (useEvolutionStore.getState().pending.length > 0) useMenuStore.getState().open('evolution')
+    const evolving = useEvolutionStore.getState().pending.length > 0
+    if (evolving) useMenuStore.getState().open('evolution')
+    // 필드는 검정에서 밝아진다 (`FieldTransition_FadeIn`). ⚠️ **진 판은 안 연다** — 원작은 그 자리에서
+    // 필드로 안 돌아가고 눈앞이 캄캄해진 뒤의 길을 탄다 (`encounter.c` — `CheckPlayerWonEncounter`가
+    // 거짓이면 곧장 끝난다). 진화 화면이 먼저 서는 판도 안 덮는다 — 덮개가 그 화면 위에 얹힌다
+    if (!lost && !evolving && get().phase !== 'off') fadeInField()
     set({
       phase: 'off',
       kind: 'wild',
@@ -1468,9 +1541,30 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       roster: {},
       outcome: null,
       shiftAsk: null,
+      penalty: 0,
+      freeShift: false,
+      played: [],
     })
   },
 }))
+
+/**
+ * 배틀이 닫힌 뒤 필드를 **검정에서** 연다 — `FieldTransition_FadeIn`의
+ * `StartScreenFade(…, FADE_TYPE_BRIGHTNESS_IN, …, COLOR_BLACK, 6, 1, …)`, 곧 6프레임이다.
+ *
+ * 배틀 화면은 닫기 전에 16프레임에 검게 내린다(`ui/battle/BattleScreen`의 `closeWithFade`).
+ * 여기서 덮개를 이어 받지 않으면 검정이 걷히는 그 프레임에 필드가 툭 나타난다.
+ * 덮개를 굴리는 것은 필드의 틱이다 (`script/field`의 `tickFade`)
+ */
+function fadeInField(): void {
+  coverScreen()
+  startFade(FIELD_FADE_STEPS, 1, FADE_TYPE_BRIGHTNESS_IN, 0)
+}
+
+/** `FieldTransition_FadeIn`의 단계 수 (한 단계 1프레임) */
+const FIELD_FADE_STEPS = 6
+/** `generated/fade_types.txt`의 1 — 홀수가 인이다 (`engine/script/fade`) */
+const FADE_TYPE_BRIGHTNESS_IN = 1
 
 /**
  * 편 트레이너 한 사람 (PARITY §2.2b) — 이름표와 파티를 만드는 것.
@@ -1558,27 +1652,124 @@ async function advance(
   // 교체까지 삼키고 오기 때문에 `result.events`에는 등장 사건이 이미 들어 있다.
   // 원작은 쓰러뜨린 뒤 경험치·레벨업·기술 습득을 다 보여주고 나서 다음 마리를
   // 내보낸다 (`BattleController_CheckExpPayout` → `BattleScript_SwitchIn`)
+  //
+  // ⚠️ **레벨이 오른 마리는 그 뒤의 줄을 고친다** (`lift`). sim은 이 걸음을 이미 다 셈했으므로
+  // 경험치 뒤에 오는 체력 줄(턴 끝의 독 따위)이 옛 레벨·옛 최대 HP를 싣는다 — 그대로 접으면
+  // 레벨업 박자가 올린 최대 HP를 그 줄이 도로 덮는다. 다음 걸음부터는 sim이 안다(`controller.levelUp`)
   const events: BattleEvent[] = []
-  for (const e of result.events) {
+  const grown = new Map<string, Grown>()
+  for (const raw of result.events) {
+    const e = withExpBar(lift(raw, grown))
     events.push(e)
     if (e.kind === 'faint' && e.actor.side === 'p2') {
-      events.push(...grantRewards(get(), e.actor.name, controller))
+      const paid = grantRewards(get(), e.actor.name, controller)
+      events.push(...paid.events)
+      for (const [key, up] of paid.grown) {
+        grown.set(key, { ...up, grew: (grown.get(key)?.grew ?? 0) + up.grew })
+      }
     }
   }
 
   const ended = result.view.ended
   // 상금은 이긴 그 순간 한 번만. `phase`가 'over'로 바뀌므로 두 번 올 수 없다
   if (ended && controller.finish === 'win') events.push(...grantPrize(get()))
+  // 진 판은 그 순간 돈을 잃는다 (`BtlCmd_PayPrizeMoney`의 진 갈래)
+  if (ended && controller.finish === 'loss') set({ penalty: payPenalty(get()) })
 
-  // ⚠️ `view`는 여기서 안 건드린다. 화면은 재생기가 박자마다 밀어 준다
+  // ⚠️ `view`는 여기서 안 건드린다. 화면은 재생기가 박자마다 밀어 준다.
+  // 정본은 걸음이 끝난 뒤의 컨트롤러 뷰다 — 레벨업을 접은 뒤라 `result.view`보다 새것이다
   set({
-    truth: result.view,
+    truth: controller.state,
     events: [...get().events, ...events],
     ...turnState(controller),
     phase: ended ? 'over' : 'running',
     outcome: controller.finish,
     shiftAsk: controller.shiftAsk,
+    freeShift: controller.freeShift,
   })
+}
+
+/** 이 걸음에서 레벨이 오른 마리 — 그 뒤 줄을 고칠 값 (`lift`) */
+interface Grown {
+  level: number
+  maxHp: number
+  /** 최대 HP가 는 폭. 한 걸음에 여러 번 오르면 더한다 */
+  grew: number
+}
+
+/**
+ * 레벨이 오른 **뒤의** 줄을 새 레벨로 고친다 (`advance` 머리말).
+ *
+ * 체력은 원작처럼 는 폭을 더한다 (`Pokemon_CalcStats` — 쓰러진 마리는 그대로다).
+ * sim의 개체도 같은 폭만큼 고쳤으므로(`controller.levelUp`) 판이 끝나 세이브로 가는 값과 맞는다
+ */
+function lift(e: BattleEvent, grown: ReadonlyMap<string, Grown>): BattleEvent {
+  if (grown.size === 0) return e
+  if (e.kind !== 'switch' && e.kind !== 'damage' && e.kind !== 'heal') return e
+  const up = e.actor.side === 'p1' ? grown.get(e.actor.name) : undefined
+  if (up === undefined) return e
+  const condition = {
+    ...e.condition,
+    hp: e.condition.hp > 0 ? e.condition.hp + up.grew : e.condition.hp,
+    maxHp: e.condition.maxHp === null ? null : up.maxHp,
+  }
+  return e.kind === 'switch' ? { ...e, condition, level: up.level } : { ...e, condition }
+}
+
+/**
+ * 우리 파티 마리의 등판에 경험치 막대를 싣는다 (`Healthbox_DrawExpBar`).
+ *
+ * 프로토콜에는 경험치가 없다 — 세이브(빌린 셋이면 그 셋)를 아는 여기서 그 레벨 안의
+ * 진행도(`levelProgress`)를 붙인다. 편의 마리는 우리 파티가 아니라 안 붙는다.
+ * ⚠️ **등판 그 순간의 값이다.** 같은 걸음에 앞서 받은 경험치까지 든 세이브를 읽는다
+ */
+function withExpBar(e: BattleEvent): BattleEvent {
+  if (e.kind !== 'switch' || e.actor.side !== 'p1') return e
+  const at = expBarOf(e.actor.name)
+  return at === null ? e : { ...e, expProgress: at }
+}
+
+/** 그 키의 경험치 막대 (0~1). 우리 파티가 아니거나 종족표가 없으면 null */
+function expBarOf(key: string): number | null {
+  if (ownerOfKey(key) !== 'player' || speciesTable === null) return null
+  const party = rentalParty ?? useSaveStore.getState().party
+  const mon = party.find((_, i) => partyKey(i) === key)
+  if (!mon || mon.isEgg) return null
+  return levelProgress(speciesTable.of(mon).growthRate, mon.exp)
+}
+
+/**
+ * 뱃지 수마다의 배수 (`BattleSystem_CalcMoneyPenalty`의 `badgeMul`). 0개부터 8개까지 아홉 칸이다
+ */
+const PENALTY_MUL = [2, 4, 6, 9, 12, 16, 20, 25, 30] as const
+
+/**
+ * 진 판에 잃는 돈 (`BattleSystem_CalcMoneyPenalty`).
+ *
+ * `파티 최고 레벨 × 4 × 뱃지 배수`이고 가진 돈보다 많이 잃지 않는다. 최고 레벨은 알을 빼고
+ * 세며 1에서 시작한다 (`Party_GetMaxLevel`)
+ */
+export function moneyPenalty(
+  party: readonly Pick<PokemonInstance, 'species' | 'isEgg' | 'level'>[], badges: number, money: number,
+): number {
+  let top = 1
+  for (const mon of party) if (mon.species > 0 && !mon.isEgg && mon.level > top) top = mon.level
+  const mul = PENALTY_MUL[Math.min(badgeCount(badges), PENALTY_MUL.length - 1)]!
+  return Math.max(0, Math.min(money, top * 4 * mul))
+}
+
+/**
+ * 진 판의 돈을 리포트에서 뺀다 (`TrainerInfo_TakeMoney`). 뺀 값을 돌려준다.
+ *
+ * 프런티어는 `PayPrizeMoney`까지 안 간다(`subscript_battle_lost.s` _068). 잡는 법 강습은
+ * 동료의 판이라 리포트를 안 건드린다
+ */
+function payPenalty(state: BattleState): number {
+  if (state.kind === 'factory' || state.kind === 'safari' || tutorialAlly !== null) return 0
+  const save = useSaveStore.getState()
+  const lost = moneyPenalty(save.party, save.badges, save.money)
+  if (lost > 0) useSaveStore.setState({ money: save.money - lost })
+  return lost
 }
 
 /** 쓴 도구를 가방에서 한 개 뺀다. 주머니는 도구 자료가 알고 있다 */
@@ -1712,10 +1903,11 @@ function grantRewards(
   state: BattleState,
   foeKey: string,
   controller: BattleController,
-): BattleEvent[] {
+): { events: BattleEvent[]; grown: Map<string, Grown> } {
+  const none = { events: [], grown: new Map<string, Grown>() }
   const table = speciesTable
   const foe = state.roster[foeKey]
-  if (!table || !foe) return []
+  if (!table || !foe) return none
 
   // 쓰러진 마리는 4세대에서도 경험치를 못 받는다 — 나간 몫도 학습장치 몫도
   const down = new Set(
@@ -1725,7 +1917,7 @@ function grantRewards(
       .map((r) => r.key),
   )
   // ⚠️ **팩토리는 한 점도 안 준다.** 레벨이 고정인 판이라 원작도 안 준다
-  if (state.kind === 'factory') return []
+  if (state.kind === 'factory') return none
   const party = [...useSaveStore.getState().party]
   const me = myIdentity()
   const hold = (mon: PokemonInstance): number =>
@@ -1751,9 +1943,11 @@ function grantRewards(
   )
 
   const out: BattleEvent[] = []
+  const grown = new Map<string, Grown>()
   for (const taker of takers) {
     const mon = party[taker.index]
     if (!mon) continue
+    const species = table.of(mon)
     const effect = hold(mon)
     const gain = expFor(pool, {
       participant: taker.went,
@@ -1768,27 +1962,48 @@ function grantRewards(
       pokerus: doublesEvs(mon),
     }))
     // 레벨업 기술은 **여기서 실제로 넣는다.** 배틀이 끝난 뒤로 미루면 다음
-    // 상대를 새 기술 없이 맞이한다 — 원작은 오른 그 자리에서 배운다
-    const taught = learnMoves(
-      reward.mon,
-      reward.levelUps.flatMap((l) => l.moves),
-      ppOf,
-    )
-    party[taker.index] = taught.mon
-    if (reward.levelUps.length > 0) leveledUp.add(taker.index)
+    // 상대를 새 기술 없이 맞이한다 — 원작은 오른 그 자리에서 배운다.
+    //
+    // 레벨마다 따로 든다 (`SEQ_GET_EXP_WAIT_LEVEL_UP_EFFECT` → `…_CHECK_LEARN_MOVE`). 원작은
+    // 한 레벨씩 능력치를 다시 셈하고(`Pokemon_CalcStats`) 그 레벨의 기술을 묻고 나서야 다음
+    // 레벨로 간다. 오르기 전 값은 그 앞 레벨의 값이고, 오른 뒤 값은 **받은 뒤의** 노력치로 셈한다
+    let taught = reward.mon
+    let before: Stats = statsOf(mon, species)
+    const levels: LevelStep[] = []
+    const learned: number[] = []
+    const pending: number[] = []
+    for (const up of reward.levelUps) {
+      const after = statsOf({ ...reward.mon, level: up.level }, species)
+      const step = learnMoves(taught, up.moves, ppOf)
+      taught = step.mon
+      levels.push({ level: up.level, before, after, learned: step.learned, pending: step.pending })
+      learned.push(...step.learned)
+      pending.push(...step.pending)
+      before = after
+    }
+    party[taker.index] = taught
+    if (reward.levelUps.length > 0) {
+      leveledUp.add(taker.index)
+      // 판도 새 레벨을 안다 — 안 그러면 다음 체력 줄이 옛 최대 HP로 덮는다 (`controller.levelUp`)
+      const grew = controller.levelUp(taker.key, taught.level, before)
+      if (grew !== null) grown.set(taker.key, { level: taught.level, maxHp: before.hp, grew })
+    }
     // 한 점도 안 받은 마리는 줄을 안 낸다 — 레벨 100이 그렇다
-    if (reward.gainedExp === 0 && taught.learned.length === 0) continue
+    if (reward.gainedExp === 0 && learned.length === 0) continue
     out.push({
       kind: 'reward',
       key: taker.key,
       exp: reward.gainedExp,
-      levels: reward.levelUps.map((l) => l.level),
-      learned: taught.learned,
-      pending: taught.pending,
+      levels,
+      learned,
+      pending,
+      // 막대는 그 레벨 안의 진행도다 — 받기 전과 다 받은 뒤 (`Task_UpdateExpGauge`)
+      expFrom: levelProgress(species.growthRate, mon.exp),
+      expTo: levelProgress(species.growthRate, taught.exp),
     })
   }
   useSaveStore.setState({ party })
-  return out
+  return { events: out, grown }
 }
 
 /** 트레이너를 이겼으면 상금을 준다. 이미 끝난 판에서 두 번 부르면 안 된다 */
@@ -1960,13 +2175,14 @@ async function open(
    * 동안 `phase`가 `'off'`로 남으면 그 몇 프레임이 **필드에게는 배틀이 없는
    * 시간**이라, 필드가 그 사이에 새 스크립트를 시작한다
    * (`script/field.ts`의 `tryStartScripts` — 그 가드가 보는 것이 `phase`다).
-   * 그래서 `startTrainer`는 자료보다 **먼저** 잡고 여기에 참을 준다
+   * 그래서 `startTrainer`는 자료보다 **먼저** 잡고 여기에 그때 받은 판 번호(`ticket`)를 준다.
+   * null이면 여기서 잡는다
    */
-  claimed = false,
+  claimed: number | null = null,
   /** 트레이너가 넷인 판 · 편과 함께 만난 야생 둘 (PARITY §2.2b) */
   multi: MultiSide = {},
 ): Promise<void> {
-  if (!claimed && get().phase !== 'off') return
+  if (claimed === null && get().phase !== 'off') return
   set({
     phase: 'loading',
     sceneReady: false,
@@ -1988,8 +2204,14 @@ async function open(
     outcome: null,
     error: null,
     shiftAsk: null,
+    freeShift: false,
+    played: [],
+    penalty: 0,
     downKeys: [],
   })
+  const mine = claimed ?? ++ticket
+  /** 기다리는 사이에 닫혔는가 (`ticket`). 닫혔으면 손을 뗀다 */
+  const stale = (): boolean => mine !== ticket
 
   /**
    * 안 돌아오는 `await`을 **말하게 한다** (`Waiting` 머리말).
@@ -1999,7 +2221,7 @@ async function open(
    */
   let waiting: Waiting = '규칙기'
   const tell = setTimeout(() => {
-    if (get().phase !== 'loading') return
+    if (stale() || get().phase !== 'loading') return
     // ⚠️ **별명은 콘솔에만 간다.** `Waiting`은 우리 모듈을 부르는 말이라 화면에 뜨면 개발 문장이다.
     // 조사도 별명마다 갈리므로(`규칙기를`·`파티를`) 「기다리는 대상:」으로 피해 쓴다
     console.error(
@@ -2014,6 +2236,7 @@ async function open(
     // 채워도 종족을 하나도 모르는 심판이 된다
     const { primeBattleDex } = await import('../engine/battle/dex/provider')
     await primeBattleDex()
+    if (stale()) return
     waiting = '게임 자료'
     const [{ BattleController }, species, moves, bank] = await Promise.all([
       import('../engine/battle/sim/controller'),
@@ -2021,6 +2244,7 @@ async function open(
       loadMoves(),
       loadItems(),
     ])
+    if (stale()) return
     waiting = '파티'
     const pp = (id: number) => moves.byId.get(id)?.pp ?? 5
     // ⚠️ **밟고 선 칸도 본다.** 원작 `CalcTerrain`이 그렇다 — 무대 고르기와
@@ -2116,6 +2340,8 @@ async function open(
       // 남에게 받은 마리는 뱃지 수만큼만 말을 듣는다 (PARITY §2.18)
       obedience: { badges: useSaveStore.getState().badges, trainer: myIdentity() },
     })
+    // 심판을 세우는 사이에 닫혔다 — 세운 것을 거두고 손을 뗀다
+    if (stale()) { controller.destroy(); return }
     current = controller
     // 첫 등판도 참가자다. 여기서 안 담으면 첫 상대를 쓰러뜨려도 경험치가 안 간다
     // ⚠️ **배회의 첫 체력만 화면 쪽에서 고쳐 준다** (PARITY §6.3).
@@ -2127,8 +2353,8 @@ async function open(
     const met = roamerMet
     const events = leadOrder(
       met === null
-        ? step.events
-        : step.events.map((e) =>
+        ? step.events.map(withExpBar)
+        : step.events.map(withExpBar).map((e) =>
             e.kind === 'switch' && e.actor.side === 'p2'
               ? { ...e, condition: { ...e.condition, ...foeVitals(met, e.condition.maxHp) } }
               : e,
@@ -2158,6 +2384,7 @@ async function open(
     // 야생도 트레이너도 안 열리는 것을 사람이 눈으로 먼저 찾아냈고, 로그에도
     // 화면에도 이유가 한 줄도 없었다. 이유는 반드시 어딘가에 남는다
     console.error('배틀을 못 열었다', e)
+    if (stale()) return
     set({
       phase: 'off',
       trainerId: null,

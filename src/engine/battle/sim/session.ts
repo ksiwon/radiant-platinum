@@ -6,11 +6,11 @@
 //
 // ⚠️ 이 폴더는 지연 로딩 경계다 (bridge.ts 주석 참고). 오버월드에서 정적 import 금지.
 import { BattleStreams, Teams } from '@pkmn/sim'
-import type { Species } from '../../../data/schema'
+import type { Species, Stats } from '../../../data/schema'
 import type { BattleRequest, FinalMon, SideId } from '../events'
 import type { ItemPlan } from '../meta/bagItem'
 import type { PokemonInstance, Status } from '../../pokemon/instance'
-import { abilityOf, genderOf, maxPpOf, natureOf } from '../../pokemon/instance'
+import { abilityOf, genderOf, isShiny, maxPpOf, natureOf } from '../../pokemon/instance'
 import { romMove, simAbility, simItem, simMove, simSpecies } from './bridge'
 import type { ChatterOdds } from '../dex/mechanics'
 
@@ -134,7 +134,9 @@ function toSet(side: SideMon, idle: boolean, itemName?: (id: number) => string |
     ivs: { ...mon.ivs },
     evs: { ...mon.evs },
     happiness: mon.friendship,
-    shiny: false,
+    // 색이 다른가 — 등판 줄(`|switch|…, shiny`)이 이 값을 싣고, 무대가 그 줄로 색 다른 몸을 고른다.
+    // 대전 규칙에는 아무 일도 안 한다
+    shiny: isShiny(mon.pid, mon.otId, mon.otSecretId),
   }
 }
 
@@ -786,6 +788,52 @@ export class BattleSession {
    * ⚠️ `makeRequest`는 요청 객체만 다시 만들고 보내지는 않는다. 턴이 도는 중이
    * 아니라 `sendUpdates`가 안 불리므로(로그가 안 늘었다) 여기서 직접 내보낸다
    */
+  /**
+   * 공짜 교체를 **거둔다** — 「교체」에서 예를 고른 뒤 파티 화면에서 물러섰다.
+   *
+   * 원작은 그 자리에서 교체 없이 상대의 다음 마리만 나온다
+   * (`subscript_replace_fainted.s`의 `WaitPokemonMenuResult _060`). `switchFlag`를 내리면
+   * sim의 그 요청이 `pass`를 받는다 (`Side.choosePass` — 깃발이 없으면 넘김이 된다).
+   * 넘김 명령은 부르는 쪽이 보낸다
+   */
+  cancelFreeSwitch(side: SideId, at = 0): boolean {
+    const active = this.raw.battle?.sides[side === 'p1' ? 0 : 1]?.active[at]
+    if (!active?.switchFlag) return false
+    active.switchFlag = false
+    return true
+  }
+
+  /**
+   * 레벨이 오른 마리를 sim에도 올린다 (`SEQ_GET_EXP_WAIT_LEVEL_UP_EFFECT` →
+   * `Pokemon_CalcStats` · `BattleSystem_ReloadPokemon`).
+   *
+   * ⚠️ **안 올리면 다음 체력 줄이 옛 최대 HP를 싣는다.** sim은 레벨업을 모르고, 화면이
+   * 레벨업 박자에 올린 최대 HP를 그 줄(`cur/옛 최대`)이 도로 덮는다. 끝날 때 세이브로
+   * 돌아가는 체력(`results`)도 는 만큼을 잃는다.
+   *
+   * 능력치는 우리가 셈한 값을 그대로 넣는다 — sim의 셈과 같다는 것은 `stats.test.ts`가
+   * 잰다. 체력은 원작처럼 **최대 HP가 는 만큼** 더한다(쓰러진 마리는 그대로다).
+   * 변신 중이면 지금 능력치는 따라 한 쪽의 것이라 바탕 값만 고친다
+   *
+   * @returns 최대 HP가 는 폭. 그 마리가 없으면 null
+   */
+  levelUp(side: SideId, key: string, level: number, stats: Stats): number | null {
+    const mon = this.raw.battle?.sides[side === 'p1' ? 0 : 1]?.pokemon.find((p) => p.name === key)
+    if (!mon) return null
+    const grew = stats.hp - mon.baseMaxhp
+    // sim의 타입은 레벨을 읽기 전용으로 든다 — 대전에는 판 도중 레벨이 오르는 일이 없어서다
+    ;(mon as { level: number }).level = level
+    mon.set.level = level
+    mon.baseMaxhp = stats.hp
+    mon.maxhp = stats.hp
+    if (mon.hp > 0) mon.hp = Math.max(1, mon.hp + grew)
+    const stored = { atk: stats.atk, def: stats.def, spa: stats.spa, spd: stats.spd, spe: stats.spe }
+    mon.baseStoredStats = { hp: stats.hp, ...stored }
+    if (!mon.transformed) mon.storedStats = { ...stored }
+    mon.details = mon.getUpdatedDetails()
+    return grew
+  }
+
   freeSwitch(side: SideId, at = 0): boolean {
     const battle = this.raw.battle
     const mine = battle?.sides[side === 'p1' ? 0 : 1]
