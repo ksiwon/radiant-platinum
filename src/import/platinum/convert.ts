@@ -29,6 +29,7 @@ import { convertUnownFont } from './unownFont'
 import { convertSlots } from './slots'
 import { convertHallOfFameBg } from './hallOfFameBg'
 import { convertPointerHand } from './pointerHand'
+import { convertTrainerCase } from './trainerCase'
 import { convertLibraryTv } from './libraryTv'
 import { convertDemoModels } from './demoModels'
 import { convertFrontierBg } from './frontierBg'
@@ -291,6 +292,16 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: ['data/pointerHand.png'],
     converter: 1,
     convert: convertPointerHand,
+  },
+  {
+    // 트레이너 카드 앞뒤 · 배지 케이스 · 배지 여덟 · 주인공 그림 (`applications/trainer_case`)
+    name: 'trainerCase',
+    outputs: [
+      'data/trainerCase/card.png', 'data/trainerCase/trainer.png', 'data/trainerCase/case.png',
+      'data/trainerCase/badges.png', 'data/trainerCase/index.json',
+    ],
+    converter: 1,
+    convert: convertTrainerCase,
   },
   {
     // 창기둥과 깨어진 세계로 가는 문 — 필드 밖 연출의 모델 (`demoModels.ts`)

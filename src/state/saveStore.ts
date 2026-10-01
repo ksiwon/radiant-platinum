@@ -62,9 +62,15 @@ interface TrainerInfo {
    * 처음 명예의 전당에 든 때 (`GameTime.firstCompletionTimestamp`, epoch ms).
    *
    * ⚠️ **첫 번째만 적는다** — 원작이 `if (CheckGameCompleted() == FALSE)` 안에서만
-   * 찍는다. 아직 안 이겼으면 null이고, 트레이너 카드가 그 줄을 안 그린다
+   * 찍는다. 아직 안 이겼으면 null이고, 트레이너 카드 뒷면이 그 자리를 「--」로 채운다
    */
   firstClearedAt: number | null
+  /**
+   * 모험을 시작한 때 (`GameTime.startTimestamp`, epoch ms) — 새 게임을 열 때 한 번 찍는다 (`startNewGame`).
+   *
+   * 옛 리포트는 null이다. 그때를 아무 데도 안 적어 뒀으므로 지어내지 않고, 트레이너 카드가 그 줄을 안 그린다
+   */
+  adventureStartedAt: number | null
   /**
    * 224번도로 석판에 새긴 이름 (`MiscSaveBlock_TabletName`). 열 글자.
    *
@@ -402,7 +408,7 @@ export interface SaveData {
   factory: FactoryRecords
 }
 
-export const SAVE_VERSION = 40
+export const SAVE_VERSION = 41
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -442,6 +448,7 @@ export function createNewSave(): SaveData {
       secretId: Math.floor(Math.random() * 0x10000),
       playtimeMs: 0,
       firstClearedAt: null,
+      adventureStartedAt: null,
       tabletName: '',
       appearance: 0,
     },
@@ -727,6 +734,9 @@ type RestoreOutcome =
  * 플래그는 **여기서 안 세운다** — 필드가 뜰 때 `scripts_init_new_game`이 돈다
  * (`MapStreamer`). 그 표를 손으로 옮기면 130여 줄을 베끼는 것이고, 우리는 이미
  * 그 바이트코드를 싣고 있다
+ *
+ * 모험을 시작한 때도 여기서 찍는다 — 원작은 새 게임의 세이브를 비울 때 그 시각을 적는다(`GameTime_Clear`).
+ * `createNewSave`는 찍지 않는다: 확인용 세이브를 구울 때마다 바이트가 바뀌면 안 된다
  */
 export function startNewGame(
   who: { name: string; gender: TrainerInfo['gender']; rivalName: string },
@@ -734,7 +744,10 @@ export function startNewGame(
   const fresh = createNewSave()
   useSaveStore.setState({
     ...fresh,
-    trainer: { ...fresh.trainer, name: who.name, gender: who.gender },
+    trainer: {
+      ...fresh.trainer, name: who.name, gender: who.gender,
+      adventureStartedAt: fresh.trainer.adventureStartedAt ?? Date.now(),
+    },
     rivalName: who.rivalName,
     hydrated: true,
     loaded: false,

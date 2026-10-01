@@ -109,5 +109,13 @@ export const STACK = {
    * 뒤의 `'${UI}'`가 받는 것은 ⋯·㊚·㊛ 셋뿐이다
    */
   pixel: `'${PIXEL}', '${UI}', ${FALLBACK}`,
-  mono: "'Cascadia Mono', 'Consolas', 'Malgun Gothic', monospace",
+  /**
+   * 개발 계기판 · 키 글자 몫.
+   *
+   * ⚠️ **게임 안의 숫자(레벨 · HP · 소지금 · 번호)에는 안 쓴다.** 숫자만 이 글꼴로 그리면 「80,000원」의 「원」만 고딕이 되어
+   * 한 낱말 안에서 글꼴이 갈리고 개발 도구처럼 보인다. 줄 맞춤은 UI 글꼴의 고정폭 숫자로 한다 —
+   * `fontVariantNumeric: 'tabular-nums'`. Pretendard 서브셋에 `tnum`이 남아 있고 그때 0~9가 다 1258 단위로 같다
+   * (fontTools로 두 굵기의 GSUB를 실측). 기본 숫자는 비례폭이다(1 898 · 4 1278)
+   */
+  mono:"'Cascadia Mono', 'Consolas', 'Malgun Gothic', monospace",
 } as const

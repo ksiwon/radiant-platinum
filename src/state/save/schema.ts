@@ -235,6 +235,13 @@ const saveSchema = z.object({
      */
     firstClearedAt: z.number().int().min(0).max(1e15).nullable(),
     /**
+     * 모험을 시작한 때 (`GameTime.startTimestamp` — `GameTime_Clear`가 새 게임에서 찍는다).
+     *
+     * 트레이너 카드 앞면 맨 아래 줄이다 (`TrainerCard_Text_AdventureStarted`). 옛 리포트는 그때를 안 적어 뒀으므로
+     * null이고, 카드는 그 줄을 안 그린다
+     */
+    adventureStartedAt: z.number().int().min(0).max(1e15).nullable(),
+    /**
      * 224번도로 석판에 새긴 이름 (`MiscSaveBlock_TabletName`).
      *
      * 열 글자. 아직 안 새겼으면 빈 글이고, 그때는 스크립트가 이 대사로 안 온다

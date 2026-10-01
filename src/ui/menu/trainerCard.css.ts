@@ -1,120 +1,157 @@
-// 트레이너 카드 — 가운데 한 장.
+// 트레이너 카드 — 위 화면의 카드와 아래 화면의 배지 케이스를 한 판에 나란히.
 //
-// ⚠️ **이건 목록이 아니라 물건이다.** 다른 메뉴는 고르는 화면이지만 이 화면은
-// 카드 한 장을 보여 주는 것이 전부라, 다른 화면과 같은 상자를 쓰면 "설정값이
-// 적힌 표"로 읽힌다. 원작 카드처럼 **한쪽 모서리를 자르고**, 번호를 크게 박고,
-// 배지를 아래에 한 줄로 늘어놓는다.
+// ⚠️ **카드와 케이스는 롬 그림이다** (`data/trainerCase/` · `tools/extract/trainerCase.js`). 판은 원작이 그린 것을 그대로
+// 깔고, 글만 그 위 원작 창 자리에 올린다 — 자리는 `card_text.c`의 창 표(타일 좌표)를 그림 상자의 백분율로 옮긴 것이다.
+// 그래서 크기를 바꿔도 글이 판의 줄무늬에서 안 벗어난다. 글자 크기도 카드 폭을 따라간다(`cqw` — 카드 칸이 그 틀이다).
+//
+// ⚠️ **두 화면을 위아래로 쌓지 않는다.** 원작은 카드가 위 화면, 케이스가 아래 화면이라 둘이 늘 같이 보인다 — 한 창에서는
+// 나란히 두는 것이 그 「같이 보임」이다. 위아래로 쌓으면 창 높이를 넘는다.
 import { globalStyle, keyframes, style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
-import { EDGE, GAP, RADIUS, TEXT, TIME } from '../theme/scale'
+import { EDGE, GAP, RADIUS, TIME } from '../theme/scale'
 
 const rise = keyframes({
   from: { opacity: 0, transform: 'translateY(8px)' },
   to: { opacity: 1, transform: 'none' },
 })
 
-export const card = style({
-  position: 'relative',
-  margin: 'auto',
-  width: 'min(560px, calc(100vw - 72px))',
-  padding: '28px 32px 24px',
+/** 카드와 케이스를 나란히 */
+export const stage = style({
+  flex: '1 1 auto',
+  minHeight: 0,
   display: 'flex',
-  flexDirection: 'column',
-  gap: 18,
-  // 파랑에서 남색으로. 세로다 — **대각선이 아니다.** 145도로 흐르는 판에
-  // 광택을 얹은 것이 곧 핀테크 앱의 카드 목업이었다 (DESIGN.md §0)
-  background: `linear-gradient(180deg, ${vars.card.faceTop}, ${vars.card.faceBottom})`,
-  border: `${EDGE.window}px solid ${vars.card.edge}`,
-  borderRadius: RADIUS.window,
-  color: vars.card.text,
-  // 오른쪽 아래를 자른다 — 이 각 하나가 "카드"를 만든다
-  clipPath: 'polygon(0 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%)',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: GAP.loose,
+  padding: `${GAP.small}px ${GAP.base}px`,
   animation: `${rise} ${TIME.fade} ease-out`,
 })
 
-// ⚠️ **코팅 광택을 안 얹는다.** 여기 있던 `::before`가 대각 흰 띠와 빗금
-// 무늬였다 — 원작 카드는 납작하다
-
-export const top = style({
-  display: 'flex',
-  alignItems: 'flex-start',
-  justifyContent: 'space-between',
-  gap: 16,
+/**
+ * 카드 칸 — 폭이 정해지면 높이는 그림의 비가 정한다.
+ *
+ * ⚠️ **글자 크기를 재는 틀이 여기다.** `cqw`는 자기 자신이 아니라 바깥 틀을 잰다 — 카드에 `containerType`을 걸면 카드
+ * 안 글자는 카드가 아니라 그 바깥(없으면 화면)을 잰다. 카드 폭이 곧 이 칸의 폭이다
+ */
+export const cardSlot = style({
+  flex: '0 1 56%',
+  minWidth: 0,
+  containerType: 'inline-size',
 })
 
-export const title = style({
-  fontSize: TEXT.tiny,
-  fontWeight: 700,
-  color: vars.card.textDim,
-})
-
-export const name = style({
-  fontSize: TEXT.big + 4,
-  fontWeight: 800,
-})
-
-/** 번호. 원작 카드도 오른쪽 위에 크게 박는다 */
-export const idNo = style({
-  textAlign: 'right',
-  fontFamily: vars.font.mono,
-  fontSize: TEXT.big - 2,
-  fontWeight: 800,
-})
-
-export const idLabel = style({
-  display: 'block',
-  fontSize: TEXT.tiny,
-  color: vars.card.textDim,
-  fontWeight: 700,
-})
-
-export const rows = style({
-  display: 'grid',
-  gridTemplateColumns: 'max-content 1fr',
-  gap: '9px 20px',
-  margin: 0,
-  fontSize: 17,
-})
-
-// `<dt>`·`<dd>`는 클래스가 아니라 태그라 globalStyle로만 잡힌다
-globalStyle(`${rows} dt`, { color: vars.card.textDim, fontWeight: 600 })
-globalStyle(`${rows} dd`, {
-  margin: 0,
-  textAlign: 'right',
-  fontFamily: vars.font.mono,
-  fontVariantNumeric: 'tabular-nums',
-  fontWeight: 700,
-})
-
-export const badgeHead = style({
-  fontSize: TEXT.tiny,
-  fontWeight: 700,
-  color: vars.card.textDim,
-  marginTop: GAP.tight,
-})
-
-export const badges = style({
-  display: 'flex',
-  gap: 12,
-  flexWrap: 'wrap',
+/** 케이스 칸 */
+export const caseSlot = style({
+  flex: '0 1 40%',
+  minWidth: 0,
 })
 
 /**
- * 배지 한 자리.
+ * 카드 한 장. 판 그림은 `style`로 받는다(시트 안 자리 · 비율이 구운 상자에서 온다).
  *
- * ⚠️ **안 받은 자리를 지우지 않는다.** 빈 테두리로 남겨야 여덟 중 몇 개인지가
- * 보인다 — 받은 것만 늘어놓으면 얼마나 남았는지를 세어야 안다
+ * ⚠️ **뒤집기는 가로로 접었다 펴는 것이다** (`TrainerCase_FlipTrainerCard`) — 세로축 회전(3D)이 아니다. 원작은 회전 BG의
+ * 가로 배율만 1 → 0 → 1로 민다. 접히는 동안은 빨라지고(8프레임) 펴질 때는 느려진다(7프레임)
+ */
+export const card = style({
+  position: 'relative',
+  width: '100%',
+  backgroundRepeat: 'no-repeat',
+  imageRendering: 'pixelated',
+  // 글자는 카드 폭의 1/20 — 원작 창 한 줄(16px)에 12px 글자가 선다
+  fontSize: '5cqw',
+  fontWeight: 700,
+  lineHeight: 1,
+  transformOrigin: '50% 50%',
+})
+
+/**
+ * 판 그림을 못 받았을 때(설치본에 이 그룹이 아직 없다) — 글 자리는 그대로 두고 판만 단색이다
+ */
+export const cardBare = style({
+  color: vars.card.text,
+  background: `linear-gradient(180deg, ${vars.card.faceTop}, ${vars.card.faceBottom})`,
+  border: `${EDGE.window}px solid ${vars.card.edge}`,
+  borderRadius: RADIUS.window,
+})
+
+/** 원작 창 하나 — 이름표는 왼쪽, 값은 오른쪽 끝에 붙인다 (`TrainerCard_DrawNumber`가 창 폭에서 글 폭을 뺀 자리에 찍는다) */
+export const line = style({
+  position: 'absolute',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  margin: 0,
+  whiteSpace: 'nowrap',
+})
+
+globalStyle(`${line} dt`, { margin: 0 })
+globalStyle(`${line} dd`, {
+  margin: 0,
+  // 숫자도 UI 글꼴 그대로 — 폭만 고정폭 숫자(`tnum`)로 맞춘다
+  fontVariantNumeric: 'tabular-nums',
+})
+
+/**
+ * 두 줄 창 — 첫 전당등록. 이름표는 윗줄, 값은 날짜 · 시각 두 줄로 오른쪽 끝에 붙는다
+ * (`TrainerCard_DrawBackText`가 같은 창의 y 0 · 16에 찍는다)
+ */
+export const twoRows = style({ alignItems: 'stretch' })
+
+globalStyle(`${twoRows} dt`, { height: '50%', display: 'flex', alignItems: 'center' })
+globalStyle(`${twoRows} dd`, { display: 'flex', flexDirection: 'column', alignItems: 'flex-end' })
+globalStyle(`${twoRows} dd > span`, { flex: '1 1 0', display: 'flex', alignItems: 'center' })
+
+/** 창 안에서 원작 자리에 박는 글 (통신대전의 「승」·「패」와 그 수) */
+export const pinned = style({
+  position: 'absolute',
+  top: 0,
+  bottom: 0,
+  display: 'flex',
+  alignItems: 'center',
+  fontVariantNumeric: 'tabular-nums',
+})
+
+/** 플레이 시간의 쌍점 — 원작은 15프레임 켜고 15프레임 끈다 (`TrainerCase_UpdatePlayTime`) */
+const blink = keyframes({
+  '0%': { opacity: 1 },
+  '50%': { opacity: 0 },
+})
+
+export const colon = style({
+  animation: `${blink} 0.5s steps(1, end) infinite`,
+})
+
+/** 주인공 그림 — 사진 칸 안 */
+export const trainer = style({
+  position: 'absolute',
+  backgroundRepeat: 'no-repeat',
+  imageRendering: 'pixelated',
+})
+
+/** 배지 케이스 — 아래 화면 한 장 */
+export const caseArt = style({
+  position: 'relative',
+  width: '100%',
+  aspectRatio: '256 / 192',
+  backgroundSize: '100% 100%',
+  imageRendering: 'pixelated',
+})
+
+/**
+ * 판 그림을 못 받았을 때의 케이스
+ */
+export const caseBare = style({
+  background: vars.card.badgeOff,
+  borderRadius: RADIUS.window,
+})
+
+/**
+ * 배지 하나 — 케이스 판의 홈 위에 앉는다.
+ *
+ * ⚠️ **안 받은 배지는 안 그린다.** 원작도 그 스프라이트를 끈다(`Sprite_SetDrawFlag(…, FALSE)`) — 빈 자리는 케이스 판에
+ * 새겨진 배지 모양 홈이 보여 준다. 여덟 중 몇 개인지가 그 홈으로 읽힌다
  */
 export const badge = style({
-  width: 34,
-  height: 34,
-  // 배지는 실제로 둥근 것이라 여기는 `round`가 맞다
-  borderRadius: RADIUS.round,
-  border: `2px dashed ${vars.card.badgeOff}`,
-  selectors: {
-    '&[data-on="yes"]': {
-      border: `2px solid ${vars.bar.edge}`,
-      background: vars.card.badgeOn,
-    },
-  },
+  position: 'absolute',
+  backgroundRepeat: 'no-repeat',
+  imageRendering: 'pixelated',
 })

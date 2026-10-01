@@ -449,6 +449,14 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     unlockedWallpapers: 0,
     boxNames: Array.from({ length: 18 }, () => null),
   }),
+
+  // 모험을 시작한 때 (`GameTime.startTimestamp`). ⚠️ **지어내지 않는다** — 옛 리포트는 언제 시작했는지를 아무 데도 안 적어
+  // 뒀다. 플레이 시간을 지금에서 빼면 그럴듯한 날이 나오지만 꺼 둔 날들이 빠진 가짜다. null로 두고 카드가 그 줄을 안 그린다
+  40: (data) => ({
+    ...data,
+    version: 41,
+    trainer: { ...(data.trainer as object), adventureStartedAt: null },
+  }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

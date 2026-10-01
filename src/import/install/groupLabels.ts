@@ -48,6 +48,7 @@ const LABELS: Readonly<Record<string, Readonly<Record<Lang, string>>>> = {
   poketchMap: { ko: '포켓치 지도', en: 'Pokétch map', ja: 'ポケッチのマップ' },
   signposts: { ko: '표지판', en: 'Signposts', ja: '看板' },
   particles: { ko: '기술 연출', en: 'Move effects', ja: 'わざの演出' },
+  trainerCase: { ko: '트레이너 카드', en: 'Trainer card', ja: 'トレーナーケース' },
   starterScene: { ko: '파트너 고르는 장면', en: 'Starter selection', ja: '最初のポケモン選び' },
   distortionProps: { ko: '깨어진 세계 소품', en: 'Distortion World props', ja: 'やぶれたせかいの小物' },
   pokegra: { ko: '포켓몬 그림', en: 'Pokémon sprites', ja: 'ポケモンの絵' },

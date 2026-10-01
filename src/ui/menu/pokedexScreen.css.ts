@@ -9,8 +9,8 @@ import { vars } from '../theme/contract.css'
 export const number = style({
   width: 34,
   flex: '0 0 auto',
+  // UI 글꼴의 고정폭 숫자(`tnum`)다 — 고정폭 글꼴로 바꾸면 이름과 번호가 다른 글꼴이 된다
   fontVariantNumeric: 'tabular-nums',
-  fontFamily: vars.font.mono,
   fontSize: 13,
   opacity: 0.65,
 })

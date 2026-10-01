@@ -142,7 +142,8 @@ export const level = style({
   marginLeft: 'auto',
   flex: '0 0 auto',
   fontSize: TEXT.small,
-  fontFamily: vars.font.mono,
+  // 숫자도 UI 글꼴이다 — 고정폭 글꼴로 따로 그리면 「Lv.」과 숫자가 한 낱말 안에서 갈린다. 폭은 `tnum`이 맞춘다
+  fontVariantNumeric: 'tabular-nums',
   color: vars.ink.dim,
 })
 
@@ -193,7 +194,6 @@ export const hpText = style({
   minWidth: 58,
   textAlign: 'right',
   fontSize: TEXT.tiny,
-  fontFamily: vars.font.mono,
   fontVariantNumeric: 'tabular-nums',
   color: vars.ink.dim,
 })

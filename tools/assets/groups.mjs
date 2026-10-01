@@ -143,6 +143,12 @@ export const GROUPS = [
     match: oneOf('data/pointerHand.png'),
   },
   {
+    // 트레이너 카드 앞뒤 · 배지 케이스 · 배지 여덟 · 주인공 그림 (`applications/trainer_case`). 카드를 열 때 받는다
+    name: 'trainerCase',
+    make: 'pnpm extract:trainerCase',
+    match: under('data/trainerCase/'),
+  },
+  {
     // 도서관 텔레비전 뉴스 (`StartLibraryTV`). 운하시티 도서관 3층에서 한 번 받는다
     name: 'libraryTv',
     make: 'pnpm extract:libraryTv',

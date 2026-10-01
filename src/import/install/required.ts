@@ -31,6 +31,7 @@ export const REQUIRED_PLATINUM_GROUPS = [
   'boxWallpapers', // 박스 벽지
   'poketchMap', // 포켓치 지도 화면과 액정 팔레트
   'signposts',  // 마을 이름표·도로 표지판 그림
+  'trainerCase', // 트레이너 카드 그림. 없으면 카드가 단색 판과 빈 케이스로 내려앉는다
   'starterScene', // 파트너 고르는 장면. 새 게임이 여기서 막힌다
   // ⚠️ **없으면 깨어진 세계를 못 지난다.** 그 세계의 발판은 지형이 아니라
   // 소품이라, 이 그룹이 비면 밟아야 할 판이 하나도 안 보인다 (PARITY §6.10)
