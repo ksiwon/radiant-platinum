@@ -17,7 +17,7 @@ import { exportArena } from './arena'
 import { exportModel } from './model'
 import { bakeAlbedo } from './albedo'
 import { anySex, pokemonCatalog, variantSuffix } from './convert'
-import { arenaFiles } from './convert'
+import { POKEBALL, arenaFiles } from './convert'
 import { verifyGlb } from './glb'
 import { encodePng } from '../platinum/png'
 import { SPRITE_NAMES } from '../platinum/spriteTable'
@@ -288,3 +288,56 @@ suite('포켓몬', () => {
     expect(verifyGlb(glb)).toEqual([])
   }, 120_000)
 })
+
+// ⚠️ **길의 도구 볼은 몬스터볼이어야 한다 — 이름이 아니라 색으로 잰다.** `ob02xx`
+// 볼들은 메시·UV가 같아 번들을 잘못 골라도 모양·개수 시험은 다 통과한다.
+// 첫째 번들(`ob0201`)을 집었을 때 길마다 마스터볼(보라·M)이 놓였다 (`POKEBALL` 머리말)
+it('길에 놓이는 볼은 윗반구가 빨강인 몬스터볼이다', async () => {
+  const dir = characters(POKEBALL.replace(/^Characters\//, ''))
+  if (!dir || !existsSync(dir)) return
+  const shots: { rgba: Uint8Array, w: number, h: number }[] = []
+  const capture = (rgba: Uint8Array, w: number, h: number): Promise<Uint8Array> => {
+    shots.push({ rgba: rgba.slice(), w, h })
+    return encodePng(rgba, w, h)
+  }
+  const { glb, stat } = await exportModel(openEnvironment([bytes(dir)]), capture, {
+    maxSize: 256, keepClips: false,
+  })
+  expect(verifyGlb(glb)).toEqual([])
+  expect(stat.triangles).toBe(1026)
+  expect(shots.length).toBe(1)
+
+  // glb의 윗반구 메시 UV로 그림을 짚어 평균을 낸다
+  const view = new DataView(glb.buffer, glb.byteOffset, glb.byteLength)
+  const jsonLen = view.getUint32(12, true)
+  const gltf = JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + jsonLen))) as {
+    meshes: { name: string, primitives: { attributes: Record<string, number> }[] }[]
+    accessors: { bufferView: number, byteOffset?: number, count: number }[]
+    bufferViews: { byteOffset?: number, byteStride?: number }[]
+  }
+  const binAt = 20 + jsonLen + 8
+  const upper = gltf.meshes.filter((m) => /_ballupperSkin$/.test(m.name))
+  expect(upper.length).toBe(1)
+  const { rgba, w, h } = shots[0]!
+  const sum = [0, 0, 0]
+  let n = 0
+  for (const prim of upper[0]!.primitives) {
+    const acc = gltf.accessors[prim.attributes['TEXCOORD_0']!]!
+    const bv = gltf.bufferViews[acc.bufferView]!
+    const stride = bv.byteStride ?? 8
+    const base = binAt + (bv.byteOffset ?? 0) + (acc.byteOffset ?? 0)
+    for (let i = 0; i < acc.count; i++) {
+      const u = view.getFloat32(base + i * stride, true)
+      const v = view.getFloat32(base + i * stride + 4, true)
+      const x = Math.min(w - 1, Math.floor((u - Math.floor(u)) * w))
+      const y = Math.min(h - 1, Math.floor((v - Math.floor(v)) * h))
+      const o = (y * w + x) * 4
+      for (let c = 0; c < 3; c++) sum[c]! += rgba[o + c]!
+      n++
+    }
+  }
+  const [r, g, b] = sum.map((s) => s / n) as [number, number, number]
+  // 실측: 몬스터볼(ob0204) 114,57,59 · 마스터볼(ob0201) 69,60,85 · 슈퍼볼(ob0203) 50,78,95
+  expect(r).toBeGreaterThan(b * 1.5)
+  expect(r).toBeGreaterThan(g * 1.5)
+}, 120_000)

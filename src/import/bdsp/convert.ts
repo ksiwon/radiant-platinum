@@ -54,12 +54,18 @@ const MASTERDATAS = 'Dpr/masterdatas'
 // (`engine/actor/bike`의 `BIKE` 머리말)
 const BIKE = 'Characters/objects/ob1004_00'
 /**
- * 길에 떨어진 도구로 서는 몬스터볼 (`scene/ItemBalls`).
+ * 길에 떨어진 도구로 서는 몬스터볼 (`scene/ItemBalls`). 원작 그림 87은 빨강·하양이다.
  *
- * 번들 128개 중 볼을 든 것은 `ob02xx_00` 줄이고, 그 첫째가 기본 몬스터볼이다
- * (번들 안 이름 `openball02` · `ob0201_00_ballupperSkin`)
+ * ⚠️ **번호 순서로 고르지 않는다 — 텍스처로 확인한 번들이다.** 볼을 든 것은
+ * `ob02xx_00` 줄이고 메시·UV 배치가 다 같아 이름(`openball02` · `ballupperSkin`)
+ * 으로는 무슨 볼인지 모른다. 구워 윗반구 텍셀 평균(RGB)을 쟀다:
+ * `ob0201` 보라에 분홍 혹·M (69,60,85 · 윗뚜껑 158,47,106) = 마스터볼 ·
+ * `ob0202` 노랑 H (87,79,55) = 하이퍼볼 · `ob0203` 파랑 (50,78,95) = 슈퍼볼 ·
+ * **`ob0204` 빨강 (114,57,59) · 아래 하양 = 몬스터볼**. 첫째(`ob0201`)를 집었을 때는
+ * 길마다 마스터볼이 놓였다. `ob0204`에는 윗뚜껑 메시(`balluppertopSkin`)가 없어
+ * 삼각형이 1,026개다
  */
-const POKEBALL = 'Characters/objects/ob0201_00'
+export const POKEBALL = 'Characters/objects/ob0204_00'
 /**
  * 주인공이 **들고 타는 것들**이 한 번들에 같이 있다.
  *
