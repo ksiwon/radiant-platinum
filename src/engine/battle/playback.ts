@@ -21,11 +21,13 @@
 // **기술 연출이 여기서 자리를 받는다.** 원작은 글을 찍은 뒤 `PlayMoveAnimation`이
 // 도는 동안 게이지가 기다린다. 그 자리를 박자 하나로 낸다(`hold`) — 그동안
 // 무대의 `MoveVfx`가 틀 하나를 돌린다(`battle/vfx`). 길이는 틀과 위력이 정한다.
+import type { Stats } from '../../data/schema'
 import { captureFrames, captureTailFrames } from './captureTiming'
-import type { BattleEvent } from './events'
+import type { BattleEvent, CuredBy, LevelStep, SlotId } from './events'
+import { rewardSteps } from './events'
 import { BODY_FADE_SECONDS, FRAME_SECONDS } from './presentationClock'
 import { moveFramesOf } from './vfx'
-import { applyEvents, emptyView, type BattleView } from './view'
+import { applyEvents, emptyView, slotOfKey, type BattleView } from './view'
 
 /**
  * 화면에 보이는 한 박자.
@@ -90,6 +92,14 @@ export interface Beat {
    */
   music?: number
   sound?: number
+  /**
+   * 레벨업 능력치 창 (`SEQ_GET_EXP_LEVEL_UP_SUMMARY_PRINT_DIFF` → `…_PRINT_TRUE`).
+   *
+   * 「레벨 N으로 올랐다!」 바로 뒤의 `press` 박자에만 붙는다. 원작은 오른 폭 창을 띄우고
+   * A에 새 값 창으로, 다시 A에 다음으로 간다 — 그 두 번 누름은 화면이 센다(`BattleScreen`).
+   * 오르기 전·뒤 능력치를 모르는 사건이면 안 붙는다
+   */
+  levelPanel?: { key: string; level: number; before: Stats; after: Stats }
 }
 
 /** 기술 칸이 다 차서 무엇을 지울지 물어야 하는 자리 */
@@ -152,6 +162,42 @@ const HOLD_FAINT = 7
  * 길이로 쓰지 말라는 것이 이 상수의 뜻이다
  */
 const HOLD_FAINT_PRESENTATION = HOLD_FAINT + Math.ceil(BODY_FADE_SECONDS / FRAME_SECONDS)
+
+/**
+ * 경험치 줄을 찍고 게이지가 차기까지 쉬는 프레임 — `GET_EXP_MSG_DELAY = 30 / 4`.
+ *
+ * 원작은 이 줄에서 단추를 안 기다린다(`SEQ_GET_EXP_WAIT_MESSAGE_DELAY`). 글은 게이지가
+ * 차는 동안 그대로 떠 있다
+ */
+const HOLD_EXP_MESSAGE = Math.trunc(30 / 4)
+
+/** 경험치 게이지 폭. `HEALTHBOX_EXP_CELL_COUNT(12) × 8`픽셀 */
+const EXP_GAUGE_PIXELS = 12 * 8
+
+/**
+ * 게이지 소리가 적어도 나는 프레임. 막대가 그보다 빨리 차도 `expSoundTimer`가 8이 될
+ * 때까지 끝나지 않는다 (`Task_UpdateExpGauge` `case 2`)
+ */
+const EXP_SOUND_MIN = 8
+
+/**
+ * 레벨업 체력판 번쩍임 (`Healthbox_Task_LevelUpFlashAnimation`) — 섞임 세기를 프레임당
+ * 2씩 10까지 올렸다(5) 내리고(5) 팔레트를 되돌린다(1). 같이 도는 `BATTLE_ANIMATION_LEVEL_UP`
+ * 연출의 길이는 자료에 안 적혀 있어 넣지 않았다
+ */
+const HOLD_LEVEL_UP = 11
+
+/**
+ * 경험치 게이지가 `from`에서 `to`까지 차는 프레임 (0~1, 그 레벨 안에서).
+ *
+ * `HealthBox_DrawGauge`가 경험치 쪽에 `fillOffset = |reward / 움직일 픽셀 수|`를 주므로
+ * 막대는 **프레임당 한 픽셀**씩 찬다(`CalcGaugeFill` · `UpdateGauge`). 그래서 걸리는 시간은
+ * 움직이는 픽셀 수고, 소리 때문에 8프레임보다 짧지 않다
+ */
+export function expGaugeFrames(from: number, to: number): number {
+  const px = (f: number) => Math.trunc(Math.max(0, Math.min(1, f)) * EXP_GAUGE_PIXELS)
+  return Math.max(EXP_SOUND_MIN, Math.abs(px(to) - px(from)))
+}
 
 /**
  * 게이지 칸 수. `HEALTHBOX_HP_CELL_COUNT(6) × HEALTHBOX_NAME_BLOCK_COUNT_X(8)`.
@@ -224,6 +270,16 @@ export function buildBeats(
   let lastLine: string | null = null
   /** 그 쪽이 이미 한 번 나왔는가. 여는 등판만 더 길게 선다 */
   const sentOut = new Set<'p1' | 'p2'>()
+  /** 둘째 자리가 한 번이라도 섰는가 — 더블이다. 등판·회수 줄이 갈래 없이 하나다 */
+  let doubles = false
+  /**
+   * 누가 마지막으로 나왔을 때 상대 첫 자리의 체력 (`battleCtx->hpTemp`).
+   *
+   * 원작은 배틀을 열 때와 **누구든** 교체될 때마다 이 값을 다시 적고
+   * (`BattleControllerPlayer_InitBattleMons` · `BtlCmd_SwitchAndUpdateMon`), 우리가 거둘 때 그 사이에
+   * 상대가 잃은 몫으로 「돌아와!」를 고른다
+   */
+  let foeMark = 0
 
   /**
    * 글만 찍는 박자. 같은 창이 연달아 나오면(연타 데미지) 다시 안 찍는다.
@@ -286,10 +342,58 @@ export function buildBeats(
     crit: held.some((h) => h.kind === 'crit'),
   })
 
-  for (const e of events) {
+  /**
+   * 방금 먹은 열매 (`|-enditem|…|[eat]`). 바로 뒤따르는 치료 줄에 붙인다 — 쇼다운은
+   * 그 줄에 원인을 안 싣는데 원작은 열매를 문장에 넣는다
+   */
+  let eaten: { slot: SlotId; cured: CuredBy } | null = null
+
+  /** 그 사건 바로 뒤로 이어지는 같은 자리의 열매 치료 — 상태이상 · 혼란 */
+  const curesAfter = (at: number, slot: SlotId): { status: boolean; confusion: boolean } => {
+    const found = { status: false, confusion: false }
+    for (let j = at + 1; j < events.length && j <= at + 2; j++) {
+      const n = events[j]!
+      if (n.kind === 'curestatus' && n.actor.slot === slot) found.status = true
+      else if (n.kind === 'volatile' && !n.start && n.effect.id === 'confusion' && n.actor.slot === slot) {
+        found.confusion = true
+      } else break
+    }
+    return found
+  }
+
+  /**
+   * 트릭·바꿔치기가 넘긴 도구 둘. 쇼다운은 **맞은 쪽부터** 내고 원작은 **쓴 쪽부터**
+   * 「손에 넣었다!」를 찍는다 (`subscript_exchange_items`) — 앞의 하나를 잡아 두었다가
+   * 뒤의 하나 다음에 낸다
+   */
+  let swapHeld: BattleEvent | null = null
+  const isSwap = (e: BattleEvent): boolean => (e.kind === 'item' || e.kind === 'enditem')
+    && e.from?.kind === 'move' && /^(trick|switcheroo)$/i.test(e.from.name)
+
+  /** 글이 붙는 보통 사건 하나 — 연출이 먼저고 글이 뒤다 (`PlayBattleAnimation` → `PrintMessage`) */
+  const plain = (told: BattleEvent): void => {
+    show([told], 0)
+    say(text(told), HOLD_MESSAGE)
+  }
+
+  for (let at = 0; at < events.length; at++) {
+    const e = events[at]!
     if (e.kind === 'crit' || e.kind === 'effectiveness') { held.push(e); continue }
     if (e.kind !== 'damage') flush()
     if (e.kind === 'turn' || e.kind === 'switch' || e.kind === 'faint') inMove = false
+    if (swapHeld !== null) {
+      const first = swapHeld
+      swapHeld = null
+      if (isSwap(e)) { plain(e); plain(first); continue }
+      plain(first)
+    }
+    if (isSwap(e)) { swapHeld = e; continue }
+    // 열매를 먹은 바로 다음 줄만 그 열매를 안다. 다른 사건이 끼면 잊는다
+    const cure = eaten !== null
+      && ((e.kind === 'curestatus' && e.actor.slot === eaten.slot)
+        || (e.kind === 'volatile' && !e.start && e.effect.id === 'confusion' && e.actor.slot === eaten.slot))
+      ? eaten.cured : null
+    if (cure === null) eaten = null
 
     switch (e.kind) {
       case 'damage':
@@ -321,14 +425,34 @@ export function buildBeats(
         // 쉼 길이는 원작 값 그대로다 — 여는 등판 `WaitTime 96`/`112` · 야생 조우 `WaitTime 122` · 판 도중 `WaitTime 72`
         const first = !sentOut.has(e.actor.side)
         sentOut.add(e.actor.side)
+        if (e.actor.slot.endsWith('b')) doubles = true
         const hold = first && e.actor.side === 'p2' && foeOnStage ? HOLD_ENCOUNTER
           : first ? HOLD_FIRST_SEND_OUT[e.actor.side] : HOLD_SEND_OUT
-        show([e], hold, 'presentation')
+        const foe = view.active.p2a
+        // 앞 마리를 **먼저** 거둔다 — 회수 글이 등판보다 앞이다 (`subscript_switch_pokemon`).
+        // 쓰러진 자리(`presence: 'down'`)와 끌려 나온 자리는 거둘 몸이 없어 원작도 말이 없다
+        const prev = view.active[e.actor.slot]
+        if (!first && !e.forced && prev && prev.presence === 'alive' && prev.key !== e.actor.name) {
+          const percent = e.actor.side === 'p1' && !doubles
+            // C의 나눗셈이다 — 0 쪽으로 버린다. 적어 둔 값이 0이면 원작은 0으로 나누는데
+            // 우리는 「한 점도 못 깎았다」로 둔다
+            ? (foeMark > 0 ? Math.trunc(((foeMark - (foe?.hp ?? 0)) * 100) / foeMark) : 0)
+            : null
+          const recall: BattleEvent = { kind: 'recall', actor: { ...e.actor, name: prev.key }, percent }
+          say(text(recall), HOLD_MESSAGE)
+        }
+        // 싱글 판 도중 우리 등판은 상대가 얼마나 남았느냐로 말이 갈린다 (`LoadSendOutMessage`).
+        // ⚠️ **첫 등판에는 안 싣는다** — 그 사건은 `leadLines`가 정체성으로 찾는다
+        const told: BattleEvent = e.actor.side === 'p1' && !first && !doubles && !e.forced && foe
+          ? { ...e, foeHpPermille: foe.hp <= 0 ? 1000 : Math.trunc((foe.hp * 1000) / Math.max(1, foe.maxHp)) }
+          : e
+        show([told], hold, 'presentation')
+        foeMark = view.active.p2a?.hp ?? foeMark
         // 몸이 서는 동안은 글창을 비운다 — 앞 등판의 「내보냈다」나 트레이너의 「승부를 걸어왔다」(이 목록 밖에서 맨 앞에 붙는다 ·
         // `bookends.openingLine`)가 다음 마리가 날아오는 동안 남아 있으면 누가 나오는지 헷갈린다
         out[out.length - 1]!.clear = true
         lastLine = null
-        say(text(e), HOLD_MESSAGE, pressSendOut)
+        say(text(told), HOLD_MESSAGE, pressSendOut)
         break
       }
 
@@ -360,23 +484,33 @@ export function buildBeats(
         })
         break
 
+      case 'reward':
+        reward(e)
+        break
+
       default: {
         if (isSilent(e)) { show([e], 0); break }
-        // 그친 날씨가 무엇이었는지는 **여기서만 안다.** `|-weather|none`은 이름을
-        // 안 들고 오고, 뷰는 `show`가 접는 순간 null이 된다 — 접기 **전에** 실어
-        // 준다. 데미지에 타격 정보를 얹는 것과 같은 방식이다
-        const told = e.kind === 'weather' && e.weather === null
-          ? { ...e, ended: view.weather }
-          : e
-        // 랭크·상태이상은 연출이 먼저고 글이 뒤다 (`PlayBattleAnimation` → `PrintMessage`)
-        show([told], 0)
-        say(text(told), HOLD_MESSAGE)
-        // 배우고 싶어 하는 기술마다 한 번씩 묻는다. 사건이 이미 확정된 뒤라
-        // 이 박자들도 흔들리지 않는다
-        if (e.kind === 'reward') {
-          for (const move of e.pending) {
-            out.push({ text: null, events: [], hold: 0, ask: { key: e.key, move } })
-          }
+        // ⚠️ **접기 전에만 아는 것들을 여기서 실어 준다** — 뷰는 `show`가 접는 순간
+        // 바뀐다. 데미지에 타격 정보를 얹는 것과 같은 방식이다
+        let told: BattleEvent = e
+        // 그친 날씨가 무엇이었는지 — `|-weather|none`은 이름을 안 들고 온다
+        if (e.kind === 'weather' && e.weather === null) told = { ...e, ended: view.weather }
+        // 반감 열매가 막은 기술 — 원작 줄이 그 이름을 빈칸으로 받는다
+        if (e.kind === 'enditem' && e.how === 'weaken') told = { ...e, move: view.lastMove?.move ?? null }
+        // 변신 — 따라 한 쪽의 종 이름이 빈칸이다
+        if (e.kind === 'transform') {
+          const target = view.active[e.target.slot]
+          told = { ...e, species: target?.species ?? null, form: target?.form ?? 0 }
+        }
+        // 열매가 고친 상태이상 · 혼란
+        if (cure !== null && (e.kind === 'curestatus' || e.kind === 'volatile')) told = { ...e, curedBy: cure }
+        // 랭크·상태이상은 연출이 먼저고 글이 뒤다
+        plain(told)
+        // 열매를 먹었다 — 뒤따르는 치료 줄이 그 열매를 부른다. 상태이상과 혼란을 **함께**
+        // 고치면 원작은 한 줄로 몬다 (`HOLD_EFFECT_STATUS_RESTORE`의 `multi_restore` 갈래)
+        if (e.kind === 'enditem' && e.how === 'eat') {
+          const both = curesAfter(at, e.actor.slot)
+          eaten = { slot: e.actor.slot, cured: { item: e.item, all: both.status && both.confusion } }
         }
       }
     }
@@ -384,6 +518,68 @@ export function buildBeats(
     if (e.kind === 'damage') flush()
   }
   flush()
+  if (swapHeld !== null) plain(swapHeld)
 
   return out
+
+  /**
+   * 경험치 하나를 원작 차례로 편다 (`battle_script.c`의 `SEQ_GET_EXP_*`).
+   *
+   *   경험치 줄 → 게이지 → [레벨마다: 게이지 끝까지 → 번쩍임·체력판 → 레벨 줄 → 능력치 창
+   *   → 그 레벨의 기술] → 남은 게이지
+   *
+   * ⚠️ **막대 값을 모르는 사건은 예전 길로 간다** — 경험치 줄·레벨 줄·기술 줄을 한꺼번에
+   * 찍고 묻는다. 막대 값과 능력치는 세이브를 고치는 쪽이 실어야 하고(`expFrom`·`expTo`·
+   * `LevelStep`), 없는 값으로 게이지를 짐작해 그리지 않는다
+   */
+  function reward(e: Extract<BattleEvent, { kind: 'reward' }>): void {
+    const parts = rewardSteps(e)
+    const levelUp = (step: LevelStep): BattleEvent => ({
+      kind: 'levelup', key: e.key, level: step.level, before: step.before ?? null, after: step.after ?? null,
+    })
+    if (e.expFrom === undefined || e.expTo === undefined) {
+      // 체력판의 레벨만이라도 고친다 — 아는 만큼만
+      show([e, ...parts.flatMap((p) => (p.step ? [levelUp(p.step)] : []))], 0)
+      say(text(e), HOLD_MESSAGE)
+      for (const move of e.pending) out.push({ text: null, events: [], hold: 0, ask: { key: e.key, move } })
+      return
+    }
+    // 무대에 서 있는 마리만 게이지와 번쩍임이 돈다 — 학습장치로 받은 벤치 마리는 글과 창만
+    // 뜬다 (`SEQ_GET_EXP_GAUGE`·`SEQ_GET_EXP_CHECK_LEVEL_UP`의 `selectedPartySlot` 검사)
+    const slot = slotOfKey(view, e.key)
+    const onStage = slot !== null && slot.startsWith('p1')
+    let at = e.expFrom
+    const fill = (to: number): void => {
+      if (onStage && to !== at) show([{ kind: 'expgauge', key: e.key, to }], expGaugeFrames(at, to), 'gauge')
+      at = to
+    }
+    say(text({ ...e, levels: [], learned: [], pending: [] }), HOLD_EXP_MESSAGE)
+    // 게이지가 **차기 시작하는** 자리에서 보상 사건을 접는다 — 소리가 여기서 난다
+    show(onStage ? [e, { kind: 'expgauge', key: e.key, to: e.expFrom }] : [e], 0)
+    for (const part of parts) {
+      if (part.step !== null) {
+        fill(1)
+        const up = levelUp(part.step)
+        show([up], onStage ? HOLD_LEVEL_UP : 0, 'presentation')
+        const { before, after } = part.step
+        if (before && after) {
+          // 레벨 줄은 창이 떠 있는 동안 그대로 남는다 — 쉬지 않고 바로 창이다
+          say(text(up), 0)
+          out.push({
+            text: null, events: [], hold: 0, press: true,
+            levelPanel: { key: e.key, level: part.step.level, before, after },
+          })
+        } else {
+          say(text(up), HOLD_MESSAGE)
+        }
+        at = 0
+      }
+      for (const move of part.learned) say(text({ kind: 'learnmove', key: e.key, move, learned: true }), HOLD_MESSAGE)
+      for (const move of part.pending) {
+        say(text({ kind: 'learnmove', key: e.key, move, learned: false }), HOLD_MESSAGE)
+        out.push({ text: null, events: [], hold: 0, ask: { key: e.key, move } })
+      }
+    }
+    fill(e.expTo)
+  }
 }

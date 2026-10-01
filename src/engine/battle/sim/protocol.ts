@@ -6,13 +6,38 @@
 // ⚠️ 지연 로딩 경계 (bridge.ts 주석 참고).
 import { Protocol } from '@pkmn/protocol'
 import type {
-  Actor, BattleEvent, BattleRequest, BoostStat, Cause, EffectExtra, EffectRef, Effectiveness,
+  Actor, BattleEvent, BattleRequest, BoostStat, Cause, EffectExtra, EffectRef, Effectiveness, ItemRef,
 } from '../events'
 import { conditionId, parseActor, parseCondition, parseDetails, parseSide } from '../events'
 import type { Status } from '../../pokemon/instance'
+import { ITEM_IDS } from '../dex/vendor/names.gen'
 import { romAbility, romMove, romSpeciesForm } from './bridge'
 
 const STATUS_CAUSES = new Set(['psn', 'tox', 'brn', 'frz', 'par', 'slp'])
+
+let itemIndex: Map<string, number> | null = null
+
+/**
+ * sim 도구 이름 → 롬 도구 번호. 모르는 이름이면 null.
+ *
+ * ⚠️ **sim의 `num`으로는 못 잇는다** — 롬 번호와 체계가 달라서 하나도 안 맞는다
+ * (`bridge.simItem`). 디컴프 열거형에서 구운 `ITEM_IDS`(롬 번호 → 구현 id)를
+ * 거꾸로 읽는다. 구현 id는 이름을 접은 꼴(`Sitrus Berry` → `sitrusberry`)이다
+ */
+export function romItem(name: string): number | null {
+  if (!itemIndex) {
+    itemIndex = new Map()
+    ITEM_IDS.forEach((id, num) => { if (id && !itemIndex!.has(id)) itemIndex!.set(id, num) })
+  }
+  return itemIndex.get(conditionId(name)) ?? null
+}
+
+/** `Sitrus Berry` · `item: Sitrus Berry` → 도구 하나 */
+function itemRef(raw: string): ItemRef {
+  const colon = raw.indexOf(':')
+  const name = (colon < 0 ? raw : raw.slice(colon + 1)).trim()
+  return { id: conditionId(name), num: romItem(name), name }
+}
 
 /**
  * `[from] ability: Sand Stream` → 종류·번호·이름.
@@ -36,7 +61,7 @@ function from(kw: Record<string, unknown>): Cause | null {
   const name = v.slice(colon + 1).trim()
   if (kind === 'move') return { kind: 'move', id: romMove(name), name }
   if (kind === 'ability') return { kind: 'ability', id: romAbility(name), name }
-  if (kind === 'item') return { kind: 'item', id: null, name }
+  if (kind === 'item') return { kind: 'item', id: romItem(name), name }
   return { kind: 'other', id: null, name }
 }
 
@@ -84,7 +109,9 @@ function effectRef(raw: string): EffectRef {
   return {
     id: conditionId(raw),
     kind,
-    num: kind === 'move' ? romMove(name) : kind === 'ability' ? romAbility(name) : null,
+    num: kind === 'move' ? romMove(name)
+      : kind === 'ability' ? romAbility(name)
+        : kind === 'item' ? romItem(name) : null,
     name,
   }
 }
@@ -216,6 +243,12 @@ export function parseLine(line: string): BattleEvent | null {
       if (!actor) break
       // -sethp는 절대값을 꽂는 줄이다(고통나누기). 늘거나 줄 수 있으므로 damage로
       // 부르면 연출이 거짓말을 한다 — 뷰는 어차피 절대값을 그대로 쓴다
+      const by = of(kw)
+      // `[of]`은 데미지에만 싣는다 — 자보열매·애터열매처럼 **남의 도구**에 다친 자리를
+      // 원작이 그 도구를 든 쪽 이름까지 넣어 말한다
+      if (cmd !== '-heal' && by !== null) {
+        return { kind: 'damage', actor, condition: parseCondition(rest[1] ?? ''), from: from(kw), of: by }
+      }
       return {
         kind: cmd === '-heal' ? 'heal' : 'damage',
         actor,
@@ -234,11 +267,11 @@ export function parseLine(line: string): BattleEvent | null {
     case '-curestatus': {
       const actor = need(0)
       if (!actor) break
-      return {
-        kind: cmd === '-status' ? 'status' : 'curestatus',
-        actor,
-        status: (rest[1] ?? 'ok') as Status,
-      }
+      const status = (rest[1] ?? 'ok') as Status
+      const cause = from(kw)
+      // 맹독구슬·화염구슬은 원인이 붙어 온다 — 원작이 그 도구를 문장에 넣는다
+      if (cmd === '-status' && cause !== null) return { kind: 'status', actor, status, from: cause }
+      return { kind: cmd === '-status' ? 'status' : 'curestatus', actor, status }
     }
 
     case '-boost':
@@ -252,7 +285,11 @@ export function parseLine(line: string): BattleEvent | null {
       // ⚠️ **-setboost는 절대값이다.** 더하면 거짓이 되므로 갈래를 따로 낸다 —
       // 한동안 `other`로 흘려 버렸고, 배북을 쓴 뒤 화면과 AI가 랭크 0을 봤다
       if (cmd === '-setboost') return { kind: 'setboost', actor, stat, amount: n }
-      return { kind: 'boost', actor, stat, amount: cmd === '-boost' ? n : -n }
+      const amount = cmd === '-boost' ? n : -n
+      // 치리열매처럼 **도구가** 올린 것은 원인이 붙어 온다 — 원작 줄이 그 도구를 부른다
+      const cause = from(kw)
+      if (cause !== null && cause.kind === 'item') return { kind: 'boost', actor, stat, amount, from: cause }
+      return { kind: 'boost', actor, stat, amount }
     }
 
     // 흑안개. **양쪽 자리 전부**를 되돌린다
@@ -433,6 +470,50 @@ export function parseLine(line: string): BattleEvent | null {
       const actor = need(0)
       if (!actor) break
       return { kind: 'cureteam', actor, from: from(kw) }
+    }
+
+    // ── 도구와 변신 (PARITY §2.24) ───────────────────────────────────────────
+    //
+    // `|-item|p1a: 모부기|Leftovers|[from] move: Thief|[of] p2a: 팬텀`
+    // ⚠️ **통찰은 자리가 비어 온다** — `|-item||Leftovers|[from] ability: Frisk|[of] p1a: 모부기`
+    case '-item': {
+      const item = itemRef(rest[1] ?? '')
+      if (!item.id) break
+      return { kind: 'item', actor: who(0), item, from: from(kw), of: of(kw) }
+    }
+
+    // `|-enditem|p1a: 모부기|Sitrus Berry|[eat]`, `|-enditem|p2a: 팬텀|Leftovers|[from] move: Knock Off|[of] p1a: 모부기`
+    case '-enditem': {
+      const actor = need(0)
+      const item = itemRef(rest[1] ?? '')
+      if (!actor || !item.id) break
+      // `stealeat`은 `[from]`에 원인 없이 오고, 빼앗은 기술은 `[move]`에 따로 온다
+      const stealeat = kw['from'] === 'stealeat'
+      const move = typeof kw['move'] === 'string' ? kw['move'] : ''
+      return {
+        kind: 'enditem',
+        actor,
+        item,
+        from: stealeat ? (move ? { kind: 'move', id: romMove(move), name: move } : null) : from(kw),
+        of: of(kw),
+        how: 'eat' in kw ? 'eat' : 'weaken' in kw ? 'weaken' : stealeat ? 'stealeat' : null,
+        silent: 'silent' in kw,
+      }
+    }
+
+    // `|-transform|p1a: 메타몽|p2a: 피카츄` — 따라 한 쪽의 종은 줄에 없다
+    case '-transform': {
+      const actor = need(0)
+      const target = who(1)
+      if (!actor || !target) break
+      return { kind: 'transform', actor, target }
+    }
+
+    // `|-clearnegativeboost|p1a: 모부기|[silent]` — 하양허브. 랭크의 진실을 바꾸는 줄이다
+    case '-clearnegativeboost': {
+      const actor = need(0)
+      if (!actor) break
+      return { kind: 'clearnegativeboosts', actor }
     }
 
     // 쇼다운이 사람에게 규칙을 설명하는 줄. 원작에 없어서 글은 안 놓는다

@@ -5,6 +5,7 @@
 // 이 파일에는 `@pkmn` import가 하나도 없다 — 지연 로딩 경계가 유지된다.
 //
 // 파싱은 `sim/protocol.ts`가 한다. 여기는 모양만 정의한다.
+import type { Stats } from '../../data/schema'
 import type { Gender, Status } from '../pokemon/instance'
 
 export type SideId = 'p1' | 'p2'
@@ -137,7 +138,7 @@ export interface FinalMon {
  */
 export interface Cause {
   kind: 'ability' | 'item' | 'move' | 'status' | 'other'
-  /** 기술·특성이면 롬 번호. 못 찾으면 null */
+  /** 기술·특성·도구면 롬 번호. 못 찾으면 null */
   id: number | null
   /** 번호가 없을 때 쓸 원문 (`psn`, `Sandstorm`) */
   name: string
@@ -157,7 +158,7 @@ export interface EffectRef {
   id: string
   /** 접두사. 안 붙어 온 것은 `other`다 — 그것도 뜻이 있다(`trapped`·`confusion`) */
   kind: 'move' | 'ability' | 'item' | 'other'
-  /** 기술·특성이면 롬 번호. 접두사가 없거나 4세대 밖이면 null */
+  /** 기술·특성·도구면 롬 번호. 접두사가 없거나 4세대 밖이면 null */
   num: number | null
   /** 원문 이름 (`Protect`). 번호를 못 찾았을 때 화면이 떨어질 자리 */
   name: string
@@ -178,6 +179,88 @@ export interface EffectExtra {
   move: number | null
   /** 그 기술의 원문 이름. 번호를 못 찾았을 때 화면이 떨어질 자리 */
   moveName: string | null
+}
+
+/**
+ * 도구 하나 (`|-item|` · `|-enditem|`의 둘째 자리).
+ *
+ * ⚠️ **번호는 이름으로 되짚는다.** 롬의 도구 번호와 sim의 `num`은 서로 다른 체계라
+ * (`bridge.simItem`) 디컴프 열거형에서 구운 `ITEM_IDS`(롬 번호 → 구현 id)를 거꾸로
+ * 읽는다. 못 찾으면 `num`이 null이고, 도구 이름을 빈칸으로 받는 롬 줄은 조용해진다
+ */
+export interface ItemRef {
+  /** `sitrusberry` — 비교는 늘 이걸로 한다 */
+  id: string
+  /** 롬 도구 번호 */
+  num: number | null
+  /** 원문 이름 (`Sitrus Berry`) */
+  name: string
+}
+
+/**
+ * 레벨 하나만큼 오른 것 (`SEQ_GET_EXP_WAIT_LEVEL_UP_EFFECT` → `…_LEVEL_UP_SUMMARY_*`).
+ *
+ * 원작은 레벨마다 능력치를 다시 셈하고(`Pokemon_CalcStats`) 체력판을 고친 뒤
+ * 「레벨 N으로 올랐다!」 → 오른 폭 창 → 새 값 창 → **그 레벨의** 기술 차례로 간다
+ * (`SEQ_GET_EXP_CHECK_LEARN_MOVE`가 끝나야 게이지가 다시 찬다). 그래서 능력치도
+ * 기술도 레벨마다 든다.
+ *
+ * ⚠️ **넷 다 없을 수 있다.** 세이브를 고치는 쪽(`state/battleStore`의 `grantRewards`)이
+ * 채운다 — 비어 있으면 능력치 창은 안 뜨고, 기술은 사건의 `learned`·`pending`이
+ * 마지막 레벨 뒤에 온다
+ */
+export interface LevelStep {
+  level: number
+  /** 그 레벨에 오르기 직전의 실능력치. `hp`는 최대 HP다 */
+  before?: Stats
+  /** 오른 뒤의 실능력치 */
+  after?: Stats
+  /** 그 레벨에서 빈 칸에 들어간 기술 */
+  learned?: number[]
+  /** 그 레벨에서 칸이 없어 물어야 하는 기술 */
+  pending?: number[]
+}
+
+/** 보상 사건의 레벨 한 칸을 한 꼴로 편다. 숫자뿐인 칸은 레벨만 든 칸이다 */
+export function levelStep(at: number | LevelStep): LevelStep {
+  return typeof at === 'number' ? { level: at } : at
+}
+
+/**
+ * 보상 사건을 원작 차례로 편다 — 레벨마다 **그 레벨의** 기술이 따라온다.
+ *
+ * 레벨마다 갈라 든 기술이 없으면(숫자뿐인 사건) 사건의 `learned`·`pending`이 마지막
+ * 레벨에 붙는다. 레벨이 안 올랐는데 기술이 있으면 레벨 없는 칸 하나로 남긴다 —
+ * 버리면 배운 기술이 조용히 사라진다. 글(`ui/battle/messages`)과 박자(`playback`)가
+ * 같은 차례를 써야 해서 여기 둔다
+ */
+export function rewardSteps(
+  e: { levels: readonly (number | LevelStep)[]; learned: readonly number[]; pending: readonly number[] },
+): { step: LevelStep | null; learned: number[]; pending: number[] }[] {
+  const steps = e.levels.map(levelStep)
+  if (steps.some((s) => s.learned !== undefined || s.pending !== undefined)) {
+    return steps.map((s) => ({ step: s, learned: [...(s.learned ?? [])], pending: [...(s.pending ?? [])] }))
+  }
+  const out: { step: LevelStep | null; learned: number[]; pending: number[] }[] =
+    steps.map((s) => ({ step: s, learned: [], pending: [] }))
+  if (e.learned.length > 0 || e.pending.length > 0) {
+    const last = out[out.length - 1]
+    if (last) { last.learned = [...e.learned]; last.pending = [...e.pending] }
+    else out.push({ step: null, learned: [...e.learned], pending: [...e.pending] })
+  }
+  return out
+}
+
+/**
+ * 열매가 고쳤다는 표지. **박자를 만들 때 붙인다**(`playback.ts`).
+ *
+ * `all`은 상태이상과 혼란을 **함께** 고친 자리다 — 원작은 그때만 「상태이상이
+ * 나았다!」 한 줄로 말하고(`subscript_held_item_multi_restore`), 하나만 고치면 그
+ * 상태의 줄이다(`battle_lib.c` `HOLD_EFFECT_STATUS_RESTORE`)
+ */
+export interface CuredBy {
+  item: ItemRef
+  all: boolean
 }
 
 /**
@@ -226,6 +309,20 @@ export type BattleEvent =
       condition: Condition
       /** 흔들기·날려버리기처럼 본인 의사와 무관하게 끌려나온 경우 */
       forced: boolean
+      /**
+       * 등판 직전 상대 첫 자리의 체력 천분율 (`BattleController_EmitSendOutMessage`).
+       *
+       * ⚠️ **프로토콜에 없다 — 박자를 만들 때 붙인다**(`playback.ts`). 원작은 싱글·비통신의
+       * 판 도중 우리 등판에서만 이 값으로 「가랏!」을 다섯 갈래로 고른다. 그 밖(첫 등판·
+       * 더블·상대 쪽)은 비어 있다. 상대가 쓰러져 0이면 원작대로 1000이다
+       */
+      foeHpPermille?: number
+      /**
+       * 경험치 막대가 그 레벨 안에서 얼마나 찼는가 (0~1). 우리 쪽만.
+       *
+       * 프로토콜에는 없다 — 세이브를 아는 쪽이 등판에 실어 준다. 없으면 뷰도 모른다
+       */
+      expProgress?: number
     }
   | {
       kind: 'form'
@@ -261,13 +358,29 @@ export type BattleEvent =
       condition: Condition
       from: Cause | null
       hit?: { level: Effectiveness | 'normal'; crit: boolean }
+      /** `[of]` — 남의 도구에 다쳤을 때(자보열매·애터열매) 그 도구를 든 쪽 */
+      of?: Actor | null
     }
   | { kind: 'heal'; actor: Actor; condition: Condition; from: Cause | null }
   | { kind: 'faint'; actor: Actor }
-  | { kind: 'status'; actor: Actor; status: Status }
-  | { kind: 'curestatus'; actor: Actor; status: Status }
-  /** 랭크 변화. 하락은 `amount`가 음수다 — `-boost`와 `-unboost`를 하나로 합친다 */
-  | { kind: 'boost'; actor: Actor; stat: BoostStat; amount: number }
+  /** 상태이상. `from`은 맹독구슬·화염구슬처럼 원인이 붙어 올 때다 */
+  | { kind: 'status'; actor: Actor; status: Status; from?: Cause | null }
+  /**
+   * 상태이상이 나았다.
+   *
+   * `curedBy`는 프로토콜에 없다 — **박자를 만들 때 붙인다**(`playback.ts`). 열매가 고칠 때
+   * 쇼다운은 `|-enditem|…|[eat]` 다음 줄에 원인 없이 `|-curestatus|…|[msg]`만 보낸다.
+   * 원작은 「{이름}은 {열매}로 마비가 풀렸다!」처럼 열매를 문장에 넣는다
+   * (`subscript_held_item_prz_restore` …)
+   */
+  | { kind: 'curestatus'; actor: Actor; status: Status; curedBy?: CuredBy }
+  /**
+   * 랭크 변화. 하락은 `amount`가 음수다 — `-boost`와 `-unboost`를 하나로 합친다.
+   *
+   * `from`은 치리열매처럼 도구가 올렸을 때 붙어 온다 — 원작은 그 도구를 문장에 넣는다
+   * (`subscript_held_item_raise_stat`)
+   */
+  | { kind: 'boost'; actor: Actor; stat: BoostStat; amount: number; from?: Cause | null }
   /**
    * 랭크를 **그 값으로 못 박는다** (`-setboost`). 배북이 공격을 +6으로 만든다.
    *
@@ -325,6 +438,8 @@ export type BattleEvent =
   | {
     kind: 'volatile'; actor: Actor; effect: EffectRef; start: boolean
     of: Actor | null; extra: EffectExtra
+    /** 열매가 푼 것(혼란). `curestatus`의 `curedBy`와 같은 자리다 — 박자를 만들 때 붙인다 */
+    curedBy?: CuredBy
   }
   | { kind: 'win'; winner: string }
   | { kind: 'tie' }
@@ -392,6 +507,51 @@ export type BattleEvent =
    * 하나 때문에 영영 안 빈다
    */
   | { kind: 'hint'; text: string }
+  // ── 도구와 변신 (PARITY §2.24) ──────────────────────────────────────────
+  // 한동안 이 넷이 `other`로 흘러서 열매를 먹어도 기합의띠로 버텨도 탁쳐서떨구기에
+  // 맞아도 메타몽이 변신해도 화면이 한 마디도 안 했다
+  /**
+   * 도구가 드러났다 (`|-item|`). 도둑질·트릭으로 손에 넣었거나 통찰이 들여다봤다.
+   *
+   * ⚠️ **통찰은 `actor`가 비어 온다** — 4세대 판은 `|-item||{도구}|[from] ability:
+   * Frisk|[of] {통찰한 쪽}`이다. 그래서 `actor`가 null일 수 있다
+   */
+  | { kind: 'item'; actor: Actor | null; item: ItemRef; from: Cause | null; of: Actor | null }
+  /**
+   * 도구가 없어졌다 (`|-enditem|`). 먹었거나 썼거나 떨어졌거나 빼앗겼다.
+   *
+   * `how`가 갈래다 — `eat` 열매를 먹었다 · `weaken` 반감 열매가 막았다 · `stealeat`
+   * 쪼아대기·벌레먹음이 빼앗아 먹었다 · null 그 밖(기합의띠·하양허브·탁쳐서떨구기).
+   * `silent`는 쇼다운이 글을 내지 말라고 단 줄이다(트릭·도둑질이 넘기는 쪽)
+   */
+  | {
+      kind: 'enditem'
+      actor: Actor
+      item: ItemRef
+      from: Cause | null
+      of: Actor | null
+      how: 'eat' | 'weaken' | 'stealeat' | null
+      silent: boolean
+      /**
+       * 반감 열매가 막은 기술. **박자를 만들 때 붙인다**(`playback.ts`) — 프로토콜에는
+       * 없고 아는 쪽은 직전 뷰(`lastMove`)다. 원작 줄이 그 기술 이름을 빈칸으로 받는다
+       */
+      move?: number | null
+    }
+  /**
+   * 변신했다 (`|-transform|변신한 쪽|따라 한 쪽`).
+   *
+   * `species`·`form`은 프로토콜에 없다 — **박자를 만들 때** 직전 뷰의 따라 한 쪽에서
+   * 읽어 붙인다(`playback.ts`). 롬 줄이 그 종의 이름을 빈칸으로 받는다
+   */
+  | { kind: 'transform'; actor: Actor; target: Actor; species?: number | null; form?: number }
+  /**
+   * 내려간 랭크만 되돌린다 (`|-clearnegativeboost|`). 하양허브다.
+   *
+   * 글은 바로 앞의 `enditem`이 낸다(「하양허브로 상태를 원래대로 되돌렸다!」) — 이 줄은
+   * 랭크의 진실만 바꾼다
+   */
+  | { kind: 'clearnegativeboosts'; actor: Actor }
   | { kind: 'other'; cmd: string; args: string[] }
   // ── 아래 둘은 프로토콜에 없다 ──────────────────────────────────────────────
   // 포획과 도망은 대전 규칙 밖의 일이라 sim이 모른다. 컨트롤러가 직접 넣는다.
@@ -410,15 +570,25 @@ export type BattleEvent =
    * 경험치를 받았다. `levels`는 새로 도달한 레벨.
    *
    * `learned`는 **실제로 들어간** 기술이고, `pending`은 칸이 없어서 못 넣은 것이다.
-   * 둘을 나눠 두지 않으면 화면이 "배웠다"와 "배우고 싶어 한다"를 구분 못 한다
+   * 둘을 나눠 두지 않으면 화면이 "배웠다"와 "배우고 싶어 한다"를 구분 못 한다.
+   * 이 둘은 늘 **전부**다 — 레벨마다 갈라 든 것(`LevelStep`)이 있으면 차례는 그쪽이 정한다
+   *
+   * ⚠️ **레벨 칸이 숫자일 수 있다.** 능력치를 모르는 쪽이 낸 사건이다 — `levelStep`으로 편다
    */
   | {
       kind: 'reward'
       key: string
       exp: number
-      levels: number[]
+      levels: readonly (number | LevelStep)[]
       learned: number[]
       pending: number[]
+      /**
+       * 경험치 막대가 받기 전에 얼마나 차 있었나 · 다 받은 뒤 얼마나 차 있나 (0~1,
+       * 그 레벨 안에서). 원작 게이지가 이 사이를 한 픽셀씩 민다 (`Task_UpdateExpGauge`).
+       * 없으면 게이지 박자도 능력치 창도 없이 글만 흐른다
+       */
+      expFrom?: number
+      expTo?: number
     }
   /** 트레이너전에서 상금을 받았다 */
   | { kind: 'prize'; money: number }
@@ -459,6 +629,34 @@ export type BattleEvent =
    * (`subscript_safari_throw_bait` · `_rock` · `_escape`)
    */
   | { kind: 'safari'; actor: Actor; beat: SafariBeat }
+  // ── 아래 넷은 **박자를 만들 때** 생긴다 (`playback.ts`) ─────────────────────
+  // 프로토콜에도 컨트롤러에도 없다. 원작이 사건 하나를 여러 박자로 가르는 자리
+  // (교체 · 경험치)를 편 것이라, 뷰와 글이 그 박자마다 따로 봐야 한다.
+  //
+  // ⚠️ **진실의 뷰(`battleStore`의 `truth`)에는 안 들어온다.** 그쪽은 sim이 낸 줄만
+  // 접는다 — sim은 레벨업을 모르므로, 거기서 최대 HP를 고치면 sim과 숫자가 갈린다
+  /**
+   * 앞 마리를 거둔다 (`LoadRecallMessage`). 글만 있다 — 몸을 거두는 것은 무대가
+   * 다음 `switch`를 보고 한다.
+   *
+   * `percent`는 원작 셈 그대로 「그 판에 마지막으로 누가 나온 뒤 상대 첫 자리가 잃은
+   * 체력의 백분율」이다(`BattleController_EmitRecallMessage`의 `hpTemp`). 싱글 우리
+   * 쪽에서만 쓰고, 더블과 상대 쪽은 null이다
+   */
+  | { kind: 'recall'; actor: Actor; percent: number | null }
+  /** 경험치 막대를 `to`까지 민다 (0~1, 그 레벨 안에서) */
+  | { kind: 'expgauge'; key: string; to: number }
+  /**
+   * 레벨이 하나 올랐다. 체력판의 레벨·최대 HP·HP를 고친다
+   * (`BattleController_EmitRefreshHPGauge`). HP는 최대 HP가 는 만큼 더한다 —
+   * 원작 `Pokemon_CalcStats`가 그렇게 셈한다
+   */
+  | { kind: 'levelup'; key: string; level: number; before: Stats | null; after: Stats | null }
+  /**
+   * 레벨업 기술 한 줄. `learned`면 빈 칸에 들어갔고, 아니면 칸이 차서 묻기 전이다
+   * (「배우고 싶다…!」 → 「그러나 기술을 4개 알고 있으므로…」)
+   */
+  | { kind: 'learnmove'; key: string; move: number; learned: boolean }
 
 /** `p1a: 별명` → 자리와 이름. 자리 표기가 아니면 null */
 export function parseActor(raw: string): Actor | null {

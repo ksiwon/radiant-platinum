@@ -68,6 +68,20 @@ export interface ViewMon {
    * 교체하면 통째로 사라진다 — 개체가 아니라 **자리**에 붙은 값이라서다
    */
   volatiles: ReadonlySet<string>
+  /**
+   * 경험치 막대가 그 레벨 안에서 얼마나 찼나 (0~1). **우리 쪽만, 알 때만** 있다.
+   *
+   * 원작 내 체력판의 EXP 게이지다(`HEALTHBOX_EXP_CELL_COUNT` 12칸 · 96픽셀). 상대 판에는
+   * 없다. 미는 것은 박자가 펴 놓은 `expgauge`·`levelup` 사건이고, 차는 시간은
+   * `playback`이 원작 픽셀 수로 낸다 — 화면은 그 박자의 시계로 따라 그리기만 한다
+   */
+  expProgress?: number | null
+  /**
+   * **변신하기 전의** 종. 변신하면 `species`가 따라 한 쪽 종으로 바뀌어 무대가 몸을
+   * 갈아 끼운다(`form`과 같은 길). 그런데 체력판의 이름은 그대로다 — 원작도 별명을
+   * 그대로 띄운다. 이름을 그리는 쪽은 이것을 먼저 본다. 변신하지 않았으면 없다
+   */
+  baseSpecies?: number | null
 }
 
 export interface BattleView {
@@ -121,8 +135,9 @@ export interface BattleView {
    * `seq`는 `lastHit`와 같은 이유다 — 같은 값이 이어서 올 수 있다(파티 여섯이
    * 같은 점수를 받으면 그렇다).
    *
-   * ⚠️ **화면 값이 아니라 소리 값이다.** 우리 배틀 화면에는 경험치 바가 없고
-   * (`ui/battle/BattleScreen`) 원작도 이 자리에서 내는 것이 게이지 소리 하나다
+   * ⚠️ **막대 값이 아니라 소리 값이다.** 막대는 마리마다 `ViewMon.expProgress`가 들고,
+   * 이 값은 게이지가 **차기 시작하는** 순간을 알린다 — 원작도 그 자리에서 게이지 소리를
+   * 틀고(`Task_UpdateExpGauge` `case 0`) 막대가 다 차면 끈다
    */
   lastReward: { exp: number; levelUp: boolean; seq: number } | null
   /** Most recent capture attempt, retained long enough for the 3D stage to play it once. */
@@ -258,6 +273,8 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
         // 등판하는 마리는 늘 서 있다. 쓰러진 채로 나오는 자리는 없다
         presence: 'alive',
         volatiles: EMPTY, // 대타출동·씨뿌리기도 마찬가지다
+        // 변신도 교체로 풀린다 — `baseSpecies`를 안 싣는 것이 그 뜻이다
+        ...(e.actor.side === 'p1' && e.expProgress !== undefined ? { expProgress: e.expProgress } : {}),
       }
       return { ...view, active: { ...view.active, [e.actor.slot]: mon } }
     }
@@ -283,13 +300,65 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
 
     case 'reward':
       // 원작이 경험치 바가 차기 **시작할 때** 소리를 낸다
-      // (`battle_display.c`의 `Task_UpdateExpGauge` `case 0`)
+      // (`battle_display.c`의 `Task_UpdateExpGauge` `case 0`).
+      //
+      // ⚠️ **여기서는 레벨도 체력도 안 고친다.** 이 사건은 진실의 뷰(`battleStore`의
+      // `truth`)에도 접히는데 sim은 레벨업을 모른다 — 거기서 최대 HP를 고치면 sim과
+      // 숫자가 갈린다. 체력판을 고치는 것은 박자가 펴 놓은 `levelup`이다
       return {
         ...view,
         lastReward: {
           exp: e.exp, levelUp: e.levels.length > 0, seq: (view.lastReward?.seq ?? 0) + 1,
         },
       }
+
+    case 'expgauge': {
+      const slot = mineOf(view, e.key)
+      if (slot === null) return view
+      return patch(view, slot, (m) => ({ ...m, expProgress: clamp01(e.to) }))
+    }
+
+    case 'levelup': {
+      // 원작이 레벨이 오르는 그 자리에서 능력치를 다시 셈하고 체력판을 고친다
+      // (`SEQ_GET_EXP_WAIT_LEVEL_UP_EFFECT` → `BattleController_EmitRefreshHPGauge`).
+      // 막대는 0에서 다시 찬다 — 막대 값을 몰랐으면 계속 모른다
+      const slot = mineOf(view, e.key)
+      if (slot === null) return view
+      return patch(view, slot, (m) => {
+        const maxHp = e.after?.hp ?? m.maxHp
+        // `Pokemon_CalcStats` — 쓰러지지 않았으면 최대 HP가 는 만큼 HP에 더한다.
+        // 비율이 아니라 차이라서, 같은 사건을 두 번 접어도 두 번째는 0을 더한다
+        const hp = m.hp > 0 ? m.hp + (maxHp - m.maxHp) : m.hp
+        return {
+          ...m, level: e.level, maxHp, hp,
+          ...(typeof m.expProgress === 'number' ? { expProgress: 0 } : {}),
+        }
+      })
+    }
+
+    case 'transform': {
+      // 따라 한 쪽의 종·폼·랭크를 그대로 입는다 — `BtlCmd_Transform`이 `BattleMon`을
+      // 특성 칸까지 통째로 베낀다(랭크 `statBoosts`가 그 안에 있다).
+      // 무대는 종이 바뀌는 것을 보고 몸을 갈아 끼운다 — 폼이 바뀔 때와 같은 길이다
+      const target = view.active[e.target.slot]
+      const species = e.species !== undefined ? e.species : target?.species ?? null
+      const form = e.form ?? target?.form ?? 0
+      return patch(view, e.actor.slot, (m) => ({
+        ...m,
+        baseSpecies: m.baseSpecies ?? m.species,
+        species,
+        form,
+        boosts: target ? { ...target.boosts } : m.boosts,
+      }))
+    }
+
+    // 하양허브. **내려간 것만** 0으로 — 올라간 랭크는 그대로 둔다
+    case 'clearnegativeboosts':
+      return patch(view, e.actor.slot, (m) => {
+        const boosts = { ...m.boosts }
+        for (const stat of BOOST_STATS) if (boosts[stat] < 0) boosts[stat] = 0
+        return { ...m, boosts }
+      })
 
     case 'heal':
       return patch(view, e.actor.slot, (m) => withCondition(m, e.condition))
@@ -395,6 +464,16 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
 
 function clampBoost(n: number): number {
   return n < -6 ? -6 : n > 6 ? 6 : n
+}
+
+function clamp01(n: number): number {
+  return n < 0 ? 0 : n > 1 ? 1 : n
+}
+
+/** 그 키를 든 **우리 쪽** 자리. 경험치는 우리 마리만 받는다 */
+function mineOf(view: BattleView, key: string): SlotId | null {
+  const slot = slotOfKey(view, key)
+  return slot !== null && slot.startsWith('p1') ? slot : null
 }
 
 /** 이벤트 줄기를 통째로 접는다 */

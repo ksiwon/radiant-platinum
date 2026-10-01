@@ -291,7 +291,6 @@ export const MSG = {
   /** 경험치 */ pokemonGainedExpPoints: 1,
   /** 레벨이 올랐다 */ pokemonGrewToLevel: 3,
   /** 기술을 배웠다 */ pokemonLearnedMove: 4,
-  /** 기술을 배우고 싶어 한다 */ pokemonIsTryingToLearnMove: 5,
   /** 상금 */ playerGotMoneyForWinning: 33,
 
   // 말을 안 듣는 네 마디 (PARITY §2.18). 828부터 넷이 차례로 이어져 있다
@@ -380,6 +379,91 @@ export const MSG = {
    * 가방에서 미리 막으므로(`BattleBag`) 그 자리에 이 줄을 보여 준다
    */
   theTrainerBlockedTheBall: 859,
+
+  // ── 판 도중 등판 · 회수의 갈래 (`battle_display.c` `LoadSendOutMessage` · `LoadRecallMessage`) ──
+  //
+  // 원작은 싱글·비통신에서 우리 쪽 「가랏!」을 **상대 첫 자리의 체력**으로 다섯 갈래로
+  // 고르고(천분율 100·325·550·775), 「돌아와!」를 **그 마리가 나온 뒤 상대가 잃은
+  // 체력**으로 다섯 갈래로 고른다(백분율 0·25·50·75). 더블은 「가랏!」·「돌아와!」 하나다
+  /** 상대 천분율 775 미만 — 「널 믿어!」 */ youreInChargePokemon: 980,
+  /** 550 미만 — 「힘내!」 */ goForItPokemon: 981,
+  /** 100 미만 — 「상대가 약해져 있어! 기회다!」 */ yourFoesWeakGetEmPokemon: 982,
+  /** 325 미만 — 「앞으로 조금이야! 힘내!」 */ justALittleMoreHangInTherePokemon: 983,
+  /** 상대가 한 점도 안 잃었다 — 「교대! 돌아와!」 */ pokemonSwitchOutComeBack: 984,
+  /** 25 미만 · 더블 — 「돌아와!」 */ pokemonComeBack: 985,
+  /** 75 미만 — 「좋았어! 돌아와!」 */ pokemonOKComeBack: 986,
+  /** 75 이상 — 「좋아! 돌아와!」 */ pokemonEnoughGetBack: 987,
+  /** 50 미만 — 「잘했어! 돌아와!」 */ pokemonGoodComeBack: 988,
+  /** 상대 트레이너가 거둔다 — 「{분류} {이름}은 {포켓몬}을 넣어버렸다!」 */ trWithdrewPokemon: 989,
+  /** 분류 없는 짝 */ linkTrWithdrewPokemon: 990,
+
+  // ── 레벨업 기술 (`battle_script.c` `SEQ_GET_EXP_WANTS_TO_LEARN_MOVE_PRINT` 이후) ──────
+  //
+  // ⚠️ **뱅크 앞머리(5~10)에 같은 글이 또 있다.** 그쪽은 어느 스크립트도 안 가리키고,
+  // 배틀이 실제로 찍는 것은 1178부터의 줄이다 — 이름 끝에 `2`가 붙은 둘도 그쪽이다
+  /** 「{이름}은 새로 {기술}을 배우고 싶다...!」 */ pokemonWantsToLearnMove: 1178,
+  /** 「그러나 {이름}은 기술을 4개 알고 있으므로…」 — 디컴프 이름은 `…FourMoves2` */
+  butPokemonCantLearnMoreThanFourMoves: 1179,
+  /** 「다른 기술을 잊게 하겠습니까?」 — 끝의 `{SCREEN 0}`은 물음 창 부호다 */ makeItForgetAnotherMoveYesNo: 1180,
+  /** 그 물음의 두 칸 (`BattleSubscreen_DrawForgetMoveMenu`) */ forgetAMove: 1181,
+  /** 〃 */ keepOldMoves: 1182,
+  /** 「어느 기술을 잊게 하겠습니까?」 — 디컴프 이름은 `…Forgotten2` */ whichMoveShouldBeForgotten: 1183,
+  /** 잊을 기술을 안 고르고 물러섰다 — 「그럼...」 */ wellThen: 1184,
+  /** 「새로운 기술을 배우는 것을 포기하겠습니까?」 */ shouldPokemonGiveUpOnLearningMove: 1185,
+  /** 그 물음의 두 칸. 기술 이름을 빈칸으로 받는다 (`BattleSubscreen_DrawGiveUpMoveMenu`) */
+  giveUpOnMove: 1186,
+  /** 〃 */ dontGiveUpOnMove: 1187,
+  /** 「{이름}은 {기술}을 결국 배우지 않았다!」 */ pokemonDidNotLearnMove2: 1188,
+  /** 「1, 2, ... ... 짠!」 — `{PAUSE}`는 `tokensToText`가 지운다 */ battleOneTwoAndPoof: 1189,
+  /** 「{이름}은 {기술}을 깨끗이 잊었다!」 */ battlePokemonForgotHowToUseMove: 1190,
+  /** 「그리고!」 */ battleAndDotDotDot: 1191,
+  /** 「{이름}은 새로 {기술}을 배웠다!」 */ battlePokemonLearnedMove: 1192,
+  /** 예/아니오 창의 두 칸 (`BattleSubscreen_DrawYesNoMenu`) */ yes: 940,
+  /** 〃 */ no: 941,
+
+  // ── 명령 첫 단 (`battle_subscreen.c`) ────────────────────────────────────
+  /** 싸운다 */ fight: 924,
+  /** 가방 */ bag: 925,
+  /** 포켓몬 */ pokemon: 926,
+  /** 도망간다 */ run: 927,
+
+  // ── 도구와 변신 (PARITY §2.24) ──────────────────────────────────────────────
+  //
+  // 원작은 도구가 일한 자리에서 **도구 이름을 문장에 넣는다**(「{이름}은 {도구}로
+  // 체력을 회복했다!」). 어느 줄인지는 홀드 효과마다 스크립트가 정해 두었다
+  // (`battle_lib.c`의 `BattleSystem_TriggerHeldItem…` → `subscript_held_item_*`)
+  /** 변신 — 둘째 칸은 **종 이름**이다 (`TAG_NICKNAME_POKE`) */ pokemonTransformedIntoPokemon: 345,
+  /** 도둑질·탐내다 */ pokemonStolePokemonsItem: 401,
+  /** 트릭으로 손에 넣었다 (`subscript_exchange_items`) */ pokemonObtainedOneItem: 513,
+  /** 리사이클 (`effect_script_0184`) */ pokemonFoundOneItem: 589,
+  /** 탁쳐서떨구기 (`BtlCmd_TryKnockOff`) */ pokemonKnockedOffPokemonsItem: 552,
+  /** 도구가 랭크를 올렸다 — 한 단계든 두 단계든 이 줄이다 */ theItemRaisedPokemonsStat: 756,
+  /** 스타열매만 (`subscript_held_item_sharply_raise_stat`) */ theItemSharplyRaisedPokemonsStat: 759,
+  /** 열매가 마비를 풀었다 */ pokemonsItemCuredItsParalysis: 875,
+  /** 〃 독 */ pokemonsItemCuredItsPoison: 878,
+  /** 〃 화상 */ pokemonsItemCuredItsBurn: 881,
+  /** 〃 얼음 */ pokemonsItemDefrostedIt: 884,
+  /** 〃 잠 */ pokemonsItemWokeItUp: 887,
+  /** 〃 혼란 */ pokemonsItemSnappedItOutOfConfusion: 890,
+  /** 리샘열매 — 무엇이 나았든 이 줄이다 (`subscript_held_item_multi_restore`) */
+  pokemonNormalizedItsStatusUsingItsItem: 896,
+  /** 과사열매 — 기술 이름을 빈칸으로 받는다 */ pokemonRestoredMovesPPUsingItsItem: 902,
+  /** 하양허브 (`subscript_held_item_statdown_restore`) */ pokemonRestoredItsStatusUsingItsItem: 905,
+  /** 체력 열매 · 나무열매쥬스 (`subscript_held_item_hp_restore`) */ pokemonRestoredItsHealthUsingItsItem: 899,
+  /** 먹다남은음식 · 검은진흙 · 조개껍질방울 (`subscript_restore_a_little_hp`) */
+  pokemonRestoredALittleHPUsingItsItem: 908,
+  /** 기합의띠 · 기합의머리띠가 1을 남겼다 */ pokemonHungOnUsingItsItem: 912,
+  /** 통찰 (`subscript_frisk`) */ pokemonFriskedItsFoeAndFoundOneItem: 1118,
+  /** 반감 열매 — 도구와 **막은 기술**을 받는다 (`subscript_type_resist_berry`) */ theItemWeakenedMovesPower: 1131,
+  /** 검은진흙 · 끈적끈적바늘 (`subscript_lose_hp_from_item_with_message`) */ pokemonIsHurtByItsItem: 1132,
+  /** 쪼아대기 · 벌레먹음 (`subscript_pluck`) */ pokemonStoleAndAteItsFoesItem: 1141,
+  /** 내던지기 */ pokemonFlungItsItem: 1144,
+  /** 미클열매 */ pokemonsBoostedTheAccuracyOfItsNextMoveUsingItsItem: 1157,
+  /** 자보열매 · 애터열매 — 맞힌 쪽이 다친다 (`subscript_held_item_recoil_when_hit`) */
+  pokemonIsHurtByPokemonsItem: 1160,
+  /** 맹독구슬 (`subscript_badly_poison`) */ pokemonWasBadlyPoisonedByTheItem: 1168,
+  /** 화염구슬 (`subscript_burn`) */ pokemonGotABurnFromTheItem: 1171,
+  /** 파워풀허브 */ pokemonBecameFullyChargedDueToItsItem: 1251,
 } as const
 
 type MessageKey = keyof typeof MSG
@@ -470,5 +554,6 @@ export const PARTY = {
   /** 못 돌아오게 한다 (묶기·그림자밟기 따위) */ cantSwitchPokemon: 78,
   /** 써도 효과가 없다 */ itemWontHaveAnyEffect: 81,
   /** 어느 기술을 회복하겠습니까 */ restoreWhichMove: 94,
+  /** 기술을 잊는 화면에서 배우려던 칸을 고른 단추 — 「그만둔다」 */ cancelMoveButton: 59,
   /** 금제가 막았다. 빈칸 둘은 기술 이름과 이름 */ embargoPreventsItemUse: 95,
 } as const

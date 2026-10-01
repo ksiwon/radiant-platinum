@@ -12,8 +12,9 @@ import type {
 } from '../../engine/battle/events'
 import type { Status } from '../../engine/pokemon/instance'
 import { DATA, withData } from '../../data/romData.testkit'
+import { parseLine, romItem } from '../../engine/battle/sim/protocol'
 import {
-  ACTIVATE_IDS, battleText, leadLines, SINGLE_MOVE_IDS, SINGLE_TURN_IDS,
+  ACTIVATE_IDS, battleText, leadLines, learnResultLines, SINGLE_MOVE_IDS, SINGLE_TURN_IDS,
   type BattleNames, type TextContext,
 } from './messages'
 import { BATTLE_BANK, MOVE_BANK, STAT_BANK } from './romText'
@@ -33,7 +34,16 @@ const names: BattleNames = {
   species: [], // 이름은 label이 이미 풀어 준다
   moves: (() => { const m: string[] = []; m[33] = '몸통박치기'; m[73] = '씨뿌리기'; m[201] = '모래바람'; return m })(),
   abilities: (() => { const a: string[] = []; a[22] = '위협'; return a })(),
-  items: (() => { const i: string[] = []; i[23] = '회복약'; i[26] = '좋은상처약'; return i })(),
+  items: (() => {
+    const i: string[] = []
+    i[23] = '회복약'; i[26] = '좋은상처약'
+    // 도구가 일하는 줄 — 번호는 롬 도구 번호다 (`names/items.ko.json`)
+    i[149] = '버치열매'; i[154] = '과사열매'; i[156] = '시몬열매'; i[157] = '리샘열매'
+    i[158] = '자뭉열매'; i[184] = '오카열매'; i[201] = '치리열매'; i[207] = '스타열매'
+    i[211] = '자보열매'; i[214] = '하양허브'; i[230] = '기합의머리띠'; i[234] = '먹다남은음식'
+    i[270] = '생명의구슬'; i[272] = '맹독구슬'; i[275] = '기합의띠'
+    return i
+  })(),
   // 랭크 이름은 롬에서 온다 — 자리가 곧 이름이다
   stats: [...bankAt('dialogue/ko/' + String(STAT_BANK) + '.json')],
 }
@@ -245,15 +255,33 @@ withBank('볼·도망·보상 — 프로토콜에 없는 사건들', () => {
     expect(say({ kind: 'escape', success: false })).toBe('도망칠 수 없다!')
   })
 
-  it('경험치와 레벨업과 새 기술이 한 덩어리로 나온다', () => {
+  it('경험치와 레벨업과 새 기술이 한 덩어리로 나온다 — 레벨마다 한 줄', () => {
+    // ⚠️ **오른 레벨마다 말한다.** 원작은 레벨마다 「레벨 N으로 올랐다!」를 찍고 다음
+    // 레벨로 간다 (`SEQ_GET_EXP_CHECK_LEARN_MOVE` → `SEQ_GET_EXP_GAUGE`). 한동안 마지막
+    // 하나만 말해서 5→8이면 6·7이 사라졌다
     const text = say({
       kind: 'reward', key: 'p1-0', exp: 160, levels: [6, 7], learned: [33], pending: [],
     })
     expect(text).toBe(
       '모부기는\n160 경험치를 얻었다!\n\n'
+      + '모부기는\n레벨6으로 올랐다!\n\n'
       + '모부기는\n레벨7로 올랐다!\n\n'
       + '모부기는\n몸통박치기를 배웠다!',
     )
+  })
+
+  it('레벨마다 갈라 든 기술은 그 레벨 줄 뒤에 온다', () => {
+    // 6에 배운 기술은 7보다 먼저다 — 원작이 레벨마다 기술 차례를 다 본 뒤 게이지를 다시 채운다
+    const text = say({
+      kind: 'reward', key: 'p1-0', exp: 160,
+      levels: [{ level: 6, learned: [33] }, { level: 7, learned: [] }], learned: [33], pending: [],
+    })
+    expect(text!.split('\n\n').map((p) => p.replace('\n', ' '))).toEqual([
+      '모부기는 160 경험치를 얻었다!',
+      '모부기는 레벨6으로 올랐다!',
+      '모부기는 몸통박치기를 배웠다!',
+      '모부기는 레벨7로 올랐다!',
+    ])
   })
 
   it('칸이 차서 못 배운 기술은 다르게 말한다', () => {
@@ -263,6 +291,9 @@ withBank('볼·도망·보상 — 프로토콜에 없는 사건들', () => {
     })
     expect(text).toContain('몸통박치기를 배우고 싶다')
     expect(text).not.toContain('배웠다')
+    // 그 뒤에 「그러나 … 기술을 4개 알고 있으므로」가 **다른 창**으로 온다 — 묻는 창은 그 다음이다
+    // (`SEQ_GET_EXP_WANTS_TO_LEARN_MOVE_PRINT` → `SEQ_GET_EXP_CANT_LEARN_MORE_MOVES_PRINT`)
+    expect(text!.split('\n\n').at(-1)).toBe('그러나 모부기는 기술을 4개\n알고 있으므로 더 이상 배울 수 없다!')
   })
 
   it('레벨이 안 올랐으면 경험치 줄만 나온다', () => {
@@ -329,6 +360,9 @@ const NO_EXTRA: EffectExtra = { num: null, move: null, moveName: null }
 /** `move: Protect` → 효과 하나. `sim/protocol`의 `effectRef`와 같은 모양이다 */
 const eff = (id: string, kind: EffectRef['kind'] = 'move', num: number | null = null): EffectRef =>
   ({ id, kind, num, name: id })
+
+/** 표에서 도구가 일하는 효과 — 빈칸에 도구 이름이 들어간다 */
+const ITEM_EFFECTS = new Set(['focusband', 'leppaberry'])
 
 const activate = (
   id: string,
@@ -438,7 +472,10 @@ withBank('롬의 배틀 글 (PARITY §2.24)', () => {
     // 이름을 둘 다 주고 표를 통째로 돌려 여는 중괄호가 남는 줄이 없는지 본다
     const both = { of: FOE, extra: { num: 7, move: 33, moveName: 'Tackle' } }
     const lines: (readonly [string, string | null])[] = [
-      ...ACTIVATE_IDS.map((id) => [id, say(activate(id, both))] as const),
+      // 도구가 일한 줄은 도구 이름이 빈칸이다 — 도구 번호를 실어 준다
+      ...ACTIVATE_IDS.map((id) => [id, say(ITEM_EFFECTS.has(id)
+        ? { ...activate(id, both), effect: eff(id, 'item', 26) } as BattleEvent
+        : activate(id, both))] as const),
       ...SINGLE_TURN_IDS.map((id) => [id, say({
         kind: 'singleturn', actor: MINE, effect: eff(id, 'other'), of: FOE,
       })] as const),
@@ -466,8 +503,8 @@ withBank('롬의 배틀 글 (PARITY §2.24)', () => {
     })).toBe('모부기의 위협!')
     // 기술은 이렇게 못 한다 — "모부기의 추격!"은 기술을 **쓴** 줄의 문장이다
     expect(say(activate('pursuit'))).toBeNull()
-    // ⚠️ 선제공격손톱은 **4세대 뱅크에 줄이 없다.** 「손톱」이 1,269줄에서 0건이다 —
-    // 5세대 이후의 글이라 손으로 들 때 지어냈던 자리다. 이제 비운다
+    // ⚠️ 선제공격손톱은 **원작이 말하지 않는다.** `subscript_check_quick_claw`가 손톱이면
+    // 연출만 틀고, 「행동이 빨라졌다!」는 애슈열매 갈래에서만 찍는다. 손으로 들 때 지어냈던 자리다
     expect(say(activate('quickclaw', { kind: 'item' }))).toBeNull()
   })
 
@@ -619,5 +656,194 @@ withBank('첫 등판 한 창 (`leadLines`)', () => {
     const line = battleText(enter('p2b', 'p4-1'), multi)
     expect(line).toContain('쥬피터')
     expect(line).not.toContain('마스')
+  })
+})
+
+// ── 판 도중 교체 (`battle_display.c` `LoadSendOutMessage` · `LoadRecallMessage`) ──────────
+withBank('판 도중 교체의 두 줄', () => {
+  const enter = (actor: Actor, foeHpPermille?: number): BattleEvent => ({
+    kind: 'switch', actor, species: 387, speciesName: 'Turtwig', level: 5, gender: 'male', shiny: false,
+    condition: { hp: 20, maxHp: 20, status: 'ok' }, forced: false,
+    ...(foeHpPermille === undefined ? {} : { foeHpPermille }),
+  })
+
+  it('싱글 판 도중 「가랏!」은 상대 체력 천분율로 다섯 갈래다', () => {
+    // 경계값은 원작 그대로 — 100 · 325 · 550 · 775 미만 (`hpPercent`는 실제로 천분율이다)
+    expect(say(enter(MINE, 99))).toBe('상대가 약해져 있어!\n기회다! 모부기!')
+    expect(say(enter(MINE, 100))).toBe('앞으로 조금이야!\n힘내! 모부기!')
+    expect(say(enter(MINE, 324))).toBe('앞으로 조금이야!\n힘내! 모부기!')
+    expect(say(enter(MINE, 549))).toBe('힘내! 모부기!')
+    expect(say(enter(MINE, 774))).toBe('널 믿어! 모부기!')
+    expect(say(enter(MINE, 775))).toBe('가랏! 모부기!')
+    // 상대가 쓰러져 0이면 원작이 1000으로 친다 — 박자가 그 값을 싣는다
+    expect(say(enter(MINE, 1000))).toBe('가랏! 모부기!')
+    // 값이 없으면(첫 등판·더블) 늘 「가랏!」이다
+    expect(say(enter(MINE))).toBe('가랏! 모부기!')
+  })
+
+  it('우리 쪽 「돌아와!」는 그 마리가 나온 뒤 상대가 잃은 몫으로 다섯 갈래다', () => {
+    // ⚠️ **앞 마리의 체력이 아니다** — `(hpTemp - curHP) * 100 / hpTemp`
+    const recall = (percent: number | null): BattleEvent => ({ kind: 'recall', actor: MINE, percent })
+    expect(say(recall(0))).toBe('모부기 교대!\n돌아와!')
+    expect(say(recall(24))).toBe('모부기\n돌아와!')
+    expect(say(recall(25))).toBe('모부기 잘했어!\n돌아와!')
+    expect(say(recall(50))).toBe('모부기 좋았어!\n돌아와!')
+    expect(say(recall(75))).toBe('모부기 좋아!\n돌아와!')
+    // 더블은 갈래 없이 하나다
+    expect(say(recall(null))).toBe('모부기\n돌아와!')
+  })
+
+  it('상대 트레이너는 「넣어버렸다」로 거둔다', () => {
+    const vs: TextContext = {
+      ...ctx, label: (a) => (a.side === 'p1' ? '모부기' : '상대 팬텀'),
+      foeName: '체육관 관장 동관', foeClass: '체육관 관장', foeTrainer: '동관',
+    }
+    const recall: BattleEvent = { kind: 'recall', actor: FOE, percent: null }
+    expect(battleText(recall, vs)).toBe('체육관 관장 동관은\n팬텀을 넣어버렸다!')
+    // 분류가 없는 상대는 이름 한 칸짜리 짝이다
+    expect(battleText(recall, { ...vs, foeClass: null, foeTrainer: null }))
+      .toBe('체육관 관장 동관은\n팬텀을 넣어버렸다!')
+  })
+})
+
+// ── 기술을 잊고 배운 뒤 (`SEQ_GET_EXP_ONE_TWO_POOF` 이후) ───────────────────────────
+withBank('기술을 잊고 배운 뒤의 줄', () => {
+  it('잊으면 넷이 차례로 온다', () => {
+    const got = learnResultLines(lines, { who: '모부기', forgot: '몸통박치기', learned: '씨뿌리기' })
+    expect(got).toHaveLength(4)
+    // `{PAUSE}`·`{CALLBACK}`은 글자로 안 남는다
+    expect(got[0]).toMatch(/^1, 2 .*짠!$/)
+    expect(got[0]).not.toContain('{')
+    expect(got.slice(1)).toEqual([
+      '모부기는 몸통박치기를\n깨끗이 잊었다!',
+      '그리고!',
+      '모부기는 새로\n씨뿌리기를 배웠다!',
+    ])
+  })
+
+  it('포기하면 한 줄이다', () => {
+    expect(learnResultLines(lines, { who: '모부기', declined: '씨뿌리기' }))
+      .toEqual(['모부기는 씨뿌리기를\n결국 배우지 않았다!'])
+  })
+
+  it('뱅크가 없으면 아무 줄도 안 낸다 — 반쪽 문장을 놓지 않는다', () => {
+    expect(learnResultLines([], { who: '모부기', declined: '씨뿌리기' })).toEqual([])
+  })
+})
+
+// ── 도구와 변신 (PARITY §2.24) ─────────────────────────────────────────────────
+//
+// 한동안 이 줄들이 `other`로 흘러서 열매를 먹어도 기합의띠로 버텨도 화면이 한 마디도
+// 안 했다. 프로토콜 줄을 그대로 넣어 **모양과 글을 한 번에** 잰다
+withBank('도구와 변신', () => {
+  const line = (raw: string): string | null => {
+    const e = parseLine(raw)
+    expect(e, raw).not.toBeNull()
+    expect(e!.kind, raw).not.toBe('other')
+    return say(e!)
+  }
+
+  it('도구 이름은 롬 번호로 되짚는다', () => {
+    // 롬과 sim의 도구 번호는 체계가 달라 이름으로 잇는다 (`ITEM_IDS`)
+    expect(romItem('Sitrus Berry')).toBe(158)
+    expect(romItem('Focus Sash')).toBe(275)
+    expect(romItem('Leftovers')).toBe(234)
+    expect(romItem('Not An Item')).toBeNull()
+  })
+
+  it('열매를 먹은 줄은 조용하고, 뒤따르는 회복 줄이 열매를 부른다', () => {
+    expect(line('|-enditem|p1a: 모부기|Sitrus Berry|[eat]')).toBeNull()
+    expect(line('|-heal|p1a: 모부기|30/40|[from] item: Sitrus Berry'))
+      .toBe('모부기는 자뭉열매로\n체력을 회복했다!')
+    // 먹다남은음식은 「조금」이다 (`subscript_restore_a_little_hp`)
+    expect(line('|-heal|p1a: 모부기|30/40|[from] item: Leftovers'))
+      .toBe('모부기는 먹다남은음식으로\n조금 회복했다')
+  })
+
+  it('열매가 고친 상태이상은 상태마다 줄이 다르고, 함께 고치면 한 줄이다', () => {
+    const cheri = { id: 'cheriberry', num: 149, name: 'Cheri Berry' }
+    const lum = { id: 'lumberry', num: 157, name: 'Lum Berry' }
+    expect(say({ kind: 'curestatus', actor: MINE, status: 'par', curedBy: { item: cheri, all: false } }))
+      .toBe('모부기는 버치열매로\n마비가 풀렸다!')
+    // 리샘열매도 하나만 고쳤으면 그 상태의 줄이다 (`HOLD_EFFECT_STATUS_RESTORE`)
+    expect(say({ kind: 'curestatus', actor: MINE, status: 'par', curedBy: { item: lum, all: false } }))
+      .toBe('모부기는 리샘열매로\n마비가 풀렸다!')
+    const all = say({ kind: 'curestatus', actor: MINE, status: 'par', curedBy: { item: lum, all: true } })
+    expect(all).toBe('모부기는 리샘열매로\n상태이상이 나았다!')
+    // 혼란 쪽도 같은 글이 되어 박자가 한 번만 띄운다
+    expect(say({
+      kind: 'volatile', actor: MINE, effect: eff('confusion', 'other'), start: false, of: null,
+      extra: NO_EXTRA, curedBy: { item: lum, all: true },
+    })).toBe(all)
+    expect(say({
+      kind: 'volatile', actor: MINE, effect: eff('confusion', 'other'), start: false, of: null,
+      extra: NO_EXTRA, curedBy: { item: { id: 'persimberry', num: 156, name: 'Persim Berry' }, all: false },
+    })).toBe('모부기는 시몬열매로\n혼란이 풀렸다!')
+  })
+
+  it('도구가 올린 랭크는 도구가 주어다', () => {
+    expect(line('|-boost|p1a: 모부기|atk|1|[from] item: Liechi Berry'))
+      .toBe('치리열매로 모부기의\n공격이 올라갔다!')
+    // 스타열매만 「크게」다
+    expect(line('|-boost|p1a: 모부기|spa|2|[from] item: Starf Berry')).toContain('크게 올라갔다')
+  })
+
+  it('기합의띠 · 기합의머리띠는 같은 줄로 버틴다', () => {
+    expect(line('|-enditem|p1a: 모부기|Focus Sash')).toBe('모부기는 기합의띠로\n버텼다!')
+    expect(line('|-activate|p1a: 모부기|item: Focus Band')).toBe('모부기는 기합의머리띠로\n버텼다!')
+  })
+
+  it('탁쳐서떨구기 · 도둑질 · 트릭 · 통찰', () => {
+    expect(line('|-enditem|p2a: 팬텀|Leftovers|[from] move: Knock Off|[of] p1a: 모부기'))
+      .toBe('모부기는 야생 팬텀의\n먹다남은음식을 탁쳐서 떨구었다!')
+    // 빼앗긴 쪽 줄은 쇼다운이 조용히 하라고 단다 — 빼앗은 쪽 줄이 말한다
+    expect(line('|-enditem|p2a: 팬텀|Leftovers|[silent]|[from] move: Thief|[of] p1a: 모부기')).toBeNull()
+    expect(line('|-item|p1a: 모부기|Leftovers|[from] move: Thief|[of] p2a: 팬텀'))
+      .toBe('모부기는 야생 팬텀으로부터\n먹다남은음식을 빼앗았다!')
+    expect(line('|-item|p2a: 팬텀|Leftovers|[from] move: Trick'))
+      .toBe('야생 팬텀은\n먹다남은음식을 손에 넣었다!')
+    // 통찰은 자리가 비어 오고 통찰한 쪽이 `[of]`다
+    expect(line('|-item||Leftovers|[from] ability: Frisk|[of] p1a: 모부기'))
+      .toBe('모부기는\n먹다남은음식을 통찰했다!')
+  })
+
+  it('하양허브는 쓴 줄이 말하고, 랭크를 되돌리는 줄은 조용하다', () => {
+    expect(line('|-enditem|p1a: 모부기|White Herb')).toBe('모부기는 하양허브로\n상태를 원래대로 되돌렸다!')
+    expect(line('|-clearnegativeboost|p1a: 모부기|[silent]')).toBeNull()
+  })
+
+  it('과사열매는 채운 기술을 부른다', () => {
+    expect(line('|-activate|p1a: 모부기|item: Leppa Berry|Tackle|[consumed]'))
+      .toBe('모부기는 과사열매로\n몸통박치기의 PP를 회복했다!')
+  })
+
+  it('구슬과 남의 열매에 다친 줄', () => {
+    expect(line('|-status|p1a: 모부기|tox|[from] item: Toxic Orb'))
+      .toBe('모부기는\n맹독구슬 때문에\n맹독에 중독됐다!')
+    // 생명의구슬은 원작이 말하지 않는다 (`subscript_lose_hp_from_item`)
+    expect(line('|-damage|p1a: 모부기|30/40|[from] item: Life Orb')).toBeNull()
+    expect(line('|-damage|p2a: 팬텀|30/40|[from] item: Jaboca Berry|[of] p1a: 모부기'))
+      .toBe('야생 팬텀은 모부기의\n자보열매 때문에\n데미지를 입었다!')
+  })
+
+  it('반감 열매는 막은 기술까지 부른다 — 기술은 박자가 실어 준다', () => {
+    const e = parseLine('|-enditem|p1a: 모부기|Occa Berry|[weaken]')!
+    expect(e.kind).toBe('enditem')
+    const text = say({ ...e, move: 33 } as BattleEvent)
+    expect(text).toContain('오카열매')
+    expect(text).toContain('몸통박치기')
+    expect(text).not.toContain('{')
+  })
+
+  it('변신은 따라 한 쪽의 **종 이름**을 부른다', () => {
+    const e = parseLine('|-transform|p2a: 팬텀|p1a: 모부기')!
+    expect(e).toMatchObject({ kind: 'transform', actor: { slot: 'p2a' }, target: { slot: 'p1a' } })
+    const species: string[] = []
+    species[387] = '모부기'
+    // 종은 박자가 직전 뷰에서 읽어 붙인다(`playback`) — 여기서는 붙인 꼴을 넣는다
+    expect(battleText({ ...e, species: 387 } as BattleEvent, { ...ctx, names: { ...names, species } }))
+      .toBe('야생 팬텀은\n모부기로 변신했다!')
+    // 종을 모르면 조용하다 — 반쪽 문장을 놓지 않는다
+    expect(say(e)).toBeNull()
   })
 })

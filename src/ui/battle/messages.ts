@@ -19,8 +19,9 @@
 //
 // 아직 문장이 없는 이벤트는 null이다. 텍스트 박스가 그냥 건너뛴다.
 import type {
-  Actor, BattleEvent, EffectExtra, EffectRef,
+  Actor, BattleEvent, Cause, CuredBy, EffectExtra, EffectRef, ItemRef,
 } from '../../engine/battle/events'
+import { rewardSteps } from '../../engine/battle/events'
 import type { Status } from '../../engine/pokemon/instance'
 import { withObject, withTopic } from '../korean'
 import { ownerOfKey } from '../../engine/battle/aftermath'
@@ -272,8 +273,17 @@ const ACTIVATE: Record<string, EffectLine> = {
   // 튀어오르기. sim은 `-nothing`을 내고 `@pkmn/protocol`이 이 줄로 다시 쓴다 —
   // 그래서 **자리가 비어 있다** (`|-activate||move: Splash`)
   splash: (c) => rom(c, MSG.butNothingHappened),
-  // ⚠️ **점착과 선제공격손톱은 4세대 뱅크에 줄이 없다.** 「손톱」·「뺏」이
-  // 1,269줄에서 0건이다 — 5세대 이후에 생긴 글이라 여기서는 비운다
+  // ── 도구가 일했다. 도구 이름이 빈칸이다 (`romLabel`이 도구 이름표에서 읽는다) ──
+  // 기합의머리띠가 1을 남겼다 — 기합의띠와 같은 줄이다 (`subscript_move_followup_message`)
+  focusband: (c, s) => rom(c, MSG.pokemonHungOnUsingItsItem, s.who, s.romLabel),
+  // 과사열매. 채운 기술이 `[move]`로 붙어 온다 (`subscript_held_item_pp_restore`)
+  leppaberry: (c, s) => (s.extra.move === null
+    ? null
+    : rom(c, MSG.pokemonRestoredMovesPPUsingItsItem, s.who, s.romLabel, s.extraMove)),
+  // ⚠️ **점착은 4세대 뱅크에 줄이 없다.** 「뺏」이 1,269줄에서 0건이다 — 5세대
+  // 이후에 생긴 글이라 여기서는 비운다.
+  // ⚠️ **선제공격손톱도 조용하다.** `subscript_check_quick_claw`가 손톱이면 연출만 틀고
+  // 넘어간다 — 「{도구}로 행동이 빨라졌다!」는 **애슈열매**(`BATTLEMON_CUSTAP_BERRY`) 갈래에서만 찍는다
 }
 
 /**
@@ -506,8 +516,115 @@ const idleLine = (flavor: number): number =>
  */
 function romName(effect: EffectRef, names: BattleNames): string | null {
   if (effect.num === null) return null
-  const table = effect.kind === 'ability' ? names.abilities : names.moves
+  const table = effect.kind === 'ability' ? names.abilities
+    : effect.kind === 'item' ? names.items : names.moves
   return table[effect.num] ?? null
+}
+
+/** 도구의 한국어 이름. 못 풀면 null — 조사가 뒤에 붙는 빈칸이라 영어로 안 떨어진다 */
+function itemName(item: ItemRef | null | undefined, names: BattleNames): string | null {
+  if (!item || item.num === null) return null
+  return names.items[item.num] ?? null
+}
+
+/** `[from] item: …`의 한국어 이름. 도구가 원인이 아니면 null */
+function causeItem(from: Cause | null | undefined, names: BattleNames): string | null {
+  if (!from || from.kind !== 'item' || from.id === null) return null
+  return names.items[from.id] ?? null
+}
+
+/**
+ * 판 도중 우리 등판의 다섯 갈래 (`battle_display.c` `LoadSendOutMessage`).
+ *
+ * 값은 상대 첫 자리의 체력 천분율이다(`BattleController_EmitSendOutMessage` — 0이면
+ * 1000). 모르면(첫 등판·더블) 「가랏!」이다
+ */
+function sendOutLine(permille: number | undefined): number {
+  if (permille === undefined) return MSG.goPokemon
+  if (permille < 100) return MSG.yourFoesWeakGetEmPokemon
+  if (permille < 325) return MSG.justALittleMoreHangInTherePokemon
+  if (permille < 550) return MSG.goForItPokemon
+  if (permille < 775) return MSG.youreInChargePokemon
+  return MSG.goPokemon
+}
+
+/**
+ * 우리 쪽 회수의 다섯 갈래 (`battle_display.c` `LoadRecallMessage`).
+ *
+ * ⚠️ **앞 마리의 체력이 아니다.** 원작이 재는 것은 「그 판에 마지막으로 누가 나온 뒤
+ * 상대 첫 자리가 잃은 체력의 백분율」이다(`(hpTemp - curHP) * 100 / hpTemp`). 많이
+ * 깎았을수록 칭찬이 커진다. 더블은 늘 「돌아와!」다
+ */
+function recallLine(percent: number | null): number {
+  if (percent === null) return MSG.pokemonComeBack
+  if (percent === 0) return MSG.pokemonSwitchOutComeBack
+  if (percent < 25) return MSG.pokemonComeBack
+  if (percent < 50) return MSG.pokemonGoodComeBack
+  if (percent < 75) return MSG.pokemonOKComeBack
+  return MSG.pokemonEnoughGetBack
+}
+
+/**
+ * 열매가 상태이상을 고친 줄 — 상태마다 스크립트가 따로다 (`subscript_held_item_*_restore`).
+ * 리샘열매도 하나만 고쳤으면 이 줄이다. 상태이상과 혼란을 함께 고쳤을 때만 한 줄로
+ * 몰아 말한다 (`CuredBy.all` · `subscript_held_item_multi_restore`)
+ */
+const ITEM_CURED: Record<Exclude<Status, 'ok'>, number> = {
+  par: MSG.pokemonsItemCuredItsParalysis,
+  psn: MSG.pokemonsItemCuredItsPoison,
+  tox: MSG.pokemonsItemCuredItsPoison,
+  brn: MSG.pokemonsItemCuredItsBurn,
+  frz: MSG.pokemonsItemDefrostedIt,
+  slp: MSG.pokemonsItemWokeItUp,
+}
+
+/** 열매가 고친 줄. 함께 고쳤으면 한 줄로 몬다 — 두 사건이 같은 글이 되어 박자가 한 번만 띄운다 */
+function curedLine(ctx: TextContext, who: string, by: CuredBy, alone: number): string | null {
+  return rom(ctx, by.all ? MSG.pokemonNormalizedItsStatusUsingItsItem : alone, who, itemName(by.item, ctx.names))
+}
+
+/**
+ * 조금씩 채우는 도구 (`subscript_restore_a_little_hp`) — 먹다남은음식 · 검은진흙 ·
+ * 조개껍질방울. 나머지(체력 열매 · 나무열매쥬스)는 「체력을 회복했다」다
+ */
+const HEALS_A_LITTLE = new Set(['leftovers', 'blacksludge', 'shellbell'])
+
+/**
+ * 따로 이유 없이 `|-enditem|`만 오는 도구 중 **원작이 말하는 것** — 도구를 쓴 그 줄에
+ * 글이 있다. 나머지(열매를 먹은 자리 등)는 뒤따르는 회복·랭크 줄이 도구를 부른다
+ */
+const USED_ITEM: Record<string, number> = {
+  // 기합의띠가 1을 남겼다 (`subscript_move_followup_message`)
+  focussash: MSG.pokemonHungOnUsingItsItem,
+  // 하양허브 — 뒤따르는 `-clearnegativeboost`는 글이 없다 (`subscript_held_item_statdown_restore`)
+  whiteherb: MSG.pokemonRestoredItsStatusUsingItsItem,
+  // 파워풀허브 (`subscript_power_herb_skull_bash` · `subscript_item_skip_charge_turn`)
+  powerherb: MSG.pokemonBecameFullyChargedDueToItsItem,
+  // 미클열매 (`subscript_held_item_temp_acc_up`)
+  micleberry: MSG.pokemonsBoostedTheAccuracyOfItsNextMoveUsingItsItem,
+}
+
+/**
+ * 기술 하나를 잊고 새 기술을 배운 뒤의 줄 (`battle_script.c` `SEQ_GET_EXP_ONE_TWO_POOF` 이후).
+ *
+ * 잊으면 「1, 2, ... ... 짠!」 → 「{이름}은 {옛 기술}을 깨끗이 잊었다!」 → 「그리고!」 →
+ * 「{이름}은 새로 {새 기술}을 배웠다!」 넷이고, 포기하면 「결국 배우지 않았다!」 한 줄이다
+ * (`SEQ_GET_EXP_GIVE_UP_LEARNING_ANSWER`). 묻는 창(`LearnMove`)이 답을 받은 **뒤에** 이 줄들이
+ * 글 박자로 이어진다. 칸을 못 채운 줄은 빠진다 — 반쪽 문장을 놓느니 비운다
+ */
+export function learnResultLines(
+  lines: readonly string[],
+  result: { who: string; forgot: string; learned: string } | { who: string; declined: string },
+): string[] {
+  const out = 'declined' in result
+    ? [romLine(lines, MSG.pokemonDidNotLearnMove2, result.who, result.declined)]
+    : [
+        romLine(lines, MSG.battleOneTwoAndPoof),
+        romLine(lines, MSG.battlePokemonForgotHowToUseMove, result.who, result.forgot),
+        romLine(lines, MSG.battleAndDotDotDot),
+        romLine(lines, MSG.battlePokemonLearnedMove, result.who, result.learned),
+      ]
+  return out.filter((line): line is string => line !== null)
 }
 
 /**
@@ -541,7 +658,9 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       const who = ctx.label(e.actor)
       // 날려버리기·울부짖기로 억지로 나온 자리는 원작이 따로 말한다
       if (e.forced) return rom(ctx, MSG.wasDraggedOut, who)
-      if (e.actor.side === 'p1') return rom(ctx, MSG.goPokemon, who)
+      // 싱글 판 도중이면 상대가 얼마나 남았느냐로 말이 갈린다 — 그 값은 박자가 실어 준다
+      // (`playback`의 `foeHpPermille`). 첫 등판·더블은 값이 없어 「가랏!」이다
+      if (e.actor.side === 'p1') return rom(ctx, sendOutLine(e.foeHpPermille), who)
       // ⚠️ **야생 줄만 이름표를 안 쓴다.** 이 줄은 자리마다 셋으로 갈린 것이
       // 아니라 **한 줄에 「야생 」이 이미 박혀 있어서**, 이름표를 넣으면
       // 「앗! 야생 야생 팬텀이…」가 된다. 그래서 맨 이름을 넣는다
@@ -591,16 +710,32 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
     case 'faint':
       return rom(ctx, MSG.pokemonFainted, ctx.label(e.actor))
 
-    case 'status':
+    case 'status': {
       if (e.status === 'ok') return null
+      // 맹독구슬·화염구슬은 도구를 문장에 넣는다 (`subscript_badly_poison` · `subscript_burn`)
+      const item = causeItem(e.from, names)
+      if (e.from?.kind === 'item') {
+        if (e.status === 'tox') return rom(ctx, MSG.pokemonWasBadlyPoisonedByTheItem, ctx.label(e.actor), item)
+        if (e.status === 'brn') return rom(ctx, MSG.pokemonGotABurnFromTheItem, ctx.label(e.actor), item)
+      }
       return rom(ctx, STATUS_ONSET[e.status], ctx.label(e.actor))
+    }
 
     case 'curestatus':
       if (e.status === 'ok') return null
+      // 열매가 고쳤으면 열매를 부른다 — 무엇을 먹었는지는 박자가 붙여 준다(`playback`)
+      if (e.curedBy) return curedLine(ctx, ctx.label(e.actor), e.curedBy, ITEM_CURED[e.status])
       return rom(ctx, STATUS_CURED[e.status], ctx.label(e.actor))
 
     case 'boost': {
       if (e.amount === 0) return null
+      // 도구가 올렸으면 도구가 주어다 — 한 단계든 두 단계든 「올라갔다」고, 스타열매만
+      // 「크게」다 (`BtlCmd_ChangeStatStage`의 `SIDE_EFFECT_TYPE_HELD_ITEM` · `subscript_held_item_sharply_raise_stat`)
+      if (e.from?.kind === 'item' && e.amount > 0) {
+        return rom(ctx,
+          e.amount >= 2 ? MSG.theItemSharplyRaisedPokemonsStat : MSG.theItemRaisedPokemonsStat,
+          ctx.label(e.actor), causeItem(e.from, names), names.stats[STAT_SLOT[e.stat]] ?? null)
+      }
       // 원작은 한 단계와 **두 단계 위**만 가른다 — 「쭉쭉」도 「뚝」도 없다
       const big = Math.abs(e.amount) >= 2
       const at = e.amount > 0
@@ -661,11 +796,28 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
         const move = id !== null ? names.moves[id] ?? null : null
         return rom(ctx, MSG.pokemonIsHurtByMove, who, move)
       }
+      if (kind === 'item') {
+        const item = causeItem(e.from, names)
+        // 자보열매·애터열매 — 맞힌 쪽이 **남의 도구**에 다친다 (`subscript_held_item_recoil_when_hit`)
+        if (e.of) return rom(ctx, MSG.pokemonIsHurtByPokemonsItem, who, ctx.label(e.of), item)
+        // 생명의구슬은 원작이 아무 말도 안 한다 (`subscript_lose_hp_from_item` — 글 없는 쪽)
+        if (name === 'Life Orb') return null
+        return rom(ctx, MSG.pokemonIsHurtByItsItem, who, item)
+      }
       return null
     }
 
-    case 'heal':
+    case 'heal': {
+      // 도구가 채웠으면 도구를 부른다. 먹다남은음식 같은 것은 「조금 회복했다」다
+      const item = causeItem(e.from, names)
+      if (e.from?.kind === 'item') {
+        const little = HEALS_A_LITTLE.has(e.from.name.toLowerCase().replace(/[^a-z0-9]/g, ''))
+        return rom(ctx,
+          little ? MSG.pokemonRestoredALittleHPUsingItsItem : MSG.pokemonRestoredItsHealthUsingItsItem,
+          ctx.label(e.actor), item)
+      }
       return rom(ctx, MSG.pokemonRegainedHealth, ctx.label(e.actor))
+    }
 
     case 'ball': {
       if (e.caught) return rom(ctx, MSG.gotchaPokemonWasCaught, ctx.label(e.actor))
@@ -691,18 +843,102 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       const out: string[] = []
       const push = (line: string | null) => { if (line !== null) out.push(line) }
       push(rom(ctx, MSG.pokemonGainedExpPoints, who, String(e.exp)))
-      const top = e.levels[e.levels.length - 1]
-      if (top !== undefined) push(rom(ctx, MSG.pokemonGrewToLevel, who, String(top)))
-      // 빈 칸에 그냥 들어간 것과, 무엇을 지울지 물어야 하는 것은 다른 문장이다
-      for (const move of e.learned) {
-        push(rom(ctx, MSG.pokemonLearnedMove, who, names.moves[move] ?? null))
-      }
-      for (const move of e.pending) {
-        push(rom(ctx, MSG.pokemonIsTryingToLearnMove, who, names.moves[move] ?? null))
+      // ⚠️ **레벨마다 한 줄이다.** 원작은 오른 레벨마다 「레벨 N으로 올랐다!」를 찍고
+      // 그 레벨의 기술까지 다 본 뒤에 다음 레벨로 간다 (`SEQ_GET_EXP_CHECK_LEARN_MOVE` →
+      // `SEQ_GET_EXP_GAUGE`). 한동안 마지막 레벨 하나만 말해서 5→8이면 6·7이 사라졌다
+      for (const part of rewardSteps(e)) {
+        if (part.step !== null) push(levelLine(ctx, who, part.step.level))
+        for (const move of part.learned) push(learnLine(ctx, who, move, true))
+        for (const move of part.pending) push(learnLine(ctx, who, move, false))
       }
       // 창을 하나씩 연다 — 경험치 · 레벨 · 배운 기술은 원작도 따로 띄운다
       return out.length === 0 ? null : out.join('\n\n')
     }
+
+    // 박자가 경험치 하나를 레벨마다 편 조각들 (`playback`)
+    case 'levelup':
+      return levelLine(ctx, ctx.label({ slot: 'p1a', side: 'p1', name: e.key }), e.level)
+
+    case 'learnmove':
+      return learnLine(ctx, ctx.label({ slot: 'p1a', side: 'p1', name: e.key }), e.move, e.learned)
+
+    // 막대만 민다
+    case 'expgauge':
+      return null
+
+    // ── 교체의 앞 마리 (`LoadRecallMessage`) ─────────────────────────────────
+    case 'recall': {
+      if (e.actor.side === 'p1') return rom(ctx, recallLine(e.percent), ctx.label(e.actor))
+      // 상대는 트레이너가 거둔다. 이 줄도 「상대 」가 아니라 맨 이름이다 — 트레이너
+      // 이름이 앞에 있다 (`trSentOutPokemon`과 같은 자리)
+      const bare = ctx.bare?.(e.actor.name) ?? ctx.label(e.actor)
+      const owner = ctx.trainerOf?.(e.actor.name) ?? null
+      const line = rom(ctx, MSG.trWithdrewPokemon,
+        owner?.cls ?? ctx.foeClass ?? null, owner?.name ?? ctx.foeTrainer ?? null, bare)
+      if (line !== null) return line
+      return rom(ctx, MSG.linkTrWithdrewPokemon, ctx.foeName ?? null, bare)
+    }
+
+    // ── 도구와 변신 (PARITY §2.24) ───────────────────────────────────────────
+    case 'item': {
+      const item = itemName(e.item, names)
+      const by = e.from
+      // 통찰 — 자리가 비어 오고 통찰한 쪽이 `[of]`다 (`subscript_frisk`)
+      if (by?.kind === 'ability' && by.name === 'Frisk') {
+        return e.of ? rom(ctx, MSG.pokemonFriskedItsFoeAndFoundOneItem, ctx.label(e.of), item) : null
+      }
+      if (by?.kind !== 'move' || !e.actor) return null
+      const move = by.name.toLowerCase().replace(/[^a-z]/g, '')
+      // 도둑질 · 탐내다 — 「{빼앗은 쪽}은 {빼앗긴 쪽}으로부터 {도구}를 빼앗았다!」
+      if (move === 'thief' || move === 'covet') {
+        return e.of ? rom(ctx, MSG.pokemonStolePokemonsItem, ctx.label(e.actor), ctx.label(e.of), item) : null
+      }
+      // 트릭 · 바꿔치기 — 받은 쪽마다 한 줄 (`subscript_exchange_items`). 차례는 박자가 맞춘다
+      if (move === 'trick' || move === 'switcheroo') {
+        return rom(ctx, MSG.pokemonObtainedOneItem, ctx.label(e.actor), item)
+      }
+      // 리사이클 (`effect_script_0184`)
+      if (move === 'recycle') return rom(ctx, MSG.pokemonFoundOneItem, ctx.label(e.actor), item)
+      return null
+    }
+
+    case 'enditem': {
+      // 트릭·도둑질이 **넘겨준 쪽** — 받은 쪽의 `-item`이 말한다
+      if (e.silent) return null
+      const who = ctx.label(e.actor)
+      const item = itemName(e.item, names)
+      // 열매를 먹은 줄은 뒤따르는 회복·치료·랭크 줄이 열매를 부른다 — 여기서 또
+      // 말하면 한 번 먹는 데 두 줄이 된다
+      if (e.how === 'eat') return null
+      // 반감 열매 — 「{열매}가 {기술}의 위력을 약하게 했다!」 (`subscript_type_resist_berry`)
+      if (e.how === 'weaken') {
+        const move = e.move != null ? names.moves[e.move] ?? null : null
+        return rom(ctx, MSG.theItemWeakenedMovesPower, item, move)
+      }
+      // 쪼아대기 · 벌레먹음 — 빼앗아 먹은 쪽이 `[of]`다 (`subscript_pluck`)
+      if (e.how === 'stealeat') {
+        return e.of ? rom(ctx, MSG.pokemonStoleAndAteItsFoesItem, ctx.label(e.of), item) : null
+      }
+      const move = e.from?.kind === 'move' ? e.from.name.toLowerCase().replace(/[^a-z]/g, '') : ''
+      // 탁쳐서떨구기 — 「{친 쪽}은 {맞은 쪽}의 {도구}를 탁쳐서 떨구었다!」 (`BtlCmd_TryKnockOff`)
+      if (move === 'knockoff') {
+        return e.of ? rom(ctx, MSG.pokemonKnockedOffPokemonsItem, ctx.label(e.of), who, item) : null
+      }
+      // 내던지기 (`effect_script_0233`)
+      if (move === 'fling') return rom(ctx, MSG.pokemonFlungItsItem, who, item)
+      const at = e.from === null ? USED_ITEM[e.item.id] : undefined
+      return at === undefined ? null : rom(ctx, at, who, item)
+    }
+
+    case 'transform':
+      // 둘째 칸은 별명이 아니라 **종 이름**이다 (`TAG_NICKNAME_POKE`). 박자가 따라 한
+      // 쪽의 종을 붙여 준다
+      return rom(ctx, MSG.pokemonTransformedIntoPokemon, ctx.label(e.actor),
+        e.species != null ? names.species[e.species] ?? null : null)
+
+    // 하양허브의 글은 앞의 `enditem`이 냈다
+    case 'clearnegativeboosts':
+      return null
 
     case 'prize':
       // 롬은 주인공 이름을 부르고 **원**으로 센다 — 「엔」은 우리가 적어 둔 것이었다
@@ -775,6 +1011,10 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
     // 것이다. 없던 것은 **글**이고, 그래서 씨뿌리기가 걸려도 대타가 나타나도
     // 압정이 깔려도 화면이 한 마디도 안 했다
     case 'volatile': {
+      // 열매가 혼란을 풀었으면 열매를 부른다 (`subscript_held_item_cnf_restore` · 리샘열매는 `…_multi_restore`)
+      if (!e.start && e.curedBy && e.effect.id === 'confusion') {
+        return curedLine(ctx, ctx.label(e.actor), e.curedBy, MSG.pokemonsItemSnappedItOutOfConfusion)
+      }
       const line = (e.start ? VOLATILE_ON : VOLATILE_OFF)[e.effect.id]
       return line === undefined ? null : line(ctx, {
         who: ctx.label(e.actor),
@@ -993,6 +1233,24 @@ function effectLabel(effect: EffectRef, names: BattleNames): string {
  * 원작과 같은 말로 말한다. 기술은 이렇게 못 한다 — `모부기의 방어!`는 기술을
  * **쓴** 줄의 문장이라 막은 자리에 놓으면 거짓말이 된다
  */
+/** 「{이름}은 레벨 {N}으로 올랐다!」 */
+function levelLine(ctx: TextContext, who: string, level: number): string | null {
+  return rom(ctx, MSG.pokemonGrewToLevel, who, String(level))
+}
+
+/**
+ * 레벨업 기술 한 줄. 빈 칸에 들어갔으면 「배웠다!」, 칸이 차 있으면 원작 차례대로
+ * 「배우고 싶다...!」 → 「그러나 … 기술을 4개 알고 있으므로 …」 두 창이다
+ * (`SEQ_GET_EXP_WANTS_TO_LEARN_MOVE_PRINT` → `SEQ_GET_EXP_CANT_LEARN_MORE_MOVES_PRINT`)
+ */
+function learnLine(ctx: TextContext, who: string, move: number, learned: boolean): string | null {
+  const name = ctx.names.moves[move] ?? null
+  if (learned) return rom(ctx, MSG.pokemonLearnedMove, who, name)
+  const want = rom(ctx, MSG.pokemonWantsToLearnMove, who, name)
+  const full = rom(ctx, MSG.butPokemonCantLearnMoreThanFourMoves, who)
+  return want === null || full === null ? null : want + '\n\n' + full
+}
+
 function effectText(
   table: Record<string, EffectLine>,
   effect: EffectRef,
