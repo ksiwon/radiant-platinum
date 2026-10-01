@@ -125,6 +125,8 @@ describe('망가진 파일', () => {
     const got = parsePortable(JSON.stringify(env))
     expect(got.ok).toBe(false)
     if (!got.ok) expect(got.fail.kind).toBe('format-too-new')
+    // 사람에게는 「판」이 아니라 **「버전」**으로 말한다 — 「판」은 플레이 회차로도 읽힌다
+    if (!got.ok) expect(explainFailure(got.fail)).toBe('더 새로운 버전에서 만든 파일입니다. 그 버전에서 열어 주세요')
   })
 
   it('너무 큰 파일은 읽기 전에 세운다', () => {

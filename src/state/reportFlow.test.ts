@@ -224,7 +224,7 @@ describe('파일에서 불러오기', () => {
     if (stored.kind === 'ok') expect(stored.save.money).toBe(1111)
   })
 
-  it('더 새 판이 만든 파일은 이유를 말하고 물러선다', async () => {
+  it('더 새 버전이 만든 파일은 이유를 말하고 물러선다', async () => {
     const next = SAVE_VERSION + 1
     const text = serializePortable(
       buildPortableRaw({ ...saveWith('미래'), version: next }, next, AT))
@@ -232,14 +232,16 @@ describe('파일에서 불러오기', () => {
     expect(preview.ok).toBe(false)
     // 손상이 아니라 **판**이 문제라는 것을 말해야 한다 — "이 파일이 이상하다"와
     // "이 앱이 아직 못 읽는다"는 사용자가 할 일이 다르다
-    if (!preview.ok) expect(preview.why).toContain('더 새로운 판')
+    if (!preview.ok) expect(preview.why).toContain('더 새로운 버전')
   })
 
-  it('너무 옛 판은 버리지 말라고 말한다', async () => {
+  it('너무 옛 버전은 버리지 말라고 말한다', async () => {
     const text = serializePortable(buildPortableRaw({ ...saveWith('옛것'), version: 2 }, 2, AT))
     const preview = await useSaveStore.getState().previewImport(text)
     expect(preview.ok).toBe(false)
     if (!preview.ok) expect(preview.why).toContain('보관')
+    // 「판」은 플레이 회차로도 읽힌다 — 저장 형식의 판은 「버전」이라 부른다
+    if (!preview.ok) expect(preview.why).toContain('(버전 2)')
   })
 })
 
@@ -374,8 +376,8 @@ describe('백업에서 되찾기', () => {
   // ⚠️ **못 읽는 백업을 현재 슬롯에 밀어 넣지 않는다.** 밀어 넣으면 다음에 켤 때
   // 현재 슬롯까지 못 읽는 것이 되어, 잃은 것이 하나에서 둘이 된다
   it.each([
-    ['미래 판', { ...saveWith('미래'), version: SAVE_VERSION + 5 }, '더 새로운 판'],
-    ['너무 옛 판', { ...saveWith('옛것'), version: 2 }, '옛 백업'],
+    ['미래 버전', { ...saveWith('미래'), version: SAVE_VERSION + 5 }, '더 새로운 버전'],
+    ['너무 옛 버전', { ...saveWith('옛것'), version: 2 }, '(버전 2)'],
     ['어긋난 내용', { ...saveWith('깨진것'), money: -9 }, '어긋납니다'],
   ])('⚠️ %s 백업은 열리되 현재 슬롯에 안 쓴다', async (_what, bad, says) => {
     useSaveStore.setState({ ...saveWith('지금것', 1234) })

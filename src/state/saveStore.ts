@@ -1039,12 +1039,12 @@ export const useSaveStore = create<SaveStore>()(
         const { migrateSave } = await import('./save/migrate')
         const moved = migrateSave(parsed.data, SAVE_VERSION)
         if (moved.kind === 'too-new') {
-          return { ok: false, why: '더 새로운 판에서 만든 리포트입니다. 그 판에서 열어 주세요' }
+          return { ok: false, why: '더 새로운 버전에서 만든 리포트입니다. 그 버전에서 열어 주세요' }
         }
         if (moved.kind === 'unsupported-old') {
           return {
             ok: false,
-            why: `너무 옛 리포트라 옮길 수 없습니다 (판 ${String(moved.found)}). `
+            why: `너무 옛 리포트라 옮길 수 없습니다 (버전 ${String(moved.found)}). `
               + '원본 파일은 그대로 보관해 주세요',
           }
         }
@@ -1151,15 +1151,15 @@ async function backupBeforeOverwrite(toSlot = true): Promise<DownloadOutcome> {
 /**
  * 백업을 왜 못 읽는가 — **사람이 할 일이 갈리므로 뭉치면 안 된다.**
  *
- * 미래 판은 「더 새 판에서 열어라」이고, 너무 옛 판과 어긋난 내용은 「파일로
+ * 미래 버전은 「더 새 버전에서 열어라」이고, 너무 옛 버전과 어긋난 내용은 「파일로
  * 받아 두고 보관해라」다. 셋 다 **현재 슬롯에는 안 쓴다**
  */
 function explainBackup(reason: Exclude<MigrateResult, { kind: 'ok' }>): string {
   switch (reason.kind) {
     case 'too-new':
-      return `더 새로운 판(${String(reason.found)})이 남긴 백업입니다. 그 판에서 열어 주세요`
+      return `더 새로운 버전(${String(reason.found)})에서 남긴 백업입니다. 그 버전에서 열어 주세요`
     case 'unsupported-old':
-      return `너무 옛 백업이라 지금 판으로 옮길 수 없습니다 (판 ${String(reason.found)})`
+      return `너무 옛 백업이라 지금 버전으로 옮길 수 없습니다 (버전 ${String(reason.found)})`
     case 'invalid':
       return `백업의 내용이 어긋납니다 — ${reason.why}`
   }

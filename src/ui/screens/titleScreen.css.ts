@@ -145,6 +145,10 @@ export const button = style({
     // 흐리기만 하면 눌러 보고 나서야 없다는 걸 알게 된다 (`TitleScreen` 머리말)
     '&:disabled': { opacity: 0.42, cursor: 'default' },
     '&:disabled:active': { transform: 'none' },
+    // ⚠️ **브라우저 포커스 링을 따로 안 돌린다.** Tab으로 옮긴 포커스는 그 칸으로
+    // 커서를 데려온다(`TitleScreen`의 `onFocus`) — 그러면 ▶와 `buttonOn`이 곧
+    // 포커스 표시다. 링을 남기면 게임 커서와 브라우저 커서 둘이 한 화면에 선다
+    '&:focus-visible': { outline: 'none' },
   },
 })
 
@@ -274,17 +278,78 @@ export const files = style({
   justifyContent: 'center',
 })
 
+/**
+ * 확인 창의 고를 것 (`TitleConfirm`).
+ *
+ * ⚠️ **왼쪽에 커서 자리를 비워 둔다.** 차림표처럼 ▶가 글자 앞에 서는데, 자리를
+ * 안 비우면 고를 때마다 글자가 옆으로 밀린다
+ */
 export const fileButton = style({
   ...WINDOW_SMALL,
+  position: 'relative',
   appearance: 'none',
-  padding: `7px ${GAP.base}px`,
+  padding: `7px ${GAP.base}px 7px 24px`,
   fontFamily: vars.font.ui,
   fontSize: TEXT.tiny,
   borderRadius: RADIUS.cell,
   opacity: 0.85,
   cursor: 'pointer',
   pointerEvents: 'auto',
-  selectors: { '&:hover': { opacity: 1 } },
+  selectors: {
+    '&:hover': { opacity: 1 },
+    // 차림표 단추와 같다 — 포커스는 커서를 데려오고, 표시는 커서가 한다
+    '&:focus-visible': { outline: 'none' },
+  },
+})
+
+/** 확인 창에서 커서가 놓인 것. 차림표의 `buttonOn`과 같은 표시다 */
+export const fileButtonOn = style({
+  ...PICKED,
+  opacity: 1,
+})
+
+/** 확인 창 커서. 차림표의 `caret`보다 한 치수 작다 */
+export const fileCaret = style({
+  position: 'absolute',
+  left: 9,
+  top: '50%',
+  transform: 'translateY(-50%)',
+  color: vars.pick.edge,
+  fontSize: TEXT.tiny,
+})
+
+/**
+ * 「이어할 리포트가 없습니다」 — 왜 「이어하기」를 못 누르는지.
+ *
+ * ⚠️ **`filesArea`의 맨 끝 자식으로 둔다.** 한때 `head` 안 보통 흐름에 있어서
+ * 화면 왼쪽 위로 올라가 비공식 고지 밑에 깔렸다 (`filesArea` 머리말과 같은 일).
+ * 맨 끝이면 단추 줄 바로 위에 서서 흐린 「이어하기」와 붙어 읽힌다.
+ *
+ * ⚠️ **배경 그림 위에 맨 글자로 두지 않는다.** 흐린 글(`onDarkDim`)을 그림 위에
+ * 얹으면 안 읽힌다 — 옆의 알림처럼 작은 창을 깐다
+ */
+export const absent = style({
+  ...WINDOW_SMALL,
+  margin: 0,
+  padding: `${GAP.small + 2}px ${GAP.base}px`,
+  maxWidth: 520,
+  boxSizing: 'border-box',
+  fontFamily: vars.font.ui,
+  fontSize: TEXT.tiny,
+  lineHeight: 1.6,
+  textAlign: 'center',
+  pointerEvents: 'none',
+})
+
+/**
+ * 알림 안에서 조심할 문장.
+ *
+ * ⚠️ **⚠️ 이모지를 안 쓴다.** OS 컬러 그림이 창 글꼴 사이에 끼어 개발 메모처럼
+ * 보였다. 창 테마의 「못 하는 것」 색으로 가리킨다 (`vars.state.bad`)
+ */
+export const warn = style({
+  color: vars.state.bad,
+  fontWeight: 700,
 })
 
 /**

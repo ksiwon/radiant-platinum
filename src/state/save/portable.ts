@@ -186,7 +186,7 @@ export function explainFailure(fail: ParseFailure): string {
     case 'not-ours':
       return '이 게임의 리포트 파일이 아닙니다'
     case 'format-too-new':
-      return '더 새로운 판이 만든 파일입니다. 그 판에서 열어 주세요'
+      return '더 새로운 버전에서 만든 파일입니다. 그 버전에서 열어 주세요'
     case 'unknown-codec':
       return `모르는 형식입니다 (${fail.found})`
     case 'checksum':

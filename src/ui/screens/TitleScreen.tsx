@@ -20,7 +20,7 @@
 //
 // 요약 넷(주인공·플레이 시간·도감·배지)의 글은 원작 `main_menu_options` 뱅크에서
 // 온다. 우리가 이름을 새로 짓지 않는다.
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useNavigate } from 'react-router'
 import { loadUiText, MAIN_MENU } from '../../data/uiText'
 import { readReportDetailed } from '../../state/report'
@@ -33,7 +33,11 @@ import {
   type BackupPreview, type ImportPreview, type SaveData,
 } from '../../state/saveStore'
 import { PORTABLE_EXT } from '../../state/save/portable'
-import { watchIntegrity } from '../../app/integrityWatch'
+import {
+  integrityFinding, subscribeIntegrity, verifyEverything, watchIntegrity,
+} from '../../app/integrityWatch'
+import { groupLabels } from '../../import/install/groupLabels'
+import { controlRows } from '../../engine/input/controlLegend'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import { playSong, warmMenu } from '../../engine/audio/lazy'
 import { TITLE_SONG } from '../../engine/audio/songIds'
@@ -134,8 +138,17 @@ function TitleMenu() {
   const [showMore, setShowMore] = useState(false)
   /** 안 본 판이 있으면 차림표 칸에 점 하나. 한 번 열면 꺼진다 (`patchNotes.ts`) */
   const [newPatch, setNewPatch] = useState(unreadPatch)
-  /** 한가할 때 훑은 설치본에서 어긋난 것이 나왔는가 */
-  const [assetWarning, setAssetWarning] = useState<string | null>(null)
+  /**
+   * 마지막으로 잰 설치본 (`integrityFinding`).
+   *
+   * ⚠️ **여기서 따로 들고 있지 않는다.** 한때 타이틀의 뒷검사 결과만 이 화면의
+   * 상태에 담았다 — 그러면 설정의 「에셋 확인」이 찾은 손상은 고칠 단추를 못
+   * 세우고, 설치 화면에서 고치고 돌아와도 옛 경고가 그대로 남았다
+   */
+  const integrity = useSyncExternalStore(subscribeIntegrity, integrityFinding)
+  const assetBroken = integrity !== null && integrity.broken.length > 0
+  /** 설치 화면을 닫고 다시 재는 중. 끝나야 경고가 서거나 사라진다 */
+  const [rechecking, setRechecking] = useState(false)
   const filePicker = useRef<HTMLInputElement>(null)
   // 설정은 필드 메뉴와 **같은 화면**을 쓴다. 스택에 올려 두면 그쪽의 "돌아가기"가
   // 그대로 동작하고, 스택이 비면 여기서도 닫힌다
@@ -164,12 +177,21 @@ function TitleMenu() {
   // 몇 초씩 늦는다. 그렇다고 안 보면 브라우저가 조용히 되찾아 간 파일을 게임이
   // 만난다 — 그래서 화면이 뜬 뒤 한가할 때 본다. 개발판은 설치 기록이 없어서
   // 아무 일도 안 일어난다
-  useEffect(() => watchIntegrity((got) => {
-    if (got.broken.length > 0) {
-      setAssetWarning(`⚠️ 설치본에서 파일 ${got.broken.length}개가 어긋납니다 — `
-        + `다시 만들 그룹: ${got.groups.join(' · ')}`)
-    }
-  }), [])
+  useEffect(() => watchIntegrity(), [])
+
+  /**
+   * 설치 화면을 닫는다 — 끝까지 고쳤든(`onReady`) 도중에 닫았든.
+   *
+   * ⚠️ **닫는 것만으로 경고를 안 지운다.** 그만두고 나왔을 수도 있고, 고친 뒤에도
+   * 또 어긋날 수 있다. 다시 재서 **깨끗할 때만** 경고와 단추가 내려간다
+   */
+  const closeWizard = (): void => {
+    setImporting(false)
+    setRechecking(true)
+    void verifyEverything()
+      .catch(() => { /* 못 쟀으면 지난 결과가 그대로 선다 */ })
+      .finally(() => { setRechecking(false) })
+  }
 
   /**
    * 타이틀 곡 (`SEQ_TITLE01`).
@@ -217,13 +239,31 @@ function TitleMenu() {
     void save.loadReport().then(() => { navigate('/play') })
   }
 
+  // ⚠️ **파일 이름만 띄우지 않는다.** 한때 알림 칸에 `이름-날짜.rpsave` 한 줄만
+  // 떠서 받았다는 건지 실패했다는 건지 안 읽혔다 — 동사가 있는 문장으로 쓴다
   const backup = (): void => {
     void useSaveStore.getState().exportReport().then((got) => {
       if (got.kind === 'none') { setNotice('받을 리포트가 없습니다'); return }
       setNotice(got.outcome.started
-        ? `${got.fileName}${got.raw ? '\n(이 판이 못 읽는 리포트라 원본 그대로 담았습니다)' : ''}`
+        ? `리포트를 파일로 받았습니다 — ${got.fileName}`
+          + (got.raw ? '\n(이 버전이 못 읽는 리포트라 원본 그대로 담았습니다)' : '')
         : '브라우저가 다운로드를 막았습니다. 한 번 더 눌러 주세요')
     })
+  }
+
+  // ⚠️ **확인 창은 한 번에 하나만 선다.** 둘이 겹쳐 서면 키가 어느 쪽에 가는지
+  // 화면이 안 알려 준다 — 하나를 열 때 나머지를 닫는다
+  const askNew = (): void => {
+    setPending(null)
+    setConfirmRestore(false)
+    setConfirmNew(true)
+  }
+
+  const askRestore = (): void => {
+    setNotice(null)
+    setConfirmNew(false)
+    setPending(null)
+    setConfirmRestore(true)
   }
 
   const pickFile = (file: File): void => {
@@ -231,6 +271,8 @@ function TitleMenu() {
     void file.text().then(async (raw) => {
       const preview = await useSaveStore.getState().previewImport(raw)
       if (!preview.ok) { setPending(null); setNotice(preview.why); return }
+      setConfirmNew(false)
+      setConfirmRestore(false)
       setPending(preview)
     }).catch(() => { setNotice('파일을 읽지 못했습니다') })
   }
@@ -250,7 +292,8 @@ function TitleMenu() {
     void useSaveStore.getState().exportBackup().then((got) => {
       if (got.kind === 'none') { setNotice('받을 백업이 없습니다'); return }
       setNotice(got.outcome.started
-        ? `${got.fileName}${got.raw ? '\n(이 판이 못 읽는 백업이라 원본 그대로 담았습니다)' : ''}`
+        ? `백업을 파일로 받았습니다 — ${got.fileName}`
+          + (got.raw ? '\n(이 버전이 못 읽는 백업이라 원본 그대로 담았습니다)' : '')
         : '브라우저가 다운로드를 막았습니다. 한 번 더 눌러 주세요')
     })
   }
@@ -304,7 +347,7 @@ function TitleMenu() {
       key: 'new',
       label: '시작',
       tone: 'main',
-      go: () => { if (hasSave) setConfirmNew(true); else go(true) },
+      go: () => { if (hasSave) askNew(); else go(true) },
     },
     {
       key: 'continue',
@@ -353,7 +396,7 @@ function TitleMenu() {
    *
    * 그래서 **경고가 떴을 때만** 그 경고를 고치는 길로 선다
    */
-  if (assetWarning !== null) {
+  if (assetBroken) {
     entries.push({
       key: 'import',
       label: '어긋난 에셋 다시 만들기',
@@ -378,7 +421,7 @@ function TitleMenu() {
       key: 'restore',
       label: '백업에서 되찾기',
       tone: 'ghost',
-      go: () => { setNotice(null); setConfirmRestore(true) },
+      go: askRestore,
     })
   }
 
@@ -408,14 +451,39 @@ function TitleMenu() {
     moved.current = true
     setCursor((c) => clampCursor(c, delta, entries.length))
   }
-  // 설정이 떠 있는 동안에는 타이틀이 키를 안 듣는다 — 그쪽이 먼저다
+  /** 타이틀 위에 다른 화면이 떠 있다 — 그쪽이 키를 먼저 받는다 */
+  const overlay = menuTop !== null || importing || showOther || showPatch || showBug || showMore
+  const askingRestore = confirmRestore && kept !== null && kept.kind !== 'none'
+  /**
+   * 확인 창이 떠 있다 — 키는 그 창의 것이다 (`TitleConfirm`).
+   *
+   * ⚠️ **차림표 키를 같이 켜 두지 않는다.** 한때 확인 창이 떠도 ←→·Z가 뒤의
+   * 차림표를 움직이고 눌렀다 — 「시작」에서 Z를 다시 누르면 같은 창만 또 열리고,
+   * →로 「이어하기」에 가서 Z를 누르면 창이 뜬 채로 게임에 들어갔다
+   */
+  const asking = confirmNew || pending !== null || askingRestore
   useMenuKeys({
     left: () => { move(-1) },
     right: () => { move(1) },
     up: () => { move(-1) },
     down: () => { move(1) },
     confirm: () => { entries[cursor]?.go() },
-  }, menuTop === null && !showOther && !showPatch && !showBug && !showMore)
+  }, !overlay && !asking)
+
+  /**
+   * 바닥의 조작 안내. **키를 손으로 적지 않는다** — 조작 쪽지와 같은 줄에서
+   * 뽑는다 (`controlRows`). 한때 여기만 손으로 적어서 「Z 말 걸기」처럼 임자 키
+   * (Space·C)와 다른 말을 했다.
+   *
+   * 고르는 줄은 쪽지 차례의 이동·달리기·결정·메뉴·시점이다
+   * (`engine/input/controlLegend`의 `controlRows`)
+   */
+  const rows = controlRows(locale)
+  const controlLine = [0, 1, 2, 4, 9]
+    .map((i) => rows[i])
+    .filter((row) => row !== undefined)
+    .map((row) => `${row.keys} ${row.what}`)
+    .join(' · ')
 
   return (
     <div className={css.wrap}>
@@ -467,6 +535,9 @@ function TitleMenu() {
                 setCursor(i)
                 if (entry.tone === 'main') prefetchGameChunk()
               }}
+              // ⚠️ **포커스가 커서를 데려온다.** 브라우저 포커스 링은 걷었으므로
+              // (`titleScreen.css`의 `button`) Tab으로 옮긴 자리도 ▶가 가리킨다
+              onFocus={() => { moved.current = true; setCursor(i) }}
             >
               {i === cursor && <span className={css.caret} aria-hidden>▶</span>}
               {entry.label}
@@ -488,21 +559,6 @@ function TitleMenu() {
           />
         </div>
 
-        {/* ⚠️ **왜 못 누르는지를 적는다.** 흐리게만 두면 눌러 보고 나서야 없다는
-            걸 알게 된다. `undefined`는 아직 읽는 중이라 아무 말도 하지 않는다 */}
-        {/* ⚠️ **남겨 둔 한 벌이 있으면 그 말을 여기서 한다.** 리포트가 없는
-            사람이 바로 그 한 벌을 찾는 사람이다 — 단추가 줄 끝에 서 있어도
-            「없습니다」만 읽고 돌아서면 못 만난다 */}
-        {report === null && (
-          <p className={css.hint}>
-            {kept !== null && kept.kind !== 'none'
-              ? '이어할 세이브가 없습니다 — 「백업에서 되찾기」로 지우기 직전에 남겨 둔 한 벌을 '
-                + '열어 보거나, 「세이브 파일 불러오기」로 갖고 있는 파일을 들이세요'
-              : '이어할 세이브가 없습니다 — 「시작」으로 새 모험을 열거나, '
-                + '「세이브 파일 불러오기」로 갖고 있는 파일을 들이세요'}
-          </p>
-        )}
-
         {/*
           ⚠️ **눈에 띄는 자리여야 한다** (COPYRIGHT.md §11). `crest`와 `foot`은
           `display: none`이라 거기 넣으면 문서에만 있고 화면에는 없다 — 그건
@@ -511,11 +567,12 @@ function TitleMenu() {
         {/*
           ⚠️ **줄여도 다섯 가지는 다 남는다** (COPYRIGHT.md §11): 비공식·비제휴 ·
           상표는 권리자의 것 · 적법 보유분만 · 서버는 안 받고 안 저장한다 ·
-          무료·비영리·BYOR가 허가를 뜻하지 않는다. 문장을 붙여 두 줄로 접었다
+          무료·비영리·직접 가진 파일이 허가를 뜻하지 않는다. 문장을 붙여 두 줄로
+          접었다. 「BYOR」는 줄임말을 아는 사람에게만 읽혀서 풀어 쓴다
         */}
         <p className={css.disclaimer}>
           비공식·비제휴 팬 프로젝트입니다. 관련 상표와 저작물은 각 권리자의 것이며,
-          무료·비영리·BYOR는 권리자의 허가를 뜻하지 않습니다.
+          직접 가진 게임 파일을 쓰는 무료·비영리 방식이어도 권리자의 허가를 뜻하지는 않습니다.
           <br />
           적법하게 보유한 게임 데이터만 고르세요 — 서버는 원본도 변환 결과도
           받거나 저장하지 않습니다.
@@ -525,8 +582,12 @@ function TitleMenu() {
         <div className={css.filesArea}>
           {unreadable !== null && (
             <div className={css.notice}>
-              {`저장된 리포트를 이 판이 못 읽습니다 — ${unreadable}\n`}
+              {`저장된 리포트를 이 버전이 못 읽습니다 — ${unreadable}\n`}
               {'「세이브 파일 내보내기」로 원본을 파일에 담아 두세요. 지우지 않습니다.'}
+              {/* 못 읽는 리포트를 가진 사람이 바로 그 한 벌을 찾는 사람이다 */}
+              {kept !== null && kept.kind !== 'none'
+                ? '\n지우기 직전에 남겨 둔 백업이 있습니다 — 「백업에서 되찾기」로 열어 볼 수 있습니다.'
+                : ''}
             </div>
           )}
 
@@ -538,20 +599,22 @@ function TitleMenu() {
             ⚠️ **여기서는 아직 아무것도 안 바뀌었다.** 「그만두기」를 누르면
             저장된 것도 백업도 손대지 않은 채로 창만 닫힌다
           */}
-          {confirmRestore && kept !== null && kept.kind !== 'none' && (
+          {askingRestore && (
             <div className={css.notice}>
               {kept.kind === 'unreadable' ? (
                 <>
-                  {`남겨 둔 백업을 이 판이 못 읽습니다 — ${kept.why}\n`}
+                  {`남겨 둔 백업을 이 버전이 못 읽습니다 — ${kept.why}\n`}
                   {'지금 리포트에는 쓰지 않습니다. 원본을 파일로 받아 두세요.'}
-                  <div className={css.files}>
-                    <button className={css.fileButton} onClick={saveBackupFile}>
-                      백업을 파일로 받기
-                    </button>
-                    <button className={css.fileButton} onClick={() => { setConfirmRestore(false) }}>
-                      그만두기
-                    </button>
-                  </div>
+                  <TitleConfirm
+                    key="unreadable"
+                    enabled={!overlay}
+                    initial="cancel"
+                    onCancel={() => { setConfirmRestore(false) }}
+                    choices={[
+                      { key: 'file', label: '백업을 파일로 받기', go: saveBackupFile },
+                      { key: 'cancel', label: '그만두기', go: () => { setConfirmRestore(false) } },
+                    ]}
+                  />
                 </>
               ) : (
                 <>
@@ -559,7 +622,7 @@ function TitleMenu() {
                   {`${clock(kept.save.trainer.playtimeMs)} · `}
                   {`배지 ${countBadges(kept.save.badges)}개 · `}
                   {`도감 ${countDex(kept.save.pokedex.caught)}마리\n`}
-                  {kept.migrated ? '옛 판이라 지금 판으로 옮겨서 되찾습니다\n' : ''}
+                  {kept.migrated ? '옛 버전에서 만든 백업이라 지금 버전으로 옮겨서 되찾습니다\n' : ''}
                   {hasSave
                     ? `지금 리포트(${report?.trainer.name || '이름 없음'} · `
                       + `${clock(report?.trainer.playtimeMs ?? 0)})가 덮입니다. `
@@ -568,18 +631,22 @@ function TitleMenu() {
                   {/* ⚠️ **이것을 「외부 백업」이라고 말하지 않는다.** 같은
                       브라우저 안의 한 벌이라 사이트 데이터를 지우면 같이 사라진다
                       (`state/report.ts`의 `backupReport`) */}
-                  {'⚠️ 이 백업은 이 브라우저 안에 있습니다 — 사이트 데이터를 지우면 같이 사라집니다.'}
-                  <div className={css.files}>
-                    <button className={css.fileButton} onClick={bringBack}>
-                      이 백업으로 되찾기
-                    </button>
-                    <button className={css.fileButton} onClick={saveBackupFile}>
-                      백업을 파일로 받기
-                    </button>
-                    <button className={css.fileButton} onClick={() => { setConfirmRestore(false) }}>
-                      그만두기
-                    </button>
-                  </div>
+                  <span className={css.warn}>
+                    이 백업은 이 브라우저 안에 있습니다 — 사이트 데이터를 지우면 같이 사라집니다.
+                  </span>
+                  {/* ⚠️ **커서는 「그만두기」에서 시작한다.** 되찾기는 지금 리포트를
+                      덮는다 — 창을 연 Enter를 길게 누르면 그 반복이 곧바로 덮는다 */}
+                  <TitleConfirm
+                    key="ok"
+                    enabled={!overlay}
+                    initial="cancel"
+                    onCancel={() => { setConfirmRestore(false) }}
+                    choices={[
+                      { key: 'restore', label: '이 백업으로 되찾기', go: bringBack },
+                      { key: 'file', label: '백업을 파일로 받기', go: saveBackupFile },
+                      { key: 'cancel', label: '그만두기', go: () => { setConfirmRestore(false) } },
+                    ]}
+                  />
                 </>
               )}
             </div>
@@ -590,13 +657,27 @@ function TitleMenu() {
               {`${pending.envelope.summary.trainer || '이름 없음'} · `}
               {`${clock(pending.envelope.summary.playtimeMs)} · `}
               {`저장 ${stamp(pending.envelope.createdAt)}\n`}
-              {pending.migrated ? '옛 판이라 지금 판으로 옮겨서 들입니다\n' : ''}
-              {pending.contract === 'same' ? '' : '⚠️ 설치본과 콘텐츠 계약이 다릅니다\n'}
-              {'지금 리포트는 들이기 전에 파일로 먼저 받습니다.'}
-              <div className={css.files}>
-                <button className={css.fileButton} onClick={bringIn}>이 리포트로 이어하기</button>
-                <button className={css.fileButton} onClick={() => { setPending(null) }}>그만두기</button>
-              </div>
+              {pending.migrated ? '옛 버전에서 만든 리포트라 지금 버전으로 옮겨서 불러옵니다\n' : ''}
+              {/* ⚠️ **막지 않고 알린다** (`compareContract`). 무엇이 다른지에 따라
+                  플레이어가 보게 될 것이 다르다 — 내부 말(「콘텐츠 계약」)로 뭉치지 않는다 */}
+              {pending.contract !== 'same' && (
+                <span className={css.warn}>
+                  {pending.contract === 'other-locale'
+                    ? '다른 지역판 롬으로 설치한 곳에서 만든 리포트입니다 — 이름과 글은 이 설치본의 언어로 보입니다'
+                    : '지금 설치된 것과 다른 버전의 게임 파일로 만든 리포트입니다'}
+                </span>
+              )}
+              {pending.contract !== 'same' ? '\n' : ''}
+              {'지금 리포트는 불러오기 전에 세이브 파일로 먼저 받습니다.'}
+              <TitleConfirm
+                enabled={!overlay}
+                initial="cancel"
+                onCancel={() => { setPending(null) }}
+                choices={[
+                  { key: 'bring', label: '이 리포트로 이어하기', go: bringIn },
+                  { key: 'cancel', label: '그만두기', go: () => { setPending(null) } },
+                ]}
+              />
             </div>
           )}
 
@@ -608,33 +689,65 @@ function TitleMenu() {
               {'하던 모험이 있습니다 — '}
               {`${report?.trainer.name || '이름 없음'} · ${clock(report?.trainer.playtimeMs ?? 0)}\n`}
               {'처음부터 시작하면 지금 리포트가 지워집니다. 지우기 전에 세이브 파일로 받아 둡니다.'}
-              <div className={css.files}>
-                <button
-                  className={css.fileButton}
-                  onClick={() => { setConfirmNew(false); go(true) }}
-                >
-                  처음부터 시작하기
-                </button>
-                <button className={css.fileButton} onClick={() => { setConfirmNew(false) }}>
-                  그만두기
-                </button>
-              </div>
+              {/* ⚠️ **커서는 「그만두기」에서 시작한다.** 이 창은 「시작」에서 Enter로
+                  열린다 — 그 Enter를 길게 누르고 있으면 반복 키가 곧바로 리포트를 지운다 */}
+              <TitleConfirm
+                enabled={!overlay}
+                initial="cancel"
+                onCancel={() => { setConfirmNew(false) }}
+                choices={[
+                  { key: 'new', label: '처음부터 시작하기', go: () => { setConfirmNew(false); go(true) } },
+                  { key: 'cancel', label: '그만두기', go: () => { setConfirmNew(false) } },
+                ]}
+              />
             </div>
           )}
 
           {notice !== null && <div className={css.notice}>{notice}</div>}
-          {/* 뒤에서 훑다 어긋난 것을 만났을 때. 화면을 막지 않는다 — 멀쩡한
-              그룹은 그대로 열리고, 깨진 그룹을 실제로 읽을 때 그 자리에서 선다 */}
-          {assetWarning !== null && <div className={css.notice}>{assetWarning}</div>}
+          {/* 뒤에서 훑다(또는 설정의 「에셋 확인」이) 어긋난 것을 만났을 때. 화면을
+              막지 않는다 — 멀쩡한 그룹은 그대로 열리고, 깨진 그룹을 실제로 읽을 때
+              그 자리에서 선다 */}
+          {assetBroken && (
+            <div className={css.notice}>
+              {rechecking ? '설치본을 다시 확인하고 있습니다 — 다 온전하면 이 알림이 사라집니다' : (
+                <>
+                  <span className={css.warn}>
+                    {`설치본에서 파일 ${String(integrity.broken.length)}개가 어긋납니다`}
+                  </span>
+                  {integrity.groups.length > 0
+                    ? ` — ${groupLabels(integrity.groups, 'ko')}`
+                    : ''}
+                  {'\n아래 「어긋난 에셋 다시 만들기」로 그 부분만 다시 만듭니다 — 리포트는 그대로입니다'}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ⚠️ **왜 못 누르는지를 적는다.** 흐리게만 두면 눌러 보고 나서야 없다는
+              걸 알게 된다. `undefined`는 아직 읽는 중이라 아무 말도 하지 않는다.
+              맨 끝 자식이라 단추 줄 바로 위에 선다 (`titleScreen.css`의 `absent`) */}
+          {/* ⚠️ **남겨 둔 한 벌이 있으면 그 말을 여기서 한다.** 리포트가 없는
+              사람이 바로 그 한 벌을 찾는 사람이다 — 단추가 줄 끝에 서 있어도
+              「없습니다」만 읽고 돌아서면 못 만난다 */}
+          {/* ⚠️ **못 읽는 리포트가 있으면 「없습니다」라고 안 한다.** 위의 알림이
+              「있는데 못 읽는다」를 말하는데 여기서 「없다 — 「시작」으로…」를
+              같이 띄우면 남은 리포트를 덮는 길로 이끈다 */}
+          {report === null && unreadable === null && (
+            <p className={css.absent}>
+              {kept !== null && kept.kind !== 'none'
+                ? '이어할 리포트가 없습니다 — 「백업에서 되찾기」로 지우기 직전에 남겨 둔 한 벌을 '
+                  + '열어 보거나, 「세이브 파일 불러오기」로 갖고 있는 세이브 파일을 불러오세요'
+                : '이어할 리포트가 없습니다 — 「시작」으로 새 모험을 열거나, '
+                  + '「세이브 파일 불러오기」로 갖고 있는 세이브 파일을 불러오세요'}
+            </p>
+          )}
         </div>
 
       </div>
 
       <div className={css.foot}>
         <p className={css.hint}>←→ 고르기 · Z·Enter 결정</p>
-        <p className={css.hint}>
-          WASD·방향키 이동 · Shift 달리기 · X 메뉴 · Z 말 걸기 · 휠·V 시점 전환
-        </p>
+        <p className={css.hint}>{controlLine}</p>
       </div>
 
       {menuTop === 'options' && (
@@ -645,7 +758,12 @@ function TitleMenu() {
 
       {importing && (
         <Suspense fallback={null}>
-          <ImportWizard onClose={() => { setImporting(false) }} />
+          {/* ⚠️ **다 고쳤으면 스스로 닫힌다.** 설치 화면은 「끝나면 넘어갑니다」라고
+              말하는데 여기에 `onReady`가 없어서 다 끝나도 그 화면이 그대로 남았다 */}
+          <ImportWizard
+            onClose={closeWizard}
+            onReady={() => { setNotice('어긋난 에셋을 다시 만들었습니다'); closeWizard() }}
+          />
         </Suspense>
       )}
 
@@ -688,10 +806,63 @@ function TitleMenu() {
 /** 저장된 리포트를 왜 못 읽는가. 사용자가 할 일이 갈리므로 뭉치면 안 된다 */
 function explainStored(kind: 'too-new' | 'unsupported-old' | 'invalid'): string {
   switch (kind) {
-    case 'too-new': return '더 새로운 판이 쓴 리포트입니다'
-    case 'unsupported-old': return '너무 옛 판이라 옮길 길이 없습니다'
+    case 'too-new': return '더 새로운 버전에서 만든 리포트입니다'
+    case 'unsupported-old': return '너무 옛 버전이라 옮길 수 없습니다'
     case 'invalid': return '내용이 어긋납니다'
   }
+}
+
+interface ConfirmChoice {
+  key: string
+  label: string
+  go: () => void
+}
+
+/**
+ * 타이틀의 확인 창 단추 줄 — **키로도 답한다.**
+ *
+ * ⚠️ **한때 마우스로만 답할 수 있었다.** 단추가 맨 `<button>`뿐이었는데 메뉴 키
+ * (`useMenuKeys`)가 Enter·Space·Z를 캡처 단계에서 가져가므로 Tab으로 포커스를
+ * 옮겨도 단추에 안 닿았다. 그래서 「더보기」(`MoreMenu`)처럼 창이 제 커서를
+ * 든다: ←↑·→↓로 고르고 Z·Enter로 누르고 X·Esc로 그만둔다.
+ *
+ * `initial`은 커서가 처음 놓일 칸의 `key`다
+ */
+function TitleConfirm({ choices, initial, onCancel, enabled }: {
+  choices: readonly ConfirmChoice[]
+  initial: string
+  onCancel: () => void
+  /** 다른 화면이 위에 떠 있으면 끈다 — 그쪽이 키를 먼저 받는다 */
+  enabled: boolean
+}) {
+  const [cursor, setCursor] = useState(() => Math.max(0, choices.findIndex((c) => c.key === initial)))
+  const step = (delta: number): void => { setCursor((c) => clampCursor(c, delta, choices.length)) }
+  useMenuKeys({
+    left: () => { step(-1) },
+    up: () => { step(-1) },
+    right: () => { step(1) },
+    down: () => { step(1) },
+    confirm: () => { choices[cursor]?.go() },
+    cancel: onCancel,
+  }, enabled)
+
+  return (
+    <div className={css.files}>
+      {choices.map((choice, i) => (
+        <button
+          key={choice.key}
+          className={[css.fileButton, i === cursor ? css.fileButtonOn : ''].filter(Boolean).join(' ')}
+          onClick={choice.go}
+          // 마우스와 키 커서를 **같은 표시**로 둔다 — 차림표와 같은 잣대다
+          onPointerEnter={() => { setCursor(i) }}
+          onFocus={() => { setCursor(i) }}
+        >
+          {i === cursor && <span className={css.fileCaret} aria-hidden>▶</span>}
+          {choice.label}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 /** ISO 시각을 그 기계의 시각으로. 파일을 고른 사람이 보는 것은 자기 시계다 */
