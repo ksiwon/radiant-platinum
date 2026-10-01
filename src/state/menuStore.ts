@@ -252,7 +252,7 @@ interface MenuStore {
 
 /** 키를 화면이 가져가는 것은 스택이 빌 때까지다 */
 function capture(stack: MenuScreen[]): void {
-  setUiCapture(stack.length > 0)
+  setUiCapture(stack.length > 0, 'menu')
 }
 
 export const useMenuStore = create<MenuStore>()((set) => ({

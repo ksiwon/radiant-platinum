@@ -40,8 +40,14 @@ function isLooking(): boolean {
   return element !== null && document.pointerLockElement === element
 }
 
-/** 시선을 잡는다. 사용자 동작(클릭·휠) 안에서만 브라우저가 허락한다 */
+/**
+ * 시선을 잡는다. 사용자 동작(클릭·휠) 안에서만 브라우저가 허락한다.
+ *
+ * ⚠️ **메뉴·포켓치가 키를 붙잡은 동안은 안 잡는다.** 잡으면 커서가 사라져서
+ * 이름 짓기의 「결정」 같은 단추를 마우스로 못 누른다
+ */
 export function requestLook(): void {
+  if (isUiCaptured()) return
   if (!active || element === null) return
   if (worldState.camera.mode !== 'first') return
   if (document.pointerLockElement === element) return

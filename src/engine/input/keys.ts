@@ -6,6 +6,16 @@
 // 3.6배로 깨진다. 키 상태와, 그것을 `worldState`에 합성하는 일(`keyboard.ts`)을
 // 나눈 이유는 그것 하나다. `initialChunk.test.ts`가 이 경계를 지킨다.
 const pressed = new Set<string>()
+/**
+ * 지난 스텝 뒤에 **새로** 눌린 키.
+ *
+ * ⚠️ **눌려 있는가만 보면 짧은 톡이 사라진다.** 필드는 고정 스텝마다 `pressed`를
+ * 한 번 읽는데(`keyboard.ts`), 프레임이 떨어져 스텝 사이에 keydown과 keyup이 둘 다
+ * 지나가면 그 누름은 한 번도 안 보인다 — 30fps에서 33ms보다 짧게 친 Space가 대사를
+ * 못 넘긴다. 메뉴는 DOM 사건으로 받아서 같은 연타가 거기서는 먹었다.
+ * 그래서 눌린 순간을 여기 남겨 두고, 읽는 쪽이 한 번 읽으면 지운다(`consumeTapped`)
+ */
+const tapped = new Set<string>()
 
 // 게임 활성 시에만 기본 동작을 막는다 (PLAN §11.3)
 const GAME_KEYS = new Set([
@@ -36,8 +46,10 @@ export const BINDINGS = {
   right: ['KeyD', 'ArrowRight'],
   run: ['ShiftLeft', 'ShiftRight'],
   // 원작의 A와 B. 대사창은 둘 다로 넘어가고 예/아니오는 B가 "아니오"로 간다.
-  // A는 **스페이스가 임자**다 — 엄지 자리라 WASD에서 손이 안 움직인다
-  interact: ['Space', 'KeyZ'],
+  // A는 **스페이스가 임자**다 — 엄지 자리라 WASD에서 손이 안 움직인다.
+  // Enter는 덤이다 — 타이틀·오프닝·메뉴가 다 Enter를 결정으로 받는데 필드 대사와
+  // 말 걸기만 안 받으면, 거기서 배운 손이 필드에 와서 헛누른다
+  interact: ['Space', 'KeyZ', 'Enter'],
   cancel: ['KeyX', 'Backspace'],
   /**
    * 필드에서 시작 메뉴를 여는 키 (`ui/menu/MenuLayer`).
@@ -88,28 +100,45 @@ let gameActive = false
 export function setGameActive(active: boolean) {
   gameActive = active
   if (!active) pressed.clear()
+  // 켤 때도 톡은 비운다 — 오프닝·배틀에서 친 Z가 필드에 들어서는 첫 스텝에 말을 건다
+  tapped.clear()
 }
 
 export function isGameActive(): boolean {
   return gameActive
 }
 
+/** 키를 붙잡는 쪽. 메뉴 스택(`state/menuStore`)과 크게 펼친 포켓치(`ui/poketch/PoketchWidget`)다 */
+type CaptureOwner = 'menu' | 'poketch'
+
 /**
  * 메뉴 화면이 키를 가져갔는가.
  *
  * 가방·도감처럼 전체 화면을 덮는 것이 떠 있는 동안 주인공이 걸어 다니면 안 된다.
  * 게임 자체를 끄지(`setGameActive(false)`) 않는 이유는 뒤에서 3D가 계속 돌아야
- * 하기 때문이다 — 입력만 끊는다
+ * 하기 때문이다 — 입력만 끊는다.
+ *
+ * ⚠️ **붙잡은 쪽마다 따로 센다.** 깃발 하나를 메뉴와 포켓치가 같이 쓰면 서로
+ * 덮어쓴다 — 포켓치를 크게 편 채로 시작 메뉴를 열었다 닫으면 메뉴가 놓으면서
+ * 포켓치 몫까지 놓아, WASD에 포켓치 커서와 주인공이 같이 움직였다. 거꾸로 메뉴
+ * 위에서 포켓치를 접어도 메뉴 뒤에서 주인공이 걸었다. 하나라도 붙잡고 있으면 붙잡힌 것이다
  */
-let uiCapture = false
-export function setUiCapture(captured: boolean) {
-  uiCapture = captured
+const captors = new Set<CaptureOwner>()
+/**
+ * @param captured 붙잡는가 놓는가
+ * @param owner 누가. 놓을 때는 **자기 몫만** 놓는다
+ */
+export function setUiCapture(captured: boolean, owner: CaptureOwner = 'menu') {
+  if (captured) captors.add(owner)
+  else captors.delete(owner)
   // 붙잡을 때 눌린 키를 지운다. 안 그러면 메뉴를 닫는 순간 그 키가 필드로 샌다
   if (captured) pressed.clear()
+  // 톡은 붙잡을 때도 놓을 때도 비운다 — 메뉴를 닫은 X가 필드의 B로 한 번 더 먹으면 안 된다
+  tapped.clear()
 }
 
 export function isUiCaptured(): boolean {
-  return uiCapture
+  return captors.size > 0
 }
 
 /**
@@ -129,17 +158,62 @@ export function typingInto(target: EventTarget | null): boolean {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
 }
 
+/** 끌면 반투명 그림이 따라붙는 것 — 파티 카드·요약·도감의 포켓몬 그림이다 */
+function isImage(target: EventTarget | null): boolean {
+  return typeof HTMLImageElement !== 'undefined' && target instanceof HTMLImageElement
+}
+
+/**
+ * 창에 키를 붙인다. 무대(`scene/Stage`)가 설 때 한 번 붙고 다시 안 뗀다.
+ *
+ * ⚠️ **브라우저 기본 동작도 여기서 막는다** — 키보드로 다루는 게임인데 웹 페이지라는
+ * 티가 새면 안 된다. 셋이다.
+ *
+ * - **Tab** — 게임 커서와 따로 브라우저 포커스 링이 돈다. 걷는 중에는 위 `GAME_KEYS`가
+ *   막지만, 오프닝·겹창처럼 게임이 아직 안 켜진 동안에도 막는다. 글 칸은 비켜 준다
+ * - **오른쪽 클릭** — 대사창·메뉴 위에서 「뒤로 · 새로고침 · 검사」가 떴다. 캔버스만
+ *   막던 것(`scene/Stage`)을 창 전체로 넓힌다. 글 칸은 붙여넣기 메뉴가 있어야 해 비켜 준다
+ * - **그림 끌기** — 포켓몬 그림을 끌면 반투명 그림이 따라왔다
+ *
+ * ⚠️ 무대가 서기 전의 타이틀 화면에는 이것이 아직 안 붙어 있다 — 거기는 따로 막아야 한다
+ */
 export function attachKeyboard(target: Window = window) {
   target.addEventListener('keydown', (e) => {
     if (typingInto(e.target)) return
-    if (gameActive && GAME_KEYS.has(e.code)) e.preventDefault()
+    if (e.code === 'Tab' || (gameActive && GAME_KEYS.has(e.code))) e.preventDefault()
+    // 자동 반복은 이미 눌린 키다 — 톡으로 또 세지 않는다
+    if (!pressed.has(e.code)) tapped.add(e.code)
     pressed.add(e.code)
   })
   target.addEventListener('keyup', (e) => pressed.delete(e.code))
-  target.addEventListener('blur', () => pressed.clear())
+  target.addEventListener('blur', () => { pressed.clear(); tapped.clear() })
+  target.addEventListener('contextmenu', (e) => {
+    if (!typingInto(e.target)) e.preventDefault()
+  })
+  target.addEventListener('dragstart', (e) => {
+    if (isImage(e.target)) e.preventDefault()
+  })
 }
 
 /** 이 동작에 묶인 키 중 하나라도 눌려 있는가 */
 export function held(codes: string[]): boolean {
   return codes.some((c) => pressed.has(c))
+}
+
+/**
+ * 이 동작에 묶인 키 중 하나라도 **지난번에 물은 뒤로 새로 눌렸는가.** 물으면 지운다.
+ *
+ * 이미 떼었어도 참이다 — 스텝 사이에 지나간 톡을 잡으려는 것이다. 고정 스텝마다
+ * 한 번만 묻는다(`keyboard.ts`) — 그래야 그 누름이 **한 스텝만** 참이 되어
+ * 스크립트의 「눌린 순간」(`script/field`의 `readInput`)이 한 번만 선다
+ */
+export function consumeTapped(codes: readonly string[]): boolean {
+  let hit = false
+  for (const c of codes) if (tapped.delete(c)) hit = true
+  return hit
+}
+
+/** 남은 톡을 버린다. 키가 주인공까지 안 가는 동안(`keyboard.ts`의 막힌 갈래) 부른다 */
+export function clearTapped(): void {
+  tapped.clear()
 }

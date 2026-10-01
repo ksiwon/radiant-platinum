@@ -41,6 +41,14 @@ describe('조작 쪽지', () => {
     }
   })
 
+  it('덤 키도 쪽지에 적는다 — 결정의 Enter도 취소의 Backspace · 메뉴의 Esc와 같다', () => {
+    // 임자 키가 앞에 서고 덤이 뒤에 붙는다. 「Space 또는 Z 또는 Enter」
+    const [, , confirm, cancel, menu] = controlRows('ko').map((r) => r.keys)
+    expect(confirm).toBe('Space 또는 Z 또는 Enter')
+    expect(cancel).toContain('Backspace')
+    expect(menu).toContain('Esc')
+  })
+
   it('자판 이름이 쪽지에 새지 않는다', () => {
     for (const locale of LOCALES) {
       for (const row of controlRows(locale)) {

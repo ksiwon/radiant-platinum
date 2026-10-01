@@ -3,10 +3,9 @@
 // 대사창을 여기서 그린다. App에서 그리면 엔진 모듈(→ three)이 초기 청크의
 // 정적 그래프에 들어와서 타이틀 화면이 three를 끌고 오게 된다 (PLAN §10.4)
 import { useEffect } from 'react'
-import { useNavigate } from 'react-router'
 import { setGameActive } from '../engine/input/keyboard'
 import { startPlayClock } from '../engine/world/playTime'
-import { BINDINGS } from '../engine/input/keys'
+import { BINDINGS, isGameActive, isUiCaptured, typingInto } from '../engine/input/keys'
 import { exitLook, requestLook, setMouseActive } from '../engine/input/mouse'
 import { useOptionsStore } from '../state/optionsStore'
 import { useSaveStore } from '../state/saveStore'
@@ -30,7 +29,6 @@ import { PoketchWidget } from '../ui/poketch/PoketchWidget'
 import { RestoreScreen } from '../ui/screens/RestoreScreen'
 
 export function PlayRoute() {
-  const navigate = useNavigate()
   const setPhase = useSessionStore((s) => s.setPhase)
   const mountStage = useSessionStore((s) => s.mountStage)
 
@@ -46,10 +44,15 @@ export function PlayRoute() {
   // V로 시점을 바꾼다. 휠과 설정 화면에도 같은 항목이 있고 값은 한 곳에만 있다.
   //
   // 1인칭으로 들어가면 곧바로 시선을 잡는다 — 키를 누른 것이 사용자 동작이라
-  // 브라우저가 이 자리에서는 허락한다. 클릭을 한 번 더 시키지 않는다
+  // 브라우저가 이 자리에서는 허락한다. 클릭을 한 번 더 시키지 않는다.
+  //
+  // ⚠️ **글 칸·메뉴·배틀에서는 안 바꾼다.** 두벌식의 ㅍ이 V 자리라, 별명에 ㅍ을 치면
+  // 시점이 바뀌고 포인터가 잠겨 「결정」 단추를 마우스로 못 눌렀다
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      if (typingInto(e.target)) return
       if (!BINDINGS.view.includes(e.code) || e.repeat) return
+      if (!isGameActive() || isUiCaptured()) return
       const options = useOptionsStore.getState()
       const next = options.view === 0 ? 1 : 0
       options.set('view', next)
@@ -65,19 +68,17 @@ export function PlayRoute() {
     setGameActive(true)
     setMouseActive(true)
     setPhase('overworld')
-    // Escape는 이제 시작 메뉴가 먼저 가져간다 (캡처 단계). 메뉴가 안 떠 있고
-    // 스크립트도 안 돌 때만 여기까지 내려온다 — 그때는 타이틀로 나간다
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.code === 'Escape' && !e.defaultPrevented) navigate('/')
-    }
-    window.addEventListener('keydown', onEsc)
+    // ⚠️ **Esc는 타이틀로 안 나간다.** 필드가 한가할 때는 시작 메뉴가 받고
+    // (`ui/menu/MenuLayer`), 대사·배틀·필드 태스크·복원 중에는 아무 일도 없다.
+    // 한때 여기서 Esc를 타이틀로 보냈는데, MenuLayer가 비켜 주는 때가 바로 그 바쁜
+    // 때라서 대사를 닫으려던 Esc 한 번에 리포트 뒤의 진행이 물음도 없이 날아갔다.
+    // 원작의 리셋은 L+R+START+SELECT를 한꺼번에 눌러야만 된다 (`main.c`의 `RESET_COMBO`)
     return () => {
       setGameActive(false)
       setMouseActive(false)
       setPhase('title')
-      window.removeEventListener('keydown', onEsc)
     }
-  }, [navigate, setPhase, mountStage])
+  }, [setPhase, mountStage])
 
   // 렌더러를 다시 세운 뒤에 조작을 되돌린다.
   //

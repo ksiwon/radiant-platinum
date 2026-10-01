@@ -14,9 +14,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { assignInlineVars } from '@vanilla-extract/dynamic'
 import { loadUiText } from '../../data/uiText'
-import { BINDINGS, isUiCaptured, setUiCapture } from '../../engine/input/keys'
+import { BINDINGS, setUiCapture, typingInto } from '../../engine/input/keys'
+import { fieldScripts } from '../../engine/script/field'
 import { loadPoketchMap } from '../../data/gameData'
 import { poketchShades, stepApp } from '../../engine/world/poketch'
+import { useBattleStore } from '../../state/battleStore'
+import { useMenuStore } from '../../state/menuStore'
 import { clearPoketchMemory, usePoketchStore } from '../../state/poketchStore'
 import { useSaveStore } from '../../state/saveStore'
 import { POKETCH_APPS, type Nav } from './apps'
@@ -24,6 +27,19 @@ import * as css from './poketch.css'
 
 /** R을 이만큼 붙들고 있으면 「길게」다 */
 const HOLD_MS = 350
+
+/**
+ * 포켓치 말고 다른 것이 키를 쓰는 중인가 — 메뉴 · 배틀 · 대사(스크립트).
+ *
+ * ⚠️ **그동안 R · Q · E는 포켓치 것이 아니다.** 가방 위에서 R을 두 번 누르면
+ * 포켓치가 접히며 붙잡기를 놓았고, 배틀에서 Q가 앱을 넘겼다. 이름 짓기도 메뉴라
+ * 여기 걸린다. 크게 펼친 동안만은 예외다 — 접을 길까지 막으면 키가 갇힌다
+ */
+function othersBusy(): boolean {
+  return useMenuStore.getState().stack.length > 0
+    || useBattleStore.getState().phase !== 'off'
+    || fieldScripts.ctx !== null
+}
 
 export function PoketchWidget() {
   const poketch = useSaveStore((s) => s.poketch)
@@ -50,8 +66,8 @@ export function PoketchWidget() {
   // 크게 펼친 동안은 포켓치가 키를 가져간다 (메뉴 화면과 같은 자리다)
   useEffect(() => {
     if (!large) return
-    setUiCapture(true)
-    return () => { setUiCapture(false) }
+    setUiCapture(true, 'poketch')
+    return () => { setUiCapture(false, 'poketch') }
   }, [large])
 
   const held = useRef<number | null>(null)
@@ -59,6 +75,9 @@ export function PoketchWidget() {
 
   useEffect(() => {
     const down = (e: KeyboardEvent): void => {
+      // 글 칸으로 간 키는 포켓치 것이 아니다 — 두벌식의 ㄱ이 R 자리다
+      if (typingInto(e.target)) return
+      if (othersBusy() && usePoketchStore.getState().view !== 'large') return
       if (BINDINGS.poketch.includes(e.code)) {
         if (held.current !== null) return
         fired.current = false
@@ -69,10 +88,6 @@ export function PoketchWidget() {
         return
       }
       if (usePoketchStore.getState().view === 'hidden') return
-      // ⚠️ **메뉴가 떠 있으면 손대지 않는다.** 가방에서 Q를 누르는 것이
-      // 포켓치의 앱을 넘기면 안 된다. 크게 펼쳤을 때는 우리가 그 붙잡은
-      // 쪽이므로 예외다
-      if (isUiCaptured() && usePoketchStore.getState().view !== 'large') return
       const turn = BINDINGS.poketchNext.includes(e.code) ? 1
         : BINDINGS.poketchPrev.includes(e.code) ? -1 : 0
       if (turn !== 0) {
@@ -95,28 +110,47 @@ export function PoketchWidget() {
         ArrowLeft: [-1, 0], KeyA: [-1, 0],
         ArrowRight: [1, 0], KeyD: [1, 0],
       }
+      // ⚠️ **쓴 키는 여기서 끊는다.** 메뉴 키(`useMenuKeys`)도 같은 창의 같은 캡처
+      // 단계에 붙어 있어서 `stopPropagation`으로는 안 끊긴다 — 같은 대상의 다른
+      // 손은 그대로 불린다. 안 끊으면 ↓ 한 번에 가방 커서와 포켓치 커서가 같이 간다
       const step = move[e.code]
       if (step) {
         e.preventDefault()
+        e.stopImmediatePropagation()
         setCursor((c) => ({ x: c.x + step[0], y: c.y + step[1] }))
         return
       }
       if (e.code === 'KeyZ' || e.code === 'Space' || e.code === 'Enter') {
         e.preventDefault()
+        e.stopImmediatePropagation()
         setPress((n) => n + 1)
       }
     }
     const up = (e: KeyboardEvent): void => {
+      if (typingInto(e.target)) return
       if (!BINDINGS.poketch.includes(e.code)) return
-      if (held.current !== null) { clearTimeout(held.current); held.current = null }
+      // 누름을 안 받았으면 뗌도 안 받는다 — 막힌 자리에서 누른 R(위 `down`)이
+      // 떼는 순간 크기를 바꾸면 막은 뜻이 없다
+      if (held.current === null) return
+      clearTimeout(held.current)
+      held.current = null
       // 길게 눌러 이미 감췄으면 톡 누른 것으로 또 치지 않는다
       if (!fired.current) usePoketchStore.getState().toggleSize()
     }
+    // ⚠️ **창을 떠나면 누름을 잊는다.** R을 누른 채 창 밖으로 나가면 keyup이 안 와서
+    // 타이머가 남고, 돌아와서 누른 첫 R이 「이미 누르고 있다」에 막혔다
+    const blur = (): void => {
+      if (held.current !== null) clearTimeout(held.current)
+      held.current = null
+      fired.current = true
+    }
     window.addEventListener('keydown', down, true)
     window.addEventListener('keyup', up, true)
+    window.addEventListener('blur', blur)
     return () => {
       window.removeEventListener('keydown', down, true)
       window.removeEventListener('keyup', up, true)
+      window.removeEventListener('blur', blur)
       if (held.current !== null) clearTimeout(held.current)
     }
   }, [setView])

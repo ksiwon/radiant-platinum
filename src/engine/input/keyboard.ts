@@ -5,7 +5,7 @@
 // 절대 잡으면 안 된다.** 그쪽이 필요한 것은 `setUiCapture` 하나뿐이고 그것은
 // `keys.ts`에 있다.
 import { worldState } from '../../state/worldState'
-import { BINDINGS, held, isGameActive, isUiCaptured } from './keys'
+import { BINDINGS, clearTapped, consumeTapped, held, isGameActive, isUiCaptured } from './keys'
 
 export { attachKeyboard, setGameActive, setUiCapture, isUiCaptured } from './keys'
 
@@ -16,6 +16,8 @@ export const inputSystem = {
     // 선 동안 걸으면, 갈아 끼우는 순간 **엉뚱한 데서 걷던 걸음**이 저장한 자리로
     // 옮겨진다 (`state/worldState`의 `restoring`이 까닭을 적는다)
     if (!isGameActive() || isUiCaptured() || worldState.restoring) {
+      // 막힌 동안 친 것은 버린다 — 풀리는 첫 스텝에 몰려 나오면 안 된다
+      clearTapped()
       worldState.input.move.set(0, 0)
       worldState.input.run = false
       worldState.input.interact = false
@@ -27,7 +29,12 @@ export const inputSystem = {
     worldState.input.move.set(x, y)
     if (worldState.input.move.lengthSq() > 1) worldState.input.move.normalize()
     worldState.input.run = held(BINDINGS.run)
-    worldState.input.interact = held(BINDINGS.interact)
-    worldState.input.cancel = held(BINDINGS.cancel)
+    // 눌려 있거나, 지난 스텝 뒤에 톡 쳤다가 이미 뗐거나 (`keys.ts`의 `tapped`).
+    // ⚠️ **둘 다 늘 묻는다.** `held || consumeTapped`로 줄이면 누르고 있는 동안 톡이
+    // 안 지워져서, 뗀 다음 스텝에 한 번 더 참이 된다
+    const tapA = consumeTapped(BINDINGS.interact)
+    const tapB = consumeTapped(BINDINGS.cancel)
+    worldState.input.interact = held(BINDINGS.interact) || tapA
+    worldState.input.cancel = held(BINDINGS.cancel) || tapB
   },
 }

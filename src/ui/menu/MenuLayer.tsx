@@ -10,6 +10,7 @@ import { runRegisteredItem } from '../../scene/registeredItem'
 import { fieldTaskRunning } from '../../scene/fieldTask'
 import { useBattleStore } from '../../state/battleStore'
 import { useMenuStore } from '../../state/menuStore'
+import { usePoketchStore } from '../../state/poketchStore'
 import { ChooseStarter } from '../field/ChooseStarter'
 import { BagScreen } from './BagScreen'
 import { BoxScreen } from './BoxScreen'
@@ -53,6 +54,10 @@ export function MenuLayer() {
     if (stackDepth > 0) return
     const onKey = (e: KeyboardEvent): void => {
       if (!OPEN_KEYS.has(e.code) && !REGISTERED_KEYS.has(e.code)) return
+      // ⚠️ **자동 반복은 여는 키가 아니다** (원작 A·B는 `JOY_NEW`만 본다). X를 누르고
+      // 있으면 겹친 메뉴가 다 벗겨진 순간 반복 X가 시작 메뉴를 다시 열고, 시작 메뉴가
+      // 또 반복 X로 닫아 메뉴가 깜빡였다. 대사를 X로 넘기다 끝난 순간에도 튀어나왔다
+      if (e.repeat) { e.preventDefault(); return }
       // ⚠️ **아직 세계가 안 섰으면 안 열린다** (`state/restoreStore`). 이 손은
       // `inputSystem`을 안 거치고 창에 바로 붙으므로 이동 키 잠금이 여기까지
       // 안 온다 — 안 막으면 복원 중에 메뉴가 열리고, 거기서 **리포트를 쓰면
@@ -69,6 +74,10 @@ export function MenuLayer() {
       if (fieldTaskRunning()) return
       e.preventDefault()
       e.stopPropagation()
+      // ⚠️ **크게 펼친 포켓치는 접고 연다.** 둘이 같이 떠 있으면 ↓ 한 번에 메뉴 커서와
+      // 포켓치 커서가 같이 가고, Z 한 번에 둘 다 눌린다
+      const poketch = usePoketchStore.getState()
+      if (poketch.view === 'large') poketch.setView('small')
       // ⚠️ **Y는 메뉴를 안 연다.** 등록한 도구를 그 자리에서 쓴다 — 아무것도
       // 등록 안 했으면 원작처럼 조용히 아무 일도 안 한다
       if (REGISTERED_KEYS.has(e.code)) { runRegisteredItem(); return }
