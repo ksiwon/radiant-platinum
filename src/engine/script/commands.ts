@@ -6373,3 +6373,180 @@ on('OpenFrontierRecordsApp', (ctx) => {
   ctx.readVar()
   return false
 })
+
+// ── 접은 계통이 묻는 수 (PARITY §7.1 · §9) ───────────────────────────────────
+//
+// 콘테스트 능력치·씰·포핀·배경·지하통로·팔파크 쇼는 **담을 칸이 없다.** 그래도 범위 안 맵의 사람들이 그 수를 묻고
+// 답으로 갈라진다 — 안 적으면 앞 갈래가 남긴 `VAR_RESULT`로 갈린다(위 「결과 변수」 묶음과 같은 덫). 그래서 **원작이 빈
+// 세이브에서 내는 값**을 적는다. 문을 새로 잠그지 않는다 — 갈래는 원작 스크립트가 제 대사로 고른다.
+//
+// ⚠️ **답이 「없다」가 아닌 것도 있다.** 빈 포핀케이스는 「100칸이 빈다」이고, 그 답으로 포핀 장수가 돈을 받는다.
+// 받은 포핀은 담을 데가 없어 사라진다 — 원작 값을 지키고, 그 결과는 지어낸 답으로 가리지 않는다
+
+/**
+ * 파티 한 마리의 콘테스트 능력치 (`ScrCmd_GetPartyMonContestStat` · `MON_DATA_COOL + contestType`).
+ *
+ * 담을 칸이 없으니(PARITY §3.11) **늘 0이다.** 원작에서도 그 값을 올리는 길은 포핀뿐이라 빈 세이브의 값과 같다 —
+ * 교환 넷의 20(`npcTrades.json`)도 안 담기지만, 들판시티 북동 집 스카프(200 이상) 갈래는 어느 쪽이든 안 열린다
+ */
+on('GetPartyMonContestStat', (ctx) => {
+  ctx.readVar()
+  ctx.readVar()
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  return false
+})
+
+/**
+ * 씰케이스 (`ScrCmd_CountUniqueSealsInSealCase` · `ScrCmd_CountSealOccurence`). 씰은 접었다(PARITY §4.11) — 늘 0장이다.
+ *
+ * 0이면 PC의 「볼캡슐」이 「씰이 없다」로 닫히고(`CommonScript_BallCapsules`), 신수마을 동쪽 집은 99장 상한에 안 걸려
+ * 열 장을 건넨다는 대사로 간다. ⚠️ 건네는 `GiveOrTakeSeal`은 담을 데가 없다
+ */
+on('CountUniqueSealsInSealCase', answers(0))
+on('CountSealOccurence', (ctx) => {
+  ctx.readVar()
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  return false
+})
+
+/** 포핀케이스의 칸 수 (`MAX_POFFINS`) */
+const MAX_POFFINS = 100
+/** 맛 다섯 — 매움·떫음·달콤·씀·심 (`FLAVOR_MAX`) */
+const FLAVOR_MAX = 5
+/** `enum PoffinType`의 끝 넷. 앞의 25는 「첫 맛 × 5 + 둘째 맛」이다 */
+const POFFIN_TYPE = { rich: 25, overripe: 26, foul: 27, mild: 28 } as const
+
+/**
+ * 맛 다섯으로 포핀 종류를 고른다 (`Poffin_MakePoffin` · `isFoul` 거짓).
+ *
+ * 0이 아닌 맛의 수로 가른다 — 0 엉망 · 1 그 맛 · 2 센 쪽이 앞(같으면 앞 번호) · 3 진한 · 4~5 너무 익은. ⚠️ **50 이상인 맛이
+ * 하나라도 있으면 그 모두를 덮고 순한 포핀이다** — 엉망(0개)만 그 전에 돌아간다
+ */
+function poffinType(flavors: readonly number[]): number {
+  const present = flavors.flatMap((f, i) => (f !== 0 ? [i] : []))
+  if (present.length === 0) return POFFIN_TYPE.foul
+  let type: number = POFFIN_TYPE.overripe
+  if (present.length === 1) type = present[0]! * FLAVOR_MAX + present[0]!
+  else if (present.length === 2) {
+    const [a, b] = present as [number, number]
+    type = flavors[a]! >= flavors[b]! ? a * FLAVOR_MAX + b : b * FLAVOR_MAX + a
+  } else if (present.length === 3) type = POFFIN_TYPE.rich
+  return flavors.some((f) => f >= 50) ? POFFIN_TYPE.mild : type
+}
+
+/**
+ * 포핀 하나를 만들어 케이스에 넣는다 (`ScrCmd_GivePoffin`). 답은 넣었으면 그 종류, 못 넣었으면 `POFFIN_NONE`(0xFFFF)이다.
+ *
+ * 케이스는 늘 비었으니(PARITY §7.1) 늘 들어간다 — 장막백화점 B1F 포핀 장수가 그 답으로 값을 받는다. ⚠️ **넣은 포핀은
+ * 담을 데가 없어 사라진다.** 인자는 맛 다섯과 부드러움이고 원작이 다 `u8`로 자른다
+ */
+on('GivePoffin', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const flavors = Array.from({ length: FLAVOR_MAX }, () => ctx.readVar() & 0xff)
+  ctx.readVar()
+  ctx.host.vars.set(dest, poffinType(flavors))
+  return false
+})
+
+/** 포핀케이스의 빈 칸 수 (`ScrCmd_GetEmptyPoffinCaseSlotCount`). 늘 비었으니 100이다 */
+on('GetEmptyPoffinCaseSlotCount', answers(MAX_POFFINS))
+
+/**
+ * 포핀을 구울 수 있는가 (`ScrCmd_CheckCanCookPoffin`) — 1 나무열매가 없다 · 2 케이스가 찼다 · 0 굽는다.
+ *
+ * 나무열매 주머니는 우리 가방에 있다. 케이스는 늘 비었으니 2는 안 나온다. ⚠️ **0이면 굽는 앱으로 간다**
+ * (`ScrCmd_1D7`) — 그 앱은 안 만들었으니 화면이 어두워졌다 밝아지고 「또 오세요」로 닫힌다. 여럿이 굽기는 저장한 뒤
+ * 통신이 「오류」로 답해(`COMM_CLUB_RET.error`) 메뉴로 돌아온다
+ */
+on('CheckCanCookPoffin', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const berries = ctx.host.world.services.bag?.pocketHasItems(POCKET_BERRIES) === true
+  ctx.host.vars.set(dest, berries ? 0 : 1)
+  return false
+})
+
+/**
+ * 콘테스트 배경을 가졌는가 (`ScrCmd_CheckBackdrop` · `FashionCase_HasBackdrop`). 배경은 접었다(PARITY §7.1) — 늘 거짓이다.
+ *
+ * 장식 케이스(§7.16)에 배경 칸은 없다. 팔파크 로비의 3세대 팩 선물은 팩이 없어(`GBA_CARTRIDGE_NONE`) 안 닿고, 글로벌
+ * 터미널 1층은 이 답으로 목장 배경을 건넨다는 갈래로 간다
+ */
+on('CheckBackdrop', (ctx) => {
+  ctx.readVar()
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  return false
+})
+
+/**
+ * 지하통로 기록 넷 (`system_vars.c`) — 번호는 `vars_flags.txt`를 C 열거형으로 센 값이다.
+ *
+ * 원작은 지하통로 쪽 C 코드가 올린다. 지하통로는 범위 밖이라 올리는 데가 없으니 **늘 0이지만, 세이브 변수 그대로 읽는다**
+ * — 연고시티의 결정 넷(100 이상)이 이 값으로 갈린다(`scripts_hearthome_city.s` `HearthomeCity_TryGiveBlueCrystal` 이하)
+ */
+export const VAR_UNDERGROUND_FOSSILS_UNEARTHED = 16455
+export const VAR_UNDERGROUND_TRAPS_SET = 16456
+export const VAR_UNDERGROUND_TALK_COUNTER = 16457
+export const VAR_UNDERGROUND_ITEMS_GIVEN_AWAY = 16468
+
+const readsVar = (id: number): CommandFn => (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.vars.get(id))
+  return false
+}
+on('GetUndergroundTalkCounter', readsVar(VAR_UNDERGROUND_TALK_COUNTER))
+on('GetUndergroundItemsGivenAway', readsVar(VAR_UNDERGROUND_ITEMS_GIVEN_AWAY))
+on('GetUndergroundFossilsUnearthed', readsVar(VAR_UNDERGROUND_FOSSILS_UNEARTHED))
+on('GetUndergroundTrapsSet', readsVar(VAR_UNDERGROUND_TRAPS_SET))
+
+/**
+ * 빼앗은 깃발 수 (`ScrCmd_GetCapturedFlagCount` · `UndergroundRecord_GetCapturedFlagCount`). 이것은 변수가 아니라 지하통로
+ * 기록 안의 칸이고, 그 기록이 우리 세이브에 없다 — 늘 0이다. 영원시티 지하남자 집의 깃발 임무가 「아직이다」로 간다
+ */
+on('GetCapturedFlagCount', answers(0))
+
+/**
+ * 팔파크 쇼의 점수 (`ScrCmd_CalcCatchingShowPoints`) — 0 잡은 점수 · 1 시간 · 2 타입 · 3 합계.
+ *
+ * 쇼를 한 번도 안 열었으니(`GBA_CARTRIDGE_NONE`) 원작의 쇼 기록(`sCatchingShow`)이 비어 있고 넷 다 0이다. ⚠️ 원작
+ * `switch`에 `default`가 없다 — 다른 갈래 번호면 답 칸을 안 건드린다
+ */
+const CATCHING_SHOW_POINT_CATEGORIES = 4
+on('CalcCatchingShowPoints', (ctx) => {
+  const category = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  if (category < CATCHING_SHOW_POINT_CATEGORIES) ctx.host.vars.set(dest, 0)
+  return false
+})
+
+/**
+ * 글로벌 터미널 기계 (`ScrCmd_2F6`) — Wi-Fi 로그인이 있으면 1을 적고 앱을 띄운다. 없으니 0이고
+ * `CommonScript_GlobalTerminalMachineNoValidLogin`으로 간다. ⚠️ 원작은 어느 갈래든 **참을 돌려준다** — 한 프레임 쉰다
+ */
+on('ScrCmd_2F6', (ctx) => {
+  ctx.readVar()
+  ctx.readVar()
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  return true
+})
+
+/**
+ * Wi-Fi 클럽을 연다 (`ScrCmd_2F7` → `sub_0205749C`). 답을 적지 않는다 — 인자는 칸 번호지만 그 **값**을 넘긴다.
+ * 로그인이 없으니 아무것도 안 띄운다. 이 명령도 참을 돌려준다
+ */
+on('ScrCmd_2F7', (ctx) => {
+  ctx.readHalfWord()
+  return true
+})
+
+/**
+ * 긁는 카드의 결과 (`ScrCmd_2E4`) — 카드 하나(0~2)에 받을 도구와 개수.
+ *
+ * 원작은 앞의 `ScrCmd_2E2`가 띄운 긁기 앱(`overlay111`)이 채운 칸을 읽는다. 그 앱을 안 만들어서 칸이 처음 그대로다 —
+ * 원작이 앱을 띄울 때 `memset` 0으로 비운 그 값이다. 그러면 「또 오세요」로 닫힌다. ⚠️ **앞에서 BP 1을 이미 뗐다** —
+ * 이 답을 안 적으면 맵 지역 칸에 남은 값을 상품으로 읽어 엉뚱한 도구를 준다
+ */
+on('ScrCmd_2E4', (ctx) => {
+  ctx.readVar()
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  return false
+})

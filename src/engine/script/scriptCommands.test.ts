@@ -1,4 +1,4 @@
-// 스크립트가 띄우는 메뉴의 커서 · 결과 변수 명령 셋 · 막아 둔 망원경
+// 스크립트가 띄우는 메뉴의 커서 · 결과 변수 명령 셋 · 접은 계통이 묻는 수 · 막아 둔 망원경
 //
 // 메뉴 커서는 원작 부품이 둘이다 — `Menu`(`menu.c`의 `TryMovingCursor`)와 `ListMenu`(`list_menu.c`의
 // `UpdateOffsetsForScroll`). 둘을 같은 규칙으로 뭉개 두면 감김 · 여러 열 · 쪽 넘김 · 되풀이가 전부 빠진다.
@@ -8,7 +8,8 @@ import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   buildCommands, countDepartmentStorePurchase, DEPARTMENT_STORE_SPECIALTIES, SYSTEM_FLAG, trainerCardLevel,
-  VAR_DAILY_RANDOM_LEVEL, VAR_DEPARTMENT_STORE_REGULAR_COUNTER,
+  VAR_DAILY_RANDOM_LEVEL, VAR_DEPARTMENT_STORE_REGULAR_COUNTER, VAR_UNDERGROUND_FOSSILS_UNEARTHED,
+  VAR_UNDERGROUND_ITEMS_GIVEN_AWAY, VAR_UNDERGROUND_TALK_COUNTER, VAR_UNDERGROUND_TRAPS_SET,
 } from './commands'
 import { ScriptContext } from './context'
 import { parseScriptMeta } from './data'
@@ -249,6 +250,121 @@ maybeMeta('명령 하나씩', () => {
     expect(run('CheckIsTodayPlayerBirthday')).toBe(0)
   })
 
+  /** 명령 하나 뒤에 표지 한 줄을 붙여 끝까지 돌린다 — 표지가 서면 인자 폭을 다 읽은 것이다 */
+  const SENTINEL = 0x8007
+  const runLine = (cmd: [string, [1 | 2, number][]], vars = new VarStore(), services: FieldServices = {}): VarStore => {
+    for (const d of [DEST, 0x8005, 0x8006]) vars.set(d, 0x1234)
+    const { ctx } = context([cmd, ['SetVarFromValue', [[2, SENTINEL], [2, 77]]]], vars, services)
+    for (let f = 0; f < 10 && ctx.step(1000); f++) { /* 한 프레임씩 */ }
+    expect(vars.get(SENTINEL)).toBe(77)
+    return vars
+  }
+
+  it('GetPartyMonContestStat — 콘테스트 능력치를 담을 칸이 없으니 0 (들판시티 북동 집의 200 갈래가 안 열린다)', () => {
+    for (let type = 0; type < 5; type++) {
+      expect(runLine(['GetPartyMonContestStat', [[2, 0], [2, type], [2, DEST]]]).get(DEST)).toBe(0)
+    }
+  })
+
+  it('씰케이스 둘 — 씰이 한 장도 없다', () => {
+    expect(run('CountUniqueSealsInSealCase')).toBe(0)
+    expect(runLine(['CountSealOccurence', [[2, 50], [2, DEST]]]).get(DEST)).toBe(0)
+  })
+
+  it('GivePoffin — 빈 케이스라 늘 들어가고, 답은 `Poffin_MakePoffin`의 종류다', () => {
+    const give = (flavors: [number, number, number, number, number], smoothness = 40): number =>
+      runLine(['GivePoffin', [[2, DEST], ...flavors.map((f) => [2, f] as [2, number]), [2, smoothness]]]).get(DEST)
+    // 콘테스트회장 로비의 선물(60·30·30·30·30) — 50 이상이 하나라도 있으면 순한 포핀(28)
+    expect(give([60, 30, 30, 30, 30])).toBe(28)
+    // 한 맛은 그 맛 × 6 — 매움 0 · 심 24
+    expect(give([10, 0, 0, 0, 0])).toBe(0)
+    expect(give([0, 0, 0, 0, 10])).toBe(24)
+    // 두 맛은 센 쪽이 앞이다 — 같으면 앞 번호가 앞
+    expect(give([10, 0, 20, 0, 0])).toBe(2 * 5 + 0)
+    expect(give([10, 0, 10, 0, 0])).toBe(0 * 5 + 2)
+    expect(give([0, 30, 0, 0, 31])).toBe(4 * 5 + 1)
+    // 셋은 진한(25) · 넷과 다섯은 너무 익은(26) · 없으면 엉망(27)
+    expect(give([1, 1, 1, 0, 0])).toBe(25)
+    expect(give([1, 1, 1, 1, 0])).toBe(26)
+    expect(give([1, 1, 1, 1, 1])).toBe(26)
+    expect(give([0, 0, 0, 0, 0])).toBe(27)
+    // 원작은 `u8`로 자른다 — 256은 0이다
+    expect(give([0x100, 0, 0, 0, 0])).toBe(27)
+  })
+
+  it('GetEmptyPoffinCaseSlotCount — 빈 케이스는 100칸이 빈다 (`MAX_POFFINS`)', () => {
+    expect(run('GetEmptyPoffinCaseSlotCount')).toBe(100)
+  })
+
+  it('CheckCanCookPoffin — 나무열매 주머니가 비면 1, 아니면 0 (케이스는 늘 비어 2가 안 나온다)', () => {
+    const asked: number[] = []
+    const bag = (berries: boolean): FieldServices => ({
+      bag: {
+        pocketOf: () => 0, add: () => true, remove: () => true, canFit: () => true, quantity: () => 0, name: () => '',
+        pocketHasItems: (pocket) => { asked.push(pocket); return berries },
+      },
+    })
+    expect(run('CheckCanCookPoffin', new VarStore(), bag(true))).toBe(0)
+    expect(run('CheckCanCookPoffin', new VarStore(), bag(false))).toBe(1)
+    // 나무열매 주머니(`POCKET_BERRIES`)만 묻는다
+    expect(asked).toEqual([4, 4])
+    // 가방이 안 붙었으면 열매가 없는 것이다
+    expect(run('CheckCanCookPoffin')).toBe(1)
+  })
+
+  it('CheckBackdrop — 배경 칸이 없으니 늘 거짓', () => {
+    expect(runLine(['CheckBackdrop', [[2, 0], [2, DEST]]]).get(DEST)).toBe(0)
+  })
+
+  it('지하통로 기록 넷은 세이브 변수를 그대로 읽고, 깃발 수는 늘 0', () => {
+    const vars = new VarStore()
+    vars.set(VAR_UNDERGROUND_TALK_COUNTER, 100)
+    vars.set(VAR_UNDERGROUND_ITEMS_GIVEN_AWAY, 7)
+    vars.set(VAR_UNDERGROUND_FOSSILS_UNEARTHED, 3)
+    vars.set(VAR_UNDERGROUND_TRAPS_SET, 250)
+    expect(run('GetUndergroundTalkCounter', vars)).toBe(100)
+    expect(run('GetUndergroundItemsGivenAway', vars)).toBe(7)
+    expect(run('GetUndergroundFossilsUnearthed', vars)).toBe(3)
+    expect(run('GetUndergroundTrapsSet', vars)).toBe(250)
+    expect(run('GetUndergroundTalkCounter')).toBe(0)
+    expect(run('GetCapturedFlagCount', vars)).toBe(0)
+  })
+
+  it('CalcCatchingShowPoints — 쇼를 안 열었으니 넷 다 0, 다른 번호면 답 칸을 안 건드린다', () => {
+    for (let category = 0; category < 4; category++) {
+      expect(runLine(['CalcCatchingShowPoints', [[2, category], [2, DEST]]]).get(DEST)).toBe(0)
+    }
+    expect(runLine(['CalcCatchingShowPoints', [[2, 4], [2, DEST]]]).get(DEST)).toBe(0x1234)
+  })
+
+  it('ScrCmd_2F6 — 로그인이 없으니 0을 적고, 원작처럼 한 프레임 쉰다', () => {
+    const vars = new VarStore()
+    vars.set(DEST, 0x1234)
+    const { ctx } = context([['ScrCmd_2F6', [[2, 0], [2, 0], [2, DEST]]], ['SetVarFromValue', [[2, SENTINEL], [2, 77]]]], vars)
+    expect(ctx.step(1000)).toBe(true)
+    expect(vars.get(DEST)).toBe(0)
+    expect(vars.get(SENTINEL)).toBe(0)
+    expect(ctx.step(1000)).toBe(false)
+    expect(vars.get(SENTINEL)).toBe(77)
+  })
+
+  it('ScrCmd_2F7 — 답을 안 적는다 · 한 프레임 쉰다', () => {
+    const vars = new VarStore()
+    vars.set(DEST, 5)
+    const { ctx } = context([['ScrCmd_2F7', [[2, DEST]]], ['SetVarFromValue', [[2, SENTINEL], [2, 77]]]], vars)
+    expect(ctx.step(1000)).toBe(true)
+    expect(vars.get(SENTINEL)).toBe(0)
+    expect(ctx.step(1000)).toBe(false)
+    expect([vars.get(DEST), vars.get(SENTINEL)]).toEqual([5, 77])
+  })
+
+  it('ScrCmd_2E4 — 긁기 앱이 없어 칸이 처음(0) 그대로다 · 도구도 개수도 0', () => {
+    for (let card = 0; card < 3; card++) {
+      const vars = runLine(['ScrCmd_2E4', [[2, card], [2, 0x8005], [2, 0x8006]]])
+      expect([vars.get(0x8005), vars.get(0x8006)]).toEqual([0, 0])
+    }
+  })
+
   it('ShowListMenuRememberCursor — 인자 둘은 변수 번호다 · 되살리고 적고, 고르면 그 값으로 간다', () => {
     const vars = new VarStore()
     vars.set(0x8005, 2)
@@ -302,6 +418,11 @@ maybeMeta('명령 하나씩', () => {
     }
     expect(value.get('VAR_DAILY_RANDOM_LEVEL')).toBe(VAR_DAILY_RANDOM_LEVEL)
     expect(value.get('VAR_DEPARTMENT_STORE_REGULAR_COUNTER')).toBe(VAR_DEPARTMENT_STORE_REGULAR_COUNTER)
+    // 지하통로 기록 넷 — 연고시티의 결정 갈래가 읽는다
+    expect(value.get('VAR_UNDERGROUND_FOSSILS_UNEARTHED')).toBe(VAR_UNDERGROUND_FOSSILS_UNEARTHED)
+    expect(value.get('VAR_UNDERGROUND_TRAPS_SET')).toBe(VAR_UNDERGROUND_TRAPS_SET)
+    expect(value.get('VAR_UNDERGROUND_TALK_COUNTER')).toBe(VAR_UNDERGROUND_TALK_COUNTER)
+    expect(value.get('VAR_UNDERGROUND_ITEMS_GIVEN_AWAY')).toBe(VAR_UNDERGROUND_ITEMS_GIVEN_AWAY)
   })
 })
 

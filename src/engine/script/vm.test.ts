@@ -260,7 +260,7 @@ maybe('스크립트 VM', () => {
     expect(handledSeen.length).toBe(implemented - IDLE_COMMANDS.length)
   })
 
-  it('닿는 자리의 98.6%가 돈다 — DATA.md §2.10의 그 수', () => {
+  it('닿는 자리의 98.9%가 돈다 — DATA.md §2.10의 그 수', () => {
     // ⚠️ **"몇 개를 만들었나"는 눈금이 못 된다.** 안 쓰이는 명령이 태반이다.
     // 쓰는 눈금은 스크립트가 **실제로 밟는 자리**고, 문서가 그 수를 적고
     // 있으므로 여기서 같은 방법으로 세어 못 박는다 — 안 그러면 문서만 낡는다.
@@ -487,14 +487,14 @@ const LOOPING_ENTRIES_YES = 30
 /**
  * 진입점에서 제어 흐름을 따라가 **닿는** 명령 자리와, 그중 **도는** 자리.
  *
- * DATA.md §2.10이 이 둘의 비를 적는다(98.6%). 문서에만 적어 두면 명령을 붙일
+ * DATA.md §2.10이 이 둘의 비를 적는다(98.9%). 문서에만 적어 두면 명령을 붙일
  * 때마다 조용히 낡으므로 여기서 못 박는다 — 값이 바뀌면 왜 바뀌었는지
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_778
-const RUNNING_SITES = 55_100
+const RUNNING_SITES = 55_137
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 583
+const IMPLEMENTED_COMMANDS = 599
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -521,6 +521,8 @@ const IDLE_COMMANDS = [
   // 들어가는데 그 화면이 아직 없어서, 창을 여는 `ShowCoins`까지만 밟히고
   // 닫고·다시 찍고·더하고 빼는 다섯은 그 너머에 있다
   'HideCoins', 'UpdateCoinDisplay', 'GetCoinsAmount', 'AddCoins', 'SubtractCoinsFromValue',
+  // 씰 한 종의 장수는 신수마을 동쪽 집이 **파티에 안농이 있을 때만** 묻는다 — 그 앞이 씰케이스 깃발이다
+  'CountSealOccurence',
   // ⚠️ **폼을 묻는 자리는 파티 너머다.** 유적마을 동쪽 집의 「도롱마담 아저씨」
   // 하나뿐이고(`scripts_solaceon_town_east_house.s`), 그 앞이 파티에 도롱마담이
   // 있는지 보는 갈래라 세이브 없는 훑기가 못 지나간다
@@ -653,6 +655,10 @@ const IDLE_COMMANDS = [
   // 상호교류광장은 따라다니는 마리가 있어야 열리고, 팔파크 쪽은 GBA 연결이 있어야
   // 한다 — 넣는 쪽(`AddAccessory`)과 이름 쪽은 훑기가 실제로 밟는다
   'CanFitAccessory',
+  // 배경을 묻는 자리는 글로벌 터미널 1층(장식 케이스를 가져야 한다)과 팔파크(GBA 팩) — 훑기의 빈 가방이 앞에서 막는다
+  'CheckBackdrop',
+  // 포핀을 굽는 자리는 포핀케이스를 가져야 하고, 그 앞이 혼자 · 여럿을 고르는 메뉴다
+  'CheckCanCookPoffin',
   'CheckNationalDexCompleted',
   // 상장 둘은 도감을 다 채운 사람에게만 오는 갈래라 훑기가 안 닿는다
   'ShowDiplomaSinnoh',
@@ -703,6 +709,8 @@ const IDLE_COMMANDS = [
   'BufferCustomMessageWord',
   'GetPartyMonType',
   'GetWallpaperFromCustomMessageWords',
+  // 깃발 수는 지하남자의 임무가 걸려 있어야 묻는다 — 지하통로가 범위 밖이라 그 깃발이 안 선다
+  'GetCapturedFlagCount',
   'PlayPCShutDownAnimation',
   // 박스 안의 별명을 부르는 자리는 **보관 시스템 화면 너머**다
   'BufferMonNicknameFromPC',
@@ -732,6 +740,8 @@ const IDLE_COMMANDS = [
   // 1로 바꿔 놓고(방송이 끝나는 장면), 훑기는 변수를 이어 쓰므로 뒤에 오는
   // `OnTransition`의 `== 0` 갈래가 이미 닫혀 있다
   'SetInitialVolumeForSequence',
+  // 포핀을 주는 자리는 장막백화점 B1F 포핀 장수(포핀케이스 + 맛 고르기 메뉴 너머)와 콘테스트회장 로비다
+  'GivePoffin',
   // 같은 배운 갈래의 미리보기 움직임이다
   'SetPokemonPreviewAnim', 'WaitPokemonPreviewAnim',
   // ⚠️ **BP를 주는 명령이 필드 스크립트에 0회다** (PARITY §12.3) — 원작도
@@ -740,7 +750,10 @@ const IDLE_COMMANDS = [
   // `ShowBattlePoints`와 값을 견주는 `CheckBattlePoints`까지는 밟힌다
   'UpdateBPDisplay', 'GetBattlePoints', 'GiveBattlePoints', 'RemoveBattlePoints',
   'SubtractCoinsFromVar',
-  'CheckIsMysteryGiftPhrase', 'UnlockMysteryGift',
+  'CheckIsMysteryGiftPhrase',
+  // PC의 「볼캡슐」 줄 — PC 목록 메뉴 너머다
+  'CountUniqueSealsInSealCase',
+  'UnlockMysteryGift',
   // `SetSpecialBGM`과 같다 — 필드 스크립트에 0회다
   'IsSequencePlaying',
   'ScrCmd_2B2',
@@ -754,6 +767,8 @@ const IDLE_COMMANDS = [
   // 그래도 만들어 두는 이유는 안 만들면 결과 변수가 앞 갈래 값으로 남아서다
   'CheckIsMiscSaveInit',
   'FindPartySlotWithSpecies',
+  // 긁는 카드는 메뉴에서 「긁는다」를 고르고 BP 1을 뗀 뒤다 — 훑기는 그 앞에서 빠진다
+  'ScrCmd_2E4',
   // 조각 교사의 나머지도 같은 자리다. ⚠️ **`ShowMoveTutorMoveSelectionMenu`만
   // 여기 없다** — 공용 스크립트의 「값을 보여 준다」 갈래가 파티를 안 고르고
   // 그 목록을 열어서, 그 한 줄은 훑기에도 밟힌다
@@ -774,6 +789,8 @@ const IDLE_COMMANDS = [
   // 기타리스트가 파티에서 고른 **뒤**에 센다
   'CalcHiddenPowerType',
   'GetRotomFormsInSave', 'SetRotomForm', 'GetPartyMonForm2',
+  // 포핀 장수가 케이스 빈 칸을 세는 줄 — `GivePoffin`과 같은 메뉴 너머다
+  'GetEmptyPoffinCaseSlotCount',
   'GetOverworldWeather',
   // ⚠️ **기라티나를 이긴 뒤에만 도는 줄이다** (`…_RemoveGiratina`). 그 방의
   // `OnLoad`가 「없애라」 플래그를 보고 갈리는데 훑기는 늘 깨끗한 플래그다
