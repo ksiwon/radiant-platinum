@@ -114,8 +114,17 @@ export const level = style({
   flex: '0 0 auto',
 })
 
-/** 막대의 홈. 짙은 테두리 안에 흰 바탕 — 원작 구조다 (DESIGN.md §1.3) */
+/**
+ * 막대의 홈. 짙은 테두리 안에 흰 바탕 — 원작 구조다 (DESIGN.md §1.3)
+ *
+ * ⚠️ **`display: block`이 있어야 막대다.** 카드 안이 `<button>` 속이라 홈도 채움도
+ * `<span>`인데, 인라인 span은 너비·높이를 안 받는다 — 한때 홈이 양쪽 테두리 2px씩만
+ * 남아 이름 밑에 짙은 세로 막대기 하나로 보였고, 채움의 `width: N%`는 통째로 안 먹었다.
+ * `BAR_TRACK`·`BAR_FILL`은 다른 화면도 쓰는 토큰이라 display를 거기 넣지 않고 여기서 준다.
+ * 높이는 배틀 체력판 `barTrack`처럼 테두리를 뺀 안쪽 높이다(content-box)
+ */
 export const bar = style({
+  display: 'block',
   marginTop: GAP.tight + 2,
   height: 9,
   ...BAR_TRACK,
@@ -123,6 +132,7 @@ export const bar = style({
 
 export const fill = style({
   ...BAR_FILL,
+  display: 'block',
   transition: 'width 180ms linear',
 })
 

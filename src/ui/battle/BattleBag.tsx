@@ -204,6 +204,8 @@ export function BattleBag({
   const [target, setTarget] = useState(0)
   const [slot, setSlot] = useState(0)
   const savedBag = useSaveStore((s) => s.bag)
+  // 대상 카드의 알 표시만 세이브에서 본다 (아이콘 고르기 · `SwitchScreen`과 같다)
+  const saveParty = useSaveStore((s) => s.party)
   const bag = bagOverride ?? savedBag
   const plan = useBattleStore((s) => s.plan)
   const moveSlotsOf = useBattleStore((s) => s.moveSlotsOf)
@@ -373,10 +375,20 @@ export function BattleBag({
     const cards = party.map((one, i): PartyCard => {
       const it = roster[one.key]
       const made = planForCard(i)
+      // ⚠️ 세이브는 **키**(`p1-3`, `aftermath.partyKey`)로 찾고 종까지 맞춰 본다 —
+      // 요청의 차례는 교체마다 바뀌고, 대여 파티(팩토리)는 세이브의 파티가 아니다.
+      // `SwitchScreen`의 `savedOf`와 같은 규칙이다
+      const n = Number(one.key.slice(3))
+      const saved = Number.isInteger(n) ? saveParty[n] : undefined
       return {
         slot: one,
         label: it?.nickname ?? (it ? names?.species[it.species] : null) ?? one.key,
         level: it?.level ?? '?',
+        mon: it ? {
+          species: it.species,
+          form: it.form,
+          isEgg: saved !== undefined && saved.species === it.species ? saved.isEgg : false,
+        } : null,
         can: made !== null,
         note: made === null ? null : planSummary(made, names?.stats ?? []),
       }

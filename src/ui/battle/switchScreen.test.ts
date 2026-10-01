@@ -3,6 +3,7 @@
 // 여기서 지키는 것 셋: **벤치에 있는 애의 속사정이 요청에서 다 나온다**는 것,
 // **프로토콜의 특성 아이디를 롬 번호로 되돌릴 수 있다**는 것, 그리고 기술 줄의
 // 상성 귀띔이 **기술 메뉴와 같은 규칙·같은 말**이라는 것.
+import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
 import { partySummary } from '../../engine/battle/choice'
 import type { BattleRequest } from '../../engine/battle/events'
@@ -146,5 +147,45 @@ describe('교체 화면의 상성 귀띔', () => {
     expect(MATCH_LABEL).toEqual({
       super: '효과가 굉장함', resisted: '효과가 별로임', immune: '효과가 없음',
     })
+  })
+})
+
+/**
+ * 파티 카드의 모양. 실제 픽셀은 브라우저로 봐야 한다 — 여기서는 그 모양이
+ * 소스에서 다시 빠지지 않는지만 잡는다 (`hpDrain.test`와 같은 방식)
+ */
+describe('파티 카드', () => {
+  const CSS_SOURCE = new URL('./switchScreen.css.ts', import.meta.url)
+  const BAG_SOURCE = new URL('./BattleBag.tsx', import.meta.url)
+  /** `export const <name> = style({ ... })`의 몸만 */
+  const rule = (src: string, name: string): string => {
+    const from = src.slice(src.indexOf(`export const ${name} = style(`))
+    return from.slice(0, from.indexOf('})'))
+  }
+
+  /**
+   * ⚠️ 홈도 채움도 `<span>`이다. display가 없으면 인라인이라 너비·높이가 안 먹어
+   * 홈이 테두리 2px씩만 남은 세로 막대기가 되고, 채움 폭은 통째로 사라졌다
+   */
+  it('HP 막대의 홈과 채움이 블록이다', () => {
+    const src = readFileSync(CSS_SOURCE, 'utf8')
+    for (const name of ['bar', 'fill']) {
+      expect(rule(src, name)).toContain("display: 'block'")
+    }
+    // 높이는 홈이 정하고 채움은 그 100%를 탄다 (`BAR_FILL`)
+    expect(rule(src, 'bar')).toMatch(/height: \d+/)
+  })
+
+  /** 한때 가방의 대상 고르기 카드만 `mon`을 안 넘겨 아이콘 자리가 빈 40px였다 */
+  it('가방 대상 카드도 아이콘을 받고, 알 표시는 키와 종으로 찾은 세이브에서 온다', () => {
+    const bag = readFileSync(BAG_SOURCE, 'utf8')
+    const cards = bag.slice(bag.indexOf('const cards = party.map('))
+    const body = cards.slice(0, cards.indexOf('\n    })'))
+    expect(body).toMatch(/mon: it \? \{/)
+    expect(body).toContain('species: it.species')
+    expect(body).toContain('form: it.form')
+    // 요청의 차례(`i`·`one.index`)가 아니라 키로 찾는다
+    expect(body).toContain('one.key.slice(3)')
+    expect(body).toContain('saved.species === it.species')
   })
 })
