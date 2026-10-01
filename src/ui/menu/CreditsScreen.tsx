@@ -43,12 +43,17 @@ const VIEW_W = 256
 const VIEW_H = 192
 
 /**
- * 만든 사람 화면의 글 — **우리가 쓴 글은 여기뿐이다.** 소개와 다른 게임은 만든 사람의 누리집(siwon.it.kr)에 적힌 그대로다.
+ * 만든 사람 화면의 글 — **우리가 쓴 글은 여기뿐이다.** 소개는 만든 사람의 누리집(siwon.it.kr)에 적힌 그대로다.
+ *
+ * ⚠️ **다른 게임은 타이틀의 「이런 게임은 어떠세요?」(`screens/gameLinks`)와 글자까지 같다.** 한동안 여기만 따로 적어
+ * 같은 게임이 두 화면에서 「Pokerhythm」·「PokeRhythm」으로, 소개도 다른 말로 나왔다. 그 파일은 세 저장소가 같은
+ * 내용으로 나눠 가져서 이쪽에 맞추지 않는다 — 어긋나면 `creditsScreen.test`가 선다.
  *
  * ⚠️ **고지 줄을 빼지 않는다** — 타이틀 화면과 같은 문장이고(COPYRIGHT §11) 게임을 끝까지 본 사람이 마지막으로 읽는 자리다.
- * 그래서 돈이 오가는 링크(후원 · 판매)는 안 싣는다 — 「무료 · 비영리」와 부딪친다
+ * 그래서 돈이 오가는 링크(후원 · 판매)는 안 싣는다 — 「무료 · 비영리」와 부딪친다. 「BYOR」는 줄임말을 아는 사람에게만
+ * 읽혀서 타이틀처럼 풀어 쓴다
  */
-const MAKER = {
+export const MAKER = {
   title: 'Radiant Platinum',
   tagline: '포켓몬스터 플래티넘을 브라우저 3D로 다시 만든 비공식 팬 프로젝트',
   name: 'Siwon J. Park',
@@ -58,14 +63,14 @@ const MAKER = {
     { label: 'github.com/ksiwon', href: 'https://github.com/ksiwon' },
   ],
   games: [
-    { title: 'Pokemon Aegis', about: '1025마리가 다 나오는 타워 디펜스', label: 'aegis.siwon.it.kr', href: 'https://aegis.siwon.it.kr/' },
-    { title: 'Pokerhythm', about: 'DS 포켓몬 곡 557개로 만든 리듬 게임', label: 'pokerhythm.siwon.it.kr', href: 'https://pokerhythm.siwon.it.kr/' },
+    { title: 'Pokemon Aegis', about: '포켓몬 타워 디펜스 X TFT 게임', label: 'aegis.siwon.it.kr', href: 'https://aegis.siwon.it.kr/' },
+    { title: 'PokeRhythm', about: '포켓몬 BGM 리듬게임', label: 'pokerhythm.siwon.it.kr', href: 'https://pokerhythm.siwon.it.kr/' },
   ],
-  thanks: 'pret/pokeplatinum',
+  thanks: 'pret 팀의 pokeplatinum 디컴파일 프로젝트',
   notice: [
     '비공식·비제휴 팬 프로젝트입니다.',
     '관련 상표와 저작물은 각 권리자의 것이며,',
-    '무료·비영리·BYOR는 권리자의 허가를 뜻하지 않습니다.',
+    '직접 가진 게임 파일을 쓰는 무료·비영리 방식이어도 권리자의 허가를 뜻하지는 않습니다.',
   ],
 } as const
 
