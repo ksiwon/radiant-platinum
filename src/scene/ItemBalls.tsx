@@ -10,11 +10,13 @@
 //
 // ⚠️ **크기는 원작 그림에서 잰다.** 모델 자체는 높이 0.0765 BDSP단위, 곧 7.6cm
 // 짜리 실물 크기라 한 칸(1m) 위에 놓으면 안 보인다. 원작 그림에서 볼이 차지한
-// 상자가 **10×10텍셀**이고 아래로 **1텍셀** 떠 있으므로(16×16 중), 그 자리에
-// 그대로 앉힌다 — 지름 0.625칸 · 바닥에서 0.0625칸.
+// 상자가 **10×10텍셀**이므로(16×16 중) 지름 0.625칸으로 앉힌다.
+//
+// ⚠️ **그림 아래 여백 1텍셀은 옮기지 않는다.** 판때기 그림의 여백일 뿐이라
+// 입체 공에 더하면 땅에서 1/16칸 떠 보인다. 발밑을 칸 바닥에 바로 둔다.
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useLoader } from '@react-three/fiber'
-import { Box3, Group, type Object3D } from 'three'
+import { Box3, Group, Mesh, type Object3D } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import type { MapGrid } from '../engine/map/grid'
@@ -28,13 +30,12 @@ import { useAssetUrl } from '../data/providers/useAssetUrl'
 const POKEBALL_GFX = 87
 
 /**
- * 원작 그림에서 잰 볼의 지름과 바닥 틈 (칸).
+ * 원작 그림에서 잰 볼의 지름 (칸).
  *
- * `public/data/npc/87.png`의 알파 상자가 x 3~12 · y 5~14다 — 곧 10×10텍셀에
- * 아래 여백 1텍셀이고, 한 칸이 16텍셀이다
+ * `public/data/npc/87.png`의 알파 상자가 x 3~12 · y 5~14다 — 곧 10×10텍셀이고,
+ * 한 칸이 16텍셀이다
  */
 const BALL_SIZE = 10 / 16
-const BALL_LIFT = 1 / 16
 
 /** 한 맵에 동시에 세우는 볼 수. 원작 배치는 한 맵에 몇 개뿐이다 */
 const MAX = 8
@@ -80,8 +81,12 @@ export function ItemBalls({ grid, layer, onStanding }: Props) {
     const g = new Group()
     g.add(cloneSkinned(fitted))
     g.visible = false
-    // 자리를 매 프레임 바꾸므로 경계구가 못 따라온다
-    g.traverse((o: Object3D) => { o.frustumCulled = false })
+    g.traverse((o: Object3D) => {
+      // 자리를 매 프레임 바꾸므로 경계구가 못 따라온다
+      o.frustumCulled = false
+      // 땅에 제 그림자를 드리워 붙어 있게 보인다. 받는 쪽은 바닥 설정을 따른다
+      if (o instanceof Mesh) o.castShadow = true
+    })
     return g
   }), [fitted])
 
@@ -103,8 +108,8 @@ export function ItemBalls({ grid, layer, onStanding }: Props) {
       if (actor.gfx !== POKEBALL_GFX) continue
       if (Math.abs(actor.x - p.x) > RANGE || Math.abs(actor.z - p.z) > RANGE) continue
       const slot = slots[n]!
-      const y = groundYAt(grid, world.mapId, actor.x + 0.5, actor.z + 0.5, layer, actor.y)
-      slot.position.set(actor.x + 0.5, y + BALL_LIFT, actor.z + 0.5)
+      const y = groundYAt(grid, world.mapId, actor.x + 0.5, actor.z + 0.5, layer, actor.y, actor)
+      slot.position.set(actor.x + 0.5, y, actor.z + 0.5)
       slot.visible = true
       seen.add(actor)
       n++

@@ -15,7 +15,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import {
   BufferAttribute, DoubleSide, Frustum, Matrix4, Mesh, MeshBasicMaterial,
-  PlaneGeometry, Sphere, Vector3, type Material,
+  PlaneGeometry, Sphere, Vector3, type Group, type Material,
 } from 'three'
 import { npcSprite, TEXELS_PER_TILE } from '../engine/actor/sprites'
 import { npcActors } from '../engine/actor/npcs'
@@ -32,6 +32,7 @@ import { world } from '../engine/map/world'
 import type { MapGrid } from '../engine/map/grid'
 import { npcTexture } from './npcTexture'
 import { hideRest } from './billboard'
+import { sceneShade } from './NpcSprites'
 import { propMaterials } from './propMeshes'
 
 /** 흙 모델의 소품 번호 (`distortionProps`의 28번 = `fldeff.narc` 17) */
@@ -105,6 +106,7 @@ export function BerryPatchProps({ grid, layer }: { grid: MapGrid; layer: number 
   const patches = useSaveStore((s) => s.berryPatches)
   const slots = useMemo(() => Array.from({ length: MAX_PATCHES }, makeSlot), [])
   const [soil, setSoil] = useState<Soil | null>(null)
+  const groupRef = useRef<Group>(null)
 
   /**
    * 이 맵의 밭 자리. 맵이 바뀔 때만 다시 훑는다.
@@ -161,6 +163,8 @@ export function BerryPatchProps({ grid, layer }: { grid: MapGrid; layer: number 
       return frustum.intersectsSphere(sphere)
     }
 
+    // 빛을 안 받는 재질이라 밤·동굴에서 혼자 환하다. 사람 판때기와 같은 밝기를 곱한다
+    const shade = sceneShade(groupRef.current)
     let n = 0
     for (const place of places) {
       const patch = patches[place.patch]
@@ -190,6 +194,7 @@ export function BerryPatchProps({ grid, layer }: { grid: MapGrid; layer: number 
         camera.position.x - slot.mesh.position.x,
         camera.position.z - slot.mesh.position.z,
       ), 0)
+      slot.material.color.setScalar(shade)
       slot.mesh.visible = true
     }
     hideRest(slots, n)
@@ -197,7 +202,7 @@ export function BerryPatchProps({ grid, layer }: { grid: MapGrid; layer: number 
 
   if (places.length === 0) return null
   return (
-    <group>
+    <group ref={groupRef}>
       {soil !== null && places.map((place) => (
         <mesh
           key={place.patch}

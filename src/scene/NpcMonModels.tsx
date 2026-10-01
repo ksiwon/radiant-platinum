@@ -26,6 +26,7 @@ import { worldState } from '../state/worldState'
 import { world } from '../engine/map/world'
 import { groundYAt } from './distortion'
 import { addWhenWarm } from './warmPipelines'
+import { TURN_RATE } from './NpcModels'
 import { loadMonModel, makeBody, play, type MonBody } from './battle/monModel'
 
 /** 동시에 세우는 수. 사람 모델(24)보다 적다 — 한 마리가 사람보다 무겁다 */
@@ -43,6 +44,11 @@ interface Slot {
   kind: string
   /** 지금 걸린 몸빛 단계 (`Movable.darkness`) */
   dark?: number
+  /**
+   * 새 주인을 막 맞았다. 이 프레임은 감지 않고 바로 그 방향으로 세운다 —
+   * 안 그러면 지난 주인의 각에서 한 바퀴 감아 돌아오는 것이 보인다
+   */
+  fresh: boolean
 }
 
 type Tinted = Material & { color?: Color }
@@ -136,7 +142,7 @@ export function NpcMonModels({ grid, layer, taken, onStanding }: Props) {
         slot = spare.get(kind)?.pop()
       }
       if (slot === undefined) {
-        slot = { outer: new Group(), body: null, disposed: false, kind }
+        slot = { outer: new Group(), body: null, disposed: false, kind, fresh: true }
         slots.set(actor, slot)
         group.add(slot.outer)
         const mine = slot
@@ -145,17 +151,23 @@ export function NpcMonModels({ grid, layer, taken, onStanding }: Props) {
           const body = makeBody(loaded)
           if (body.tall > TALL_CAP) body.root.scale.setScalar(TALL_CAP / body.tall)
           mine.body = body
+          // 걸어도 서기 동작이다 — 구운 모델에 걷는 클립이 없다. 557벌 전부가
+          // 배틀 클립(ba01·02·10·20·21·30)뿐이라 걸음을 갈아 끼울 것이 없다
           play(body, 'wait')
           // ⚠️ **붙이기 전에 굽는다.** 포켓몬도 스킨 메시라 한 마리에 정점
           // 프로그램 하나고, 붙는 프레임에서 링크 확인이 100ms 넘게 막는다
           // (`warmPipelines`). 씬 밖에서 구우면 병렬 갈래로 가서 0ms다
           addWhenWarm(gl, root, cam, mine.outer, body.root, () => !mine.disposed)
         }).catch(() => { /* 못 받으면 판때기가 계속 그 자리를 맡는다 */ })
-      } else slots.set(actor, slot)
+      } else if (slots.get(actor) !== slot) {
+        // 통에서 꺼낸 칸이다. 새 주인 자리에서 시작한다
+        slots.set(actor, slot)
+        slot.fresh = true
+      }
       count++
       seen.add(actor)
 
-      const y = groundYAt(grid, world.mapId, actor.x + 0.5, actor.z + 0.5, layer, actor.y)
+      const y = groundYAt(grid, world.mapId, actor.x + 0.5, actor.z + 0.5, layer, actor.y, actor)
       // 연출이 걸려 있으면 그림만 그만큼 어긋난다 (`MapObject_SetSpritePosOffset`)
       slot.outer.position.set(
         actor.x + 0.5 + (actor.offsetX ?? 0),
@@ -163,7 +175,15 @@ export function NpcMonModels({ grid, layer, taken, onStanding }: Props) {
         actor.z + 0.5 + (actor.offsetZ ?? 0),
       )
       const step = DIR_STEP[actor.dir & 3]!
-      slot.outer.rotation.y = Math.atan2(step.x, step.z)
+      const want = Math.atan2(step.x, step.z)
+      // ⚠️ **몸을 즉시 돌려세우지 않는다.** 방향 번호는 네 값뿐이라 그대로 넣으면
+      // 90°가 한 프레임에 튄다. 사람 모델과 같은 빠르기로 최단 호를 감는다 (`NpcModels`)
+      if (slot.fresh) { slot.outer.rotation.y = want; slot.fresh = false } else {
+        let d = want - slot.outer.rotation.y
+        d -= Math.round(d / (Math.PI * 2)) * Math.PI * 2
+        const max = TURN_RATE * delta
+        slot.outer.rotation.y += Math.abs(d) <= max ? d : Math.sign(d) * max
+      }
       slot.outer.visible = true
       if (slot.body !== null) {
         slot.body.mixer.update(delta)

@@ -454,10 +454,25 @@ export function distortionSpawn(mapId: number): { x: number; y: number; z: numbe
 }
 
 /**
+ * 배우마다 마지막으로 딛은 높이와, 그때 배치표에 적혀 있던 높이.
+ *
+ * 배치표 높이가 바뀌면(스크립트가 자리를 옮겼다) 기억을 버리고 그 높이에서
+ * 다시 시작한다
+ */
+const lastGround = new WeakMap<object, { placed: number; y: number }>()
+
+/**
  * 그 칸의 발 높이. 깨어진 세계면 판에서, 아니면 맵 격자에서 받는다.
  *
  * 주인공·NPC·소품이 **같은 함수**를 봐야 한다 — 한쪽만 고치면 사람은 판 위에
  * 서고 다른 쪽은 판 속에 묻힌다. 실제로 난천이 그렇게 묻혀 있었다
+ *
+ * ⚠️ **겹친 판 중 어느 것인가는 그 배우의 높이로 가른다. 주인공 층(`layer`)이
+ * 아니다.** 원작은 사람마다 제 y를 `near`로 넘기고 답을 다시 제 y에 적는다
+ * (`MapObject_RecalculatePositionHeight` → `TerrainCollisionManager_GetHeight(…, pos->y, …)`).
+ * 주인공 층으로 고르면 주인공이 다리 위에 설 때 다리 밑 사람이 다리 위로
+ * 끌려 올라가고, 반대로 서면 위 사람이 밑바닥으로 꺼진다. `layer`는 제 높이가
+ * 없는 자리(나무열매 밭·주인공 자신)만 쓴다
  */
 export function groundYAt(
   grid: { heightAtWorld(x: number, z: number, layer: number): number | null },
@@ -470,13 +485,26 @@ export function groundYAt(
    * 0이 온다 — 그래서 난천이 판에 한 칸 파묻힌 채로 서 있었다
    */
   own?: number,
+  /**
+   * 기억할 배우. 주면 배치표 높이가 아니라 **마지막으로 딛은 높이**를 `near`로
+   * 쓴다 — 다리에서 비탈로 걸어 내려간 사람이 배치 높이에 묶여 있지 않고 판을
+   * 따라간다. 원작이 제 y를 매번 고쳐 적는 것과 같다
+   */
+  who?: object,
 ): number {
   if (isDistortionFloor(mapId)) {
     if (own !== undefined) return own
     const y = distortionGroundY(mapId)
     if (y !== null) return y
   }
-  return grid.heightAtWorld(x, z, layer) ?? 0
+  if (own === undefined) return grid.heightAtWorld(x, z, layer) ?? 0
+  if (who === undefined) return grid.heightAtWorld(x, z, own) ?? 0
+  const seen = lastGround.get(who)
+  const near = seen !== undefined && seen.placed === own ? seen.y : own
+  const y = grid.heightAtWorld(x, z, near)
+  // 판이 없으면 원작도 제 y를 안 고친다 (`CALCULATED_HEIGHT_SOURCE_NONE`)
+  if (y !== null) lastGround.set(who, { placed: own, y })
+  return y ?? 0
 }
 
 /** 지금 깨어진 세계 안인가 */

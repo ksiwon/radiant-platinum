@@ -24,6 +24,7 @@ import { assets, onProviderSwap } from '../data/providers/assetProvider'
 import { worldState } from '../state/worldState'
 import { world } from '../engine/map/world'
 import { groundYAt } from './distortion'
+import { sceneShade } from './NpcSprites'
 
 /** 한 맵에 있는 변장 트레이너는 많아야 셋이다. 넉넉하게 둔다 */
 const MAX = 8
@@ -119,6 +120,8 @@ export function DisguisePlates({ grid, layer }: { grid: MapGrid; layer: number }
 
   useFrame(() => {
     const p = worldState.player.position
+    // 빛을 안 받는 재질이라 밤·동굴에서 혼자 환하다. 사람 판때기와 같은 밝기를 곱한다
+    material.color.setScalar(sceneShade(groupRef.current))
     let n = 0
     for (const actor of npcActors.list) {
       if (n >= MAX) break
@@ -132,7 +135,7 @@ export function DisguisePlates({ grid, layer }: { grid: MapGrid; layer: number }
       if (slot === undefined) break
       n++
       if (slot.prop !== prop) setProp(slot, prop)
-      const y = groundYAt(grid, world.mapId, actor.x + 0.5, actor.z + 0.5, layer, actor.y)
+      const y = groundYAt(grid, world.mapId, actor.x + 0.5, actor.z + 0.5, layer, actor.y, actor)
       slot.mesh.position.set(actor.x + 0.5, y + PLATE_Y, actor.z + 0.5)
       slot.mesh.visible = true
     }

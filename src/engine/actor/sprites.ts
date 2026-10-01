@@ -10,6 +10,10 @@
 //
 // 그래서 "동작 a의 e틱째"를 물으면 구간 안으로 접은 뒤 차례표를 뒤져 장을 준다.
 // 이 모듈은 three를 모른다 — 씬은 여기서 받은 장 번호로 UV만 옮긴다.
+import {
+  Behavior, isMud, isMudWithGrass, isOnSnow, isOnWater, isPuddle, isShallowWater,
+  isTallGrass, isVeryTallGrass,
+} from '../map/zone'
 
 /** `BILLBOARD_ANIM_TYPE_*` */
 const LOOP = 0
@@ -80,6 +84,149 @@ export function artDir(dir: number, quadrant: number): number {
 export function cameraQuadrant(dx: number, dz: number): number {
   const q = Math.round(Math.atan2(dx, -dz) / (Math.PI / 2))
   return ((q % 4) + 4) % 4
+}
+
+/**
+ * 판때기 사람 하나에 쓸 사분면.
+ *
+ * ⚠️ **1인칭은 화면 시선 하나로 고르지 않는다.** 판은 사람마다 카메라 자리를
+ * 향해 도는데(`scene/billboard`) 그림만 시선 하나로 고르면, 가로 화각이 85°쯤
+ * 되는 1인칭에서 화면 가장자리 사람은 판과 그림이 40° 넘게 어긋난다 — 나를
+ * 마주 보는 사람이 옆모습으로 나오고, 고개만 돌려도 그 사람 그림이 바뀐다.
+ * 그래서 카메라에서 **그 사람으로** 가는 선으로 고른다.
+ *
+ * 3인칭은 시선을 그대로 쓴다. 원작처럼 북쪽에 고정이라 0이고, 사람마다 고르면
+ * 카메라 옆으로 멀리 선 사람이 45° 근처에서 뒤집힌다
+ *
+ * @param view 화면 시선의 사분면 (`cameraQuadrant(목표 − 카메라)`)
+ * @param ax 그 사람이 선 칸 (칸 모서리 좌표. 가운데는 +0.5다)
+ * @param cx 카메라 자리
+ */
+export function plateQuadrant(
+  view: number, firstPerson: boolean,
+  ax: number, az: number, cx: number, cz: number,
+): number {
+  if (!firstPerson) return view
+  return cameraQuadrant(ax + 0.5 - cx, az + 0.5 - cz)
+}
+
+// ── 발밑 그림자 (`overlay005/ov5_021F134C.c`) ───────────────────────────────
+//
+// 원작 판때기 사람은 발밑에 그림자 모델 하나를 깐다. 모델은 하나를 모두가 같이
+// 쓰고, **그 진하기와 크기를 시간대가 정한다** — 맵마다·사람마다가 아니다.
+
+/**
+ * 시간대마다 그림자 진하기 (`Unk_ov5_02200284`, 0~31의 모델 알파).
+ * 색인이 `TimeOfDay`다 — 아침 · 낮 · 해질녘 · 밤 · 심야
+ */
+const SHADOW_ALPHA: readonly number[] = [14, 18, 18, 8, 4]
+/**
+ * 시간대마다 그림자 크기, 가로(x)·세로(z) (`Unk_ov5_022002E4`). 높이는 늘 1이다.
+ * 해가 낮으면 길게 늘어진다 — 낮은 1.25배, 심야는 0.875배다
+ */
+const SHADOW_SCALE: readonly (readonly [number, number])[] = [
+  [1, 1], [1.25, 1.25], [1.25, 1], [1.125, 1], [0.875, 0.875],
+]
+/** 한 프레임에 크기가 가는 폭 (`0x10` / FX32_ONE) */
+const SCALE_STEP = 0x10 / 4096
+/** 한 프레임에 알파가 가는 폭 (`0x200` / FX32_ONE) */
+const ALPHA_STEP = 0x200 / 4096
+
+/**
+ * 그림자 위치를 사람 자리에서 얼마나 미는가, 칸 단위 (`ov5_021F1670`).
+ * 원작은 x −0.5 · z +1유닛이고 한 칸이 16유닛이다
+ */
+export const SHADOW_OFFSET = { x: -0.5 / 16, z: 1 / 16 } as const
+
+/** 지금 그림자 모양. 원작도 이 하나를 모든 사람이 같이 본다 */
+interface FootShadow {
+  /** 0~31. 모델에 넘길 때는 정수로 자른다 (`ov5_021F13C8`) */
+  alpha: number
+  sx: number
+  sz: number
+  /** 한 번이라도 맞췄는가. 처음에는 감지 않고 바로 그 값이다 (`case 0`) */
+  started: boolean
+}
+
+export function footShadow(): FootShadow {
+  return { alpha: 0, sx: 1, sz: 1, started: false }
+}
+
+/** `ov5_021F1400` — 목표까지 `step`만큼 가고 넘으면 멈춘다 */
+function approach(now: number, want: number, step: number): number {
+  if (now < want) return Math.min(want, now + step)
+  if (now > want) return Math.max(want, now - step)
+  return now
+}
+
+/**
+ * 그림자를 한 걸음 감는다 (`ov5_021F1424`).
+ *
+ * 시간대가 바뀌면 크기는 프레임마다 1/256, 알파는 1/8씩 새 값으로 간다 — 툭
+ * 바뀌지 않는다. 처음 한 번은 감지 않고 그 시간대 값으로 바로 선다
+ *
+ * @param frames 지난 원작 프레임 수 (60Hz). 소수여도 된다
+ */
+export function stepFootShadow(s: FootShadow, timeOfDay: number, frames: number): void {
+  const alpha = SHADOW_ALPHA[timeOfDay] ?? SHADOW_ALPHA[1]!
+  const [sx, sz] = SHADOW_SCALE[timeOfDay] ?? SHADOW_SCALE[1]!
+  if (!s.started) {
+    s.alpha = alpha; s.sx = sx; s.sz = sz; s.started = true
+    return
+  }
+  s.sx = approach(s.sx, sx, SCALE_STEP * frames)
+  s.sz = approach(s.sz, sz, SCALE_STEP * frames)
+  s.alpha = approach(s.alpha, alpha, ALPHA_STEP * frames)
+}
+
+/** 모델 알파 0~31을 불투명도로. 원작이 정수로 자른 뒤 넘긴다 */
+export function footShadowOpacity(s: FootShadow): number {
+  return Math.floor(s.alpha) / 31
+}
+
+/**
+ * 그림자를 안 까는 그림 (`Unk_ov5_021FC194`에서 넷째 칸이 0인 것).
+ *
+ * 나머지 230종은 전부 1이다. 판때기로 서는 것 중에는 갤럭시단 아지트 문 ·
+ * 기라티나 오리진폼 · 조무래기 무리 둘이 여기 든다
+ */
+const NO_SHADOW: ReadonlySet<string> = new Set([
+  'MAP_SIGNPOST', 'MAILBOX', 'SIGNBOARD', 'ARROW_SIGNPOST', 'GYM_SIGNPOST',
+  'TRAINER_TIPS_SIGNPOST', 'BERRY_SOIL', 'BOOK', 'INVISIBLE', 'GALACTIC_HQ_DOOR',
+  'ELITE_FOUR_ROOM_DOOR', 'DIST_WORLD_PLAYER_M', 'GIRATINA_ORIGIN', 'GRUNTS_GROUP_OF_4',
+  'GRUNTS_GROUP_OF_3', 'DIST_WORLD_PLAYER_M_SURF', 'DIST_WORLD_PLAYER_F_SURF',
+  'DIST_WORLD_PLAYER_M_HOLDING_POKEBALL', 'DIST_WORLD_PLAYER_F_HOLDING_POKEBALL',
+  'WALL_BLOCKING_ROTOMS_ROOM', 'DIST_WORLD_PLAYER_F', 'DIST_WORLD_PLAYER_M_SAVE',
+  'DIST_WORLD_PLAYER_F_SAVE', 'DIST_WORLD_PLAYER_M_POKETCH', 'DIST_WORLD_PLAYER_F_POKETCH',
+  'PLAYER_M_SAVE_HEARTHOME_GYM', 'PLAYER_F_SAVE_HEARTHOME_GYM',
+  'PLAYER_M_POKETCH_HEARTHOME_GYM', 'PLAYER_F_POKETCH_HEARTHOME_GYM',
+])
+
+export function castsFootShadow(sprite: NpcSprite): boolean {
+  return !NO_SHADOW.has(sprite.name)
+}
+
+/** `TILE_BEHAVIOR_REFLECTIVE` — 열거형에서 0x2C번째다 (`map_tile_behaviors.h`) */
+const REFLECTIVE = 0x2c
+
+/**
+ * 그 칸에 서면 그림자를 감추는가 (`map_object_move.c`의 `sub_02063B20`).
+ *
+ * 풀숲 · 물 · 웅덩이 · 얕은 물 · 눈 · 진흙 · 거울 바닥이다 — 발이 묻히거나
+ * 비쳐 보이는 자리다. 물·눈 위 다리는 **위로** 친다: 배치표의 사람은 다리
+ * 위에 서 있다 (`actor/ambient`의 `terrainBlocks`와 같다)
+ */
+export function hidesFootShadow(behavior: number): boolean {
+  return isTallGrass(behavior)
+    || isVeryTallGrass(behavior)
+    || isOnWater(behavior, true)
+    || isPuddle(behavior)
+    || isShallowWater(behavior)
+    || isOnSnow(behavior, true)
+    || isMud(behavior)
+    || isMudWithGrass(behavior)
+    // `TileBehavior_IsReflective` (`map_tile_behavior.c` 721줄)
+    || behavior === REFLECTIVE || behavior === Behavior.PUDDLE_NO_SPLASHING
 }
 
 // ── 장 고르기 ────────────────────────────────────────────────────────────────

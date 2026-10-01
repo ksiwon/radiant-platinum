@@ -97,9 +97,10 @@ const MOVING = 0.05
  *
  * 90°를 0.13초에 감는다 — 원작의 한 걸음이 8프레임(0.133초)이라
  * (`scripts.json`의 `WALK_NORMAL`) **걸음 하나 안에 다 돌아선다.** 그래서
- * 걷다 모퉁이를 돌 때 몸이 뒤처져 미끄러지지 않으면서, 튀는 것만 없어진다
+ * 걷다 모퉁이를 돌 때 몸이 뒤처져 미끄러지지 않으면서, 튀는 것만 없어진다.
+ * 포켓몬 모델도 같은 빠르기로 돈다 (`NpcMonModels`)
  */
-const TURN_RATE = (Math.PI / 2) / (8 / 60)
+export const TURN_RATE = (Math.PI / 2) / (8 / 60)
 
 /** 받아 둔 씬. 갈래마다 한 벌만 받고 사람마다 복제한다 */
 const scenes = new Map<string, Object3D>()
@@ -317,7 +318,7 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
       seen.add(actor)
       bodyHeights.set(actor, slot.height)
 
-      const y = groundYAt(grid, world.mapId, actor.x + 0.5, actor.z + 0.5, layer, actor.y)
+      const y = groundYAt(grid, world.mapId, actor.x + 0.5, actor.z + 0.5, layer, actor.y, actor)
       // 연출이 걸려 있으면 그림만 그만큼 어긋난다 (`MapObject_SetSpritePosOffset`)
       slot.outer.position.set(
         actor.x + 0.5 + (actor.offsetX ?? 0),

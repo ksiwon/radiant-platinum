@@ -6,9 +6,15 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  artDir, cameraQuadrant, frameOf, loadNpcSprites, npcSprite, type NpcSprite,
+  artDir, cameraQuadrant, castsFootShadow, footShadow, footShadowOpacity, frameOf,
+  hidesFootShadow, loadNpcSprites, npcSprite, plateQuadrant, SHADOW_OFFSET, stepFootShadow,
+  type NpcSprite,
 } from './sprites'
+import { Behavior } from '../map/zone'
+import { TimeOfDay } from '../map/timeOfDay'
 import { withData } from '../../data/romData.testkit'
+import { plateShade } from '../../scene/NpcSprites'
+import { NIGHT_FLOOR, TIME_LOOKS } from '../../scene/fx/sky'
 
 /** 닌자꼬마와 같은 모양의 최소 표본 — 16장, 방향마다 4장 */
 const WALKER: NpcSprite = {
@@ -50,6 +56,29 @@ describe('방향 고르기', () => {
     expect(cameraQuadrant(0, 1)).toBe(2)
     expect(cameraQuadrant(-1, 0)).toBe(3)
   })
+
+  it('1인칭 화면 가장자리 사람은 그 사람 쪽으로 가는 선으로 고른다 — 마주 보면 얼굴이다', () => {
+    // 카메라가 (0.5, 0.5)에서 북동 40°를 본다. 시선 하나로 고르면 0(북)이다
+    const yaw = 40 * Math.PI / 180
+    const view = cameraQuadrant(Math.sin(yaw), -Math.cos(yaw))
+    expect(view).toBe(0)
+    // 칸 (4, −1)의 사람은 시선에서 오른쪽으로 36° — 가로 화각 85°의 가장자리다
+    const ray = Math.atan2(4.5 - 0.5, -(-0.5 - 0.5)) * 180 / Math.PI
+    expect(ray - 40).toBeGreaterThan(30)
+    expect(ray - 40).toBeLessThan(42.5)
+    // 그 사람이 서쪽(2)을 보면 나를 마주 보는 것이다. 얼굴(남, 1)이어야 한다
+    const q = plateQuadrant(view, true, 4, -1, 0.5, 0.5)
+    expect(q).toBe(1)
+    expect(artDir(2, q)).toBe(1)
+    // 시선 하나로 고르면 서쪽 옆모습(2)이 나왔다
+    expect(artDir(2, view)).toBe(2)
+  })
+
+  it('3인칭은 사람마다 고르지 않는다 — 시선(원작은 늘 북쪽, 0) 그대로다', () => {
+    // 카메라 옆으로 멀리 선 사람도 원작처럼 제 방향 그림이다
+    expect(plateQuadrant(0, false, 20, 0, 0.5, 6)).toBe(0)
+    for (const dir of [0, 1, 2, 3]) expect(artDir(dir, plateQuadrant(0, false, 20, 0, 0.5, 6))).toBe(dir)
+  })
 })
 
 describe('장 고르기', () => {
@@ -86,6 +115,96 @@ describe('장 고르기', () => {
     for (const t of [0, 7, 99]) expect(frameOf(rock, 0, t)).toBe(0)
     // 동작이 모자라면 있는 것 중 마지막을 쓴다. 범위 밖을 읽지 않는다
     expect(frameOf(rock, 3, 0)).toBe(0)
+  })
+})
+
+describe('발밑 그림자 (`ov5_021F134C`)', () => {
+  it('처음에는 감지 않고 그 시간대 값으로 바로 선다', () => {
+    const s = footShadow()
+    stepFootShadow(s, TimeOfDay.NIGHT, 1)
+    expect(s.alpha).toBe(8)
+    expect([s.sx, s.sz]).toEqual([1.125, 1])
+    expect(footShadowOpacity(s)).toBeCloseTo(8 / 31)
+  })
+
+  it('시간대가 바뀌면 크기는 프레임마다 1/256, 알파는 1/8씩 간다', () => {
+    const s = footShadow()
+    stepFootShadow(s, TimeOfDay.DAY, 1)
+    expect([s.alpha, s.sx, s.sz]).toEqual([18, 1.25, 1.25])
+    // 낮 → 해질녘: 가로는 그대로(1.25), 세로만 1.25 → 1, 알파도 그대로다
+    stepFootShadow(s, TimeOfDay.TWILIGHT, 1)
+    expect(s.sx).toBe(1.25)
+    expect(s.sz).toBeCloseTo(1.25 - 1 / 256)
+    // 64프레임이면 0.25를 다 간다. 넘어가지 않는다
+    stepFootShadow(s, TimeOfDay.TWILIGHT, 100)
+    expect(s.sz).toBe(1)
+    // 해질녘 → 심야: 알파 18 → 4는 1/8씩이라 112프레임이 걸린다
+    stepFootShadow(s, TimeOfDay.LATE_NIGHT, 8)
+    expect(s.alpha).toBe(17)
+    // 모델에는 정수로 잘라 넘긴다 — 16.875는 16이다
+    stepFootShadow(s, TimeOfDay.LATE_NIGHT, 1)
+    expect(footShadowOpacity(s)).toBeCloseTo(16 / 31)
+    stepFootShadow(s, TimeOfDay.LATE_NIGHT, 1000)
+    expect([s.alpha, s.sx, s.sz]).toEqual([4, 0.875, 0.875])
+  })
+
+  it('자리는 사람에서 x −0.5 · z +1유닛 (한 칸 16유닛)', () => {
+    expect(SHADOW_OFFSET).toEqual({ x: -1 / 32, z: 1 / 16 })
+  })
+
+  it('풀숲·물·웅덩이·얕은 물·눈·진흙·거울 바닥에서는 감춘다 (`sub_02063B20`)', () => {
+    for (const b of [
+      Behavior.TALL_GRASS, Behavior.VERY_TALL_GRASS, Behavior.PUDDLE, Behavior.PUDDLE_NO_SPLASHING,
+      Behavior.SHALLOW_WATER, Behavior.SNOW_DEEP, Behavior.SNOW_SHALLOW, Behavior.MUD,
+      Behavior.MUD_WITH_GRASS, 0x2c,
+    ]) expect(hidesFootShadow(b), b.toString(16)).toBe(true)
+    // 맨땅 · 모래 · 그림자가 지는 눈은 그림자가 선다
+    for (const b of [0, Behavior.SAND, Behavior.SNOW_WITH_SHADOWS]) {
+      expect(hidesFootShadow(b), b.toString(16)).toBe(false)
+    }
+    // 물·눈 위 다리는 사람이 다리 위에 서 있다 — 그림자가 선다
+    expect(hidesFootShadow(0x73)).toBe(false)
+    expect(hidesFootShadow(0x75)).toBe(false)
+  })
+
+  it('간판·문·무리 그림은 그림자를 안 깐다', () => {
+    expect(castsFootShadow({ ...WALKER, name: 'GRUNTS_GROUP_OF_4' })).toBe(false)
+    expect(castsFootShadow({ ...WALKER, name: 'GALACTIC_HQ_DOOR' })).toBe(false)
+    expect(castsFootShadow(WALKER)).toBe(true)
+  })
+
+  // 원작 표를 직접 읽어 맞댄다 — 손으로 옮긴 목록이 한 줄이라도 빠지면 걸린다
+  const TABLE = resolve(__dirname, '../../../raw/decomp/src/overlay005/ov5_021FAF40.c')
+  it.runIf(existsSync(TABLE))('그림자 깃발이 원작 표(`Unk_ov5_021FC194`)와 같다', () => {
+    const src = readFileSync(TABLE, 'utf8')
+    const body = src.slice(src.indexOf('Unk_ov5_021FC194[] = {'))
+    const rows = [...body.slice(0, body.indexOf('};')).matchAll(/\{ OBJ_EVENT_GFX_(\w+), (\d+), (\d+),/g)]
+    expect(rows.length).toBeGreaterThan(250)
+    for (const [, name, , shadow] of rows) {
+      expect(castsFootShadow({ ...WALKER, name: name! }), name).toBe(shadow !== '0')
+    }
+  })
+})
+
+describe('판때기 밝기 (`plateShade`)', () => {
+  const at = (i: number) => {
+    const l = TIME_LOOKS[i]!
+    return plateShade({ ambient: l.ambient, skyColor: l.skyColor, sun: l.sun, sunColor: l.sunColor, fill: l.fill })
+  }
+
+  it('낮은 1이다 — 낮 화면은 전과 같다', () => {
+    expect(at(TimeOfDay.DAY)).toBeCloseTo(1, 6)
+  })
+
+  it('밤과 심야는 입체 사람처럼 낮의 `NIGHT_FLOOR`까지 내려간다', () => {
+    expect(at(TimeOfDay.NIGHT)).toBeCloseTo(NIGHT_FLOOR, 6)
+    expect(at(TimeOfDay.LATE_NIGHT)).toBeCloseTo(NIGHT_FLOOR, 6)
+  })
+
+  it('해질녘은 낮과 밤 사이다', () => {
+    const dusk = at(TimeOfDay.TWILIGHT)
+    expect(dusk).toBeLessThan(1)
+    expect(dusk).toBeGreaterThan(NIGHT_FLOOR)
   })
 })
 
