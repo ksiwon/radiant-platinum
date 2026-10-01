@@ -155,6 +155,23 @@ export const small = style({
   opacity: 0.85,
 })
 
+/**
+ * 액정이 「지금이다」를 알리는 깜빡임 (알람 · 키친타이머 · 상성체커 최고 궁합).
+ *
+ * ⚠️ **그림 문자(⏰)를 안 얹는다.** 컬러 이모지는 OS 글꼴로 그려져 액정 명암
+ * 넷을 벗어난다 — 원작 액정에 없는 색이 하나 뜬다. 켜졌다 꺼지는 것만으로 말한다
+ */
+const blink = keyframes({
+  '0%': { opacity: 1 },
+  '50%': { opacity: 0 },
+})
+
+export const smallBlink = style([small, {
+  opacity: 1,
+  fontWeight: 800,
+  animation: `${blink} 0.5s steps(1, end) infinite`,
+}])
+
 export const rows = style({
   display: 'flex',
   flexDirection: 'column',
@@ -186,6 +203,185 @@ export const bar = style({
 export const barFill = style({
   height: '100%',
   background: 'currentColor',
+})
+
+/**
+ * 파티 여섯을 두 줄 셋으로 (포켓몬리스트 · 친밀도체커).
+ *
+ * 원작 두 앱이 다 그 자리에 아이콘을 세운다 (`sMonPosition` · `initialLocations`)
+ */
+export const monGrid = style({
+  display: 'grid',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  columnGap: 6,
+  rowGap: 2,
+  fontSize: 11,
+})
+
+export const monCell = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 4,
+  minWidth: 0,
+})
+
+export const monInfo = style({
+  flex: 1,
+  minWidth: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+})
+
+/**
+ * 포켓몬 아이콘 한 칸. 그림은 이미 액정 명암 넷으로 칠해져 온다 (`paintLcd`) —
+ * 여기서 색을 더 누르지 않는다. 점이 번지면 액정이 아니다
+ */
+export const monIcon = style({
+  display: 'inline-block',
+  flexShrink: 0,
+  backgroundRepeat: 'no-repeat',
+  imageRendering: 'pixelated',
+})
+
+/** 칸 안의 체력 막대. 칸 너비를 따라 늘어난다 */
+export const cellBar = style([bar, { width: 'auto', alignSelf: 'stretch' }])
+
+/** 앱 머리글 한 줄 (포켓몬히스토리 · 통신서치) — 롬 글이다 */
+export const title = style({
+  textAlign: 'center',
+  fontSize: 10,
+  fontWeight: 800,
+})
+
+export const historyBox = style({
+  height: '100%',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: 2,
+})
+
+/** 넷씩 세 줄. 원작 칸 간격이 가로 40 · 세로 48이라 세로가 조금 더 성기다 */
+export const historyGrid = style({
+  display: 'grid',
+  gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+  columnGap: 6,
+  rowGap: 4,
+  width: '100%',
+  fontSize: 9,
+})
+
+export const historyCell = style({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  minWidth: 0,
+})
+
+// ── 상성체커 ─────────────────────────────────────────────────────────────────
+
+/** 사랑동이가 보는 쪽 (1 왼쪽 · -1 오른쪽)과 다가가는 거리 */
+export const face = createVar()
+export const shift = createVar()
+
+/** 하트 칸 · 사랑동이 줄 · 두 마리 줄 — 원작 화면의 세 층 (y 32 · 88 · 140) */
+export const matchup = style({
+  margin: 'auto',
+  height: '100%',
+  display: 'flex',
+  flexDirection: 'column',
+  justifyContent: 'center',
+  gap: 4,
+  fontSize: 11,
+})
+
+export const heartMeter = style({
+  display: 'flex',
+  justifyContent: 'center',
+  gap: 3,
+  fontSize: 14,
+  lineHeight: 1,
+})
+
+export const heartOn = style({ color: ink })
+/** 꺼진 하트는 액정 중간 명암 — 칸이 셋인 것은 늘 보인다 */
+export const heartOff = style({ color: mid })
+export const heartBlink = style([heartOn, {
+  animation: `${blink} 0.27s steps(1, end) infinite`,
+}])
+
+export const matchupRow = style({
+  position: 'relative',
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+})
+
+/** 사랑동이 한 마리. 놓인 자리에서 마주 본다 */
+export const luvdisc = style({
+  position: 'absolute',
+  top: 0,
+  display: 'inline-flex',
+  transform: `scaleX(${face})`,
+})
+
+/** 하트 수만큼 다가간다 (`sCommands*Compatibility`) */
+const approach = keyframes({
+  from: { transform: `translateX(0) scaleX(${face})` },
+  to: { transform: `translateX(${shift}) scaleX(${face})` },
+})
+
+export const luvdiscNear = style([luvdisc, {
+  animationName: approach,
+  animationTimingFunction: 'linear',
+  animationFillMode: 'forwards',
+}])
+
+/**
+ * 안 맞으면 한 칸 다가갔다가 서로 등을 돌리고 물러난다 (`sCommandsIncompatible` —
+ * 16프레임 다가가기 · 16 쉬기 · 뒤돌기 · 16 물러나기)
+ */
+const spurn = keyframes({
+  '0%': { transform: `translateX(0) scaleX(${face})` },
+  '33.3%': { transform: `translateX(${shift}) scaleX(${face})` },
+  '66.6%': { transform: `translateX(${shift}) scaleX(calc(${face} * -1))` },
+  '100%': { transform: `translateX(0) scaleX(calc(${face} * -1))` },
+})
+
+export const luvdiscSpurn = style([luvdisc, {
+  animationName: spurn,
+  animationTimingFunction: 'linear',
+  animationFillMode: 'forwards',
+}])
+
+export const matchupMon = style({
+  position: 'absolute',
+  top: 0,
+  display: 'inline-flex',
+})
+
+/** 가운데 「맞대 본다」 버튼 */
+export const matchupButton = style({
+  width: 18,
+  height: 14,
+  display: 'grid',
+  placeItems: 'center',
+  fontSize: 10,
+  border: '1px solid currentColor',
+  borderRadius: RADIUS.bar,
+})
+
+/** 한 마리뿐이면 눌린 채로 멈춘다 (`SetupSprites` — 애니메이션 10) */
+export const matchupButtonDown = style([matchupButton, {
+  background: 'currentColor',
+  color: ground,
+}])
+
+export const matchupNames = style({
+  display: 'flex',
+  gap: 6,
+  fontSize: 10,
 })
 
 /** 하트 한 줄 (친밀도체커) */
@@ -332,11 +528,13 @@ export const swatchOn = style([swatch, {
   outlineOffset: 1,
 }])
 
-/** 아직 그 계통이 없다고 말하는 자리 */
+/** 비어 있거나 쓸 수 없다고 말하는 자리 */
 export const missing = style({
   textAlign: 'center',
   fontSize: 10,
   lineHeight: 1.5,
   opacity: 0.8,
   padding: '0 4px',
+  // 롬 글은 줄을 줄바꿈 글자로 끊어 둔다
+  whiteSpace: 'pre-line',
 })
