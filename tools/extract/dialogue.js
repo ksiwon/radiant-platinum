@@ -298,6 +298,16 @@ const EXTRA_BANKS = [
   // `BANK_ORDER`를 통째로 굽는다). 그래서 설치본에서는 있고 개발판에서는 없는
   // 뱅크였다 — 개발 서버에서만 조용한 자리는 이렇게 생긴다
   'TEXT_BANK_BATTLE_BAG', 'TEXT_BANK_BATTLE_PARTY',
+  // 전멸 뒤 검은 화면의 두 줄 (`FieldTask_BlackOutFromBattle` → `sub_02052914`) — 3 센터 · 4 집.
+  // 필드 과제가 `MessageLoader_Init`으로 직접 연다
+  'TEXT_BANK_BLACK_OUT_SCENE',
+  // 알 부화 (`cutscenes/egg_hatch/main.c`) — 「어라…?」 · 태어났다 · 별명을 지을까. 따로 도는 컷신이다
+  'TEXT_BANK_EGG_HATCH',
+  // 포켓치 통신서치의 제목과 「이곳에서는 쓸 수 없다」 (`applications/poketch/link_searcher`)
+  //
+  // ⚠️ **셋 다 브라우저 변환기는 이미 싣고 있었다** (`import/platinum/text.ts`가 뱅크를 통째로 굽는다).
+  // 설치본에만 있고 개발 서버에는 없는 뱅크였다
+  'TEXT_BANK_POKETCH_LINK_SEARCHER',
 ]
 
 function main() {

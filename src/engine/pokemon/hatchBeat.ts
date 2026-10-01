@@ -129,3 +129,72 @@ export function hatchVeil(frame: number, beats: HatchBeats): number {
   if (frame < from) return 0
   return Math.min(1, (frame - from) / FADE)
 }
+
+// ── 소리 ─────────────────────────────────────────────────────────────────────
+//
+// ⚠️ **번호는 SDAT 목록의 자리다** (`pl_sound_data/InfoBlock.json`의 `seqInfo`). 효과음 표(`audio/sfx`)에 없는
+// 둘은 여기서만 쓰므로 이 자리에 둔다 — 같은 목록의 이웃이 이미 맞는지 본 값이다(`SEQ_SE_DP_BOWA2` 1798 · `SEQ_FANFA5` 1156)
+
+/** `SEQ_SE_DP_EGG01` — 알이 흔들릴 때 */
+const SEQ_SE_DP_EGG01 = 1812
+/** `SEQ_SE_DP_BOWA3` — 알이 터질 때 */
+const SEQ_SE_DP_BOWA3 = 1799
+
+/**
+ * 부화 장면의 곡과 팡파르 (`EggHatchCutscene_Normal`).
+ *
+ * 곡은 화면이 밝아지자마자 깐다 (`Sound_SetSceneAndPlayBGM(SOUND_SCENE_13, SEQ_SHINKA, 1)` · main.c 103) —
+ * 진화와 같은 곡이다. 팡파르는 태어난 마리가 **다 울고 나서** 난다 (`Sound_PlayFanfare(SEQ_FANFA5)` · 142)
+ */
+export const HATCH_SOUND = {
+  /** `SEQ_SHINKA` */
+  bgm: 1141,
+  /** `SEQ_FANFA5` */
+  fanfare: 1156,
+} as const
+
+interface HatchSoundCue {
+  readonly frame: number
+  /** SDAT 번호 */
+  readonly seq: number
+}
+
+/**
+ * 마디마다 내는 효과음 — 흔들림 넷과 터짐 하나 (main.c 375 · 401 · 431 · 464 · 501).
+ *
+ *   `InitializeEggAnimation`   스물다섯 프레임을 센 끝 → EGG01
+ *   `StartBreakingEgg`         잔 흔들림 **첫 벌**이 끝날 때 → EGG01 (둘째 벌은 소리가 없다)
+ *   `FirstEggShardsBreakOff`   큰 흔들림 한가운데 → EGG01 (첫 조각과 같은 프레임)
+ *   `MoreEggShardsBreakAway`   더 큰 흔들림 한가운데 → EGG01 (더 깨진 조각과 같은 프레임)
+ *   `CompleteEggAnimation`     터지는 흔들림 한가운데 → BOWA3 (터짐·반짝임과 같은 프레임)
+ *
+ * ⚠️ **울음소리와 팡파르는 여기 없다.** 그쪽은 마디가 아니라 「앞 소리가 다 끝났는가」를 기다려
+ * 나므로(`Sound_IsPokemonCryPlaying`) 화면이 그 자리에서 낸다 — 진화(`evolutionSoundCues`)와 같은 나눔이다
+ */
+export function hatchSoundCues(beats: HatchBeats): readonly HatchSoundCue[] {
+  return [
+    { frame: HOLD, seq: SEQ_SE_DP_EGG01 },
+    { frame: HOLD + SHAKE, seq: SEQ_SE_DP_EGG01 },
+    { frame: beats.first, seq: SEQ_SE_DP_EGG01 },
+    { frame: beats.more, seq: SEQ_SE_DP_EGG01 },
+    { frame: beats.burst, seq: SEQ_SE_DP_BOWA3 },
+  ]
+}
+
+/**
+ * 부화 뱅크의 줄 자리 (`TEXT_BANK_EGG_HATCH` · `res/text/egg_hatch.json`).
+ *
+ * ⚠️ **흔들리는 동안의 글은 없다.** 뱅크가 넷뿐이고 깨지기 전에 찍는 줄이 하나도 없다 —
+ * 「어라…?」는 진화 쪽 말이다
+ */
+export const EGG_HATCH_TEXT = {
+  /** 「알이 부화해서 {이름} 태어났다!」 — 0번 칸이 종족 이름 */
+  hatched: 0,
+  /** `EggHatch_Text_WantToNickname` */
+  nickname: 1,
+  yes: 2,
+  no: 3,
+} as const
+
+/** `TEXT_BANK_EGG_HATCH`의 미국 번호 (`dialogue/index.json`) */
+export const EGG_HATCH_BANK = 357

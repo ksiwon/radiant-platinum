@@ -46,7 +46,7 @@ maybe('대사', () => {
     // 스크립트가 이 뱅크를 안 가리킨다) · 기술을 쓰는 줄 1,404개(0) ·
     // 랭크 이름 아홉(551) · 배틀 안 가방 49줄(2)과 파티 96줄(3) —
     // 그 둘도 배틀이 제 뱅크를 직접 여는 자리다 (PARITY §2.26) · 슬롯머신의 말 셋(544 — PARITY §7.6)
-    expect(index.banks.length).toBe(502)
+    expect(index.banks.length).toBe(505)
     expect(index.locales).toEqual(['en', 'ko', 'ja'])
     // 번호가 오름차순이고 겹치지 않는다
     const nums = index.banks.map((b) => b.index)
@@ -146,7 +146,7 @@ maybe('대사', () => {
     // 이름·수를 빈칸으로 받는 문장 틀이고, 기술 줄 1,404개는 전부 이름 빈칸이 하나다.
     // 조사가 붙은 장식 이름 100(387 · 미국 롬에만)이 색 부호를 둘씩 든다 — `a {COLOR 255}White Fluff{COLOR 0}`.
     // 신비한 선물 암호의 틀(372의 1번)이 낱말 빈칸 넷을 든다
-    expect(counted).toEqual({ en: 8827, ko: 6731, ja: 6952 })
+    expect(counted).toEqual({ en: 8831, ko: 6735, ja: 6972 })
   })
 
   it('떡잎마을 기타리스트 대사에 주인공·라이벌이 따로 들어간다', () => {

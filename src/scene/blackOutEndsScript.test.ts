@@ -36,8 +36,10 @@ import { installNodeAssets, withData } from '../data/romData.testkit'
 import { useBattleStore } from '../state/battleStore'
 import { createNewSave, useSaveStore } from '../state/saveStore'
 import { worldState } from '../state/worldState'
+import { screenTint } from '../engine/script/fade'
 import { installFieldServices } from './fieldServices'
 import { cutInSystem, resetCutIn } from './encounterCutIn'
+import { blackOutRunning, resetBlackOut } from './pokecenter'
 
 const DATA = resolve(__dirname, '../../public/data')
 const read = (p: string): unknown => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
@@ -101,6 +103,8 @@ maybe('전멸과 스크립트', () => {
   })
 
   afterEach(() => {
+    // 전멸 과제는 씬이 워프를 받아 줄 때까지 기다린다 — 여기는 씬이 없으므로 걷는다
+    resetBlackOut()
     abortScript()
     stopServices?.()
     stopServices = null
@@ -146,6 +150,12 @@ maybe('전멸과 스크립트', () => {
       // 발이 묶인다
       expect(scriptBusy(), `졌는데 스크립트가 ${String(frames)}프레임 뒤에도 돈다`).toBe(false)
       expect(mapWorld.pending?.to, '부활 자리로 안 옮겼다').toBe(PLAYER_HOUSE_1F)
+      // 걸어 든 것이 아니라 문 소리가 없고, 위를 보고 선다 (`Location_InitBlackOut`의 `FACE_UP`)
+      expect(mapWorld.pending).toMatchObject({ silent: true, facing: 0 })
+      // 전멸 과제는 **한 판**이 돌며 씬이 워프를 받기를 기다린다 — 그동안 화면은 검다
+      // (명령과 배틀이 닫히는 알림이 둘 다 불렀어도 한 판이다)
+      expect(blackOutRunning(), '전멸 과제가 안 돈다').toBe(true)
+      expect(screenTint.alpha, '검은 판이 안 깔렸다').toBe(1)
     } finally {
       stopWatch()
     }
