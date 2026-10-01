@@ -21,7 +21,7 @@
 // 가장 많이 쓰인 초록을 그대로 쓴다.
 import { useEffect, useMemo } from 'react'
 import {
-  BufferAttribute, BufferGeometry, Color, DoubleSide, InstancedMesh, Matrix4,
+  BufferAttribute, BufferGeometry, Color, FrontSide, InstancedMesh, Matrix4,
   MeshLambertMaterial, Quaternion, Vector3,
 } from 'three'
 import type { MapGrid } from '../engine/map/grid'
@@ -34,7 +34,7 @@ const BLADES = 5
  * 한 타일에 몇 포기.
  *
  * 창 하나에 드는 풀숲 칸이 전 오버월드 최대 1,056개라, 셋씩 세워도 삼각형
- * 31,680개다 — 나무 90만 개 옆에서 없는 것과 같다. 성글면 장판이 비쳐 보인다
+ * 63,360개다(잎마다 앞뒤 두 벌 · `tuftGeometry`) — 나무 90만 개 옆에서 없는 것과 같다. 성글면 장판이 비쳐 보인다
  */
 const TUFTS = 3
 /** 잎 길이(타일). 원작 긴 풀이 발목을 덮고 무릎에 안 닿는다 — 키 1.5의 1/3쯤 */
@@ -93,12 +93,21 @@ export function grassSpots(grid: MapGrid, chunkIndex: number, radius: number): F
 }
 
 /**
- * 포기 하나의 모양. 잎 `BLADES`장, 장마다 삼각형 둘.
+ * 포기 하나의 모양. 잎 `BLADES`장, 장마다 삼각형 둘을 앞뒤로 한 벌씩.
  *
  * 밑동을 어둡게 두는 것은 실제 풀숲이 아래로 갈수록 빛을 못 받기 때문이다.
- * 이것이 없으면 포기가 평평한 초록 부채로 보인다
+ * 이것이 없으면 포기가 평평한 초록 부채로 보인다.
+ *
+ * ⚠️ **법선은 전부 위(0,1,0)다.** 잎 한 장은 판이라 면 법선을 쓰면(`computeVertexNormals`) 해를 등진 면이
+ * 직사광을 하나도 못 받는다 — 해 반대쪽에서 본 잎은 반구광만 남아 검은 막대로 뭉쳤다(`twinleaf-1p-90`에서 같은 풀이
+ * 한쪽은 초록 · 다른 쪽은 검정). 위를 보게 두면 잎이 어느 쪽을 향하든 땅과 같은 빛을 받는다 — 풀숲은 낱장보다
+ * 덩어리로 읽혀야 한다.
+ *
+ * ⚠️ **그래서 양면 재질을 안 쓰고 잎마다 앞뒤 두 벌을 감는다.** 양면 재질은 뒷면에서 법선을 뒤집는다(three
+ * `negateOnBackSide` · WebGL `DOUBLE_SIDED`) — 위 법선이 뒷면에서 아래가 되어 그 면만 다시 검어진다. 감는 방향을
+ * 반대로 한 벌 더 두면 어느 쪽에서 보든 앞면이고 법선은 위 그대로다. 삼각형은 두 배가 된다 (`TUFTS`)
  */
-function tuftGeometry(base: number, tip: number): BufferGeometry {
+export function tuftGeometry(base: number, tip: number): BufferGeometry {
   const position = new Float32Array(BLADES * 4 * 3)
   const color = new Float32Array(BLADES * 4 * 3)
   const index: number[] = []
@@ -118,19 +127,30 @@ function tuftGeometry(base: number, tip: number): BufferGeometry {
     put(o + 1, wx, 0, wz, low)
     put(o + 2, dx * lean + wx * 0.3, BLADE_LEN, dz * lean + wz * 0.3, high)
     put(o + 3, dx * lean - wx * 0.3, BLADE_LEN, dz * lean - wz * 0.3, high)
-    index.push(o, o + 1, o + 2, o, o + 2, o + 3)
+    // 앞면과 그 반대로 감은 뒷면 — 둘 다 앞면으로 그려져 법선이 안 뒤집힌다
+    index.push(o, o + 1, o + 2, o, o + 2, o + 3, o, o + 2, o + 1, o, o + 3, o + 2)
   }
   const geo = new BufferGeometry()
   geo.setAttribute('position', new BufferAttribute(position, 3))
   geo.setAttribute('color', new BufferAttribute(color, 3))
+  geo.setAttribute('normal', new BufferAttribute(upNormals(BLADES * 4), 3))
   geo.setIndex(index)
-  geo.computeVertexNormals()
   geo.computeBoundingSphere()
   return geo
 }
 
-/** 색은 정점이 나르므로 재질은 한 벌이면 된다. 잎 한 장이라 양면으로 그린다 */
-const grassMaterial = new MeshLambertMaterial({ vertexColors: true, side: DoubleSide })
+/** 정점 `count`개 몫의 위쪽 법선 (`tuftGeometry`) */
+function upNormals(count: number): Float32Array {
+  const out = new Float32Array(count * 3)
+  for (let i = 0; i < count; i++) out[i * 3 + 1] = 1
+  return out
+}
+
+/**
+ * 색은 정점이 나르므로 재질은 한 벌이면 된다. 잎은 앞뒤를 기하가 따로 갖고 있으므로 **단면**이다 — 양면이면
+ * 뒷면 법선이 뒤집힌다 (`tuftGeometry`)
+ */
+export const grassMaterial = new MeshLambertMaterial({ vertexColors: true, side: FrontSide })
 const shapes = new Map<string, BufferGeometry>()
 
 const at = new Vector3()

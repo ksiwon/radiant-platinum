@@ -74,6 +74,50 @@ function flowerJitter(x: number, z: number, salt: number): number {
 /** 아직 재질을 못 만든 서브메시. 안 보이는 것보다 눈에 띄는 편이 낫다 */
 const MISSING = new MeshBasicMaterial({ name: '(못 찾은 그림)', color: '#ff00ff', side: DoubleSide })
 
+/** BDSP 위에서 안 그릴 서브메시 자리 (`keptOverBdsp`). three는 `visible`이 꺼진 재질의 무리를 건너뛴다 */
+const SKIPPED = new MeshBasicMaterial({ name: '(BDSP가 그린다)', visible: false })
+
+/** BDSP가 그 자리를 쥐어도 원작에서 세울 것 (`keptOverBdsp`) */
+interface KeptOverBdsp {
+  /** 소품 모델 번호 */
+  models: ReadonlySet<number>
+  /** 청크 서브메시의 그림 이름 */
+  textures: ReadonlySet<string>
+  /** 원작 벽을 BDSP 벽에 맞추는 이동 (타일) */
+  shift: readonly [number, number, number]
+}
+
+/**
+ * **BDSP 방에 없는 원작 그림** — BDSP가 그 자리를 쥐어도(`dsHidden`) 이것만은 원작에서 세운다. 열쇠는 행렬 번호다
+ * (방 이름이 없는 맵은 같은 행렬의 방을 빌려 쓴다 — `BdspRoom.roomFor`).
+ *
+ * 연고 체육관 문 방(행렬 223 · 맵 89와 그 행렬을 같이 쓰는 92 · 94 · 96~99)은 BDSP 방 `c05gym0102`로 서는데, 그 방에는
+ * 문짝이 없다 — 재질이 ComWall · Floor · Wall · Ceil · Accessory · FieldSmoke · EntranceLight · Mat뿐이고 북벽(z 3.0)은
+ * x 1~14에 구멍 없는 판이다. 원작은 같은 행렬에 문 소품 260(`hearthome_gym_inside_door`) 셋(x 5.375 · 9.375 · 13.375 ·
+ * z 2.375)과 그 앞 바닥의 표식 셋(`gm05_yuka_01~03` 동그라미 · 네모 · 세모, x 3.5~5.5 · 7.5~9.5 · 11.5~13.5 · z 2.5~4.5)을
+ * 둔다. 둘 다 빠지면 고를 문도 문의 이름도 없어 방이 화면에서 성립하지 않는다.
+ *
+ * 자리는 **벽끼리 맞춘다.** 원작 북벽(`gym05_b`)과 바닥 끝(`gym05_c`)이 z 2.5이고 BDSP 북벽과 바닥 끝은 z 3.0이라
+ * +0.5칸 민다 — 안 밀면 문(z 2.375~2.6875)이 BDSP 벽 뒤에 묻힌다. 바닥 표식은 BDSP 바닥(y 0)과 같은 높이라
+ * 깊이 우선순위로 앞세운다 (`KeptLand`).
+ *
+ * ⚠️ **입구 방(88 · `c05gym0101`)은 안 넣었다.** BDSP 문짝(`Door_01`)이 그 방 2층(y 10~11.8)에 있고 원작 문(260 ·
+ * (5.375, −0.1875, 2.375))과 짝이 안 맞는다 — 방 생김부터 원작과 다르다. 다섯 문 방(90 · 행렬 224)은 BDSP 방이 없어
+ * 원작이 그대로 선다
+ */
+const KEPT_OVER_BDSP: ReadonlyMap<number, KeptOverBdsp> = new Map([
+  [223, {
+    models: new Set([260]),
+    textures: new Set(['gm05_yuka_01', 'gm05_yuka_02', 'gm05_yuka_03']),
+    shift: [0, 0, 0.5] as const,
+  }],
+])
+
+/** 그 행렬에서 BDSP 위에도 세울 원작 그림. 없으면 null */
+export function keptOverBdsp(matrix: number): KeptOverBdsp | null {
+  return KEPT_OVER_BDSP.get(matrix) ?? null
+}
+
 interface Placed {
   key: string
   index: number
@@ -211,13 +255,17 @@ export function materialsFor(
    * 못 그린다 — 그러면 예전에는 그 서브메시가 통째로 자홍이었다
    */
   lend?: ReadonlyMap<string, { set: number, sheet: TexSheet, pal: string }>,
+  /** 깊이 우선순위의 층 — 땅(`depthPriority`)인가, 땅보다 늘 앞서는 건물 · 소품(`propPriority`)인가 */
+  layer: DepthLayer = 'land',
 ): Material[] {
   return mesh.materials.map((spec, i) => {
     const twoSided = cutout[i] === true
     const borrow = spec.tex === null || sheet?.items.some(
       (s) => s.tex === spec.tex && s.pal === (spec.pal ?? '')) === true
       ? undefined : lend?.get(lendKey(spec.tex, spec.pal))
+    // 층도 열쇠다 — 같은 보관함에 땅과 소품이 섞이면 먼저 만든 쪽 눈금이 남의 것에 붙는다
     const key = materialKey(spec, twoSided, i, borrow === undefined ? set : borrow.set)
+      + (layer === 'prop' ? '/prop' : '')
     const hit = cache.get(key)
     if (hit) return hit
     const from = borrow === undefined ? sheet : borrow.sheet
@@ -240,7 +288,7 @@ export function materialsFor(
      * 나눠 쓴다) **표시가 있는 것만** 버린다
      */
     if (made !== MISSING) ownMap(made)
-    if (made !== MISSING) depthPriority(made, i)
+    if (made !== MISSING) (layer === 'prop' ? propPriority : depthPriority)(made, i)
     cache.set(key, made)
     return made
   })
@@ -264,9 +312,39 @@ export function materialsFor(
  */
 function depthPriority(material: Material, submesh: number): void {
   material.polygonOffset = true
-  material.polygonOffsetFactor = 0
+  // ⚠️ **기울기 몫도 준다.** 눈금만 당기면(기울기 몫 0) 1인칭처럼 바닥을 비껴 볼 때 두 삼각형의 깊이 보간 오차가
+  // 그 한 눈금을 넘어 다시 줄무늬가 난다. 기울기 몫은 면이 비스듬할수록 커지므로 비껴 본 자리에서만 더 당긴다
+  material.polygonOffsetFactor = DEPTH_SLOPE
   // 음수가 카메라 쪽이다. 차례가 뒤일수록 더 앞으로 — 원작의 그리는 차례다
   material.polygonOffsetUnits = -(submesh + 1)
+}
+
+/** 깊이 우선순위의 층 (`materialsFor`) */
+type DepthLayer = 'land' | 'prop'
+
+/** 깊이 우선순위의 기울기 몫 (`depthPriority` · `propPriority`) */
+export const DEPTH_SLOPE = -1
+
+/**
+ * 건물 · 소품 몫의 첫 눈금 — 땅의 어느 서브메시보다 앞이다.
+ *
+ * 청크 한 벌의 서브메시는 많아야 42개다(실측 · 청크 666벌 · 323번). 빌려 온 바닥도 제 청크의 차례를 그대로 쓰므로
+ * (`borrowFloors`) 땅의 눈금은 −1~−42 안에 든다. 그보다 넉넉히 64부터 센다
+ */
+export const PROP_DEPTH_BASE = 64
+
+/**
+ * 건물 · 소품 재질의 깊이 우선순위 — **땅보다 늘 앞선다.**
+ *
+ * 원작 건물 바닥은 청크 땅과 같은 높이에 깔린다. 파이트에어리어 관문은 안쪽 바닥(체크 · 빨간 매트)이 바깥 아스팔트와 한
+ * 평면이라, 소품과 땅이 둘 다 `depthPriority`의 −1부터 받으면 같은 눈금끼리 픽셀마다 승자가 갈려 문턱에 서면 발밑이 톱니로
+ * 깨졌다(`fight-1p-down`). DS는 땅을 먼저 그리고 소품을 그 위에 그렸다 — 그 차례를 깊이 눈금으로 옮긴다.
+ * 소품 안의 서브메시끼리는 땅과 같은 규칙(차례가 뒤일수록 앞)이다
+ */
+export function propPriority(material: Material, submesh: number): void {
+  material.polygonOffset = true
+  material.polygonOffsetFactor = DEPTH_SLOPE
+  material.polygonOffsetUnits = -(PROP_DEPTH_BASE + submesh)
 }
 
 /**
@@ -717,6 +795,20 @@ function bodyMesh(id: number, mesh: ChunkMesh, sheet: TexSheet | null): ChunkMes
   const made = geometry === mesh.geometry ? mesh : { ...mesh, geometry }
   bodyMeshCache.set(id, made)
   return made
+}
+
+/**
+ * 장치가 세우는 소품(`FeatureProps`)이 그릴 몸통과 입체 나무 — 잎 카드를 나무로 바꾼 소품(꿀나무)만 있다.
+ *
+ * ⚠️ **장치 쪽이 원본을 그대로 그리고 있었다.** 꿀나무 스물한 그루는 늘 `FeatureProps`가 세우는데(`movingProps`), 거기는
+ * 레시피를 안 거쳐서 **55°로 눕힌 잎 카드 세 장**이 그대로 섰다. 청크 쪽은 BDSP가 서면 통째로 숨으므로 입체 나무도 같이
+ * 사라지고, 209번도로 같은 BDSP 바깥에는 검은 테두리 도트 판 더미만 남았다(`vsseeker-1p-0`). 없으면 null — 원본 그대로 그린다
+ */
+export function featureTree(
+  id: number, mesh: ChunkMesh, sheet: TexSheet | null,
+): { mesh: ChunkMesh, tree: PropTree } | null {
+  const made = cachedTreeProp(id, mesh, sheet)
+  return made === null ? null : { mesh: bodyMesh(id, mesh, sheet), tree: made.tree }
 }
 
 /** 배치가 저 혼자 갖고 있던 재질을 버린다. `MISSING`은 모두가 함께 쓰므로 뺀다 */
@@ -1398,6 +1490,8 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet, ds
         // (위 상자와 같은 Y축 회전 · 크기)
         const trees = new Map<string, FoliageGroup>()
         for (const b of spots) {
+          // 장치가 가져간 소품(꿀나무)은 나무까지 `FeatureProps`가 세운다 — 여기서도 세우면 두 그루가 겹친다
+          if (isFeaturePlacement(b.model, b.x, b.z)) continue
           const got = byId.get(b.model)
           const made = got ? cachedTreeProp(got.id, got.mesh, got.sheet) : null
           if (!made) continue
@@ -1429,12 +1523,14 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet, ds
           const materials = materialsFor(
             // 소품은 **전부** 양면으로 그린다. 간판·그림자처럼 한 장짜리가
             // 98개나 되고, 그것들은 단면으로 두면 뒤에서 사라진다
-            got.mesh, got.sheet, own, got.mesh.materials.map(() => true))
+            got.mesh, got.sheet, own, got.mesh.materials.map(() => true), undefined, undefined, 'prop')
           const back = cachedBack(got.mesh, got.sheet, got.id)
           // 띠 재질은 소품 재질 배열 **뒤에** 붙는다 (`shell.stripGroup`). 배치마다
           // 새로 만들되 그림은 모델이 갖고 있는 것을 나눠 쓴다
           if (back.strip && back.spec) {
-            materials.push(makeMaterial(back.spec, back.strip, true))
+            const strip = makeMaterial(back.spec, back.strip, true)
+            propPriority(strip, materials.length)
+            materials.push(strip)
           }
           return [{
             // ⚠️ **y를 빼면 안 된다.** 깨어진 세계는 열 층이 같은 x·z 위에 세로로
@@ -1546,6 +1642,10 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet, ds
     }
   }, [])
 
+  /** BDSP가 쥔 자리에서도 원작에서 세울 것 (`keptOverBdsp`). 이 배치의 맵으로 고른다 — 땅과 같은 커밋이다 */
+  const kept = dsHidden ? keptOverBdsp(mapById(batch.mapId)?.matrix ?? -1) : null
+  const shownProps = dsHidden ? props.filter((p) => kept?.models.has(p.index) === true) : props
+
   return (
     <group>
       {!dsHidden && <LeanCards lands={batch.lands} />}
@@ -1581,6 +1681,7 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet, ds
           {p.room && !dsHidden && (
             <mesh name="방 벽" geometry={p.room.geometry} material={p.materials} receiveShadow />
           )}
+          {kept !== null && kept.textures.size > 0 && <KeptLand land={p} kept={kept} />}
         </group>
       ))}
       {/*
@@ -1619,8 +1720,8 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet, ds
         크기 1이라 단위를 확인할 자리가 없다 — 0이 아닌 값이 나오는 실내·던전을
         붙일 때 라디안인지 다시 봐야 한다
       */}
-      {!dsHidden && props.map((p) => (
-        <PropPlace key={p.key} p={p}>
+      {shownProps.map((p) => (
+        <PropPlace key={p.key} p={p} shift={kept?.shift}>
           {/*
             3인칭에서 카메라와 플레이어 사이에 든 건물은 흐려진다. 나무는 이미
             비켜 주는데 집은 안 비켜서 화면의 절반이 지붕이 됐다 (`PropFade`)
@@ -1656,11 +1757,39 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet, ds
 }
 
 /**
- * 소품 하나의 자리 — 배 소품(운하 34 · 선단 538)만 배로 건너가기가 밀 수 있게 감싼다 (`ShipDrift`)
+ * 소품 하나의 자리 — 배 소품(운하 34 · 선단 538)만 배로 건너가기가 밀 수 있게 감싼다 (`ShipDrift`).
+ *
+ * `shift`는 BDSP 위에 남긴 소품을 BDSP 벽에 맞추는 이동이다 (`keptOverBdsp`). ⚠️ **배치 자리(`p.x`·`p.z`)는 안 바꾼다** —
+ * 문 애니가 그 칸으로 제 문을 찾는다 (`AnimatedProp`의 `tile`)
  */
-function PropPlace({ p, children }: { p: Prop, children: ReactNode }) {
+function PropPlace({ p, shift, children }: {
+  p: Prop, shift?: readonly [number, number, number], children: ReactNode,
+}) {
   if (isShipProp(p.index)) {
     return <ShipDrift id={p.key} model={p.index} at={[p.x, p.y, p.z]} rotation={p.rot} scale={p.scale}>{children}</ShipDrift>
   }
-  return <group position={[p.x, p.y, p.z]} rotation={p.rot} scale={p.scale}>{children}</group>
+  const [dx, dy, dz] = shift ?? [0, 0, 0]
+  return <group position={[p.x + dx, p.y + dy, p.z + dz]} rotation={p.rot} scale={p.scale}>{children}</group>
+}
+
+/**
+ * BDSP 위에 남길 원작 바닥 — 그 그림의 서브메시만 그린다 (`keptOverBdsp`).
+ *
+ * 기하를 새로 안 만든다 — 같은 기하에 **재질만** 갈아 끼우고 나머지 무리는 꺼진 재질(`SKIPPED`)로 건너뛴다. 갈라낸 기하는
+ * 정점 버퍼를 원본과 나눠 써서 따로 버릴 수가 없다 (`chunkMesh.releaseSplit`).
+ *
+ * ⚠️ **BDSP 바닥과 같은 높이(y 0)다.** 땅 재질이 이미 깊이 우선순위(`depthPriority` · 기울기 몫 포함)를 갖고 있고 BDSP
+ * 바닥은 안 갖고 있어서 원작 표식이 앞선다. 재질은 원본을 그대로 나눠 쓴다 — 버리는 것은 원본 배치의 몫이다
+ */
+function KeptLand({ land, kept }: { land: Land, kept: KeptOverBdsp }) {
+  const materials = useMemo(
+    () => land.materials.map((m) => (kept.textures.has(m.name) ? m : SKIPPED)),
+    [land.materials, kept])
+  if (!materials.some((m) => m !== SKIPPED)) return null
+  return (
+    <mesh
+      name="원작 바닥 (BDSP 위)" position={[kept.shift[0], kept.shift[1], kept.shift[2]]}
+      geometry={land.merged ?? land.geometry} material={materials} receiveShadow
+    />
+  )
 }

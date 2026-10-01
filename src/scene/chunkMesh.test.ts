@@ -10,13 +10,15 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  BufferAttribute, BufferGeometry, DataTexture, MeshBasicMaterial, MeshLambertMaterial, Texture,
+  BufferAttribute, BufferGeometry, DataTexture, DoubleSide, FrontSide, MeshBasicMaterial, MeshLambertMaterial, Texture,
   type Material,
 } from 'three'
 import {
-  castsShadow, dropMaterial, ownMap, releaseSplit, sliceTexture, softAlpha, splitShadow,
+  castsShadow, dropMaterial, ownMap, releaseSplit, sliceTexture, softAlpha, splitShadow, unlitMaterial,
   type TexSheet,
 } from './chunkMesh'
+import { DEPTH_SLOPE, PROP_DEPTH_BASE, featureTree, keptOverBdsp, materialsFor, propPriority } from './ChunkModels'
+import { grassMaterial, tuftGeometry } from './Grass'
 import { tickRetiredTextures } from './retireTexture'
 import { decodePng, withData } from '../data/romData.testkit'
 
@@ -423,4 +425,183 @@ describe('도트를 키운다 — 계단만 깎고 색은 안 만든다', () => 
     }
     expect(moved, '경계에서 화소가 옮겨 앉은 자리가 있어야 한다').toBeGreaterThan(0)
   })
+})
+
+describe('빛을 안 받는 사본 (`unlitMaterial`) — 들판 체육관 물바닥', () => {
+  it('그림 · 섞기 · 깊이 · 우선순위를 그대로 옮기고 빛과 안개만 뺀다', () => {
+    const map = new DataTexture(new Uint8Array([107, 214, 255, 182]), 1, 1)
+    const lit = ownMap(new MeshLambertMaterial({
+      name: 'gym01_w', map, vertexColors: true, transparent: true, opacity: 1, depthWrite: false,
+      alphaTest: 0, side: DoubleSide, polygonOffset: true, polygonOffsetFactor: 0, polygonOffsetUnits: -3,
+    }))
+    const flat = unlitMaterial(lit) as MeshBasicMaterial
+    expect(flat).toBeInstanceOf(MeshBasicMaterial)
+    expect(flat.name).toBe('gym01_w')
+    expect(flat.map, '그림은 나눠 쓴다 — 새로 자르지 않는다').toBe(map)
+    expect(flat.transparent).toBe(true)
+    expect(flat.depthWrite).toBe(false)
+    expect(flat.vertexColors).toBe(true)
+    expect(flat.side).toBe(DoubleSide)
+    expect(flat.fog, '안개색 쪽으로 끌리면 다시 바랜다').toBe(false)
+    expect([flat.polygonOffset, flat.polygonOffsetUnits]).toEqual([true, -3])
+    expect(flat.userData.ownsMap, '그림 임자 표시도 넘어온다 — 버릴 때 그림도 같이 간다').toBe(true)
+  })
+
+  it('⚠️ 원래 재질을 버려도 그림은 산다 — 새 재질이 그 그림을 문다', () => {
+    const map = new DataTexture(new Uint8Array([107, 214, 255, 182]), 1, 1)
+    let gone = false
+    map.addEventListener('dispose', () => { gone = true })
+    const lit = ownMap(new MeshLambertMaterial({ map, transparent: true, depthWrite: false }))
+    unlitMaterial(lit)
+    for (let i = 0; i < 64; i++) tickRetiredTextures()
+    expect(gone).toBe(false)
+  })
+})
+
+describe('풀포기 법선 (`Grass.tuftGeometry`)', () => {
+  const geo = tuftGeometry(0x3f7a3a, 0x7fbf5a)
+
+  it('법선이 전부 위다 — 잎이 어느 쪽을 향하든 땅과 같은 빛을 받는다', () => {
+    const n = geo.getAttribute('normal')
+    expect(n.count).toBe(geo.getAttribute('position').count)
+    for (let i = 0; i < n.count; i++) expect([n.getX(i), n.getY(i), n.getZ(i)]).toEqual([0, 1, 0])
+  })
+
+  it('⚠️ 잎마다 앞뒤 두 벌을 감고 재질은 단면이다 — 양면 재질은 뒷면에서 법선을 뒤집는다', () => {
+    expect(grassMaterial.side).toBe(FrontSide)
+    const idx = Array.from(geo.getIndex()!.array as ArrayLike<number>)
+    const tris = new Set<string>()
+    for (let t = 0; t < idx.length; t += 3) tris.add(`${String(idx[t])},${String(idx[t + 1])},${String(idx[t + 2])}`)
+    // 삼각형마다 감는 방향이 반대인 짝(같은 세 꼭짓점 · 순서만 뒤집힌 것)이 있어야 한다
+    for (let t = 0; t < idx.length; t += 3) {
+      const [a, b, c] = [idx[t]!, idx[t + 1]!, idx[t + 2]!]
+      const back = [`${String(a)},${String(c)},${String(b)}`, `${String(c)},${String(b)},${String(a)}`,
+        `${String(b)},${String(a)},${String(c)}`]
+      expect(back.some((k) => tris.has(k)), `삼각형 ${String(t / 3)}의 뒷면`).toBe(true)
+    }
+  })
+})
+
+describe('BDSP 위에도 세울 원작 그림 (`keptOverBdsp`) — 연고 체육관 문 방', () => {
+  it('행렬 223에서 문 소품 260과 바닥 표식 셋을 남기고 BDSP 벽까지 +0.5칸 민다', () => {
+    const kept = keptOverBdsp(223)!
+    expect([...kept.models]).toEqual([260])
+    expect([...kept.textures].sort()).toEqual(['gm05_yuka_01', 'gm05_yuka_02', 'gm05_yuka_03'])
+    expect(kept.shift).toEqual([0, 0, 0.5])
+  })
+
+  it('표에 없는 행렬은 아무것도 안 남긴다 — 바깥(0) · 입구 방(222) · 다섯 문 방(224)', () => {
+    expect(keptOverBdsp(0)).toBeNull()
+    expect(keptOverBdsp(222)).toBeNull()
+    expect(keptOverBdsp(224)).toBeNull()
+  })
+})
+
+withData('matrices/interiors.json', 'chunks/index.json', 'chunks/231.bin')('실제 자료 — 연고 체육관 문 방 (행렬 223)', () => {
+  it('원작 배치가 문 셋 · 바닥 표식 셋이고 원작 북벽이 z 2.5다 — 표의 근거', () => {
+    const json = JSON.parse(readFileSync(resolve(__dirname, '../../public/data/matrices/interiors.json'), 'utf8')) as {
+      matrices: Record<string, { chunks: { land: number }[], buildings: Record<string, { model: number, x: number, z: number }[]> }>
+    }
+    const m = json.matrices['223']!
+    const doors = Object.values(m.buildings).flat().filter((b) => b.model === 260)
+    expect(doors.map((b) => b.x).sort((a, b) => a - b)).toEqual([5.375, 9.375, 13.375])
+    for (const d of doors) expect(d.z).toBe(2.375)
+    expect(m.chunks.map((c) => c.land)).toEqual([231])
+
+    const { meta, head, bytes } = open(231)
+    const fmt = JSON.parse(readFileSync(resolve(DATA, 'index.json'), 'utf8')) as { posScale: number, vertexBytes: number }
+    const names = meta.submeshes.map(([mat]) => meta.materials[mat]!.tex)
+    for (const t of keptOverBdsp(223)!.textures) expect(names, t).toContain(t)
+    // 북벽(`gym05_b`)의 세운 면이 놓인 z — 청크가 −16~+16으로 가운데 정렬이라 16을 더한다
+    const at = (v: number): number[] => [0, 1, 2].map((k) => bytes.readInt16LE(head + v * fmt.vertexBytes + k * 2) / fmt.posScale)
+    const idx = new Uint16Array(bytes.buffer.slice(
+      bytes.byteOffset + head + meta.verts * fmt.vertexBytes, bytes.byteOffset + head + meta.verts * fmt.vertexBytes + meta.indices * 2))
+    const wallZ = new Set<number>()
+    for (const [mat, start, count] of meta.submeshes) {
+      if (meta.materials[mat]!.tex !== 'gym05_b') continue
+      for (let t = start; t < start + count; t += 3) {
+        const v = [at(idx[t]!), at(idx[t + 1]!), at(idx[t + 2]!)]
+        const zs = v.map((p) => p[2]! + 16)
+        if (Math.max(...zs) - Math.min(...zs) < 1e-4 && zs[0]! < 4) wallZ.add(zs[0]!)
+      }
+    }
+    expect([...wallZ]).toEqual([2.5])
+  })
+})
+
+withData('props/index.json', 'props/26.bin', 'props/26.png')('실제 자료 — 장치가 세우는 꿀나무 (`featureTree`)', () => {
+  it('⚠️ 잎 카드를 뺀 몸통과 입체 나무를 준다 — 원본을 그대로 그리면 도트 판 더미가 선다', async () => {
+    const { loadPropMesh, loadPropSheet } = await import('./chunkMesh')
+    const { installNodeAssets } = await import('../data/romData.testkit')
+    installNodeAssets()
+    const mesh = await loadPropMesh(26)
+    const sheet = await loadPropSheet(26)
+    const made = featureTree(26, mesh, sheet)!
+    expect(made.tree.leaf).toEqual([0xc6ad39, 0xad9439, 0x947b39])
+    expect(made.mesh.geometry, '몸통은 잎 카드를 접어 뺀 사본이다').not.toBe(mesh.geometry)
+    expect(made.mesh.materials).toBe(mesh.materials)
+    // 접어 뺀 삼각형은 넓이가 0이다 — 잎 카드 여섯 장 몫
+    const idx = made.mesh.geometry.getIndex()!.array as ArrayLike<number>
+    let folded = 0
+    for (let t = 0; t < idx.length; t += 3) if (idx[t] === idx[t + 1] && idx[t] === idx[t + 2]) folded += 1
+    expect(folded).toBe(6)
+  }, 60_000)
+
+  it('레시피가 없는 소품은 null — 원본 그대로 그린다', () => {
+    const geometry = new BufferGeometry()
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array(9), 3))
+    geometry.setIndex([0, 1, 2])
+    expect(featureTree(999_999, {
+      geometry, materials: [{ tex: 'x', pal: 'x_pl', rep: 0, a: 31, f: 2 }], groups: [[0, 0, 3]],
+    }, null)).toBeNull()
+  })
+})
+
+describe('깊이 우선순위 — 건물 · 소품은 땅보다 늘 앞선다 (`propPriority`)', () => {
+  /** 그림 없는 서브메시 셋 — `makeMaterial(spec, null)`로 만들어져 그림표가 필요 없다 */
+  const mesh = (): Parameters<typeof materialsFor>[0] => {
+    const geometry = new BufferGeometry()
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array(9), 3))
+    return {
+      geometry,
+      materials: [0, 1, 2].map((d) => ({ tex: null, pal: null, rep: 0, a: 31, f: 2, d: [d, d, d] })),
+      groups: [[0, 0, 3], [1, 0, 0], [2, 0, 0]],
+    }
+  }
+  const offsets = (list: Material[]): [boolean, number, number][] =>
+    list.map((m) => [m.polygonOffset, m.polygonOffsetFactor, m.polygonOffsetUnits])
+
+  it('땅은 차례마다 한 눈금씩 · 기울기 몫 −1 — 비껴 본 바닥에서도 차례가 안 뒤집힌다', () => {
+    expect(DEPTH_SLOPE).toBe(-1)
+    expect(offsets(materialsFor(mesh(), null, new Map()))).toEqual([[true, -1, -1], [true, -1, -2], [true, -1, -3]])
+  })
+
+  it('소품은 땅의 어느 눈금보다 앞에서 센다 — 파이트에어리어 관문 바닥 · 아스팔트', () => {
+    const got = offsets(materialsFor(mesh(), null, new Map(), [true, true, true], undefined, undefined, 'prop'))
+    expect(got).toEqual([[true, -1, -PROP_DEPTH_BASE], [true, -1, -PROP_DEPTH_BASE - 1], [true, -1, -PROP_DEPTH_BASE - 2]])
+    const strip = new MeshBasicMaterial()
+    propPriority(strip, 3)
+    expect(offsets([strip])).toEqual([[true, -1, -PROP_DEPTH_BASE - 3]])
+  })
+
+  it('⚠️ 한 보관함을 나눠 써도 층이 안 섞인다 — 열쇠에 층이 든다', () => {
+    const cache = new Map<string, Material>()
+    const land = materialsFor(mesh(), null, cache, [true, true, true])
+    const prop = materialsFor(mesh(), null, cache, [true, true, true], undefined, undefined, 'prop')
+    for (let i = 0; i < 3; i++) expect(prop[i]).not.toBe(land[i])
+    expect(land[0]!.polygonOffsetUnits).toBe(-1)
+  })
+})
+
+maybe('실제 자료 — 땅의 눈금이 소품 몫에 안 닿는다 (`PROP_DEPTH_BASE`)', () => {
+  it('청크 한 벌의 서브메시 수가 소품 첫 눈금보다 적다', async () => {
+    const { readdirSync } = await import('node:fs')
+    let most = 0
+    for (const f of readdirSync(DATA)) {
+      if (!/^\d+\.bin$/.test(f)) continue
+      most = Math.max(most, open(Number(f.slice(0, -4))).meta.submeshes.length)
+    }
+    expect(most).toBe(42)
+    expect(most).toBeLessThan(PROP_DEPTH_BASE)
+  }, 60_000)
 })

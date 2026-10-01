@@ -8,7 +8,7 @@
 // 그대로 샘플링할 수 없으므로 **받은 뒤 잘라서** 각각 텍스처로 만든다.
 import {
   BufferAttribute, BufferGeometry, ClampToEdgeWrapping, DataTexture, DoubleSide,
-  FrontSide, LinearMipmapLinearFilter, MeshLambertMaterial, MirroredRepeatWrapping,
+  FrontSide, LinearMipmapLinearFilter, MeshBasicMaterial, MeshLambertMaterial, MirroredRepeatWrapping,
   NearestFilter, RepeatWrapping, SRGBColorSpace, type Material, type Texture,
 } from 'three'
 import { assets, readJson } from '../data/providers/assetProvider'
@@ -937,6 +937,40 @@ export function makeMaterial(
   // 깊이를 안 쓰는 면은 윤곽 후처리에 알려 준다 — 안 그러면 이 면을 **투과해서**
   // 뒤에 있는 것의 실루엣이 선으로 그려진다 (`fx/seeThrough`)
   markSeeThrough(made, translucent)
+  return made
+}
+
+/**
+ * 같은 그림 · 같은 섞기로 **빛을 안 받는** 재질을 만든다 — 원작 텍셀 색이 그대로 화면에 간다.
+ *
+ * 원작 필드는 소품을 조명 없이 그린다(`build`의 롬 법선 머리말). 우리는 빛을 걸므로 밝은 색은 곱해져 하얗게 넘친다 —
+ * 실내 조명(`TIME_LOOKS[1]` · 해 1.05 · 반구광 0.85 · 채움 0.38)이 위를 보는 면에 1.6배 넘게 곱해지면 들판 체육관
+ * 물바닥(`gym01_w` · (107,214,255))의 초록·파랑이 둘 다 1을 넘어 흰 판이 된다. 그런 면에만 건다.
+ *
+ * ⚠️ **그림은 넘겨받는다.** 원래 재질이 그림 임자(`ownMap`)였으면 표시도 옮기고 원래 재질은 그림 없이 버린다 — 그림까지
+ * 버리면 새 재질이 빈 그림을 문다
+ */
+export function unlitMaterial(from: Material): Material {
+  const m = from as MeshLambertMaterial
+  const made = new MeshBasicMaterial({
+    name: m.name,
+    map: m.map,
+    color: m.color,
+    vertexColors: m.vertexColors,
+    alphaTest: m.alphaTest,
+    transparent: m.transparent,
+    opacity: m.opacity,
+    depthWrite: m.depthWrite,
+    side: m.side,
+    // 안개도 안 탄다 — 안개색 쪽으로 끌리면 물이 다시 바랜다
+    fog: false,
+    polygonOffset: m.polygonOffset,
+    polygonOffsetFactor: m.polygonOffsetFactor,
+    polygonOffsetUnits: m.polygonOffsetUnits,
+  })
+  if (from.userData.ownsMap === true) made.userData.ownsMap = true
+  markSeeThrough(made, !m.depthWrite)
+  from.dispose()
   return made
 }
 
