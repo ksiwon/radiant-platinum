@@ -33,7 +33,13 @@ const bankAt = (at: string): readonly string[] => {
 const names: BattleNames = {
   species: [], // 이름은 label이 이미 풀어 준다
   moves: (() => { const m: string[] = []; m[33] = '몸통박치기'; m[73] = '씨뿌리기'; m[201] = '모래바람'; return m })(),
-  abilities: (() => { const a: string[] = []; a[22] = '위협'; return a })(),
+  // 특성 이름표 (`names/labels.ko.json`의 `abilities`) — 번호는 롬 특성 번호다
+  abilities: (() => {
+    const a: string[] = []
+    a[13] = '날씨부정'; a[22] = '위협'; a[46] = '프레셔'; a[76] = '에어록'
+    a[104] = '틀깨기'; a[107] = '위험예지'; a[108] = '예지몽'
+    return a
+  })(),
   items: (() => {
     const i: string[] = []
     i[23] = '회복약'; i[26] = '좋은상처약'
@@ -41,6 +47,7 @@ const names: BattleNames = {
     i[149] = '버치열매'; i[154] = '과사열매'; i[156] = '시몬열매'; i[157] = '리샘열매'
     i[158] = '자뭉열매'; i[184] = '오카열매'; i[201] = '치리열매'; i[207] = '스타열매'
     i[211] = '자보열매'; i[214] = '하양허브'; i[230] = '기합의머리띠'; i[234] = '먹다남은음식'
+    i[210] = '애슈열매'; i[219] = '멘탈허브'
     i[270] = '생명의구슬'; i[272] = '맹독구슬'; i[275] = '기합의띠'
     return i
   })(),
@@ -221,9 +228,38 @@ withBank('배틀 문구', () => {
     expect(say({ kind: 'weather', weather: null, upkeep: false, ended: 'Nothing' })).toBeNull()
   })
 
-  it('특성 발동', () => {
+  it('나올 때 스스로 알리는 특성은 롬 문장이다', () => {
+    const shown = (ability: number, abilityName: string, actor: Actor = FOE): string | null =>
+      say({ kind: 'ability', actor, ability, abilityName })
+    // ⚠️ 4세대에는 특성 이름 띄우개가 없다 — 「상대 화강돌의 프레셔!」가 떴던 자리다
+    // (`subscript_pressure` · `PokemonIsExertingItsAbility`)
+    expect(shown(46, 'Pressure')).toBe('야생 팬텀은\n프레셔를 발산하고 있다!')
+    expect(shown(46, 'Pressure', MINE)).toBe('모부기는\n프레셔를 발산하고 있다!')
+    // `-start|…|Pressure`로 와도 같은 글이다
+    expect(say({
+      kind: 'volatile', actor: FOE, effect: eff('pressure', 'ability', 46), start: true, of: null,
+      extra: NO_EXTRA,
+    })).toBe(shown(46, 'Pressure'))
+    // 틀깨기 (`subscript_mold_breaker` · `PokemonWasAbility`)
+    expect(shown(104, 'Mold Breaker')).toBe('야생 팬텀은\n틀깨기다!')
+    // 위험예지는 **특성 칸이 먼저**다 (`TAG_ABILITY_NICKNAME`)
+    expect(shown(107, 'Anticipation')).toBe('위험예지 때문에\n야생 팬텀은 몸을 떨었다!')
+  })
+
+  it('원작이 나올 때 아무 말도 안 하는 특성은 조용하다', () => {
+    // 에어록·날씨부정은 4세대 등장 점검에 갈래가 없다 (`BattleSystem_TriggerEffectOnSwitch`)
+    expect(say({ kind: 'ability', actor: FOE, ability: 76, abilityName: 'Air Lock' })).toBeNull()
+    expect(say({ kind: 'ability', actor: FOE, ability: 13, abilityName: 'Cloud Nine' })).toBeNull()
+  })
+
+  it('랭크를 바꾸는 특성은 아직 누가 일했는지만 말한다', () => {
+    // ⚠️ 원작은 이름을 따로 안 띄우고 랭크 줄에 특성을 넣는다(「…의 위협 때문에 …의 공격이
+    // 떨어졌다!」). 쇼다운의 `-unboost`가 원인을 안 들고 와서 한 사건으로는 못 채운다
     expect(say({ kind: 'ability', actor: FOE, ability: 22, abilityName: 'Intimidate' }))
       .toBe('야생 팬텀의 위협!')
+    // 이름표에 없으면 원문으로 떨어진다
+    expect(say({ kind: 'ability', actor: FOE, ability: null, abilityName: 'Download' }))
+      .toBe('야생 팬텀의 Download!')
   })
 
   it('문장이 없는 이벤트는 null이다', () => {
@@ -364,6 +400,9 @@ const eff = (id: string, kind: EffectRef['kind'] = 'move', num: number | null = 
 /** 표에서 도구가 일하는 효과 — 빈칸에 도구 이름이 들어간다 */
 const ITEM_EFFECTS = new Set(['focusband', 'leppaberry'])
 
+/** 표에서 특성이 일하는 효과 → 롬 특성 번호. 빈칸에 특성 이름이 들어간다 */
+const ABILITY_EFFECTS: Record<string, number> = { forewarn: 108 }
+
 const activate = (
   id: string,
   o: { actor?: Actor | null; of?: Actor | null; extra?: EffectExtra; kind?: EffectRef['kind'] } = {},
@@ -452,6 +491,15 @@ withBank('롬의 배틀 글 (PARITY §2.24)', () => {
     expect(say(activate('sketch'))).toBeNull()
   })
 
+  it('예지몽 특성은 간파한 기술을 부른다', () => {
+    // 쇼다운은 기술을 자리 인자로 보내고 `@pkmn/protocol`이 `[move]`로 옮긴다
+    const e = parseLine('|-activate|p2a: 팬텀|ability: Forewarn|Tackle')
+    expect(e).toMatchObject({ kind: 'activate', effect: { id: 'forewarn', kind: 'ability', num: 108 } })
+    expect(say(e!)).toBe('야생 팬텀은 예지몽으로\n몸통박치기를 간파했다!')
+    // 기술을 못 받으면 조용하다 — 반쪽 문장을 놓지 않는다
+    expect(say(activate('forewarn', { kind: 'ability' }))).toBeNull()
+  })
+
   it('파티 전체와 특성이 걷히는 줄', () => {
     expect(say({ kind: 'cureteam', actor: MINE, from: null })).toBe('기분 좋은 향기가 퍼졌다!')
     expect(say({ kind: 'endability', actor: FOE, ability: null, abilityName: '' }))
@@ -475,7 +523,9 @@ withBank('롬의 배틀 글 (PARITY §2.24)', () => {
       // 도구가 일한 줄은 도구 이름이 빈칸이다 — 도구 번호를 실어 준다
       ...ACTIVATE_IDS.map((id) => [id, say(ITEM_EFFECTS.has(id)
         ? { ...activate(id, both), effect: eff(id, 'item', 26) } as BattleEvent
-        : activate(id, both))] as const),
+        : id in ABILITY_EFFECTS
+          ? { ...activate(id, both), effect: eff(id, 'ability', ABILITY_EFFECTS[id]) } as BattleEvent
+          : activate(id, both))] as const),
       ...SINGLE_TURN_IDS.map((id) => [id, say({
         kind: 'singleturn', actor: MINE, effect: eff(id, 'other'), of: FOE,
       })] as const),
@@ -489,9 +539,8 @@ withBank('롬의 배틀 글 (PARITY §2.24)', () => {
     expect(lines.filter(([, l]) => l !== null && l.includes('{')).map(([id]) => id)).toEqual([])
   })
 
-  it('글이 없는 효과는 조용하되 특성은 배너로 떨어진다', () => {
-    // 원작은 특성이 일한 자리에서 특성 이름을 먼저 띄운다 — -ability 줄과 같은
-    // 문장이라 지어낸 것이 아니다
+  it('글이 없는 효과는 조용하되 특성은 띄우개로 떨어진다', () => {
+    // 원작 문장은 아니지만 -ability 줄과 같은 띄우개라 누가 일했는지는 말한다
     expect(say(activate('intimidate', { kind: 'ability' })))
       .toBe('모부기의 intimidate!')
     expect(say({
@@ -779,6 +828,31 @@ withBank('도구와 변신', () => {
       kind: 'volatile', actor: MINE, effect: eff('confusion', 'other'), start: false, of: null,
       extra: NO_EXTRA, curedBy: { item: { id: 'persimberry', num: 156, name: 'Persim Berry' }, all: false },
     })).toBe('모부기는 시몬열매로\n혼란이 풀렸다!')
+  })
+
+  it('애슈열매는 먹은 자리에서 말하고, 쇼다운의 영어 안내는 조용하다', () => {
+    expect(romItem('Custap Berry')).toBe(210)
+    // `subscript_check_quick_claw`의 `BATTLEMON_CUSTAP_BERRY` 갈래 — 선제공격손톱은 말이 없다
+    expect(line('|-enditem|p1a: 모부기|Custap Berry|[eat]')).toBe('모부기는 애슈열매로\n행동이 빨라졌다!')
+    expect(line('|-enditem|p2a: 팬텀|Custap Berry|[eat]')).toBe('야생 팬텀은 애슈열매로\n행동이 빨라졌다!')
+    const notice = parseLine('|-message|Custap Berry activated.')
+    expect(notice === null ? null : say(notice)).toBeNull()
+  })
+
+  it('멘탈허브는 상태 이름을 칸으로 받는다', () => {
+    const herb = { id: 'mentalherb', num: 219, name: 'Mental Herb' }
+    const end = (curedBy?: { item: typeof herb; all: boolean }): BattleEvent => ({
+      kind: 'volatile', actor: MINE, effect: eff('attract', 'move', 213), start: false, of: null,
+      extra: NO_EXTRA, ...(curedBy ? { curedBy } : {}),
+    })
+    // 상태 이름표 일곱 (`status_condition_names` · us 219 · ko 218). 한국어 롬에서 읽은 값이고
+    // 자리는 `MSGCOND_*`다 — 아직 구워 두는 묶음이 아니라 여기 적는다
+    const conditions = ['잠듦', '독', '화상', '마비', '얼음', '혼란', '헤롱헤롱']
+    expect(battleText(end({ item: herb, all: false }), { ...ctx, names: { ...names, conditions } }))
+      .toBe('모부기는 멘탈허브로\n헤롱헤롱상태가 나았다!')
+    // 이름표가 없으면 헤롱헤롱이 풀린 줄로 떨어진다 — 비우지 않는다
+    expect(say(end({ item: herb, all: false }))).toBe(say(end()))
+    expect(say(end())).not.toBeNull()
   })
 
   it('도구가 올린 랭크는 도구가 주어다', () => {

@@ -44,7 +44,35 @@ export interface BattleNames {
    * 로케일을 바꿔도 한국어가 남는다
    */
   stats: string[]
+  /**
+   * 상태 이름 일곱 (`status_condition_names` · us 219). 자리는 디컴프의 `MSGCOND_*`다 —
+   * 잠듦 0 · 독 1 · 화상 2 · 마비 3 · 얼음 4 · 혼란 5 · 헤롱헤롱 6.
+   *
+   * 롬의 「{도구}로 {상태}상태가 나았다!」(893)가 이 이름을 `{STRVAR_1 17, …}` 칸으로
+   * 받는다. 없으면 그 줄을 못 채워서 멘탈허브가 헤롱헤롱이 풀린 줄로 떨어진다
+   */
+  conditions?: readonly string[]
 }
+
+/**
+ * `MSG`가 아직 안 든 롬 줄. 번호는 `messages.test.ts`가 디컴프가 붙인 이름
+ * (`battleMessage`)과 하나씩 맞대 본다
+ */
+const ROM = {
+  /** 틀깨기 — 「{이름}은 / {특성}다!」 (`subscript_mold_breaker`) */
+  pokemonWasAbility: 1087,
+  /** 위험예지 — 「{특성} 때문에 / {이름}은 몸을 떨었다!」. **특성 칸이 먼저**다 (`TAG_ABILITY_NICKNAME`) */
+  pokemonsAbilityMadeItShudder: 1106,
+  /** 예지몽 특성 — 「{이름}은 {특성}로 / {기술}을 간파했다!」 (`subscript_forewarn`) */
+  pokemonsAbilityAlertedItToMove: 1109,
+  /** 애슈열매 — 「{이름}은 {도구}로 / 행동이 빨라졌다!」 (`subscript_check_quick_claw`) */
+  pokemonsItemLetItMoveFirst: 1254,
+  /** 멘탈허브 — 「{이름}은 {도구}로 / {상태}상태가 나았다!」 (`subscript_held_item_heal_infatuation`) */
+  pokemonCuredItsStatusUsingItsItem: 893,
+} as const
+
+/** `MSGCOND_INFATUATION` — 상태 이름표에서 헤롱헤롱의 자리 (`battle/btlcmd.h`) */
+const COND_INFATUATION = 6
 
 export interface TextContext {
   names: BattleNames
@@ -224,7 +252,7 @@ type EffectLine = (ctx: TextContext, s: EffectSay) => string | null
  *
  * ⚠️ **여기 없는 효과는 조용하다.** 롬에 줄이 없는 것은 지어내지 않는다 —
  * 4세대 뱅크에 없는 것이 확인된 자리는 아래 주석이 그 근거를 적어 둔다.
- * 다만 **특성은 예외**로 `effectText`가 원작의 특성 배너로 떨어진다
+ * 다만 **특성은 예외**로 `effectText`가 「{이름}의 {특성}!」 띄우개로 떨어진다
  */
 const ACTIVATE: Record<string, EffectLine> = {
   // 방어·판별이 공격을 **막았다**. 쓰는 줄(`-singleturn`)과 문장이 다르다
@@ -273,6 +301,11 @@ const ACTIVATE: Record<string, EffectLine> = {
   // 튀어오르기. sim은 `-nothing`을 내고 `@pkmn/protocol`이 이 줄로 다시 쓴다 —
   // 그래서 **자리가 비어 있다** (`|-activate||move: Splash`)
   splash: (c) => rom(c, MSG.butNothingHappened),
+  // 예지몽 특성. 간파한 기술이 `[move]`로 온다 (`@pkmn/protocol`이 자리 인자를 옮긴다).
+  // 원작도 나올 때 이 한 줄뿐이고 특성 이름을 따로 안 띄운다 (`subscript_forewarn`)
+  forewarn: (c, s) => (s.extra.move === null
+    ? null
+    : rom(c, ROM.pokemonsAbilityAlertedItToMove, s.who, s.romLabel, s.extraMove)),
   // ── 도구가 일했다. 도구 이름이 빈칸이다 (`romLabel`이 도구 이름표에서 읽는다) ──
   // 기합의머리띠가 1을 남겼다 — 기합의띠와 같은 줄이다 (`subscript_move_followup_message`)
   focusband: (c, s) => rom(c, MSG.pokemonHungOnUsingItsItem, s.who, s.romLabel),
@@ -336,9 +369,9 @@ export const SINGLE_MOVE_IDS: readonly string[] = Object.keys(SINGLE_MOVE)
  * 갈래가 **아예 없었다** — 씨뿌리기가 걸려도 대타가 나타나도 도발에 넘어가도
  * 화면이 한 마디도 안 했다.
  *
- * ⚠️ **여기 없는 것은 조용하다.** 특성 배너로도 안 떨어뜨린다 — 날씨부정·틀깨기는
- * 4세대 뱅크에 줄이 없고, 원작이 아무 말도 안 하는 자리에 배너를 띄우면
- * 그것이 지어낸 것이다
+ * ⚠️ **여기 없는 것은 조용하다.** 특성 띄우개로도 안 떨어뜨린다 — 날씨부정은
+ * 4세대 뱅크에 줄이 없고, 원작이 아무 말도 안 하는 자리에 이름을 띄우면
+ * 그것이 지어낸 것이다. 나올 때 말하는 특성(프레셔·틀깨기)은 `-ability` 갈래가 맡는다
  */
 const VOLATILE_ON: Record<string, EffectLine> = {
   aquaring: (c, s) => rom(c, MSG.surroundedItselfWithAVeilOfWater, s.who),
@@ -496,6 +529,27 @@ const DAMAGE_BY_MOVE: Record<number, number> = {
   191: MSG.isHurtByTheSpikes,
   446: MSG.pointedStonesDugIntoPokemon,
 }
+
+/**
+ * 나올 때 특성이 스스로 알리는 줄 (`-ability` · `BattleSystem_TriggerEffectOnSwitch`).
+ *
+ * 4세대에는 특성 이름 띄우개가 없다 — 원작은 특성마다 **문장 하나**로 말한다
+ * (`subscript_pressure` · `subscript_mold_breaker` · `subscript_anticipation`). 쇼다운이
+ * 이 셋에 보내는 `|-ability|`는 이름만 들고 오므로 칸은 자리와 특성 이름 둘이다.
+ * 열쇠는 특성 원문 이름을 접은 것이다 — 번호는 롬 표가 있어야 풀린다
+ */
+const ABILITY_SHOWN: Record<string, (ctx: TextContext, who: string, ability: string | null) => string | null> = {
+  pressure: (c, who, ability) => rom(c, MSG.isExertingItsAbility, who, ability),
+  moldbreaker: (c, who, ability) => rom(c, ROM.pokemonWasAbility, who, ability),
+  anticipation: (c, who, ability) => rom(c, ROM.pokemonsAbilityMadeItShudder, ability, who),
+}
+
+/**
+ * `-ability`가 와도 **원작은 아무 말도 안 하는** 특성. 에어록·날씨부정은 4세대의
+ * 등장 점검(`SwitchInCheckState`)에 갈래가 없고 뱅크에도 줄이 없다 — 이름을 띄우면
+ * 그것이 지어낸 것이다
+ */
+const ABILITY_QUIET = new Set(['airlock', 'cloudnine'])
 
 /**
  * 명령을 안 듣고 **아무것도 안 했을 때**의 네 마디
@@ -755,10 +809,19 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
     }
 
     case 'ability': {
-      // ⚠️ **이 한 줄만 우리 것이다.** 원작은 특성이 일한 자리에 이름을 띄우는데
-      // 그것이 글이 아니라 화면 부품이라 뱅크에 줄이 없다 (PARITY §2.24)
-      const ability = (e.ability !== null ? names.abilities[e.ability] : null) ?? e.abilityName
-      return `${ctx.label(e.actor)}의 ${ability}!`
+      const id = foldName(e.abilityName)
+      if (ABILITY_QUIET.has(id)) return null
+      const who = ctx.label(e.actor)
+      const ko = e.ability !== null ? names.abilities[e.ability] ?? null : null
+      // 프레셔·틀깨기·위험예지는 롬 문장이다. 칸을 못 채우면(이름표·뱅크가 없다) 아래로 떨어진다
+      const shown = ABILITY_SHOWN[id]?.(ctx, who, ko) ?? null
+      if (shown !== null) return shown
+      // ⚠️ **나머지는 우리 띄우개다.** 위협·다운로드처럼 랭크를 바꾸는 특성은 원작이 이름을
+      // 따로 안 띄우고 랭크 줄 하나에 특성을 넣어 말한다(「{건 쪽}의 {특성} 때문에 {받는 쪽}의
+      // {능력}이 떨어졌다!」 · `subscript_intimidate` → `BATTLE_SUBSCRIPT_UPDATE_STAT_STAGE`).
+      // 쇼다운은 그 원인을 `-ability`에만 싣고 뒤따르는 `-unboost`에는 안 실어서, 한 사건으로는
+      // 그 줄을 못 채운다 — 박자가 원인을 랭크 사건에 옮겨 주기 전까지는 누가 일했는지만 말한다
+      return `${who}의 ${ko ?? e.abilityName}!`
     }
 
     case 'weather': {
@@ -907,6 +970,12 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       if (e.silent) return null
       const who = ctx.label(e.actor)
       const item = itemName(e.item, names)
+      // 애슈열매는 뒤따르는 줄이 없다 — 쇼다운은 이 다음에 사람에게 보이는 영어 한 줄
+      // (`|-message|Custap Berry activated.`)만 보내고, 원작은 먹은 그 자리에서 말한다
+      // (`subscript_check_quick_claw`의 `BATTLEMON_CUSTAP_BERRY` 갈래)
+      if (e.how === 'eat' && e.item.id === 'custapberry') {
+        return rom(ctx, ROM.pokemonsItemLetItMoveFirst, who, item)
+      }
       // 열매를 먹은 줄은 뒤따르는 회복·치료·랭크 줄이 열매를 부른다 — 여기서 또
       // 말하면 한 번 먹는 데 두 줄이 된다
       if (e.how === 'eat') return null
@@ -1014,6 +1083,13 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       // 열매가 혼란을 풀었으면 열매를 부른다 (`subscript_held_item_cnf_restore` · 리샘열매는 `…_multi_restore`)
       if (!e.start && e.curedBy && e.effect.id === 'confusion') {
         return curedLine(ctx, ctx.label(e.actor), e.curedBy, MSG.pokemonsItemSnappedItOutOfConfusion)
+      }
+      // 멘탈허브가 헤롱헤롱을 풀었다 — 상태 이름이 칸이다 (`subscript_held_item_heal_infatuation`
+      // · `msgTemp = MSGCOND_INFATUATION`). 이름표가 없으면 아래 「헤롱헤롱이 풀렸다」로 떨어진다
+      if (!e.start && e.curedBy && e.effect.id === 'attract') {
+        const cured = rom(ctx, ROM.pokemonCuredItsStatusUsingItsItem, ctx.label(e.actor),
+          itemName(e.curedBy.item, names), names.conditions?.[COND_INFATUATION] ?? null)
+        if (cured !== null) return cured
       }
       const line = (e.start ? VOLATILE_ON : VOLATILE_OFF)[e.effect.id]
       return line === undefined ? null : line(ctx, {
@@ -1224,15 +1300,6 @@ function effectLabel(effect: EffectRef, names: BattleNames): string {
   return table[effect.num] ?? effect.name
 }
 
-/**
- * 효과 표에서 한 줄을 찾는다. 없으면 조용하다 — **특성만 빼고**.
- *
- * ⚠️ **특성은 배너로 떨어진다.** 원작은 특성이 일한 자리에서 특성 이름을 먼저
- * 띄우고(`모부기의 위협!`) 그 다음 문장을 찍는다. 우리 `-ability` 줄이 이미
- * 그 문장을 쓰고 있으므로, 문구를 못 댄 특성은 적어도 **누가 일했는지**까지는
- * 원작과 같은 말로 말한다. 기술은 이렇게 못 한다 — `모부기의 방어!`는 기술을
- * **쓴** 줄의 문장이라 막은 자리에 놓으면 거짓말이 된다
- */
 /** 「{이름}은 레벨 {N}으로 올랐다!」 */
 function levelLine(ctx: TextContext, who: string, level: number): string | null {
   return rom(ctx, MSG.pokemonGrewToLevel, who, String(level))
@@ -1251,6 +1318,14 @@ function learnLine(ctx: TextContext, who: string, move: number, learned: boolean
   return want === null || full === null ? null : want + '\n\n' + full
 }
 
+/**
+ * 효과 표에서 한 줄을 찾는다. 없으면 조용하다 — **특성만 빼고**.
+ *
+ * ⚠️ **특성은 띄우개로 떨어진다.** 문구를 못 댄 특성은 `-ability`의 띄우개와 같은
+ * 「{이름}의 {특성}!」으로 적어도 **누가 일했는지**는 말한다. 원작 문장이 아니므로
+ * 롬 줄이 있는 특성은 표에 올린다(예지몽 특성처럼). 기술은 이렇게 못 한다 —
+ * `모부기의 방어!`는 기술을 **쓴** 줄의 문장이라 막은 자리에 놓으면 거짓말이 된다
+ */
 function effectText(
   table: Record<string, EffectLine>,
   effect: EffectRef,
