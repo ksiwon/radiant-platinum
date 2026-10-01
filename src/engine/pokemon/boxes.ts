@@ -10,6 +10,10 @@
 // 27번 칸에 한 마리만 있을 수 있고, 그 앞을 당기지 않는다. 목록으로 두면 화면에서
 // 자리를 옮길 수가 없다 — 원작에서 박스는 옮겨 놓는 곳이지 담아 두는 곳이 아니다.
 import type { PokemonInstance } from './instance'
+import { mailTypeOfItem } from '../world/mail'
+
+/** 편지지인가 (`Item_IsMail`) */
+const isMailItem = (item: number): boolean => mailTypeOfItem(item) !== null
 
 /** 박스 수 (`MAX_PC_BOXES`) */
 export const BOX_COUNT = 18
@@ -32,8 +36,7 @@ const DEFAULT_WALLPAPERS = 16
 /**
  * 보관 시스템을 여는 갈래 (`OpenPokemonStorage`의 인자).
  *
- * PC 메뉴의 항목 순서가 곧 이 번호다 (`CommonScript_InitStorageSystemMenu`).
- * 3(도구 옮긴다)·4(비교한다)는 아직 화면이 없다
+ * PC 메뉴의 항목 순서가 곧 이 번호다 (`CommonScript_InitStorageSystemMenu`)
  */
 export const BOX_MODE = { deposit: 0, withdraw: 1, move: 2, items: 3, compare: 4 } as const
 
@@ -115,4 +118,86 @@ export function swapSlots(boxes: Boxes, a: BoxSpot, b: BoxSpot): Boxes {
   const held = boxes[a.box]?.[a.slot] ?? null
   const other = boxes[b.box]?.[b.slot] ?? null
   return withSlot(withSlot(boxes, a, other), b, held)
+}
+
+// ── 놓아주기 (`box_app_manager.c`의 `BoxAppMan_ReleaseMonAction`) ─────────────
+
+/**
+ * 놓아주기를 막는 기술 셋 (`sReleaseBlockingMoves`) — 파도타기 57 · 락클라임 431 ·
+ * 폭포오르기 127. 번호는 `script/fieldMoves`의 `FIELD_MOVES`와 같다 (시험이 맞댄다).
+ *
+ * ⚠️ **비전기술 전부가 아니다.** 풀베기·공중날기·괴력·안개제거·바위깨기는 이 표에
+ * 없어서 몇 마리가 알든 놓아줄 수 있다
+ */
+export const RELEASE_BLOCKING_MOVES: readonly number[] = [57, 431, 127]
+
+/** 그 기술을 아는가 (`BoxPokemon_HasMove`). ⚠️ 알은 아무 기술도 모르는 것으로 친다 */
+export function knowsMove(mon: PokemonInstance, move: number): boolean {
+  return !mon.isEgg && mon.moves.some((slot) => slot.move === move)
+}
+
+/**
+ * 이 한 마리를 빼면 싸울 것이 없어지는가 (`BoxAppMan_OnLastAliveMon`).
+ *
+ * 파티에서 **알이 아니고 HP가 남은** 마리를 센다. 둘이면 괜찮다. 하나 이하라도
+ * 빼려는 마리가 알이거나 기절해 있으면 괜찮다 — 원작이 그 마리를 따로 한 번 더 본다
+ */
+export function onLastAliveMon(party: readonly PokemonInstance[], mon: PokemonInstance): boolean {
+  let alive = 0
+  for (const m of party) {
+    if (!m.isEgg && m.hp > 0) alive++
+    if (alive >= 2) return false
+  }
+  if (mon.isEgg) return false
+  return mon.hp > 0
+}
+
+/** 놓아주기를 묻기도 전에 막는 까닭. 글은 `box_messages`의 31 · 30 · 6이다 */
+export type ReleaseRefusal = 'egg' | 'mail' | 'lastMon'
+
+/**
+ * 물어보기 전에 막는다 (`BoxAppMan_CheckReleaseMonValid`). 차례도 원작대로다 —
+ * 알 → 편지 → (파티 자리일 때만) 마지막 한 마리.
+ *
+ * ⚠️ 원작은 편지 다음에 **볼캡슐**도 본다(`MON_DATA_BALL_CAPSULE_ID`). 우리 마리에는
+ * 볼캡슐 칸이 없어서 그 갈래가 설 수 없다
+ *
+ * @param inParty 파티 자리에서 고른 것인가. 박스 자리면 마지막 한 마리를 안 본다
+ */
+export function releaseRefusal(
+  mon: PokemonInstance, party: readonly PokemonInstance[], inParty: boolean,
+): ReleaseRefusal | null {
+  if (mon.isEgg) return 'egg'
+  if (isMailItem(mon.heldItem)) return 'mail'
+  if (inParty && onLastAliveMon(party, mon)) return 'lastMon'
+  return null
+}
+
+/**
+ * 예를 고른 뒤 **되돌아오는가** (`BoxAppMan_CheckShouldMonReturn` ·
+ * `CheckLastMonWithReleaseBlockingMove`).
+ *
+ * 막는 기술 셋 가운데 이 마리가 아는 것마다, 박스 열여덟과 파티를 통틀어 그 기술을
+ * 아는 마리를 센다. **하나뿐**(곧 이 마리)인 기술이 있으면 되돌아온다 — 「되돌아와
+ * 버렸다!」「걱정했었나...」. 묻기 전에 막는 것이 아니라 예를 고른 **뒤에** 갈린다.
+ *
+ * ⚠️ 이 마리가 `boxes`나 `party` 안에 있어야 한다 — 원작도 커서 밑의 마리는 자리에서
+ * 세고, 커서에 든 마리만 따로 더한다(`monHeldInCursor`)
+ */
+export function releaseReturns(
+  boxes: Boxes, party: readonly PokemonInstance[], mon: PokemonInstance,
+): boolean {
+  for (const move of RELEASE_BLOCKING_MOVES) {
+    if (!knowsMove(mon, move)) continue
+    let count = 0
+    for (const box of boxes) for (const m of box) if (m && knowsMove(m, move)) count++
+    for (const m of party) if (knowsMove(m, move)) count++
+    if (count === 1) return true
+  }
+  return false
+}
+
+/** 박스 한 자리를 비운다 (`BoxAppMan_RemoveMonUnderCursor`의 박스 갈래). 지닌 도구도 함께 떠난다 */
+export function releaseFromBox(boxes: Boxes, at: BoxSpot): Boxes {
+  return withSlot(boxes, at, null)
 }

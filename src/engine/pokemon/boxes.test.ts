@@ -9,8 +9,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   BOX_CAPACITY, BOX_COUNT, BOX_SIZE, countAll, countInBox, defaultWallpaper, emptyBoxes,
-  freeSlots, nextSpace, store, swapSlots, withSlot,
+  freeSlots, knowsMove, nextSpace, onLastAliveMon, RELEASE_BLOCKING_MOVES, releaseFromBox,
+  releaseRefusal, releaseReturns, store, swapSlots, withSlot,
 } from './boxes'
+import { FIELD_MOVES } from '../script/fieldMoves'
+import { MAIL_ITEM_FIRST } from '../world/mail'
 import type { PokemonInstance } from './instance'
 import { noOrigin } from './origin'
 
@@ -127,5 +130,90 @@ describe('넣고 바꾸기', () => {
     expect(boxes[0]![3]).toBeNull()
     expect(boxes[0]![29]?.species).toBe(387)
     expect(countInBox(boxes, 0)).toBe(1)
+  })
+})
+
+/** 기술을 든 마리 */
+function knowing(species: number, ...moves: number[]): PokemonInstance {
+  return { ...mon(species), moves: moves.map((move) => ({ move, pp: 15, ppUps: 0 })) }
+}
+
+describe('놓아주기 (`BoxAppMan_ReleaseMonAction`)', () => {
+  const SURF = FIELD_MOVES.surf.move
+  const ROCK_CLIMB = FIELD_MOVES.rockClimb.move
+  const WATERFALL = FIELD_MOVES.waterfall.move
+
+  it('막는 기술은 파도타기·락클라임·폭포오르기 셋뿐이다 (`sReleaseBlockingMoves`)', () => {
+    expect([...RELEASE_BLOCKING_MOVES].sort()).toEqual([SURF, ROCK_CLIMB, WATERFALL].sort())
+    // 풀베기·공중날기·괴력은 없다 — 하나뿐이어도 놓아줄 수 있다
+    for (const id of ['cut', 'fly', 'strength', 'defog', 'rockSmash'] as const) {
+      expect(RELEASE_BLOCKING_MOVES).not.toContain(FIELD_MOVES[id].move)
+    }
+  })
+
+  it('알은 기술을 모르는 것으로 친다 (`BoxPokemon_HasMove`)', () => {
+    expect(knowsMove(knowing(7, SURF), SURF)).toBe(true)
+    expect(knowsMove({ ...knowing(7, SURF), isEgg: true }, SURF)).toBe(false)
+  })
+
+  it('묻기 전에 막는 차례 — 알 → 편지 → 파티의 마지막 한 마리', () => {
+    const egg = { ...mon(7), isEgg: true, heldItem: MAIL_ITEM_FIRST }
+    expect(releaseRefusal(egg, [egg], true)).toBe('egg')
+    const mailed = { ...mon(7), heldItem: MAIL_ITEM_FIRST + 11 }
+    expect(releaseRefusal(mailed, [mailed], true)).toBe('mail')
+    const only = mon(7)
+    expect(releaseRefusal(only, [only], true)).toBe('lastMon')
+    // 박스 자리에서 고른 마리는 마지막 한 마리를 안 본다
+    expect(releaseRefusal(only, [only], false)).toBeNull()
+    // 편지지 아닌 도구는 들고 떠난다
+    expect(releaseRefusal({ ...mon(7), heldItem: MAIL_ITEM_FIRST - 1 }, [mon(1), mon(2)], true)).toBeNull()
+  })
+
+  it('살아 있는 수를 센다 — 알과 기절한 마리는 싸울 수 없다 (`BoxAppMan_OnLastAliveMon`)', () => {
+    const a = mon(1), egg = { ...mon(2), isEgg: true }, down = { ...mon(3), hp: 0 }
+    expect(onLastAliveMon([a, egg], a)).toBe(true)
+    expect(onLastAliveMon([a, down], a)).toBe(true)
+    expect(onLastAliveMon([a, mon(4)], a)).toBe(false)
+    // 빼려는 것이 알이거나 기절했으면 남은 하나가 그대로 싸운다
+    expect(onLastAliveMon([a, egg], egg)).toBe(false)
+    expect(onLastAliveMon([a, down], down)).toBe(false)
+  })
+
+  it('그 기술을 아는 마리가 하나뿐이면 되돌아온다 — 박스와 파티를 통틀어 센다', () => {
+    const surfer = knowing(7, SURF)
+    let boxes = withSlot(emptyBoxes(), { box: 3, slot: 9 }, surfer)
+    expect(releaseReturns(boxes, [mon(1)], surfer)).toBe(true)
+    // 파티에 하나 더 있으면 놓아줄 수 있다
+    expect(releaseReturns(boxes, [knowing(1, SURF)], surfer)).toBe(false)
+    // 다른 박스에 있어도 센다
+    boxes = withSlot(boxes, { box: 17, slot: 29 }, knowing(9, SURF, WATERFALL))
+    expect(releaseReturns(boxes, [mon(1)], surfer)).toBe(false)
+    // ⚠️ 알이 그 기술을 들고 있어도 안 센다
+    const eggBoxes = withSlot(withSlot(emptyBoxes(), { box: 0, slot: 0 }, surfer), { box: 0, slot: 1 }, { ...knowing(9, SURF), isEgg: true })
+    expect(releaseReturns(eggBoxes, [], surfer)).toBe(true)
+  })
+
+  it('아는 기술 가운데 하나라도 혼자면 되돌아온다', () => {
+    const both = knowing(7, SURF, ROCK_CLIMB)
+    const boxes = withSlot(emptyBoxes(), { box: 0, slot: 0 }, both)
+    // 파도타기는 둘이지만 락클라임은 이 마리뿐이다
+    expect(releaseReturns(boxes, [knowing(1, SURF)], both)).toBe(true)
+    expect(releaseReturns(boxes, [knowing(1, SURF), knowing(2, ROCK_CLIMB)], both)).toBe(false)
+  })
+
+  it('막는 기술을 모르면 늘 놓아준다', () => {
+    const plain = knowing(7, FIELD_MOVES.cut.move)
+    const boxes = withSlot(emptyBoxes(), { box: 0, slot: 0 }, plain)
+    expect(releaseReturns(boxes, [], plain)).toBe(false)
+  })
+
+  it('놓아주면 그 자리만 빈다 — 뒤를 당기지 않는다', () => {
+    let boxes = withSlot(emptyBoxes(), { box: 2, slot: 4 }, mon(387))
+    boxes = withSlot(boxes, { box: 2, slot: 5 }, mon(390))
+    const after = releaseFromBox(boxes, { box: 2, slot: 4 })
+    expect(after[2]![4]).toBeNull()
+    expect(after[2]![5]?.species).toBe(390)
+    expect(boxes[2]![4]?.species).toBe(387)
+    expect(countAll(after)).toBe(1)
   })
 })
