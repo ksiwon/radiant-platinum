@@ -30,6 +30,7 @@ import { withTopic } from '../korean'
 import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { dexHas, useSaveStore } from '../../state/saveStore'
+import { useSessionStore } from '../../state/sessionStore'
 import { clampCursor, scrollIntoView, useMenuKeys, wrapCursor } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
@@ -45,7 +46,38 @@ const PAGES = ['정보', '서식지', '폼'] as const
 /** 검색 창의 줄 여섯. 마지막은 전국도감을 연 뒤에만 뜻이 있다 */
 const SEARCH_ROWS = ['도감', '정렬', '이름', '타입 1', '타입 2', '모양'] as const
 
-const SORT_LABELS = ['번호순', '가나다순', '무거운 순', '가벼운 순', '큰 순', '작은 순']
+/**
+ * 정렬 여섯의 이름표 — 도감 뱅크 81~86 (`pl_msg_pokedex_numerical` … `_smallest`).
+ * 원작이 `pl_msg_pokedex_numerical + sortOrder`로 읽는다 (`pokedex_search.c`의
+ * `SortOrderMessage`) — 그래서 자리가 `SortOrder` 차례 그대로다
+ */
+const SORT_TEXT_FIRST = 81
+
+/**
+ * 검색 창 줄마다의 설명 — 도감 뱅크 87~90 (`pokedex_search.c`의 `DescriptionMessage`).
+ * 원작의 갈래는 넷(`enum FilterMethod`)이라 차례 · 이름 · 타입 · 모양에 하나씩이고,
+ * 타입 두 줄은 같은 설명을 쓴다. 맨 위 「도감」 줄은 원작 검색에 없는 우리 줄이라
+ * 롬 설명이 없다 — 지어 붙이지 않는다
+ */
+const SEARCH_HELP_TEXT: readonly (number | null)[] = [
+  null,
+  90, // FM_ORDER  `pl_msg_pokedex_listing_description`
+  87, // FM_NAME   `pl_msg_pokedex_alphabetical_description`
+  88, // FM_TYPE   `pl_msg_pokedex_type_description`
+  88,
+  89, // FM_FORM   `pl_msg_pokedex_body_description`
+]
+
+/** 정렬 이름표. 뱅크가 아직 안 왔으면 빈 글이다 */
+export function sortLabel(sort: number, ui: readonly string[]): string {
+  return ui[SORT_TEXT_FIRST + sort] ?? ''
+}
+
+/** 검색 창 그 줄의 설명. 롬에 없는 줄이거나 뱅크가 아직 안 왔으면 빈 글이다 */
+export function searchHelp(row: number, ui: readonly string[]): string {
+  const at = SEARCH_HELP_TEXT[row] ?? null
+  return at === null ? '' : ui[at] ?? ''
+}
 
 /**
  * 이름 뭉치 아홉의 이름표 자리 — 도감 뱅크 54~62 (`pl_msg_pokedex_abc` … `_yz`,
@@ -120,9 +152,18 @@ export function stepPage(
 
 /**
  * 마지막으로 본 종 (`PokedexMemory.currentSpecies`). 원작은 필드가 들고 있다가
- * 도감을 다시 열면 그 종에 커서를 둔다 (`pokedex_main.c`)
+ * 도감을 다시 열면 그 종에 커서를 둔다 (`pokedex_main.c`). 화면이 닫혀도 남아야
+ * 해서 컴포넌트 밖에 둔다.
+ *
+ * 원작 값은 필드가 새로 설 때 0이 된다 (`InitFieldSystem`의 `PokedexMemory_New`) —
+ * 새 게임이든 이어하기든 타이틀을 거쳐 온 판이다. 그래서 시작 메뉴 커서처럼
+ * 타이틀로 나가면 비운다 (`StartMenu`의 `lastKey`). 안 비우면 같은 탭에서 다른
+ * 리포트를 이어해도 앞 판의 종에 선다
  */
-let lastSpecies = 0
+export const pokedexMemory: { species: number } = { species: 0 }
+useSessionStore.subscribe((s, prev) => {
+  if (s.phase === 'title' && prev.phase !== 'title') pokedexMemory.species = 0
+})
 
 /**
  * 도감을 열 때의 첫 커서. 목록에 그 종이 있으면 그 줄, 없으면 맨 위다 —
@@ -212,11 +253,11 @@ export function PokedexScreen() {
   )
 
   const at = cursor === null
-    ? restoreCursor(order, lastSpecies)
+    ? restoreCursor(order, pokedexMemory.species)
     : Math.min(cursor, Math.max(0, order.length - 1))
   const entry = order[at]
   const current = entry?.species ?? 0
-  useEffect(() => { if (current !== 0) lastSpecies = current }, [current])
+  useEffect(() => { if (current !== 0) pokedexMemory.species = current }, [current])
   const species = entry && !entry.blank ? entry.species : 0
   const seen = species !== 0
   const caught = species !== 0 && dexHas(dex.caught, species)
@@ -395,14 +436,14 @@ function SearchPanel(
     query: DexQuery
     types: readonly string[]
     national: boolean
-    /** 도감 뱅크 — 이름 뭉치 이름표가 여기 있다 */
+    /** 도감 뱅크 — 정렬 이름표 · 이름 뭉치 이름표 · 줄 설명이 여기 있다 */
     ui: readonly string[]
   },
 ) {
   const value = (i: number): string => {
     // 전국도감을 안 열었으면 고를 것이 없다 — 신오만 적는다
     if (i === 0) return national && query.national ? '전국' : '신오'
-    if (i === 1) return SORT_LABELS[query.sort] ?? ''
+    if (i === 1) return sortLabel(query.sort, ui)
     if (i === 2) {
       return query.name === 0 ? '전부' : nameGroupLabel(ui[NAME_TEXT_FIRST + query.name - 1] ?? '')
     }
@@ -412,6 +453,7 @@ function SearchPanel(
     if (i === 4) return typeLabel(types, query.type2)
     return SHAPE_LABELS[query.shape] ?? ''
   }
+  const help = searchHelp(row, ui)
   return (
     <div className={own.search}>
       <div className={own.searchHead}>검색</div>
@@ -421,6 +463,8 @@ function SearchPanel(
           <span className={own.searchValue}>◂ {value(i)} ▸</span>
         </div>
       ))}
+      {/* 고른 줄의 설명 — 롬 줄의 줄바꿈을 그대로 둔다 */}
+      {help !== '' && <p className={own.searchNote} style={{ whiteSpace: 'pre-line' }}>{help}</p>}
       {/* 무게·키 순은 잡은 것만 남는다 — `keepUncaught`가 가나다순에만 켜진다 (`dexSort`) */}
       {query.sort !== SortOrder.NUMERICAL && query.sort !== SortOrder.ALPHABETICAL && (
         <p className={own.searchNote}>잡아 본 것만 나온다</p>

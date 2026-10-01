@@ -871,7 +871,6 @@ export async function driveStory(page, {
         }
         return false
       }
-      const ready = await rowUp(50)
       /**
        * **화면이 지금 보여 주는 회복 주머니.** 제품이 줄마다 적어 두는 읽기 전용
        * 표시를 그대로 읽는다 (`ui/battle/BattleBag`의 `data-item-*`) — 스토어를
@@ -893,6 +892,21 @@ export async function driveStory(page, {
           })),
         }
       }).catch(() => null)
+      let ready = await rowUp(50)
+      /**
+       * ⚠️ **배틀 가방은 그 배틀 동안 갈래와 갈래마다의 줄을 기억한다** (`BattleBag`의
+       * `memory`). 같은 배틀에서 볼을 던졌으면 볼 갈래로 열리고, 약을 썼으면 그 약
+       * 줄에 선다 — 찾는 약이 다른 쪽에 있으면 화면에 아예 없다. 그래서 못 봤으면
+       * **가방이 열려 있는 것을 확인한 뒤에만** 맨 윗줄로 되감고, 그래도 없으면 갈래를
+       * 넘긴다. 가방이 아닌 화면이면(아래 ⚠️) 아무 키도 안 누른다
+       */
+      for (let i = 0; i < 4 && !ready; i++) {
+        const open = await bagRows()
+        if (open === null) break
+        for (let k = 0; k < (Number.isFinite(open.cursor) ? open.cursor : 0); k++) await tap('ArrowUp', 70)
+        ready = await rowUp(5)
+        if (!ready) { await tap('ArrowRight', 150); ready = await rowUp(10) }
+      }
       /**
        * ⚠️ **한 번 못 봤다고 그 판의 약을 끊지 않는다.** 그 순간 **무슨 화면이었는지**를
        * 넉넉히 적고, 세 번 못 볼 때까지는 **다음 턴에** 다시 간다. 세 번은 재시도
@@ -957,22 +971,26 @@ export async function driveStory(page, {
       }
       const started = seen.cursor
       /**
-       * 한 줄씩 내려가며 **선 줄의 도구 번호**를 본다.
+       * 한 줄씩 옮기며 **선 줄의 도구 번호**를 본다.
        *
        * ⚠️ **쪽이 넘어간다.** 한 쪽이 여섯 줄이라(`BattleBag`의 `PER_PAGE`) 일곱째
        * 도구는 지금 화면에 아예 없다 — 「보이는 줄에서 찾기」로는 못 집는다.
        * 커서가 더 안 내려가면 목록 끝이므로 거기서 멈춘다
        */
       let stood = seen.rows.find((r) => r.on) ?? null
-      let where = seen.cursor
-      for (let i = 0; i <= (Number.isFinite(seen.total) ? seen.total : 40); i++) {
-        if (stood !== null && stood.item === potion.item) break
-        await tap('ArrowDown', 70)
-        const next = await bagRows()
-        if (next === null) { stood = null; break }
-        if (next.cursor === where) { stood = next.rows.find((r) => r.on) ?? null; break }
-        where = next.cursor
-        stood = next.rows.find((r) => r.on) ?? null
+      // ⚠️ 기억한 줄이 약보다 **아래**일 수 있다 — 끝까지 내려가도 없으면 거꾸로 올라간다
+      for (const key of ['ArrowDown', 'ArrowUp']) {
+        let where = (await bagRows())?.cursor ?? seen.cursor
+        for (let i = 0; i <= (Number.isFinite(seen.total) ? seen.total : 40); i++) {
+          if (stood !== null && stood.item === potion.item) break
+          await tap(key, 70)
+          const next = await bagRows()
+          if (next === null) { stood = null; break }
+          if (next.cursor === where) { stood = next.rows.find((r) => r.on) ?? null; break }
+          where = next.cursor
+          stood = next.rows.find((r) => r.on) ?? null
+        }
+        if (stood === null || stood.item === potion.item) break
       }
       if (stood === null || stood.item !== potion.item) {
         potion.why = `커서가 ${String(potion.name)} 줄에 안 섰다`
@@ -2808,7 +2826,13 @@ export async function driveStory(page, {
    * 글이 와 있으면 그것으로 맞춰 본다.
    *
    * 주머니는 ←→로 옮기고(**돌아간다** — `wrapCursor`) 줄은 ↑↓다(안 돌아간다).
-   * 몇 번째 주머니의 몇째 줄인지는 세이브에서 읽는다 (`bagState`)
+   * 몇 번째 주머니의 몇째 줄인지는 세이브에서 읽는다 (`bagState`).
+   *
+   * ⚠️ **가방은 첫 주머니 첫 칸에서 열리지 않는다.** 원작처럼 마지막에 선
+   * 주머니와 주머니마다의 칸을 기억한다 (`ui/menu/BagScreen`의 `bagMemory` ·
+   * `BagCursor`). 그래서 연 자리를 제품에게 묻고(`bagCursor`) **거기서부터의
+   * 차이만큼** 누른다. 다 누른 뒤에 한 번 더 물어 그 칸에 섰는지 본다 — 못 섰으면
+   * 결정을 안 누르고 까닭을 돌려준다
    *
    * @returns `{ ok, slot, why }` — `slot`은 `{ item, count, pocket, row }`
    */
@@ -2851,9 +2875,94 @@ export async function driveStory(page, {
       for (let i = 0; i < 6; i++) await tap('KeyX', 80)
       return { ok: false, why: '가방이 안 열렸다' }
     }
-    for (let i = 0; i < slot.pocket; i++) await tap('ArrowRight', 90)
-    for (let i = 0; i < slot.row; i++) await tap('ArrowDown', 80)
+    const from = await bagCursor()
+    if (!from.known) {
+      for (let i = 0; i < 6; i++) await tap('KeyX', 80)
+      return { ok: false, unknown: true, why: `가방 커서를 못 읽었다 (${String(from.why)})` }
+    }
+    // 주머니는 돌아가므로 짧은 쪽으로 간다
+    const right = (slot.pocket - from.value.pocket + from.value.pockets) % from.value.pockets
+    const left = from.value.pockets - right
+    if (right <= left) for (let i = 0; i < right; i++) await tap('ArrowRight', 90)
+    else for (let i = 0; i < left; i++) await tap('ArrowLeft', 90)
+    // 줄은 안 돌아간다 — 그 주머니에서 기억해 둔 칸부터 센다
+    const mid = await bagCursor()
+    const rowFrom = mid.known && mid.value.pocket === slot.pocket ? mid.value.row : null
+    if (rowFrom === null) {
+      for (let i = 0; i < 6; i++) await tap('KeyX', 80)
+      return { ok: false, why: `주머니 ${String(slot.pocket)}로 못 옮겼다 (${JSON.stringify(mid.known ? mid.value : mid.why)})` }
+    }
+    const dy = slot.row - rowFrom
+    for (let i = 0; i < Math.abs(dy); i++) await tap(dy > 0 ? 'ArrowDown' : 'ArrowUp', 80)
+    const stood = await bagCursor()
+    if (!stood.known || stood.value.pocket !== slot.pocket || stood.value.row !== slot.row) {
+      for (let i = 0; i < 6; i++) await tap('KeyX', 80)
+      return { ok: false, why: `그 칸에 못 섰다 (${JSON.stringify(stood.known ? stood.value : stood.why)} · 원한 자리 ${String(slot.pocket)}/${String(slot.row)})` }
+    }
     return { ok: true, slot, why: null }
+  }
+
+  /**
+   * **가방이 지금 선 자리** — 주머니와 그 주머니의 칸 (`ui/menu/BagScreen`의 `bagMemory`).
+   *
+   * 화면은 열 때 이 값으로 서고 움직일 때마다 여기에 남긴다(`moveCursor` · `choosePocket`).
+   * 칸은 화면처럼 **지금 목록 길이로 당긴다** — 도구를 다 써서 줄이 줄면 기억한 칸이
+   * 목록 밖일 수 있고, 화면은 그때 끝 칸에 선다(`recallCursor`).
+   * 못 읽으면 `known: false`다 — 0으로 접지 않는다
+   *
+   * @returns `{ known, value: { pocket, row, pockets }, why }`
+   */
+  const bagCursor = async () => page.evaluate(async () => {
+    const b = await import('/src/ui/menu/BagScreen.tsx')
+    const m = await import('/src/state/saveStore.ts')
+    const bag = m.useSaveStore.getState().bag
+    const pocket = b.bagMemory.pocket
+    return {
+      known: true,
+      value: { pocket, row: b.recallCursor(pocket, bag[pocket]?.length ?? 0), pockets: bag.length },
+    }
+  }).catch((e) => ({ known: false, why: String(e?.message ?? e).slice(0, 160) }))
+
+  /**
+   * **가방 갈래 메뉴에서 「쓴다」 자리를 고른다** (`BagScreen`의 `bagActions`).
+   *
+   * 칸에서 결정을 누르면 곧바로 쓰는 것이 아니라 갈래 메뉴가 열린다 —
+   * 「어떻게 할까요?」 밑에 쓴다·건네준다·버린다…가 깔린다. 커서는 맨 위에서
+   * 시작한다(`setMenuAt(0)`). ⚠️ **맨 위가 늘 「쓴다」는 아니다** — 나무열매
+   * 주머니는 「태그확인」이 맨 위고, 자전거는 타고 있으면 「내린다」다. 그래서
+   * 화면과 **같은 함수**로 갈래를 짜 보고 쓰는 자리(쓴다·내린다·본다·연다·심는다)의
+   * 차례만큼 내린다
+   *
+   * @returns `{ ok, why }` — 메뉴에 쓰는 자리가 없으면 결정을 안 누른다
+   */
+  const chooseUse = async (slot) => {
+    const plan = await page.evaluate(async ({ item, pocket }) => {
+      const b = await import('/src/ui/menu/BagScreen.tsx')
+      const a = await import('/src/ui/menu/itemAction.ts')
+      const g = await import('/src/data/gameData.ts')
+      const m = await import('/src/state/saveStore.ts')
+      const it = (await g.loadItems()).get(item)
+      const ctx = a.fieldContextNow(undefined)
+      const list = b.bagActions({
+        pocket, item,
+        fieldUseFunc: it.fieldUseFunc ?? 0,
+        // 교환 진화 도구는 이 걸음이 안 쓴다 — 화면은 종족표로 가리는데 여기는 안 받는다
+        evoItem: false,
+        preventToss: it.preventToss === 1,
+        canRegister: it.canRegister === 1,
+        registered: m.useSaveStore.getState().registeredItem,
+        cycling: ctx.onBike === true,
+        berryPatchEmpty: ctx.berryAhead?.empty === true,
+      })
+      return { list, at: list.findIndex((one) => ['use', 'walk', 'check', 'open', 'plant'].includes(one)) }
+    }, { item: slot.item, pocket: slot.pocket }).catch((e) => ({ list: null, at: -1, why: String(e?.message ?? e).slice(0, 160) }))
+    if (plan.at < 0) {
+      return { ok: false, why: `갈래 메뉴에 쓰는 자리가 없다 (${JSON.stringify(plan.list ?? plan.why ?? null)})` }
+    }
+    await tap('Space', 300)   // 갈래 메뉴를 연다
+    for (let i = 0; i < plan.at; i++) await tap('ArrowDown', 90)
+    await tap('Space', 400)   // 쓴다
+    return { ok: true, why: null, actions: plan.list }
   }
 
   /** 가방이든 무엇이든 열린 화면을 닫고 필드로 돌아온다 */
@@ -3026,8 +3135,9 @@ export async function driveStory(page, {
     const had = before?.items.find((one) => one.item === item)?.count ?? 0
     const at = await openBagAt(item, till)
     if (!at.ok) { await closeMenus(); return { ...at, had } }
-    await tap('Space', 400)
+    const used = await chooseUse(at.slot)
     await closeMenus()
+    if (!used.ok) return { ...used, had }
     const after = await bagState()
     const now2 = after?.items.find((one) => one.item === item)?.count ?? 0
     return { ok: now2 < had, had, left: now2, why: now2 < had ? null : '안 줄었다' }
@@ -3042,8 +3152,8 @@ export async function driveStory(page, {
    * 1층의 등산가가 배지 하나를 보고 준다 (`OreburghGate1F_HikerGiveHM`).
    *
    * 화면의 계약은 `ui/menu/BagScreen`과 `ui/menu/PartyScreen`에 있다 —
-   * ←→가 주머니, ↑↓가 줄, 결정이 **바로** 쓴다(갈래 메뉴가 없다). 기술머신이면
-   * 파티 화면이 열리고, 거기서 고른 마리가 배운다. 비전머신은 **안 없어진다**.
+   * ←→가 주머니, ↑↓가 줄, 결정이 갈래 메뉴를 열고 거기서 「쓴다」를 고른다
+   * (`chooseUse`). 기술머신이면 파티 화면이 열리고, 거기서 고른 마리가 배운다. 비전머신은 **안 없어진다**.
    *
    * ⚠️ **배웠는지는 파티로 확인한다.** 화면 글(「배웠다!」)로 재면 「이 포켓몬은
    * 배울 수 없다」와 구분이 글자 맞추기가 되고, 못 배운 판이 통과로 샌다
@@ -3079,7 +3189,8 @@ export async function driveStory(page, {
     })) ?? null
     const at = await openBagAt(item, till)
     if (!at.ok) { await closeMenus(); return { ...at, ms: Date.now() - t0 } }
-    await tap('Space', 300)
+    const used = await chooseUse(at.slot)
+    if (!used.ok) { await closeMenus(); return { ...used, ms: Date.now() - t0 } }
 
     /**
      * 파티 화면에서 **배울 수 있는 마리**를 찾는다.
@@ -3115,7 +3226,7 @@ export async function driveStory(page, {
         for (let i = 0; i < 8 && (await now()).menu !== undefined; i++) await tap('KeyX', 120)
         const again = await openBagAt(item, till)
         if (!again.ok) break
-        await tap('Space', 300)
+        if (!(await chooseUse(again.slot)).ok) break
       }
     for (let i = 0; i < 6 && Date.now() < till; i++) {
       // 첫 바퀴에는 **칸이 찬 마리를 건너뛴다**
@@ -3196,12 +3307,12 @@ export async function driveStory(page, {
    *
    * ⚠️ 사탕을 가방에 넣는 것은 부르는 쪽의
    * 개발 모듈이고, 먹이는 것은 사람이 누르는 길 그대로다 — 가방에서 결정 →
-   * 파티 화면에서 그 자리로 → 결정 → 「레벨 올랐다」· 오른 폭 · 새 능력치 ·
+   * 갈래 메뉴의 「쓴다」(`chooseUse`) → 파티 화면에서 그 자리로 → 결정 → 「레벨 올랐다」· 오른 폭 · 새 능력치 ·
    * 배운 기술을 결정으로 넘긴다 → 진화가 걸리면 진화 화면을 끝까지 본다.
    *
    * 한 알이 끝났는지는 **화면 이름**으로 본다. 진화가 없으면 파티 화면이 가방으로
    * 돌아가고, 진화가 걸리면 메뉴가 다 닫힌다. ⚠️ 가방으로 돌아온 뒤 결정을 한 번
-   * 더 누르면 **다음 알을 먹이러 간다** — 그래서 거기서 바로 멈춘다.
+   * 더 누르면 **다음 알의 갈래 메뉴가 열린다** — 그래서 거기서 바로 멈춘다.
    *
    * 칸이 찼을 때의 물음은 `forget`이 정한다 — 기본은 `teachHm`과 같게 **첫 칸**을
    * 잊는다. 진단은 답을 차례로 줄 수 있다(`['refuse', 1]` = 첫 물음은 거절, 다음
@@ -3232,7 +3343,8 @@ export async function driveStory(page, {
       if (Date.now() >= till) return done({ ok: false, level: mon.level, why: '시간이 다 됐다' })
       const at = await openBagAt(CANDY, till)
       if (!at.ok) { await closeMenus(); return done({ ...at, level: mon.level }) }
-      await tap('Space', 300)
+      const used = await chooseUse(at.slot)
+      if (!used.ok) { await closeMenus(); return done({ ...used, level: mon.level }) }
       for (let i = 0; i < 30 && (await now()).menu !== 'party'; i++) await page.waitForTimeout(150)
       if ((await now()).menu !== 'party') {
         await closeMenus()
@@ -3364,8 +3476,9 @@ export async function driveStory(page, {
     if (was.value === true) return { ok: true, already: true }
     const at = await openBagAt(BIKE_ITEM, till)
     if (!at.ok) { await closeMenus(); return at }
-    await tap('Space', 400)
+    const used = await chooseUse(at.slot)
     await closeMenus()
+    if (!used.ok) return used
     const now2 = await obs.riding()
     const ok = now2.known && now2.value === true
     return { ok, why: ok ? null : now2.known ? '안 탔다 (그 자리에서는 못 탄다고 했을 수 있다)' : now2.why }
@@ -3553,16 +3666,32 @@ export async function driveStory(page, {
        * 보고 「몬스터볼이 없다」로 떨어졌고, 같은 코드가 다른 판에서는 잡았다 —
        * 끊은 것은 가방이 아니라 **기다린 길이**다. 첫 번만 10초를 준다
        */
+      /**
+       * ⚠️ **배틀 가방은 그 배틀 동안 갈래마다의 줄과 마지막에 던진 도구를 기억한다**
+       * (`ui/battle/BattleBag`의 `memory` · `BagCursor_GetBattleCategoryPosition`).
+       * 두 번째로 열면 볼 갈래의 **마지막에 던진 볼** 줄에 서고, 그 줄이 둘째 쪽이면
+       * 첫 쪽의 몬스터볼이 화면에 아예 없다. 그래서 갈래마다 **맨 윗줄로 되감고**
+       * 다시 본다 — 아래 ⑤의 「첫 줄이 몬스터볼」이 그 되감기 위에 선다
+       */
+      const rewind = async () => {
+        const bag = await page.evaluate(readBattleBag)
+        const up = bag !== null && Number.isFinite(bag.cursor) ? bag.cursor : 0
+        for (let i = 0; i < up; i++) await tap('ArrowUp', 70)
+        return up > 0
+      }
       let ready = await ballRow(50)
+      if (!ready && await rewind()) ready = await ballRow(5)
       for (let i = 0; i < 4 && !ready; i++) {
         await tap('ArrowRight', 150)
         ready = await ballRow(10)
+        if (!ready && await rewind()) ready = await ballRow(5)
       }
       if (!ready) {
         why = `가방에 ${ball === null ? '몬스터볼' : `도구 ${String(ball)}`}이 안 보인다 (${JSON.stringify(saw?.slice(0, 8))})`
         await tap('KeyX', 90)
         break
       }
+      if (ready && ball === null) await rewind()
       if (ball !== null) {
         /**
          * ⑤′ **그 볼 줄까지 커서를 옮긴다** (`captureBall.mjs`의 `throwBall`과 같은 걸음).
@@ -3589,7 +3718,7 @@ export async function driveStory(page, {
           break
         }
       }
-      // ⑤ 첫 줄이 몬스터볼이다 — 커서는 주머니를 옮길 때마다 0으로 돌아간다 (`ball`을 주면 위에서 옮겼다)
+      // ⑤ 첫 줄이 몬스터볼이다 — 위에서 맨 윗줄로 되감았다 (`ball`을 주면 그 줄로 옮겼다)
       await tap('Space', 250)
       thrown++
 

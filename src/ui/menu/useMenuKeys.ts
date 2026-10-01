@@ -31,7 +31,12 @@ interface MenuKeys {
   pageDown?: Handler
   /** 칸 옮기기 (Tab). 한 화면 안에 목록이 둘일 때 쓴다 */
   tab?: Handler
-  /** F. 원작 DS의 Y 버튼 자리 — 가방에서 도구를 등록한다 (PARITY §4.4) */
+  /**
+   * F. 원작 DS의 Y 버튼 자리 (PARITY §4.4). **지금 이 갈래를 거는 화면은 없다** —
+   * 가방은 등록을 갈래 메뉴의 「등록」으로 하고(`BagScreen`의 `bagActions`), 등록한
+   * 도구는 메뉴가 닫힌 필드에서 이 키로 쓴다(`MenuLayer`의 `runRegisteredItem`).
+   * 화면이 이 갈래를 안 걸면 키는 그대로 지나간다
+   */
   register?: Handler
   /**
    * 메뉴를 연 키(C). 원작 시작 메뉴는 연 X 버튼으로도 닫힌다

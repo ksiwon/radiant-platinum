@@ -1,4 +1,5 @@
-// 도감 검색의 이름 뭉치 이름표와 ←→ · 다시 열 때의 커서 (`PokedexScreen.tsx`)
+// 도감 검색의 이름 뭉치 이름표 · 정렬 이름표 · 줄 설명과 ←→ · 다시 열 때의 커서
+// (`PokedexScreen.tsx`)
 //
 // 이름표는 롬 도감 뱅크(697) 54~62를 그대로 읽는다. 한국판은 ᄀᄂ … ᄑᄒ
 // 일곱이고 여덟째·아홉째가 빈 줄이다. 그 이름표가 정말로 그 뭉치를 가리키는지는
@@ -6,7 +7,11 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { nameGroupLabel, restoreCursor, stepNameFilter, stepPage } from './PokedexScreen'
+import { SortOrder } from '../../engine/pokemon/dexSort'
+import { useSessionStore } from '../../state/sessionStore'
+import {
+  nameGroupLabel, pokedexMemory, restoreCursor, searchHelp, sortLabel, stepNameFilter, stepPage,
+} from './PokedexScreen'
 
 const DATA = resolve(__dirname, '../../../public/data')
 const read = <T>(path: string): T | null => {
@@ -113,5 +118,48 @@ describe('다시 열 때의 커서', () => {
     expect(restoreCursor(order, 25)).toBe(0)
     expect(restoreCursor(order, 0)).toBe(0)
     expect(restoreCursor([], 389)).toBe(0)
+  })
+})
+
+describe('정렬 이름표 — 롬 81~86', () => {
+  it.runIf(bank)('SortOrder 차례 그대로 번호 · 가나다순 · 무겁다 · 가볍다 · 크다 · 작다다', () => {
+    const order = [SortOrder.NUMERICAL, SortOrder.ALPHABETICAL, SortOrder.HEAVIEST,
+      SortOrder.LIGHTEST, SortOrder.TALLEST, SortOrder.SMALLEST]
+    expect(order.map((o) => sortLabel(o, bank!)))
+      .toEqual(['번호', '가나다순', '무겁다', '가볍다', '크다', '작다'])
+  })
+
+  it('뱅크가 아직 안 왔으면 빈 글이다 — 우리 이름을 지어 붙이지 않는다', () => {
+    expect(sortLabel(SortOrder.HEAVIEST, [])).toBe('')
+  })
+})
+
+describe('검색 창 줄 설명 — 롬 87~90 (`DescriptionMessage`)', () => {
+  it.runIf(bank)('정렬은 차례 설명, 이름 · 타입 둘 · 모양은 제 설명이다', () => {
+    expect(searchHelp(1, bank!)).toBe('도감의 순서를 지정합니다.')
+    expect(searchHelp(2, bank!)).toBe('이름의 첫 글자를\n지정합니다.')
+    expect(searchHelp(3, bank!)).toBe('타입을 지정합니다.')
+    expect(searchHelp(4, bank!)).toBe('타입을 지정합니다.')
+    expect(searchHelp(5, bank!)).toBe('몸의 형태를 지정합니다.')
+  })
+
+  it('원작 검색에 없는 「도감」 줄은 설명이 없다', () => {
+    expect(searchHelp(0, new Array<string>(100).fill('x'))).toBe('')
+  })
+
+  it('뱅크가 아직 안 왔으면 빈 글이다', () => {
+    expect(searchHelp(2, [])).toBe('')
+  })
+})
+
+describe('마지막으로 본 종을 비우는 때', () => {
+  it('타이틀로 나가면 비운다 — 필드가 새로 설 때(`PokedexMemory_New`)', () => {
+    useSessionStore.getState().setPhase('overworld')
+    pokedexMemory.species = 389
+    // 필드에 있는 동안은 남는다 — 도감을 닫았다 열어도 그 종이다
+    useSessionStore.getState().setPhase('overworld')
+    expect(pokedexMemory.species).toBe(389)
+    useSessionStore.getState().setPhase('title')
+    expect(pokedexMemory.species).toBe(0)
   })
 })

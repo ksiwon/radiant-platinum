@@ -1,8 +1,10 @@
 // 시작 메뉴 — C를 누르면 뜬다 (X·Esc로도).
 //
 // 항목이 상황에 따라 나타났다 사라진다. 도감은 마박사에게 받기 전에는 없고,
-// 포켓몬은 파티가 비어 있으면 없다. 원작이 그렇게 만들어서, 초반에 메뉴를 열면
-// 실제로 두 줄뿐이다 — 우리가 항목을 흐리게 두면 그 느낌이 사라진다.
+// 포켓몬은 파티가 비어 있으면 없다 (`StartMenu_GetNormalHiddenOptions` — 원작은
+// 첫 파트너 변수를 본다). 가방부터 닫기까지 다섯 줄은 늘 있다 — 가방은 새 판을
+// 열 때 받으므로(`StartNewSave`) 첫 파트너를 받기 전에 메뉴를 열면 그 다섯 줄뿐이다.
+// 없는 항목은 흐리게 두지 않고 아예 뺀다 — 원작도 목록에서 뺀다.
 import { useEffect, useState } from 'react'
 import { loadMoveNames } from '../../data/gameData'
 import { fillMenuText, loadUiText, START_MENU } from '../../data/uiText'

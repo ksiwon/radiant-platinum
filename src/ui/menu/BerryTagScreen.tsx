@@ -3,8 +3,9 @@
 // 열매 하나의 번호·크기·단단함·맛 다섯과 설명. 값은 `nuts_data.narc`에서,
 // 이름표는 `berry_tags` 뱅크에서 나온다.
 //
-// ⚠️ **원작은 가방의 갈래 메뉴에서 연다** (「태그를 본다」). 우리 가방에는
-// 아직 갈래 메뉴가 없어서 Tab으로 연다 — 여는 길만 다르고 화면은 같다.
+// 가방 나무열매 주머니의 갈래 메뉴 맨 윗줄 「태그확인」이 연다 (`BagScreen`의
+// `bagActions` · `ITEM_ACTION_CHECK_TAG`). 열 때 고른 열매는 `menuStore`의
+// `berryItem`이 들고 온다.
 import { useEffect, useState } from 'react'
 import { loadBerries, type Berries } from '../../data/gameData'
 import { BERRY_TAG, loadUiText } from '../../data/uiText'
