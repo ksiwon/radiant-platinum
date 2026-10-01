@@ -10,7 +10,8 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { setAssetProvider } from '../data/providers/assetProvider'
 import { absentAssetProvider } from '../data/providers/absentAssetProvider'
-import { npcTexture } from './npcTexture'
+import { LinearFilter, LinearMipmapLinearFilter, NearestFilter } from 'three'
+import { npcTexture, npcTextureSmooth } from './npcTexture'
 
 afterEach(() => { setAssetProvider(null) })
 
@@ -32,5 +33,44 @@ describe('공급자를 갈아 끼운다', () => {
 
     setAssetProvider(absentAssetProvider())
     expect(npcTexture(8)).not.toBe(first)
+  })
+})
+
+describe('매끈한 쌍 (`npcTextureSmooth`)', () => {
+  it('선형 필터에 밉맵이고 도트 텍스처는 그대로 또렷하다', () => {
+    setAssetProvider(absentAssetProvider())
+    const sharp = npcTexture(4100)
+    const smooth = npcTextureSmooth(4100)
+    expect(smooth).not.toBe(sharp)
+    expect([smooth.magFilter, smooth.minFilter, smooth.generateMipmaps]).toEqual([LinearFilter, LinearMipmapLinearFilter, true])
+    expect([sharp.magFilter, sharp.minFilter, sharp.generateMipmaps]).toEqual([NearestFilter, NearestFilter, false])
+    // 다시 부르면 같은 것이다 — 프레임마다 새로 안 만든다
+    expect(npcTextureSmooth(4100)).toBe(smooth)
+  })
+
+  it('그림은 도트 텍스처와 같이 쥔다 — 따로 받지 않는다', () => {
+    setAssetProvider(absentAssetProvider())
+    const sharp = npcTexture(4101)
+    const smooth = npcTextureSmooth(4101)
+    expect(smooth.source).toBe(sharp.source)
+    expect(smooth.colorSpace).toBe(sharp.colorSpace)
+    // 이름도 GPU 라벨이라 임자를 짚을 수 있게 붙인다
+    expect(smooth.name).toBe('npc 4101 smooth')
+  })
+
+  it('그림이 이미 와 있으면 바로 올리고, 아직이면 기다린다', () => {
+    setAssetProvider(absentAssetProvider())
+    expect(npcTextureSmooth(4102).version).toBe(0)
+    const sharp = npcTexture(4103)
+    sharp.image = { width: 32, height: 32 } as unknown as typeof sharp.image
+    expect(npcTextureSmooth(4103).version).toBeGreaterThan(0)
+  })
+
+  it('공급자를 갈아 끼우면 쌍도 새로 온다', () => {
+    setAssetProvider(absentAssetProvider())
+    const first = npcTextureSmooth(4104)
+    setAssetProvider(absentAssetProvider())
+    expect(npcTextureSmooth(4104)).not.toBe(first)
+    expect(npcTextureSmooth(4104).source).toBe(npcTexture(4104).source)
   })
 })
