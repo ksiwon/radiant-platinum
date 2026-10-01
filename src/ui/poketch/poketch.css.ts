@@ -121,10 +121,21 @@ export const label = style({
   color: vars.device.text,
 })
 
+/**
+ * 키 안내 — 크게 펼쳤을 때만 뜬다. 원작에 없는 우리 줄이다.
+ *
+ * ⚠️ **흐린 8px로 두지 않는다.** Q·E로 앱을 넘긴다는 것을 알 길이 이 줄뿐인데,
+ * 회색 몸체 위의 옅은 회색 8px은 1280×800에서도 확대해야 읽혔다. 앱 이름과 같은
+ * 글씨 색에 11px 굵게 — Pretendard 굵게 11px로 잰 폭이 143px이고, 크게 펼친 몸체의
+ * 안쪽 폭(300 − 여백 16 − 테두리 4 = 280px)의 절반이라 한 줄에 든다
+ */
 export const hint = style({
   textAlign: 'center',
-  fontSize: 8,
-  color: vars.device.textDim,
+  fontSize: 11,
+  fontWeight: 600,
+  color: vars.device.text,
+  whiteSpace: 'nowrap',
+  marginTop: 1,
 })
 
 // ── 액정 안에서 쓰는 것들 ────────────────────────────────────────────────────
@@ -340,12 +351,16 @@ export const luvdiscNear = style([luvdisc, {
 
 /**
  * 안 맞으면 한 칸 다가갔다가 서로 등을 돌리고 물러난다 (`sCommandsIncompatible` —
- * 16프레임 다가가기 · 16 쉬기 · 뒤돌기 · 16 물러나기)
+ * 16프레임 다가가기 · 17 쉬기 · 뒤돌기 · 16 물러나기, 모두 49프레임. `matchupCues`가 길이를 준다).
+ *
+ * ⚠️ **뒤돌기는 한 프레임에 뒤집힌다** (`ANIM_COMMAND_FLIP_LUVDISCS`가 애니메이션 번호만
+ * 바꾼다). 쉬는 동안 `scaleX`를 이어 그리면 물고기가 납작해졌다 펴진다 — 33/49 바로 앞뒤에 둘을 붙인다
  */
 const spurn = keyframes({
   '0%': { transform: `translateX(0) scaleX(${face})` },
-  '33.3%': { transform: `translateX(${shift}) scaleX(${face})` },
-  '66.6%': { transform: `translateX(${shift}) scaleX(calc(${face} * -1))` },
+  '32.65%': { transform: `translateX(${shift}) scaleX(${face})` },
+  '67.3%': { transform: `translateX(${shift}) scaleX(${face})` },
+  '67.35%': { transform: `translateX(${shift}) scaleX(calc(${face} * -1))` },
   '100%': { transform: `translateX(0) scaleX(calc(${face} * -1))` },
 })
 

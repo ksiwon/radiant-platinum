@@ -24,7 +24,7 @@ import { fieldScripts, HIDDEN_ITEM_FLAG_BASE, HIDDEN_ITEM_SCRIPT_BASE } from '..
 import { compatibility, compatibilityLevel } from '../../engine/pokemon/breeding'
 import { statsOf } from '../../engine/pokemon/instance'
 import {
-  DOTART_HEIGHT, DOTART_WIDTH, MOVE_TESTER_TYPE_ORDER, POKETCH_COLOR_COUNT,
+  DOTART_HEIGHT, DOTART_WIDTH, MOVE_TESTER_TYPE_ORDER, POKETCH_COLOR_COUNT, POKETCH_HISTORY_MAX,
   POKETCH_MARKER_COUNT, PoketchApp, dotArtGet, dotArtSet, dowsingInRange,
   applyCalcKey, CALC_KEYS, friendshipTier, modifyDotArt,
   moveTesterExclamations, poketchShades, setMarker, setScreenColor, type CalcState,
@@ -318,6 +318,43 @@ export const POKETCH_TEXT_BANK = {
   /** `TEXT_BANK_POKETCH_LINK_SEARCHER` — 0 제목 · 3 `LinkSearcher_Text_Unusable` */
   linkSearcher: 461,
 } as const
+
+/**
+ * 포켓치 앱이 내는 효과음 — SDAT 번호다 (`apps.test.ts`가 `sound/index.json`의 이름과 맞댄다).
+ *
+ * 이름 → 번호는 `generated/sdat.txt`의 닻 `SEQ_SE_PL_W012 = 1350`에서 센다.
+ * ⚠️ `sfx.ts`에 안 둔다 — 포켓치 앱만 쓰는 소리다
+ */
+export const POKETCH_SE = {
+  /** `SEQ_SE_DP_POKETCH_010` — 상성체커 가운데 버튼이 눌린다 (`Task_PressButton`) */
+  BUTTON: 1641,
+  /** `SEQ_SE_DP_POKETCH_012` — 사랑동이가 하트 하나만큼 다가갔다 */
+  HEART: 1643,
+  /** `SEQ_SE_DP_POKETCH_013` — 안 맞아서 사랑동이가 등을 돌린다 */
+  SPURN: 1644,
+  /** `SEQ_SE_DP_POKETCH_014` — 최고 궁합. 하트 칸이 깜빡이기 시작한다 */
+  BEST: 1645,
+  /** `SEQ_SE_DP_BEEP` — 누를 수 없는 것을 눌렀다 (한 마리뿐인 상성체커) */
+  BEEP: 1646,
+} as const
+
+/**
+ * 효과음 하나 (`PoketchSystem_PlaySoundEffect`). 필드 소리 창구로 낸다 — 포켓치는
+ * 필드에서만 뜨고, 창구가 아직 없으면 이번 한 번은 조용히 지나간다
+ */
+function poketchSe(seq: number): void {
+  fieldScripts.services.sound?.playEffect(seq)
+}
+
+/**
+ * 울음소리 하나 (`PoketchSystem_PlayCry`).
+ *
+ * ⚠️ **폼은 못 넘긴다.** 원작은 폼을 같이 넘겨 스카이폼 쉐이미만 다른 울음
+ * (`WAVE_ARC_PV516_SKY`)을 고르는데, 필드 소리 창구의 `playCry`가 종족만 받는다
+ */
+function poketchCry(species: number): void {
+  fieldScripts.services.sound?.playCry(species)
+}
 
 /** 롬 뱅크 한 벌. 못 받으면 빈 목록 — 받는 쪽이 제 대체 글을 둔다 */
 function useBank(bank: number): readonly string[] {
@@ -616,6 +653,65 @@ const LUVDISC: IconOf = { species: 370, form: 0, isEgg: false }
 const LUVDISC_STEP = 16
 const FRAME_S = 1 / 60
 
+/** 원작 명령표 한 줄 (`ANIM_COMMAND_*`). 사랑동이 위치는 CSS가 그리므로 시간과 소리만 옮긴다 */
+type MatchupCommand =
+  | readonly ['move', number]
+  | readonly ['wait', number]
+  | readonly ['sound', number]
+  | readonly ['flip']
+  | readonly ['blink']
+
+/**
+ * 궁합 단계별 명령표 (`sCommandsIncompatible` · `Low` · `Med` · `MaxCompatibility`).
+ * `move`는 앞으로든 뒤로든 걸리는 프레임만 남긴다 — 거리는 `matchupHearts`가 정한다
+ */
+const MATCHUP_COMMANDS: Record<number, readonly MatchupCommand[]> = {
+  3: [['move', 16], ['wait', 16], ['flip'], ['sound', POKETCH_SE.SPURN], ['move', 16]],
+  2: [['move', 16], ['sound', POKETCH_SE.HEART]],
+  1: [['move', 16], ['sound', POKETCH_SE.HEART], ['move', 16], ['sound', POKETCH_SE.HEART]],
+  0: [
+    ['move', 16], ['sound', POKETCH_SE.HEART],
+    ['move', 16], ['sound', POKETCH_SE.HEART],
+    ['move', 16], ['sound', POKETCH_SE.HEART],
+    ['wait', 16], ['sound', POKETCH_SE.BEST], ['blink'], ['wait', 16],
+  ],
+}
+
+/** 맞대 본 뒤 몇 프레임째에 무엇이 일어나는가 */
+interface MatchupCues {
+  /** 효과음과 그 프레임 */
+  sounds: { frame: number, seq: number }[]
+  /** 사랑동이가 등을 돌리는 프레임 (안 맞을 때만) */
+  flip: number | null
+  /** 하트 칸이 깜빡이기 시작하는 프레임 (최고일 때만) */
+  blink: number | null
+  /** 명령표가 끝나는 프레임 — 그때까지 원작은 손을 안 받는다 (`State_UpdateApp`의 3) */
+  end: number
+}
+
+/**
+ * 명령표를 프레임으로 편다 (`RunAnimationSequence`).
+ *
+ * ⚠️ **`move n`은 n프레임, `wait n`은 n+1프레임이다.** 이동은 타이머가 0이 되는
+ * 프레임에 바로 다음 명령으로 넘어가고(`goto func_start`), 쉬기는 0이 된 **다음**
+ * 프레임에 넘어간다. 그래서 최고 궁합의 014는 48 + 17 = 65프레임째에 난다
+ */
+export function matchupCues(level: number): MatchupCues {
+  const out: MatchupCues = { sounds: [], flip: null, blink: null, end: 0 }
+  let frame = 0
+  for (const cmd of MATCHUP_COMMANDS[level] ?? []) {
+    switch (cmd[0]) {
+      case 'move': frame += cmd[1]; break
+      case 'wait': frame += cmd[1] + 1; break
+      case 'sound': out.sounds.push({ frame, seq: cmd[1] }); break
+      case 'flip': out.flip = frame; break
+      case 'blink': out.blink = frame; break
+    }
+  }
+  out.end = frame
+  return out
+}
+
 /**
  * 상성체커 — 파티의 두 마리가 키우미집에서 알을 만들 궁합 (`matchup_checker`).
  *
@@ -626,15 +722,20 @@ const FRAME_S = 1 / 60
  * 커서는 가운데에서 시작한다.
  *
  * ⚠️ **알은 목록에 없다.** 한 마리뿐이면 오른쪽이 비고 버튼이 눌린 채로
- * 멈춘다 — 원작도 그 자리에서 삑 소리만 낸다.
+ * 멈춘다 — 가운데를 누르면 원작대로 삑 소리(`SEQ_SE_DP_BEEP`)만 난다.
+ *
+ * 소리도 원작 자리 그대로다: 마리를 바꾸면 새로 온 마리가 울고, 가운데를 누르면
+ * 버튼 소리(010), 다가갈 때마다 012 · 등을 돌릴 때 013 · 최고면 014 (`matchupCues`).
+ * 명령표가 도는 동안은 손을 안 받는다 — 원작도 그동안 누름을 버린다.
  *
  * ⚠️ **사랑동이는 종족 아이콘으로 그린다.** 상성체커 전용 사랑동이·하트 칸
  * 그림(`matchup_checker_NCGR`)은 아직 굽지 않는다. 움직임(하트 하나에 16점
  * 다가가기 · 안 맞으면 등을 돌려 물러나기 · 최고면 깜빡임)은 원작 명령표를 따른다.
  *
  * ⚠️ **왼쪽 마리는 오른쪽을 보게 뒤집는다** (`UpdateMonIcon`의 애니메이션 5).
- * 원작은 종족 자료의 `SPECIES_DATA_FLIP_SPRITE`가 선 마리만 안 뒤집는데, 그 칸이
- * 아직 종족 자료에 없어서 모두 뒤집는다
+ * 원작은 종족 자료의 `SPECIES_DATA_FLIP_SPRITE`(롬 종족 자료 `b[25]`의 맨 위
+ * 비트)가 선 마리만 안 뒤집는데, 우리가 구운 `species.json`은 그 바이트를 몸 색
+ * (`& 0x3f`)으로만 읽어 깃발이 없다. 그래서 아직 모두 뒤집는다
  */
 function MatchupChecker({ x, press, large }: Nav) {
   const party = useSaveStore((s) => s.party)
@@ -650,18 +751,41 @@ function MatchupChecker({ x, press, large }: Nav) {
   // 커서 0이 가운데 버튼이다. ← 왼쪽 마리 · → 오른쪽 마리
   const button = (((x + 1) % 3) + 3) % 3
 
+  // 명령표의 소리는 누른 순간에 시각을 잡아 둔다. 다시 그릴 때 또 울리면 안 된다
+  const timers = useRef<number[]>([])
+  // 사랑동이가 움직이는 동안은 손을 안 받는다 — 이 시각(ms)까지
+  const busyUntil = useRef(0)
+  useEffect(() => () => {
+    // 앱을 넘기거나 접어 감추면 남은 소리도 같이 끊긴다 (`Exit` → 표시 과제가 끝난다)
+    for (const id of timers.current) clearTimeout(id)
+    timers.current = []
+  }, [])
+
   useOnPress(press, () => {
     if (!large || !count) return
+    if (performance.now() < busyUntil.current) return
     if (button === 1) {
+      // 한 마리뿐이면 버튼이 안 눌리고 삑 소리만 난다 (`BUTTON_CHECK_MATCHUP`의 else)
+      if (count < 2) { poketchSe(POKETCH_SE.BEEP); return }
       const a = mons[pick.left], b = mons[pick.right]
-      if (count < 2 || !table || !a || !b) return
+      if (!table || !a || !b) return
       const level = compatibilityLevel(compatibility(a, b, (id) => table.get(id)))
+      poketchSe(POKETCH_SE.BUTTON)
+      const cues = matchupCues(level)
+      for (const id of timers.current) clearTimeout(id)
+      timers.current = cues.sounds.map(({ frame, seq }) =>
+        window.setTimeout(() => { poketchSe(seq) }, frame * FRAME_S * 1000))
+      busyUntil.current = performance.now() + cues.end * FRAME_S * 1000
       setState({ pick, level, run: state.run + 1 })
       return
     }
     const next = matchupTurn(pick, button === 0 ? 'left' : 'right', count)
+    if (!next) return
+    // 새로 온 마리가 운다 (`Task_UpdateLeftMonIcon` · `Task_UpdateRightMonIcon`)
+    const came = mons[button === 0 ? next.left : next.right]
+    if (came) poketchCry(came.species)
     // 마리를 바꾸면 사랑동이와 하트가 처음으로 돌아간다 (`ResetIndicatorPositions`)
-    if (next) setState({ pick: next, level: null, run: state.run })
+    setState({ pick: next, level: null, run: state.run })
   })
 
   if (!party.length) return <div className={css.missing}>포켓몬이 없다</div>
@@ -676,7 +800,8 @@ function MatchupChecker({ x, press, large }: Nav) {
   const spurned = level === 3
   const left = mons[pick.left]
   const right = count > 1 ? mons[pick.right] : undefined
-  // 하트 하나에 16프레임. 최고면 다 다가간 뒤 16프레임 쉬고 깜빡인다
+  // 하트 하나에 16프레임. 최고면 다 다가간 뒤 17프레임 쉬고 깜빡인다 (`matchupCues`)
+  const cues = level === null ? null : matchupCues(level)
   const travel = hearts * LUVDISC_STEP * FRAME_S
   const heartClass = (i: number): string =>
     i >= hearts ? css.heartOff : level === 0 ? css.heartBlink : css.heartOn
@@ -691,7 +816,7 @@ function MatchupChecker({ x, press, large }: Nav) {
           [css.face]: side === 'left' ? '-1' : '1',
           [css.shift]: `${String((side === 'left' ? 1 : -1) * (spurned ? LUVDISC_STEP : hearts * LUVDISC_STEP) * k)}px`,
         }),
-        animationDuration: `${String(spurned ? 3 * LUVDISC_STEP * FRAME_S : travel)}s`,
+        animationDuration: `${String(spurned && cues ? cues.end * FRAME_S : travel)}s`,
       }}
     >
       <MonIcon icons={icons} sheet={sheet} mon={LUVDISC} px={px} />
@@ -705,7 +830,7 @@ function MatchupChecker({ x, press, large }: Nav) {
           <span
             key={`${String(state.run)}/${String(i)}`}
             className={heartClass(i)}
-            style={level === 0 ? { animationDelay: `${String(travel + LUVDISC_STEP * FRAME_S)}s` } : undefined}
+            style={cues !== null && cues.blink !== null ? { animationDelay: `${String(cues.blink * FRAME_S)}s` } : undefined}
           >
             ♥
           </span>
@@ -778,28 +903,54 @@ function DaycareChecker({ large }: Nav) {
  * ⚠️ **넷씩 세 줄, 먼저 온 마리가 왼쪽 위다.** 원작 줄은 끝에 새 마리를 붙이고
  * 꽉 차면 맨 앞을 민다(`Poketch_PokemonHistoryEnqueue`) — 화면은 그 차례 그대로
  * 0번부터 칸에 놓는다(`HISTORY_ICON_STEP_X` 40 · `_Y` 48). 머리글 「손에 넣은
- * 포켓몬」도 롬 줄이다. 아직 아무도 없으면 머리글만 선다
+ * 포켓몬」도 롬 줄이다. 아직 아무도 없으면 머리글만 선다.
+ *
+ * 칸을 짚고 Z를 누르면 그 마리가 운다 (`State_UpdateApp` → `PoketchSystem_PlayCry`).
+ * 원작 누름 칸 열둘은 그림 칸과 거꾸로 번호가 매겨져 있어 `11 - 누른 칸`으로 다시
+ * 뒤집는다 — 결국 **보이는 칸의 마리**가 운다. 빈 칸은 아무 소리도 안 낸다
  */
-function PokemonHistory({ large }: Nav) {
+function PokemonHistory({ x, y, press, large }: Nav) {
   const history = useSaveStore((s) => s.poketch.history)
   const { names } = useSpeciesNames()
   const { icons, sheet } = useMonIcons()
   const title = useBank(POKETCH_TEXT_BANK.history)[0]
   const px = large ? 32 : 24
+  const at = historyCell(x, y)
+
+  useOnPress(press, () => {
+    if (!large) return
+    const mon = history[at]
+    if (mon) poketchCry(mon.species)
+  })
+
+  // 칸 자리는 늘 열둘이다 — 원작 칸이 고정이고, 커서가 빈 칸에도 선다
+  const cells = large ? POKETCH_HISTORY_MAX : history.length
   return (
     <div className={css.historyBox}>
       {title && <div className={css.title}>{title}</div>}
       <div className={css.historyGrid}>
-        {history.map((h, i) => (
-          <span key={i} className={css.historyCell} style={{ height: px }}>
-            {sheet
-              ? <MonIcon icons={icons} sheet={sheet} mon={{ ...h, isEgg: false }} px={px} />
-              : <span className={css.name}>{names[h.species] ?? ''}</span>}
-          </span>
-        ))}
+        {Array.from({ length: cells }, (_, i) => {
+          const h = history[i]
+          return (
+            <span
+              key={i}
+              className={css.historyCell}
+              style={{ height: px, outline: large && i === at ? '1px solid currentColor' : 'none' }}
+            >
+              {!h ? null : sheet
+                ? <MonIcon icons={icons} sheet={sheet} mon={{ ...h, isEgg: false }} px={px} />
+                : <span className={css.name}>{names[h.species] ?? ''}</span>}
+            </span>
+          )
+        })}
       </div>
     </div>
   )
+}
+
+/** 히스토리 커서 → 칸 번호. 넷씩 세 줄이고 양끝에서 감긴다 */
+export function historyCell(x: number, y: number): number {
+  return (((y % 3) + 3) % 3) * 4 + (((x % 4) + 4) % 4)
 }
 
 // ── 기술효과체커 ─────────────────────────────────────────────────────────────

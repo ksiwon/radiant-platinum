@@ -1,24 +1,18 @@
 // 포켓치 앱의 규칙 (`apps.tsx`)
 //
 // 화면은 사람이 본다. 여기서는 원작 함수를 옮긴 자리만 잰다 — 상성체커의 고르기
-// (`matchup_checker/main.c`), 하트 수(`InitAnimationSequence`), 아이콘을 액정 명암
-// 넷으로 떨어뜨리는 규칙(`PoketchTask_MapToActivePaletteFromLuminance`), 직접 부르는
-// 글 뱅크 번호.
-import { describe, expect, it, vi } from 'vitest'
+// (`matchup_checker/main.c`), 하트 수(`InitAnimationSequence`), 명령표의 프레임과
+// 소리(`RunAnimationSequence`), 히스토리 칸 번호, 아이콘을 액정 명암 넷으로
+// 떨어뜨리는 규칙(`PoketchTask_MapToActivePaletteFromLuminance`), 직접 부르는 글
+// 뱅크와 효과음 번호.
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import { DATA, withData } from '../../data/romData.testkit'
 import { bankIndex } from '../../import/platinum/textBanks'
-
-// ⚠️ 시험용 `@vanilla-extract/css` 대역(`tools/test/vanillaExtractStub.ts`)에
-// `createVar`가 없다. 액정 명암 변수를 쓰는 `poketch.css.ts`가 그것을 부르므로
-// 여기서 하나 덧댄다 — 값은 아무 시험도 안 본다
-vi.mock('@vanilla-extract/css', async (importOriginal) => {
-  let serial = 0
-  return {
-    ...await importOriginal<Record<string, unknown>>(),
-    createVar: () => `var(--poketch-${String(++serial)})`,
-  }
-})
 import {
-  lcdShade, matchupHearts, matchupStart, matchupTurn, paintLcd, POKETCH_TEXT_BANK,
+  historyCell, lcdShade, matchupCues, matchupHearts, matchupStart, matchupTurn, paintLcd,
+  POKETCH_SE, POKETCH_TEXT_BANK,
 } from './apps'
 
 describe('상성체커 — 두 마리 고르기', () => {
@@ -91,5 +85,62 @@ describe('글 뱅크 번호', () => {
   it('미국 롬 이름 순서에서 계산한 자리와 같다', () => {
     expect(POKETCH_TEXT_BANK.history).toBe(bankIndex('poketch_pokemon_history', 'us'))
     expect(POKETCH_TEXT_BANK.linkSearcher).toBe(bankIndex('poketch_link_searcher', 'us'))
+  })
+})
+
+describe('상성체커 — 명령표의 프레임과 소리', () => {
+  const { HEART, SPURN, BEST } = POKETCH_SE
+
+  it('하트 하나마다 16프레임 다가간 그 프레임에 012가 난다', () => {
+    expect(matchupCues(2)).toEqual({ sounds: [{ frame: 16, seq: HEART }], flip: null, blink: null, end: 16 })
+    expect(matchupCues(1).sounds).toEqual([{ frame: 16, seq: HEART }, { frame: 32, seq: HEART }])
+  })
+
+  it('안 맞으면 16 다가가고 17 쉰 뒤 등을 돌리며 013, 16 물러나 49에 끝난다', () => {
+    // `ANIM_COMMAND_WAIT`는 타이머가 0이 된 **다음** 프레임에 넘어간다 — 16이 아니라 17
+    expect(matchupCues(3)).toEqual({ sounds: [{ frame: 33, seq: SPURN }], flip: 33, blink: null, end: 49 })
+  })
+
+  it('최고면 012 셋 · 17 쉬고 014와 깜빡임 · 다시 17 쉬고 끝난다', () => {
+    expect(matchupCues(0)).toEqual({
+      sounds: [
+        { frame: 16, seq: HEART }, { frame: 32, seq: HEART }, { frame: 48, seq: HEART },
+        { frame: 65, seq: BEST },
+      ],
+      flip: null,
+      blink: 65,
+      end: 82,
+    })
+  })
+})
+
+describe('포켓몬히스토리 — 칸 번호', () => {
+  it('넷씩 세 줄, 왼쪽 위가 0이다', () => {
+    expect(historyCell(0, 0)).toBe(0)
+    expect(historyCell(3, 0)).toBe(3)
+    expect(historyCell(0, 1)).toBe(4)
+    expect(historyCell(3, 2)).toBe(11)
+  })
+
+  it('양끝에서 감긴다', () => {
+    expect(historyCell(-1, 0)).toBe(3)
+    expect(historyCell(4, 0)).toBe(0)
+    expect(historyCell(0, -1)).toBe(8)
+    expect(historyCell(0, 3)).toBe(0)
+  })
+})
+
+const maybe = withData('sound/index.json')
+
+maybe('효과음 번호', () => {
+  it('구운 SDAT 목차에서 그 자리가 원작 이름이다', () => {
+    const songs = (JSON.parse(readFileSync(resolve(DATA, 'sound/index.json'), 'utf8')) as {
+      songs: ({ name: string | null } | null)[]
+    }).songs
+    expect(songs[POKETCH_SE.BUTTON]?.name).toBe('SEQ_SE_DP_POKETCH_010')
+    expect(songs[POKETCH_SE.HEART]?.name).toBe('SEQ_SE_DP_POKETCH_012')
+    expect(songs[POKETCH_SE.SPURN]?.name).toBe('SEQ_SE_DP_POKETCH_013')
+    expect(songs[POKETCH_SE.BEST]?.name).toBe('SEQ_SE_DP_POKETCH_014')
+    expect(songs[POKETCH_SE.BEEP]?.name).toBe('SEQ_SE_DP_BEEP')
   })
 })

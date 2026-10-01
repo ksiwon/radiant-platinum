@@ -80,6 +80,14 @@ export function globalKeyframes(_name: string, _steps: unknown): void {
   /* 굽지 않는다 */
 }
 
+/**
+ * `createVar()`는 CSS 변수 이름 하나를 `var(--…)` 꼴로 돌려준다. 받는 쪽이
+ * `assignInlineVars`의 열쇠와 `style` 값 두 군데에 쓰므로 매번 달라야 한다
+ */
+export function createVar(debugId?: string): string {
+  return `var(--${fresh(debugId ?? 'var')})`
+}
+
 export function assignVars(_contract: unknown, _tokens: unknown): Record<string, string> {
   return {}
 }
