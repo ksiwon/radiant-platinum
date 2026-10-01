@@ -1,16 +1,19 @@
-// 시작 메뉴 — X를 누르면 뜬다.
+// 시작 메뉴 — C를 누르면 뜬다 (X·Esc로도).
 //
 // 항목이 상황에 따라 나타났다 사라진다. 도감은 마박사에게 받기 전에는 없고,
 // 포켓몬은 파티가 비어 있으면 없다. 원작이 그렇게 만들어서, 초반에 메뉴를 열면
 // 실제로 두 줄뿐이다 — 우리가 항목을 흐리게 두면 그 느낌이 사라진다.
 import { useEffect, useState } from 'react'
+import { loadMoveNames } from '../../data/gameData'
 import { fillMenuText, loadUiText, START_MENU } from '../../data/uiText'
 import { fieldScripts, flyVerdictNow } from '../../engine/script/field'
+import { FIELD_MOVES } from '../../engine/script/fieldMoves'
 import { FLAG_HAS_POKEDEX } from '../../engine/script/vars'
 import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
-import { clampCursor, useMenuKeys } from './useMenuKeys'
+import { useSessionStore } from '../../state/sessionStore'
+import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
 import * as own from './startMenu.css'
 
 interface Entry {
@@ -19,9 +22,29 @@ interface Entry {
   go: () => void
 }
 
+/** 원작 `menuCursorPos`의 첫 값 0 = `START_MENU_OPTION_POKEDEX` */
+const FIRST_KEY = 'pokedex'
+
+/**
+ * 커서가 마지막으로 놓였던 항목 (`fieldSystem->menuCursorPos` · `start_menu.c`).
+ *
+ * ⚠️ **자리 번호가 아니라 항목을 남긴다.** 원작도 `options[i]`의 id를 견준다 —
+ * 도감·포켓몬·공중날기가 나타났다 사라지면 같은 번호가 다른 항목이 되기 때문이다.
+ * 그 항목이 없으면 맨 위에 선다. 화면이 닫혀도(가방을 보고 돌아와도) 남아야
+ * 해서 컴포넌트 밖에 둔다.
+ *
+ * 원작 값은 필드가 새로 설 때 0으로 돌아간다 (`InitFieldSystem`의 `MI_CpuClear8`) —
+ * 새 게임이든 이어하기든 타이틀을 거쳐 온 판이다. 그래서 타이틀로 나가면 비운다
+ */
+let lastKey = FIRST_KEY
+useSessionStore.subscribe((s, prev) => {
+  if (s.phase === 'title' && prev.phase !== 'title') lastKey = FIRST_KEY
+})
+
 export function StartMenu() {
   const [texts, setTexts] = useState<string[]>([])
-  const [cursor, setCursor] = useState(0)
+  const [moveNames, setMoveNames] = useState<string[]>([])
+  const [cursorKey, setCursorKey] = useState(lastKey)
   const push = useMenuStore((s) => s.push)
   const closeAll = useMenuStore((s) => s.closeAll)
   const party = useSaveStore((s) => s.party)
@@ -34,6 +57,11 @@ export function StartMenu() {
     void loadUiText('startMenu', locale)
       .then((bank) => { if (alive) setTexts(bank) })
       .catch(() => { /* 빈 메뉴 */ })
+    // 공중날기 줄의 글. 원작 시작 메뉴 뱅크에는 그 줄이 없어서(아래 `canFly`) 롬의
+    // 기술 이름을 그대로 쓴다 — 그래야 언어를 바꿔도 한 목록에 두 언어가 안 섞인다
+    void loadMoveNames(locale)
+      .then((names) => { if (alive) setMoveNames(names) })
+      .catch(() => { /* 우리 이름으로 둔다 */ })
     return () => { alive = false }
   }, [locale])
 
@@ -61,20 +89,43 @@ export function StartMenu() {
   const entries: Entry[] = []
   if (hasDex) entries.push({ key: 'pokedex', label: label(START_MENU.pokedex), go: () => { push('pokedex') } })
   if (party.length > 0) entries.push({ key: 'party', label: label(START_MENU.party), go: () => { push('party') } })
-  if (canFly) entries.push({ key: 'fly', label: '공중날기', go: () => { push('fly') } })
+  const fly = FIELD_MOVES.fly
+  if (canFly) entries.push({ key: 'fly', label: moveNames[fly.move] ?? fly.label, go: () => { push('fly') } })
   entries.push({ key: 'bag', label: label(START_MENU.bag), go: () => { push('bag') } })
   entries.push({ key: 'trainerCard', label: label(START_MENU.trainerCard), go: () => { push('trainerCard') } })
   entries.push({ key: 'save', label: label(START_MENU.save), go: () => { push('save') } })
   entries.push({ key: 'options', label: label(START_MENU.options), go: () => { push('options') } })
   entries.push({ key: 'exit', label: label(START_MENU.exit), go: closeAll })
 
-  const at = Math.min(cursor, entries.length - 1)
+  const found = entries.findIndex((entry) => entry.key === cursorKey)
+  const at = found < 0 ? 0 : found
+  const atKey = entries[at]?.key ?? FIRST_KEY
+
+  // 원작은 열자마자 선 자리를 다시 적고(`menuCursorPos = options[cursorPos]`),
+  // 커서가 움직일 때마다 또 적는다
+  useEffect(() => { lastKey = atKey }, [atKey])
+
+  /**
+   * 네 줄 이상이면 끝에서 돈다 (`start_menu.c`의 `optionCount >= 4` → `loopAround`).
+   * 우리 목록은 가방부터 닫기까지 다섯 줄이 늘 있어 실제로는 늘 돈다 — 원작은
+   * 숨김 깃발(`hideOptionFlags`)로 그보다 줄 때가 있어 조건을 그대로 둔다. 안 도는
+   * 목록의 끝에서 더 밀면 소리도 안 난다
+   */
+  const step = (by: number): boolean => {
+    const next = (entries.length >= 4 ? wrapCursor : clampCursor)(at, by, entries.length)
+    if (next === at) return false
+    setCursorKey(entries[next]?.key ?? atKey)
+    return true
+  }
 
   useMenuKeys({
-    up: () => { setCursor((c) => clampCursor(c, -1, entries.length)) },
-    down: () => { setCursor((c) => clampCursor(c, 1, entries.length)) },
+    up: () => step(-1),
+    down: () => step(1),
     confirm: () => entries[at]?.go(),
     cancel: closeAll,
+    // 연 키(C)로도 닫힌다 — 원작은 연 X 버튼이 B와 같이 닫는 키다
+    // (`Menu_New(…, PAD_BUTTON_B | PAD_BUTTON_X)`)
+    menu: closeAll,
   })
 
   return (

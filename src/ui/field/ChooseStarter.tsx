@@ -255,57 +255,62 @@ export function ChooseStarter() {
     fieldScripts.services.sound?.playCry(STARTERS[at] ?? 0)
   }, [])
 
+  /**
+   * 볼을 옮긴다. `ChangePokeballChoice` — 끝에서 더 밀면 안 움직이고 소리도 안 난다.
+   *
+   * ⚠️ **소리는 여기서 안 낸다.** `useMenuKeys`가 같은 메뉴음을 내므로 여기서도
+   * 내면 두 번 운다 — 안 움직였다는 것만 `false`로 알린다
+   */
   const move = useCallback(
-    (by: number): void => {
-      if (step !== 'choose' || !live) return
-      setPick((c) => {
-        const next = clampCursor(c, by, STARTERS.length)
-        // `ChangePokeballChoice` — 끝에서 더 밀면 소리가 안 난다
-        if (next !== c) fieldScripts.services.sound?.playEffect(SFX.MENU)
-        return next
-      })
+    (by: number): boolean => {
+      if (step !== 'choose' || !live) return false
+      const next = clampCursor(pick, by, STARTERS.length)
+      if (next === pick) return false
+      setPick(next)
+      return true
     },
-    [step, live],
+    [step, live, pick],
   )
 
-  const confirm = useCallback((): void => {
+  const confirm = useCallback((): boolean => {
     if (step === 'choose') {
-      if (!live) return
-      fieldScripts.services.sound?.playEffect(SFX.MENU)
+      if (!live) return false
       choose(pick)
-      return
+      return true
     }
-    if (step !== 'confirm' || !ready) return
+    if (step !== 'confirm' || !ready) return false
     if (answer !== MENU_YES) {
       setStep('choose')
       setLive(true)
-      return
+      return true
     }
     setStarterChoice(STARTERS[pick] ?? 0)
     closeAll()
+    return true
   }, [step, live, ready, pick, answer, choose, closeAll])
 
   useMenuKeys({
-    left: () => {
-      move(-1)
-    },
-    right: () => {
-      move(1)
-    },
+    left: () => move(-1),
+    right: () => move(1),
+    // 예·아니오 두 줄은 끝에서 안 돈다 — 이미 그 줄이면 조용하다
     up: () => {
-      if (step === 'confirm') setAnswer(0)
+      if (step !== 'confirm' || answer === 0) return false
+      setAnswer(0)
+      return true
     },
     down: () => {
-      if (step === 'confirm') setAnswer(1)
+      if (step !== 'confirm' || answer === 1) return false
+      setAnswer(1)
+      return true
     },
     confirm,
     // ⚠️ **물러날 자리가 없다.** 원작도 이 화면에서는 안 고르고 나갈 수 없다 —
     // 스크립트가 고른 결과를 기다리며 서 있기 때문이다. 확인 창에서만 되돌아간다
     cancel: () => {
-      if (step === 'confirm') {
-        setStep('choose')
-        setLive(true)
-      }
+      if (step !== 'confirm') return false
+      setStep('choose')
+      setLive(true)
+      return true
     },
   })
 

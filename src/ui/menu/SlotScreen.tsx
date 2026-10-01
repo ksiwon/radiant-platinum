@@ -102,8 +102,15 @@ export function SlotScreen() {
       e.preventDefault(); e.stopPropagation()
       held.delete(b)
     }
+    // ⚠️ **창을 떠나면 손을 뗀 것으로 친다.** 창 밖에서 뗀 키는 `keyup`이 안 와서
+    // `held`에 남고, 그러면 지불이 빨라진 채로 돈다(`held` 마스크). 필드 키도 같은
+    // 자리에서 비운다 (`engine/input/keys`의 `attachKeyboard`)
+    const release = (): void => { held.clear(); pressed.clear() }
+    const onHide = (): void => { if (document.hidden) release() }
     window.addEventListener('keydown', onDown, true)
     window.addEventListener('keyup', onUp, true)
+    window.addEventListener('blur', release)
+    document.addEventListener('visibilitychange', onHide)
 
     void Promise.all([loadAssets(), loadDialogueBank(gameLocale(), BANK_SLOT)]).then(([assets, lines]) => {
       if (!alive) return
@@ -167,6 +174,8 @@ export function SlotScreen() {
       cancelAnimationFrame(raf)
       window.removeEventListener('keydown', onDown, true)
       window.removeEventListener('keyup', onUp, true)
+      window.removeEventListener('blur', release)
+      document.removeEventListener('visibilitychange', onHide)
     }
   }, [session])
 

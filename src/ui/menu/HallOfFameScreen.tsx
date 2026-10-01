@@ -22,6 +22,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { music } from '../../engine/audio/music'
 import { SFX } from '../../engine/audio/sfx'
+import { BINDINGS } from '../../engine/input/keys'
 import { genderOf, isShiny, type PokemonInstance } from '../../engine/pokemon/instance'
 import { metName } from '../../engine/pokemon/memo'
 import { metToday } from '../../engine/pokemon/origin'
@@ -42,6 +43,14 @@ import { START_LOCATION, useSaveStore } from '../../state/saveStore'
 import { healParty } from '../../scene/pokecenter'
 import { HOF_FRAME_MS, hofTextLift, hofWindow, type HofBeat as Beat } from '../../scene/hallOfFameChoreo'
 import * as css from './hallOfFame.css'
+
+/**
+ * 파티 장면을 넘기는 키 — A와 B.
+ *
+ * ⚠️ **손으로 적지 않는다.** 한때 `KeyZ`·`KeyX`·`Enter`만 적어 두어서 A의 임자인
+ * 스페이스가 빠졌다. Enter는 메뉴 키처럼 덤으로 받는다 (`useMenuKeys`)
+ */
+const SKIP_KEYS = new Set([...BINDINGS.interact, ...BINDINGS.cancel, 'Enter'])
 
 /** 전당의 곡 (`SEQ_BLD_EV_DENDO2`) */
 const BGM = 1171
@@ -309,9 +318,11 @@ export function HallOfFameScreen() {
   // A·B로 파티 장면을 끝낸다 (`gSystem.pressedKeys & (PAD_BUTTON_A | PAD_BUTTON_B)`)
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.code !== 'KeyZ' && e.code !== 'KeyX' && e.code !== 'Enter') return
+      if (!SKIP_KEYS.has(e.code)) return
       e.preventDefault()
       e.stopPropagation()
+      // `pressedKeys`는 **새로 누른 것**만 담는다 — 앞 장면부터 누르고 있던 손은 안 친다
+      if (e.repeat) return
       if (beat === 'confetti') setBeat('wipe')
     }
     window.addEventListener('keydown', onKey, true)
