@@ -31,7 +31,7 @@ import {
   InstancedMesh, Matrix4, MeshBasicMaterial, MeshLambertMaterial, MultiplyBlending,
   OctahedronGeometry, PerspectiveCamera, Quaternion, Sphere, Vector3,
 } from 'three'
-import { worldState } from '../state/worldState'
+import { firstPersonView } from '../engine/actor/camera'
 import { cellX, cellZ, type Cell, type TreeSite } from './plates'
 import { setInstances } from './instances'
 import { pickLod, screenPixels, type LodBand } from './screenLod'
@@ -922,7 +922,9 @@ export function Foliage(
    * WebGPU 노드 재질과 WebGL2 폴백을 따로 봐야 한다
    */
   useFrame(() => {
-    const active = worldState.camera.mode !== 'first'
+    // ⚠️ 설정 시점이 아니라 **지금 렌즈**다 (`firstPersonView`) — 스크립트 카메라 동안은
+    // 1인칭 설정이어도 3인칭 렌즈라 앞을 가리는 나무를 비켜야 한다
+    const active = !firstPersonView()
     viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
     frustum.setFromProjectionMatrix(viewProj)
     const fov = (camera as PerspectiveCamera).fov ?? 55

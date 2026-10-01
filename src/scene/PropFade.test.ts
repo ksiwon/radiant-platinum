@@ -4,9 +4,11 @@
 // 일이라, 큰 건물이 광장을 통째로 덮으면 그 건물이 사라진다 — 실제로
 // 배틀프런티어의 배틀타워와 배틀파크가 그렇게 없어져 있었고, 화면에는 따로
 // 배치된 문짝만 파란 판으로 떠 있었다.
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { Box3, Object3D, Vector3 } from 'three'
-import { blockedBy, castShadowFor } from './PropFade'
+import { blockedBy, castShadowFor, clearsBlockers } from './PropFade'
+import { cameraSystem } from '../engine/actor/camera'
+import { worldState } from '../state/worldState'
 
 /** 3인칭 카메라는 사람 뒤 8타일·위 4타일이다 */
 const EYE = new Vector3(48.5, 13, 26.5)
@@ -73,5 +75,36 @@ describe('흐림이 그림자를 되돌린다 (`castShadowFor`)', () => {
     castShadowFor(o, false, saved)
     castShadowFor(o, true, saved)
     expect(o.castShadow).toBe(false)
+  })
+})
+
+// ⚠️ **설정 시점이 아니라 지금 렌즈로 가른다** (`firstPersonView`). 스크립트 카메라
+// 동안은 1인칭 설정이어도 3인칭 렌즈인데, 설정을 보던 동안은 그 컷신 내내 앞을
+// 가리는 집이 안 흐려졌다 (L-map-streamer-camera 4)
+describe('비켜 줄 차례인가', () => {
+  afterEach(() => {
+    worldState.camera.mode = 'third'
+    worldState.player.hidden = false
+    cameraSystem.free = null
+  })
+
+  it('3인칭이면 비켜 준다', () => {
+    expect(clearsBlockers()).toBe(true)
+  })
+
+  it('1인칭 렌즈면 안 비킨다 — 코앞의 벽이 사라진다', () => {
+    worldState.camera.mode = 'first'
+    expect(clearsBlockers()).toBe(false)
+  })
+
+  it('1인칭 설정이어도 스크립트가 카메라를 쥐면 비켜 준다', () => {
+    worldState.camera.mode = 'first'
+    cameraSystem.free = { x: 3, z: 4 }
+    expect(clearsBlockers()).toBe(true)
+  })
+
+  it('숨긴 주인공은 드러내지 않는다', () => {
+    worldState.player.hidden = true
+    expect(clearsBlockers()).toBe(false)
   })
 })

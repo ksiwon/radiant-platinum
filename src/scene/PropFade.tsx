@@ -18,6 +18,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Box3, Vector3, type BufferGeometry, type Group, type Material, type Object3D } from 'three'
 import { worldState } from '../state/worldState'
+import { firstPersonView } from '../engine/actor/camera'
 import { markSeeThrough } from './fx/seeThrough'
 
 /** 이보다 선에 가까이 서 있으면 다 지운다 (타일) */
@@ -116,6 +117,20 @@ const probe = new Vector3()
 const aim = new Vector3()
 
 /**
+ * 지금 프레임에 **가린 것을 비켜 줄 차례인가.**
+ *
+ * ⚠️ **설정 시점(`worldState.camera.mode`)이 아니라 지금 렌즈(`firstPersonView`)를
+ * 본다.** 스크립트가 카메라를 쥐는 동안은 1인칭 설정이어도 3인칭 렌즈다 — 설정을
+ * 보면 그 컷신 내내 앞 가리개가 안 흐려져 지붕이 화면을 덮는다.
+ *
+ *   · 1인칭 렌즈 — 눈이 곧 플레이어라 가릴 사이가 없다. 코앞의 벽이 사라지면 더 이상하다
+ *   · 숨긴 주인공 — 드러낼 까닭이 없다. 배로 건너가기에서 떠나는 배가 카메라 앞에서 흐려졌다
+ */
+export function clearsBlockers(): boolean {
+  return !firstPersonView() && !worldState.player.hidden
+}
+
+/**
  * 자식 소품 하나를 "가리고 있는 정도"에 따라 흐리게 한다.
  *
  * 재질을 프레임마다 만지므로 **그 소품 전용이어야 한다**. 부르는 쪽(`ChunkModels`)이
@@ -179,10 +194,8 @@ export function PropFade({ geometry, materials, children }: Props) {
   useFrame(() => {
     const node = group.current
     if (!node) return
-    // 1인칭은 눈이 곧 플레이어라 가릴 사이가 없다 — 코앞의 벽이 사라지면 더 이상하다
     let want = 1
-    // 스크립트가 숨긴 주인공은 드러낼 까닭이 없다 — 배로 건너가기에서 떠나는 배가 카메라 앞에서 흐려졌다
-    if (worldState.camera.mode !== 'first' && !worldState.player.hidden) {
+    if (clearsBlockers()) {
       const world = box.current.copy(local).applyMatrix4(node.matrixWorld)
       const p = worldState.player.position
       aim.set(p.x, p.y + AIM_HEIGHT, p.z)

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import {
-  AdditiveBlending, CanvasTexture, Group, LinearFilter, SRGBColorSpace,
+  AdditiveBlending, CanvasTexture, Group, LinearFilter, SRGBColorSpace, Vector3,
   type Mesh, type MeshBasicMaterial, type PointLight,
 } from 'three'
 import type { MapGrid } from '../engine/map/grid'
@@ -9,6 +9,7 @@ import { NO_SCRIPT, quarterOf, talkTile } from '../engine/map/world'
 import { isGameActive, isUiCaptured } from '../engine/input/keys'
 import { scriptBusy } from '../engine/script/field'
 import { npcActors } from '../engine/actor/npcs'
+import { firstPersonView } from '../engine/actor/camera'
 import { worldState } from '../state/worldState'
 import { npcBodyHeight } from './NpcModels'
 import { spriteHeight } from './EmoteMarks'
@@ -26,6 +27,31 @@ const FACING_STEP = [
 const GLOW = 1.15
 /** 숨결 하나의 길이(초). 이보다 빠르면 깜빡이는 것으로 읽힌다 */
 const BREATH = 1.7
+/**
+ * 점광이 닿는 거리(월드 단위).
+ *
+ * ⚠️ **2.4였을 때 옆 사람과 주인공까지 비췄다.** 줄 맞춰 선 갤럭시단 사이에서
+ * 빛이 이웃 단원과 주인공 얼굴에 앉아 **누구에게 말을 걸 수 있는지 안 읽혔다**
+ * (갤럭시단 아지트 3인칭 컷). 한 칸 앞 대상의 몸만 덮는 거리로 줄였다
+ */
+const GLOW_REACH = 1.4
+
+/** 무리 자리. 프레임마다 새로 만들지 않는다 */
+const haloAt = new Vector3()
+
+/**
+ * 카메라가 무리에 **가까울수록 옅게.** 몸 키의 1.2배 안이면 0, 3배 밖이면 1.
+ *
+ * 무리는 더하기 혼합에 톤 매핑을 안 타는 판이라, 카메라가 그 판 앞에 서면
+ * 판이 화면을 통째로 덮어 **누렇게 씻는다.** 보통 3인칭은 카메라가 주인공 뒤
+ * 몇 타일에 있어 늘 1이다 — 0으로 내려가는 것은 카메라가 대상 머리맡에 올 때뿐이다
+ */
+function nearFade(distance: number, body: number): number {
+  const near = body * 1.2
+  const far = body * 3
+  if (!(far > near)) return 1
+  return Math.min(1, Math.max(0, (distance - near) / (far - near)))
+}
 
 /**
  * 말을 걸 수 있다는 표시.
@@ -39,6 +65,11 @@ const BREATH = 1.7
  *   · 발밑의 얇은 고리 — 어느 사람인지를 바닥에서 짚어 준다
  *
  * 셋 다 천천히 숨 쉬듯 오르내린다.
+ *
+ * ⚠️ **1인칭 렌즈에서는 무리와 점광을 끈다 — 고리만 남는다.** 한 칸 앞 대상의
+ * 정수리가 바로 눈높이라, 몸 키만 한 더하기 판이 카메라 코앞에 와서 **화면 전체가
+ * 베이지로 씻기고** 점광이 대상 얼굴을 하얗게 태웠다 (갤럭시단 아지트 1p-0 ·
+ * 1p-180 · 1p-270. 대상이 없는 1p-90만 제 색이었다). 바닥 고리는 렌즈에 안 닿는다
  */
 export function InteractionPrompt({ grid, layer }: { grid: MapGrid; layer: number }) {
   const root = useRef<Group>(null)
@@ -63,7 +94,8 @@ export function InteractionPrompt({ grid, layer }: { grid: MapGrid; layer: numbe
     if (g) {
       const half = size / 2
       const grad = g.createRadialGradient(half, half, 0, half, half, half)
-      grad.addColorStop(0, 'rgba(255,244,214,0.95)')
+      // 가운데를 0.95로 두었을 때 머리 테두리가 하얗게 탔다 — 「살짝 밝아진다」의 몫까지만
+      grad.addColorStop(0, 'rgba(255,244,214,0.6)')
       grad.addColorStop(0.45, 'rgba(255,229,168,0.34)')
       grad.addColorStop(1, 'rgba(255,222,150,0)')
       g.fillStyle = grad
@@ -135,10 +167,16 @@ export function InteractionPrompt({ grid, layer }: { grid: MapGrid; layer: numbe
     const body = npcBodyHeight(actor) ?? spriteHeight(actor.gfx)
     // 0.75~1. 숨을 쉬되 꺼지지는 않는다 — 0까지 내리면 깜빡임이 된다
     const breath = 0.75 + 0.25 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * ((2 * Math.PI) / BREATH)))
-    show(true, breath)
+    // 무리와 점광의 몫. 1인칭 렌즈면 0 — 설정 시점이 아니라 **지금 렌즈**를 본다
+    // (`firstPersonView`). 스크립트 카메라 동안은 3인칭 렌즈라 거리로만 옅어진다
+    haloAt.set(actor.x + 0.5, ground + body * 0.95, actor.z + 0.5)
+    const k = firstPersonView() ? 0 : nearFade(camera.position.distanceTo(haloAt), body)
+    show(true, breath * k)
     node.position.set(actor.x + 0.5, ground, actor.z + 0.5)
 
     if (halo.current) {
+      // 그림만 감춘다 — 빛은 위의 `show`가 세기 0으로 남겨 둔다
+      halo.current.visible = k > 0
       // ⚠️ **정수리 위로 올린다.** 몸에 겹쳐 두면 북쪽을 보고 말을 걸 때 —
       // 그러니까 제일 흔한 자리에서 — 주인공이 카메라와 그 사람 사이를 막아
       // 통째로 가린다(카메라가 북쪽 붙박이다). 실측으로 가슴에 뒀을 때는
@@ -151,7 +189,7 @@ export function InteractionPrompt({ grid, layer }: { grid: MapGrid; layer: numbe
       halo.current.position.y = body * 0.95
       halo.current.scale.setScalar(Math.max(1, body))
       halo.current.quaternion.copy(camera.quaternion)
-      halo.current.material.opacity = 0.55 * breath
+      halo.current.material.opacity = 0.55 * breath * k
     }
     if (ring.current) {
       ring.current.scale.setScalar(0.92 + 0.06 * breath)
@@ -189,7 +227,7 @@ export function InteractionPrompt({ grid, layer }: { grid: MapGrid; layer: numbe
         </mesh>
       </group>
       {/* 그림 밖에 둔다 — 위의 ⚠️ 참고. 세기만 오르내리고 자리는 늘 지킨다 */}
-      <pointLight ref={glow} color="#ffe3ae" intensity={0} distance={2.4} />
+      <pointLight ref={glow} color="#ffe3ae" intensity={0} distance={GLOW_REACH} />
     </group>
   )
 }
