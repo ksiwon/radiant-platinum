@@ -208,6 +208,17 @@ def main() -> int:
     # 다 구운 것과 나눠 구운 것이 내용은 같고 바이트만 달라져서, 산출물을 지우고
     # 다시 구웠을 때 목차 해시가 이 파일 하나에서만 어긋났다 (크기는 212,808로 같다).
     # 읽는 쪽은 키로 찾으므로(`scene/battle/monModel`) 순서에 기대는 데가 없다
+    #
+    # ⚠️ **정수인 실수는 정수로 쓴다** — 파이썬은 `2.0`, `JSON.stringify`는 `2`다. 배율 2.0인 암컷 넷이 8바이트를
+    # 갈라 브라우저 변환기와의 대조(`pnpm e2e` ⑮)가 붉어졌다 (`bdspPokemon.py`의 `like_js`와 같은 자리)
+    def like_js(v):
+        return int(v) if isinstance(v, float) and v.is_integer() else v
+
+    for group in ("female", "femaleShiny"):
+        for entry in manifest[group].values():
+            for k in ("height", "scale"):
+                if k in entry:
+                    entry[k] = like_js(entry[k])
     VARIANT_INDEX.write_text(
         json.dumps(manifest, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
         encoding="utf-8",

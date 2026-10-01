@@ -804,10 +804,15 @@ async function convertMonVariants(ctx: ConvertContext): Promise<Produced> {
   // ⚠️ **키 차례를 파이썬과 맞춘다.** 노드 쪽은 `sort_keys=True`라 **글자순**인데
   // JS의 `JSON.stringify`는 정수처럼 생긴 키를 먼저 숫자순으로 낸다 — 알맹이가
   // 같아도 바이트가 갈려 ⑮가 붉어진다 (`convertMonModels`에서 겪은 자리다)
+  //
+  // ⚠️ **안쪽 표도 글자순이다** — `sort_keys`는 모든 깊이에 걸린다. 이로치 그림 표는 구운 차례(`BodyA01` · `BodyA03` ·
+  // `BodyA02`)로 들어오므로 여기서 다시 줄 세운다
   const sorted = (m: Map<string, unknown>): string =>
     `{${[...m.keys()].sort().map((k) => `${JSON.stringify(k)}:${JSON.stringify(m.get(k))}`).join(',')}}`
+  const byName = (t: Record<string, string>): Record<string, string> =>
+    Object.fromEntries(Object.entries(t).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
   const manifest = `{"female":${sorted(female)},"femaleShiny":${sorted(femaleShiny)}`
-    + `,"shiny":${sorted(new Map([...shiny].map(([k, v]) => [k, { textures: v }])))}`
+    + `,"shiny":${sorted(new Map([...shiny].map(([k, v]) => [k, { textures: byName(v) }])))}`
     + ',"version":1}'
   put(ctx, out, 'models/pokemon/variants/index.json', new TextEncoder().encode(manifest))
   return out
