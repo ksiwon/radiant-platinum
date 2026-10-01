@@ -23,7 +23,7 @@ import { attachMouse } from '../engine/input/mouse'
 import { useBattleStore } from '../state/battleStore'
 import { useMenuStore } from '../state/menuStore'
 import { useOptionsStore } from '../state/optionsStore'
-import { useRendererStore } from '../state/rendererStore'
+import { backendLabel, useRendererStore } from '../state/rendererStore'
 import { useCinematicStore } from '../state/cinematicStore'
 import { useDwWarpStore } from '../state/dwWarpStore'
 import { DwWarpStage } from './DwWarpStage'
@@ -235,8 +235,8 @@ async function makeRenderer(
   // `init()`이 뒤늦게 풀리거나 그쪽 `onDeviceLost`가 한 박자 늦게 울면,
   // 그것이 **막 살아난 새 세대의 상태를 뒤집는다.** 세대가 지난 소식은
   // 스토어가 조용히 버린다
-  useRendererStore.getState().markReady(
-    (renderer.backend as { constructor?: { name?: string } } | undefined)
-      ?.constructor?.name ?? null, generation)
+  // 이름은 클래스 이름이 아니라 백엔드 깃발에서 얻는다 — 배포 번들은 압축돼서
+  // `constructor.name`이 `xG` 같은 두 글자다 (`backendLabel`)
+  useRendererStore.getState().markReady(backendLabel(renderer.backend), generation)
   return renderer
 }

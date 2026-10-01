@@ -60,13 +60,24 @@ type RendererFault = 'init' | 'lost' | 'scene' | 'timeout'
 
 interface RendererState {
   phase: RendererPhase
-  /** 실제로 어느 길로 그리는가 (`WebGPUBackend` · `WebGLBackend`). 모르면 null */
+  /**
+   * 실제로 어느 백엔드로 그리는가 (`WebGPU` · `WebGL`). 모르면 null.
+   * 이름은 `backendLabel`이 백엔드 깃발에서 얻는다
+   */
   backend: string | null
   /** 손실 신호를 준 쪽 — three가 그렇게 적어 준다 */
   api: 'WebGPU' | 'WebGL' | null
   fault: RendererFault | null
-  /** 사람에게 보일 한 줄. 롬에서 온 글이 아니라 브라우저가 준 말이다 */
+  /**
+   * 브라우저나 예외가 준 **원문 그대로**. 롬에서 온 글도, 우리가 쓴 글도 아니다.
+   *
+   * ⚠️ **우리 말을 여기 넣지 않는다.** 화면은 이 칸을 「브라우저 메시지」·「오류
+   * 메시지」로 적는다 — 시간 초과 같은 우리 판단은 `fault`와 상수로 화면이 직접
+   * 쓴다 (`RECOVERY_TIMEOUT_MS`), 어디서 터졌는지는 `summary`로 따로 받는다
+   */
   reason: string | null
+  /** 우리가 쓴 한 줄 — 「3D 무대에서 오류가 났습니다」. 원문(`reason`)과 섞지 않는다 */
+  summary: string | null
   /** 이 판에서 자동으로 다시 세워 본 횟수 */
   autoRetries: number
   /**
@@ -90,8 +101,11 @@ interface RendererState {
   markInitFailed: (reason: string, generation: number) => void
   /** 그리던 중에 장치를 잃었다 */
   markLost: (info: { api?: string | null, message?: string | null }, generation: number) => void
-  /** React 씬이나 프레임 콜백이 터졌다. 장치는 멀쩡한데 그릴 것이 터진 것이다 */
-  markSceneCrashed: (reason: string) => void
+  /**
+   * React 씬이나 프레임 콜백이 터졌다. 장치는 멀쩡한데 그릴 것이 터진 것이다.
+   * `reason`은 예외 원문, `summary`는 사람에게 보일 우리 한 줄이다
+   */
+  markSceneCrashed: (reason: string, summary?: string) => void
   /** 다시 세우기가 시간 안에 안 끝났다 */
   markRecoveryTimedOut: () => void
   /**
@@ -122,7 +136,7 @@ function freeze(): void {
  * 이 값들만 화면이 읽는다. 상태를 옮길 때 **매번 전부** 적어 둔다 — 한 칸을
  * 안 지우면 복구된 화면에 지난 실패 이유가 남는다
  */
-const CLEAR = { api: null, fault: null, reason: null } as const
+const CLEAR = { api: null, fault: null, reason: null, summary: null } as const
 
 /** 아직 못 쓰는 칸들 — 여기서는 세계가 멎어 있어야 한다 */
 const DOWN = new Set<RendererPhase>(['lost', 'recovering', 'failed'])
@@ -154,6 +168,7 @@ export const useRendererStore = create<RendererState>((rawSet, get) => {
     api: null,
     fault: null,
     reason: null,
+    summary: null,
     autoRetries: 0,
     generation: 0,
 
@@ -179,7 +194,7 @@ export const useRendererStore = create<RendererState>((rawSet, get) => {
     markInitFailed: (reason, generation) => {
       if (stale(generation)) return
       freeze()
-      set({ phase: 'failed', fault: 'init', reason, api: null, backend: null })
+      set({ phase: 'failed', fault: 'init', reason, summary: null, api: null, backend: null })
     },
 
     markLost: (info, generation) => {
@@ -193,27 +208,25 @@ export const useRendererStore = create<RendererState>((rawSet, get) => {
         fault: 'lost',
         api: info.api === 'WebGL' ? 'WebGL' : info.api === 'WebGPU' ? 'WebGPU' : null,
         reason: info.message ?? null,
+        summary: null,
       })
     },
 
-    markSceneCrashed: (reason) => {
+    markSceneCrashed: (reason, summary) => {
       // ⚠️ **세대를 안 묻는다.** 터진 것은 렌더러가 아니라 **지금 그리고 있는
       // 나무**라, 그것을 알려 준 경계는 늘 지금 세대 안에 있다
       if (get().phase === 'failed') return
       freeze()
-      set({ phase: 'failed', fault: 'scene', reason, api: null })
+      set({ phase: 'failed', fault: 'scene', reason, summary: summary ?? null, api: null })
     },
 
     markRecoveryTimedOut: () => {
       const at = get().phase
       if (at !== 'recovering' && at !== 'ready') return
       freeze()
-      set({
-        phase: 'failed',
-        fault: 'timeout',
-        reason: `${String(Math.round(RECOVERY_TIMEOUT_MS / 1000))}초 안에 첫 화면이 안 나왔다`,
-        api: null,
-      })
+      // ⚠️ **까닭 문장을 `reason`에 안 넣는다.** 브라우저가 준 말이 없는 실패다 —
+      // 우리 문장을 원문 칸에 두면 화면이 그것을 브라우저 메시지로 적는다
+      set({ phase: 'failed', fault: 'timeout', reason: null, summary: null, api: null })
     },
 
     retry: (auto = false) => {
@@ -239,6 +252,24 @@ export const useRendererStore = create<RendererState>((rawSet, get) => {
     },
   }
 })
+
+/**
+ * 렌더러가 실제로 쓰는 백엔드의 이름.
+ *
+ * ⚠️ **`constructor.name`을 쓰지 않는다.** 배포 번들은 three를 압축해서
+ * 클래스 이름이 `xG`·`QH` 같은 두 글자가 된다 — 그것이 오류 창에 진단처럼
+ * 찍혔다. three가 백엔드마다 세우는 깃발(`isWebGPUBackend` · `isWebGLBackend`,
+ * three 0.185의 `WebGPUBackend.js`·`WebGLBackend.js`)은 압축돼도 남는다.
+ *
+ * three를 import하지 않으려고 모양만 본다 — 이 모듈은 3D 없이도 떠야 한다
+ */
+export function backendLabel(backend: unknown): 'WebGPU' | 'WebGL' | null {
+  if (typeof backend !== 'object' || backend === null) return null
+  const b = backend as { isWebGPUBackend?: unknown, isWebGLBackend?: unknown }
+  if (b.isWebGPUBackend === true) return 'WebGPU'
+  if (b.isWebGLBackend === true) return 'WebGL'
+  return null
+}
 
 /** 지금 게임을 굴려도 되는가. 복구 중에는 아무도 못 움직인다 */
 export function rendererUsable(): boolean {

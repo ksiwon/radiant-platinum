@@ -58,8 +58,15 @@ export const waiting = style({
   fontFamily: vars.font.ui,
 })
 
-/** 브라우저·자료가 준 말 그대로. 번역하거나 다듬지 않는다 */
+/**
+ * 브라우저·자료가 준 말 그대로. 번역하거나 다듬지 않는다.
+ *
+ * ⚠️ **끌어서 고를 수 있어야 한다.** `body`(index.html)와 밑의 `scrim`이 둘 다
+ * `user-select: none`이라, 여기서 되살리지 않으면 제보할 글을 못 고른다
+ */
 export const detail = style({
+  userSelect: 'text',
+  cursor: 'text',
   margin: 0,
   padding: GAP.tight,
   borderRadius: RADIUS.cell,

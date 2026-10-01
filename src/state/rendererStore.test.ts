@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { gameLoop } from '../engine/loop/GameLoop'
 import { clearLoopHolds, holdLoop, loopHolds, releaseLoop } from '../engine/loop/pause'
 import { isGameActive, setGameActive } from '../engine/input/keys'
-import { MAX_AUTO_RECOVERY, rendererUsable, useRendererStore } from './rendererStore'
+import { MAX_AUTO_RECOVERY, backendLabel, rendererUsable, useRendererStore } from './rendererStore'
 
 const at = () => useRendererStore.getState()
 const gen = () => at().generation
@@ -27,6 +27,7 @@ beforeEach(() => {
     api: null,
     fault: null,
     reason: null,
+    summary: null,
     autoRetries: 0,
     generation: 0,
   })
@@ -248,15 +249,29 @@ describe('씬이 터졌을 때', () => {
     expect(at().reason).toBe('첫 까닭')
   })
 
+  it('우리 한 줄과 예외 원문을 따로 받는다 — 원문 칸에 우리 말이 안 섞인다', () => {
+    goLive()
+    at().markSceneCrashed("Cannot read properties of undefined (reading 'x')", '3D 무대에서 오류가 났습니다')
+    expect(at().reason).toBe("Cannot read properties of undefined (reading 'x')")
+    expect(at().summary).toBe('3D 무대에서 오류가 났습니다')
+  })
+
+  it('한 줄 없이 오는 오류(프레임 콜백)는 원문만 남는다', () => {
+    goLive()
+    at().markSceneCrashed('render 예외')
+    expect(at().summary).toBeNull()
+  })
+
   it('다시 세우면 씬 오류도 걷힌다', () => {
     goLive()
-    at().markSceneCrashed('터졌다')
+    at().markSceneCrashed('터졌다', '씬에서 오류가 났습니다')
     expect(at().retry()).toBe(true)
     expect(at().phase).toBe('recovering')
     at().markReady('WebGPUBackend', gen())
     at().markPresented(gen())
     expect(at().fault).toBeNull()
     expect(at().reason).toBeNull()
+    expect(at().summary).toBeNull()
   })
 })
 
@@ -268,7 +283,10 @@ describe('끝나지 않는 복구', () => {
     at().markRecoveryTimedOut()
     expect(at().phase).toBe('failed')
     expect(at().fault).toBe('timeout')
-    expect(at().reason).toContain('초')
+    // ⚠️ **우리 문장을 원문 칸에 안 넣는다** — 화면이 그것을 브라우저 메시지로 적었다.
+    // 몇 초였는지는 화면이 `RECOVERY_TIMEOUT_MS`로 직접 쓴다
+    expect(at().reason).toBeNull()
+    expect(at().summary).toBeNull()
     expect(gameLoop.paused).toBe(true)
   })
 
@@ -352,6 +370,23 @@ describe('영속 Canvas의 예외', () => {
     expect(at().fault).toBeNull()
     expect(at().api).toBeNull()
     expect(gameLoop.paused).toBe(false)
+  })
+})
+
+describe('렌더러 이름', () => {
+  it('클래스 이름이 아니라 three의 백엔드 깃발에서 얻는다 — 압축돼도 남는다', () => {
+    // 배포 번들의 three는 클래스 이름이 `xG`·`QH`다. 깃발은 그대로다
+    class xG { isWebGPUBackend = true }
+    class QH { isWebGLBackend = true }
+    expect(backendLabel(new xG())).toBe('WebGPU')
+    expect(backendLabel(new QH())).toBe('WebGL')
+  })
+
+  it('깃발이 없으면 모른다고 한다 — 이름을 지어내지 않는다', () => {
+    expect(backendLabel(undefined)).toBeNull()
+    expect(backendLabel(null)).toBeNull()
+    expect(backendLabel({})).toBeNull()
+    expect(backendLabel({ isWebGPUBackend: 1 })).toBeNull()
   })
 })
 

@@ -41,7 +41,7 @@ export const body = style({
 })
 
 /**
- * 한 뭉치의 머리 — 「가능한 원인」·「지금 관찰된 것」.
+ * 한 뭉치의 머리 — 「가능한 원인」·「다음에 해 볼 것」·「지금 관찰된 것」.
  *
  * ⚠️ **원인을 단정하지 않으려면 갈래를 눈으로 갈라야 한다.** 한 문단에 섞어
  * 적으면 추측과 관찰이 같은 무게로 읽힌다
@@ -64,13 +64,26 @@ export const list = style({
   color: vars.ink.normal,
 })
 
+/** 「지금 관찰된 것」 머리와 「복사」 단추 한 줄 */
+export const headRow = style({
+  display: 'flex',
+  alignItems: 'baseline',
+  justifyContent: 'space-between',
+  gap: GAP.tight,
+})
+
 /**
- * 브라우저가 준 말 그대로.
+ * 브라우저·예외가 준 말 그대로.
  *
  * ⚠️ **번역하거나 다듬지 않는다.** 이 줄을 그대로 옮겨 적어야 제보가 쓸모
- * 있고, 우리가 지어낸 말로 바꾸면 검색해도 아무것도 안 나온다
+ * 있고, 우리가 지어낸 말로 바꾸면 검색해도 아무것도 안 나온다.
+ *
+ * ⚠️ **끌어서 고를 수 있어야 한다.** `body`(index.html)와 밑의 `scrim`이 둘 다
+ * `user-select: none`이라, 여기서 되살리지 않으면 옮겨 적으라는 글을 못 고른다
  */
 export const detail = style({
+  userSelect: 'text',
+  cursor: 'text',
   margin: 0,
   padding: GAP.tight,
   borderRadius: RADIUS.cell,
@@ -81,6 +94,20 @@ export const detail = style({
   color: vars.ink.dim,
   wordBreak: 'break-word',
   whiteSpace: 'pre-wrap',
+})
+
+/** 사람 말 한 줄 아래 접힌 원문 — 먼저 읽을 것은 위의 한 줄이다 */
+export const fold = style({
+  marginTop: GAP.tight,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: GAP.tight,
+})
+
+export const foldHead = style({
+  fontSize: TEXT.tiny,
+  color: vars.ink.dim,
+  cursor: 'pointer',
 })
 
 export const row = style({
@@ -105,3 +132,19 @@ export const button = style({
 
 /** 눌러야 할 쪽 하나. 원작대로 **색이 아니라 테두리**로 가리킨다 */
 export const primary = style([button, { ...PICKED }])
+
+/**
+ * 물러선 단추 — init 실패의 「3D 다시 세우기」.
+ *
+ * ⚠️ **설정을 안 바꾸면 같은 까닭으로 또 실패한다.** 같은 무게로 세워 두면
+ * 사람이 그것부터 누르고 같은 창으로 돌아온다
+ */
+export const minor = style([button, {
+  background: 'transparent',
+  borderColor: 'transparent',
+  boxShadow: 'none',
+  color: vars.ink.dim,
+}])
+
+/** 「복사」 — 머리 줄에 붙는 작은 단추 */
+export const copy = style([button, { padding: `2px ${GAP.tight}px` }])

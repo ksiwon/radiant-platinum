@@ -20,7 +20,7 @@ import { useRendererStore } from '../../state/rendererStore'
 
 interface Props {
   children: ReactNode
-  /** 어느 나무에서 터졌는지 — 사람에게 보일 한 줄에 붙는다 */
+  /** 어느 나무에서 터졌는지 — 사람에게 보일 한 줄(「3D 무대에서 오류가 났습니다」)이 된다 */
   where: string
 }
 
@@ -38,9 +38,13 @@ export class SceneBoundary extends Component<Props, State> {
   override componentDidCatch(error: Error, info: ErrorInfo): void {
     // ⚠️ **콘솔에만 적고 끝내지 않는다.** 배포 빌드에서 콘솔을 보는 사람은
     // 없다 — 상태로 옮겨야 창이 뜨고, 사람이 「다시 세우기」를 고를 수 있다
+    //
+    // ⚠️ **우리 말과 예외 원문을 한 줄로 잇지 않는다.** `「3D 무대: Cannot read
+    // …」`로 이으면 창이 그 줄 전체를 오류 원문으로 적는다. 사람에게는 어디서
+    // 터졌는지 한 줄을 보이고, 원문은 접힌 칸으로 따로 보낸다 (`RendererTrouble`)
     console.error(`[scene] ${this.props.where}에서 터졌다`, error, info.componentStack)
     useRendererStore.getState().markSceneCrashed(
-      `${this.props.where}: ${String(error.message || error)}`)
+      String(error.message || error), `${this.props.where}에서 오류가 났습니다`)
   }
 
   override render(): ReactNode {
