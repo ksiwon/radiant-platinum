@@ -16,7 +16,7 @@
 // 함께 막고 선 것들이 같이 비켜난다.
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Box3, Vector3, type BufferGeometry, type Group, type Material } from 'three'
+import { Box3, Vector3, type BufferGeometry, type Group, type Material, type Object3D } from 'three'
 import { worldState } from '../state/worldState'
 import { markSeeThrough } from './fx/seeThrough'
 
@@ -32,8 +32,8 @@ const FADE_SPAN = 1.3
  * 유령으로 남으면 그게 더 고장으로 보인다
  */
 const GONE = 0.03
-/** 한 프레임에 따라가는 몫. 1이면 카메라를 돌릴 때 깜빡인다 */
-const EASE = 0.14
+/** 한 프레임(60Hz)에 따라가는 몫. 1이면 카메라를 돌릴 때 깜빡인다. BDSP 흐림(`fieldFade`)도 이 비율을 시간으로 늘려 쓴다 */
+export const EASE = 0.14
 
 /**
  * 선을 몇 토막으로 끊어 재는가.
@@ -121,6 +121,22 @@ const aim = new Vector3()
  * 재질을 프레임마다 만지므로 **그 소품 전용이어야 한다**. 부르는 쪽(`ChunkModels`)이
  * 소품마다 재질을 따로 굽는 이유가 이것이다
  */
+/**
+ * 흐림이 그림자를 떼고(`solid` 거짓) 되돌린다(참). 떼기 직전 값을 `saved`에 적고, 되돌릴 때는 **적어 둔 값**으로 돌린 뒤 지운다.
+ * 적어 둔 것이 없으면 안 건드린다
+ */
+export function castShadowFor(o: Object3D, solid: boolean, saved: WeakMap<Object3D, boolean>): void {
+  if (!solid) {
+    if (!saved.has(o)) saved.set(o, o.castShadow)
+    o.castShadow = false
+    return
+  }
+  const was = saved.get(o)
+  if (was === undefined) return
+  o.castShadow = was
+  saved.delete(o)
+}
+
 export function PropFade({ geometry, materials, children }: Props) {
   const group = useRef<Group>(null)
   const camera = useThree((s) => s.camera)
@@ -134,6 +150,14 @@ export function PropFade({ geometry, materials, children }: Props) {
   const box = useRef(new Box3())
   const at = useRef(1)
   const shadows = useRef(true)
+  /**
+   * 흐리기 **직전**에 지던 그림자. 되돌릴 때 이 값으로 돌린다.
+   *
+   * ⚠️ **다 켬으로 되돌리면 안 된다.** `ChunkModels`의 `TerrainMesh`는 반투명 무리(집 밑 그림자 `h_kage` · 빛기둥 · 연기)를
+   * 따로 갈라 그림자를 일부러 끈다 — 깊이 패스에서 꽉 찬 사각 실루엣으로 찍히기 때문이다. 흐림을 한 번 겪은 집에서 그것들이
+   * 켜져 땅에 검은 사각형이 찍혔다. 적어 둔 것이 없는 것(그 사이 새로 붙은 메시)은 안 건드린다
+   */
+  const cast = useRef(new WeakMap<Object3D, boolean>())
 
   // 손대기 전의 값. 흐려질 때는 여기에 곱하고, 돌아올 때는 여기로 돌아온다
   const base = useMemo((): Base[] => materials.map((m) => ({
@@ -195,9 +219,7 @@ export function PropFade({ geometry, materials, children }: Props) {
     // 흐려지기 시작하면 그림자부터 뗀다. 안 그러면 없는 집의 그림자가 땅에 남는다
     if (solid !== shadows.current) {
       shadows.current = solid
-      node.traverse((o) => {
-        if ('castShadow' in o) (o as { castShadow: boolean }).castShadow = solid
-      })
+      node.traverse((o) => { castShadowFor(o, solid, cast.current) })
     }
   })
 

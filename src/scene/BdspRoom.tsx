@@ -11,6 +11,10 @@
 //
 // ⚠️ **방이 없는 맵은 원작 그림 그대로다.** 짝은 이름이 먼저고, 없으면 같은 원작 방 모양(행렬)을 쓰는 다른 맵의 방을 빌린다 —
 // 포켓몬센터 · 상점은 BDSP에 잔모래마을 것 한 벌씩뿐이고(`t02pc0101` · `t02fs0101`) 원작도 방 모양을 돌려쓴다
+//
+// ⚠️ **움직이는 장치는 원작 쪽이 그린다** (`FeatureProps` · `movingProps`). BDSP 체육관에는 승강판 · 톱니 · 물바닥이 정적 메시로
+// 구워져 있어서(애니메이션 0개) 그대로 두면 굳은 BDSP 장치 위에서 원작 장치가 따로 움직였다. 원작 장치가 그 맵에 서면 BDSP의 그
+// 부분만 숨긴다(`deviceMaterials`)
 import { useEffect, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
@@ -20,9 +24,16 @@ import {
 } from 'three'
 import { assets } from '../data/providers/assetProvider'
 import { mapById, warpsOf, world } from '../engine/map/world'
+import { liftForMap } from '../engine/world/platformLift'
+import { PASTORIA_GYM_MAP } from '../engine/world/pastoriaGym'
+import { sunyshoreRoomOf } from '../engine/world/sunyshoreGym'
 import { disposeTree } from './disposeTree'
 import { DOOR_OPEN } from './roomWalls'
 import { worldState } from '../state/worldState'
+import { useBdspMark } from './bdspReady'
+import { liveWater } from './BdspField'
+import { holdBdspDoors } from './DoorAnimations'
+import { holdBdspSigns } from './ObjectProps'
 
 const loader = new GLTFLoader()
 
@@ -38,18 +49,67 @@ function roomIndex(): Promise<ReadonlySet<string>> {
   return index
 }
 
-/** 이 맵이 쓸 방. 이름이 먼저 · 없으면 같은 행렬의 다른 맵 방 · 둘 다 없으면 `null` */
+/**
+ * **원작 방과 생김이 다른** BDSP 방 — 이름은 짝이 맞지만 BDSP가 체육관을 다시 지어서 원작 칸 위에 얹으면 어긋난다. 이 방들은
+ * 원작 그림으로 그린다(장치도 원작 쪽이 움직인다).
+ *
+ * 실측 (`models/room/*.glb` ↔ 원작 이벤트 자료):
+ * · `c02gym0101` 운하 — 층 바닥이 y 0 · 21 · 42 · 63이다. 원작은 10칸 간격(10 · 20 · 30 · `CANALAVE_FLOOR_HEIGHT`)이고 관장이 30에
+ *   선다 — 2층부터 발밑이 비고 판 스물넷이 허공을 오간다
+ * · `c04gym0101` 영원 — BDSP는 입구 방(x 3~14 · z −1~12)과 꽃밭(`c04gym0102`)을 따로 지었다. 원작은 한 방이라 입구 워프 (11, 27)와
+ *   시계 한가운데 (11, 13)가 BDSP 바닥 밖이다
+ * · `c07gym0101` 장막 — 입구 매트가 z 25.7인데 원작 워프는 z 30이고, 바닥이 z 26에서 끝나 원작 사람 (13, 29)가 바닥 밖에 선다.
+ *   BDSP 타이어 열(바닥에 누운 것)과 원작 타이어 더미 열하나는 (8, 10) 한 곳만 겹친다
+ */
+export const MISFIT_ROOMS: ReadonlySet<string> = new Set(['c02gym0101', 'c04gym0101', 'c07gym0101'])
+
+/** 이 맵이 쓸 방. 이름이 먼저 · 없으면 같은 행렬의 다른 맵 방 · 둘 다 없으면 `null`. 생김이 다른 방(`MISFIT_ROOMS`)은 안 쓴다 */
 export function roomFor(mapId: number, rooms: ReadonlySet<string>): string | null {
   const here = mapById(mapId)
   if (!here || here.matrix === 0) return null
+  const fits = (name: string): boolean => rooms.has(name) && !MISFIT_ROOMS.has(name)
   const own = here.name.toLowerCase()
-  if (rooms.has(own)) return own
+  if (rooms.has(own)) return fits(own) ? own : null
   for (const m of world.maps ?? []) {
     if (m.matrix !== here.matrix) continue
     const name = m.name.toLowerCase()
-    if (rooms.has(name)) return name
+    if (fits(name)) return name
   }
   return null
+}
+
+/**
+ * 이 맵에서 원작 장치(`movingProps`의 `featureProps`)가 **실제로 서는** BDSP 장치 재질. 없으면 `null` — 그대로 둔다.
+ *
+ * 움직이는 부분만이다 — 틀 · 단추는 원작 쪽이 따로 안 그리므로 BDSP 것이 남아야 한다(들판 체육관 단추 `Button_0x` ·
+ * `SwitchFrame`은 둔다). 실측 자리:
+ * · 승강판(`platformLift` — 강철섬 B1F · B2F · B3F, 사천왕 방 앞 다섯, 챔피언 방): BDSP `…_Elevator_01`이 원작 시작 칸에 판 크기로
+ *   선다(사천왕 방 앞 x 3.02~5.98 · z 11.02~12.98 ↔ 원작 (3, 11) · 챔피언 방 (7.02~9.98, 8.02~9.98) ↔ (7, 8))
+ * · 들판 물바닥(`PASTORIA_GYM_MAP`): BDSP `SeaWater_03`이 y 4 한 장(x 1~26 · z 2~40)이다 — 원작 높이판 상자(1, 2, 25, 38)와 같은
+ *   자리이고, 높이는 원작 세 단(0 · 2 · 4) 중 가장 높은 단에 굳어 있다
+ * · 물가 톱니(`sunyshoreRoomOf`): `GearCorner_01`이 톱니, `Switch_01`이 톱니 위 길이다 — 1번 방 톱니 셋의 한가운데가
+ *   (3.5, 8.5) · (8.5, 8.5) · (13.5, 8.5)로 원작 `SUNYSHORE_GEARS` + `SUNYSHORE_PROP_OFFSET`과 같다
+ */
+export function deviceMaterials(mapId: number): RegExp | null {
+  if (liftForMap(mapId) !== null) return /_Elevator_\d/
+  if (mapId === PASTORIA_GYM_MAP) return /_SeaWater_\d/
+  if (sunyshoreRoomOf(mapId) !== null) return /_(GearCorner|Switch)_\d/
+  return null
+}
+
+/** 원작 장치가 대신 그리는 BDSP 장치를 숨긴다. 숨긴 메시들을 돌려준다 — 맵이 바뀌면 되살릴 몫이다 */
+export function hideDevices(root: Object3D, mapId: number): Mesh[] {
+  const re = deviceMaterials(mapId)
+  const out: Mesh[] = []
+  if (!re) return out
+  root.traverse((o) => {
+    if (!(o instanceof Mesh)) return
+    const mats = (Array.isArray(o.material) ? o.material : [o.material]) as Material[]
+    if (!mats.some((m) => re.test(m.name))) return
+    o.visible = false
+    out.push(o)
+  })
+  return out
 }
 
 /** 지금 맵의 방 이름 — 목차가 오기 전과 방이 없는 맵은 `null` */
@@ -286,13 +346,16 @@ function northFace(walls: readonly Mesh[], minZ: number): {
 
 export function BdspRoom({ name, mapId }: { name: string, mapId: number }) {
   const [scene, setScene] = useState<Group | null>(null)
+  const [failed, setFailed] = useState(false)
   const [ceilings, setCeilings] = useState<readonly Object3D[]>([])
+  useBdspMark(name, scene !== null, failed)
 
   useEffect(() => {
     let alive = true
     const path = `models/room/${name}.glb`
     const provider = assets()
     let held: Group | null = null
+    let release: (() => void)[] = []
     provider.objectUrl(path)
       .then((url) => loader.loadAsync(url).finally(() => { provider.releaseObjectUrl(path) }))
       .then((gltf) => {
@@ -313,14 +376,24 @@ export function BdspRoom({ name, mapId }: { name: string, mapId: number }) {
           }
           if (mats.some(isLightShaft)) { o.castShadow = false; o.receiveShadow = false; o.renderOrder = 10 }
         })
+        hideDevices(gltf.scene, mapId)
+        liveWater(gltf.scene)
         const south = southWall(gltf.scene, mapId)
         if (south) { gltf.scene.add(south); top.push(south) }
+        release = [holdBdspDoors(gltf.scene), holdBdspSigns(gltf.scene)]
         setCeilings(top)
         setScene(gltf.scene)
       })
-      .catch((e: unknown) => { console.error(`방 ${name}을 못 세웠다`, e) })
+      .catch((e: unknown) => {
+        console.error(`방 ${name}을 못 세웠다`, e)
+        if (alive) setFailed(true)
+      })
     // ⚠️ **떼면 버린다** (`disposeTree`)
-    return () => { alive = false; if (held) disposeTree(held) }
+    return () => {
+      alive = false
+      for (const r of release) r()
+      if (held) disposeTree(held)
+    }
   }, [name, mapId])
 
   useFrame(() => {

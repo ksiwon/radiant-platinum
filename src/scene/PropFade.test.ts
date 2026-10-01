@@ -5,8 +5,8 @@
 // 배틀프런티어의 배틀타워와 배틀파크가 그렇게 없어져 있었고, 화면에는 따로
 // 배치된 문짝만 파란 판으로 떠 있었다.
 import { describe, expect, it } from 'vitest'
-import { Box3, Vector3 } from 'three'
-import { blockedBy } from './PropFade'
+import { Box3, Object3D, Vector3 } from 'three'
+import { blockedBy, castShadowFor } from './PropFade'
 
 /** 3인칭 카메라는 사람 뒤 8타일·위 4타일이다 */
 const EYE = new Vector3(48.5, 13, 26.5)
@@ -37,5 +37,41 @@ describe('가리는 소품 고르기', () => {
     const at = blockedBy(aside, EYE, AIM)
     expect(at).toBeGreaterThan(0)
     expect(at).toBeLessThan(1)
+  })
+})
+
+describe('흐림이 그림자를 되돌린다 (`castShadowFor`)', () => {
+  it('원래 안 지던 반투명 무리는 흐림을 겪어도 안 진다 — 집 밑 그림자 판이 검은 사각형을 찍었다', () => {
+    const saved = new WeakMap<Object3D, boolean>()
+    const solid = new Object3D()
+    solid.castShadow = true
+    const soft = new Object3D()
+    soft.castShadow = false
+    for (const o of [solid, soft]) castShadowFor(o, false, saved)
+    expect(solid.castShadow).toBe(false)
+    expect(soft.castShadow).toBe(false)
+    for (const o of [solid, soft]) castShadowFor(o, true, saved)
+    expect(solid.castShadow).toBe(true)
+    expect(soft.castShadow).toBe(false)
+  })
+
+  it('적어 둔 것이 없는 것(흐리는 사이 새로 붙은 메시)은 안 건드린다', () => {
+    const saved = new WeakMap<Object3D, boolean>()
+    const late = new Object3D()
+    late.castShadow = false
+    castShadowFor(late, true, saved)
+    expect(late.castShadow).toBe(false)
+  })
+
+  it('두 번째 흐림도 그때의 값을 다시 적는다', () => {
+    const saved = new WeakMap<Object3D, boolean>()
+    const o = new Object3D()
+    o.castShadow = true
+    castShadowFor(o, false, saved)
+    castShadowFor(o, true, saved)
+    o.castShadow = false
+    castShadowFor(o, false, saved)
+    castShadowFor(o, true, saved)
+    expect(o.castShadow).toBe(false)
   })
 })

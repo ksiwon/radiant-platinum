@@ -12,11 +12,16 @@ import { useFrame } from '@react-three/fiber'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { LoadingManager, Mesh, Vector3, type Group } from 'three'
 import { assets } from '../data/providers/assetProvider'
+import { world } from '../engine/map/world'
 import { worldState } from '../state/worldState'
-import { roomFor } from './BdspRoom'
+import { hideDevices, roomFor } from './BdspRoom'
 import { bdspLights, type BdspLights } from './bdspLights'
 import { disposeTree } from './disposeTree'
 import { fieldFade, type FieldFade } from './fieldFade'
+import { useBdspMark } from './bdspReady'
+import { liveWater } from './BdspField'
+import { holdBdspDoors } from './DoorAnimations'
+import { holdBdspSigns } from './ObjectProps'
 
 const ROOT = 'models/dungeon'
 
@@ -70,24 +75,37 @@ const AIM = 1.2
 
 export function BdspDungeon({ name }: { name: string }) {
   const [scene, setScene] = useState<Group | null>(null)
+  const [failed, setFailed] = useState(false)
   const fade = useRef<FieldFade | null>(null)
   const lights = useRef<BdspLights | null>(null)
   const tick = useRef(0)
   const cam = useRef(new Vector3())
   const aim = useRef(new Vector3())
-  useFrame(({ camera }) => {
-    if (!fade.current || (tick.current++ % 3) !== 0) return
-    lights.current?.update(worldState.time.gameHour)
-    const p = worldState.player.position
-    camera.getWorldPosition(cam.current)
-    aim.current.set(p.x, p.y + AIM, p.z)
-    fade.current.update(cam.current, aim.current, worldState.camera.mode !== 'first')
+  /** 원작 장치가 대신 그려서 숨긴 BDSP 장치(`hideDevices`)와 그때의 맵 — 한 던전을 이웃 맵이 같이 쓰므로 맵이 바뀌면 다시 고른다 */
+  const devices = useRef<{ map: number, hidden: Mesh[] }>({ map: -1, hidden: [] })
+  useBdspMark(name, scene !== null, failed)
+  useFrame(({ camera }, dt) => {
+    if (!fade.current) return
+    if (scene && devices.current.map !== world.mapId) {
+      for (const m of devices.current.hidden) m.visible = true
+      devices.current = { map: world.mapId, hidden: hideDevices(scene, world.mapId) }
+    }
+    // 목표는 세 프레임에 한 번, 따라가기는 매 프레임 (`fieldFade`)
+    if ((tick.current++ % 3) === 0) {
+      lights.current?.update(worldState.time.gameHour)
+      const p = worldState.player.position
+      camera.getWorldPosition(cam.current)
+      aim.current.set(p.x, p.y + AIM, p.z)
+      fade.current.aim(cam.current, aim.current, worldState.camera.mode !== 'first')
+    }
+    fade.current.step(dt)
   })
   useEffect(() => {
     let alive = true
     const provider = assets()
     const held: string[] = []
     let built: Group | null = null
+    let release: (() => void)[] = []
     const load = async (): Promise<Group> => {
       const glb = await provider.bytes(`${ROOT}/${name}.glb`)
       const urls = new Map<string, string>()
@@ -110,16 +128,26 @@ export function BdspDungeon({ name }: { name: string }) {
           o.receiveShadow = true
           o.castShadow = true
         })
+        devices.current = { map: world.mapId, hidden: hideDevices(root, world.mapId) }
+        liveWater(root)
         // ⚠️ **흐림이 먼저다** — `BdspField`와 같은 까닭이다
         fade.current = fieldFade(root)
         lights.current = bdspLights(root)
         lights.current.update(worldState.time.gameHour)
+        release = [holdBdspDoors(root), holdBdspSigns(root)]
         setScene(root)
       })
-      .catch((e: unknown) => { console.error(`던전 ${name}을 못 세웠다`, e) })
+      .catch((e: unknown) => {
+        console.error(`던전 ${name}을 못 세웠다`, e)
+        if (alive) setFailed(true)
+      })
       .finally(() => { for (const p of held) provider.releaseObjectUrl(p) })
     // ⚠️ **떼면 버린다** (`disposeTree`) — 나눠 쓰는 그림도 던전마다 새로 풀어 올리므로 그 벌은 이 던전 몫이다
-    return () => { alive = false; if (built) disposeTree(built) }
+    return () => {
+      alive = false
+      for (const r of release) r()
+      if (built) disposeTree(built)
+    }
   }, [name])
   return scene ? <primitive object={scene} /> : null
 }

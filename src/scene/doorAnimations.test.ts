@@ -8,7 +8,8 @@ import { expect, it, describe } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { propAnimsSchema, type PropAnimsFile } from '../data/schema'
-import { doorClip } from './DoorAnimations'
+import { Box3, BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, MeshStandardMaterial, Vector3 } from 'three'
+import { bdspDoorLeaves, doorClip, holdBdspDoors, isDoorLeaf, leafPose, progress } from './DoorAnimations'
 
 const ROOT = resolve(__dirname, '../..')
 const BAKED = resolve(ROOT, 'public/data/props/anims.json')
@@ -65,5 +66,79 @@ describe('doorClip — 구운 표', () => {
       expect(clip.openMs, `소품 ${String(id)}`).not.toBe(200)
       expect(clip.openMs).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('BDSP 문짝 (`holdBdspDoors` · `leafPose`)', () => {
+  /** 떡잎마을 집 문짝 — `M_T_001_DoorOuter_01`이 (116.52, 1.9, 875.53)에 1.2 × 1.8 × 0.25로 선다 (area001 실측) */
+  function town(): { root: Group, leaf: InstancedMesh } {
+    const root = new Group()
+    const geometry = new BoxGeometry(1.2, 1.8, 0.25)
+    const leaf = new InstancedMesh(geometry, new MeshStandardMaterial({ name: 'M_T_001_DoorOuter_01' }), 1)
+    leaf.setMatrixAt(0, new Matrix4().makeTranslation(116.52, 1.9, 875.53))
+    const wall = new Mesh(new BoxGeometry(6, 4, 4), new MeshStandardMaterial({ name: 'M_T_001_House_01' }))
+    wall.position.set(116.5, 2, 873)
+    root.add(leaf, wall)
+    return { root, leaf }
+  }
+
+  it('문짝 재질만 고른다 — 게이트 · 문 앞 빛은 문짝이 아니다', () => {
+    const is = (name: string): boolean => isDoorLeaf(new MeshStandardMaterial({ name }))
+    for (const n of ['M_T_001_DoorOuter_01', 'M_C_001_DoorOuter_02_01', 'M_C_001_DoorInner_01', 'M_C_001_AutoDoor_01',
+      'M_C_001_DoorElv_01', 'M_RO_059_Door_01', 'M_D_040_Door_01']) expect(is(n), n).toBe(true)
+    for (const n of ['M_C_001_GateLight_01', 'M_C_001_BarrierGate_01', 'M_R_221_PalGate_01', 'M_T_001_House_01']) {
+      expect(is(n), n).toBe(false)
+    }
+  })
+
+  it('문 칸 둘레의 문짝만 찾고, 떼면 놓는다', () => {
+    const { root } = town()
+    const release = holdBdspDoors(root)
+    // 원작 워프 (116, 875) · 땅 높이 1
+    expect(bdspDoorLeaves(116, 875, 1)).toHaveLength(1)
+    // 이웃 집 문 (105, 875)은 다른 문이다
+    expect(bdspDoorLeaves(105, 875, 1)).toHaveLength(0)
+    // 위층(땅 높이 8)의 같은 칸은 아니다
+    expect(bdspDoorLeaves(116, 875, 8)).toHaveLength(0)
+    release()
+    expect(bdspDoorLeaves(116, 875, 1)).toHaveLength(0)
+  })
+
+  it('여닫이는 경첩 모서리를 축으로 안쪽(+z)으로 돈다 — 경첩은 제자리다', () => {
+    // 주인공이 남쪽에 서서 북쪽 문을 연다 — `doorYaw`가 π를 준다
+    const box = new Box3(new Vector3(-0.6, 0, -0.1), new Vector3(0.6, 1.8, 0.1))
+    const yaw = Math.PI
+    const pose = leafPose(box, new Vector3(0, 0.9, 0), yaw, 'hinged', 1)
+    // 문의 가로축 (cos π, 0, −sin π) = (−1, 0, 0) — 왼쪽(−x) 모서리는 월드 +x 쪽이다
+    const hinge = new Vector3(0.6, 0.9, 0).applyMatrix4(pose)
+    expect(hinge.x).toBeCloseTo(0.6, 6)
+    expect(hinge.z).toBeCloseTo(0, 6)
+    // 반대 끝은 안쪽(주인공에서 먼 쪽 = −z)으로 간다
+    const free = new Vector3(-0.6, 0.9, 0).applyMatrix4(pose)
+    expect(free.z).toBeLessThan(-0.9)
+  })
+
+  it('미닫이는 돌지 않고 가로로 눌린다 — 두 짝 자동문은 저마다 바깥 모서리로', () => {
+    const left = new Box3(new Vector3(-0.75, 0, -0.03), new Vector3(0, 1.8, 0.03))
+    const right = new Box3(new Vector3(0, 0, -0.03), new Vector3(0.75, 1.8, 0.03))
+    const middle = new Vector3(0, 0.9, 0)
+    const l = leafPose(left, middle, 0, 'sliding', 1)
+    const r = leafPose(right, middle, 0, 'sliding', 1)
+    // 다 열리면 가운데 이음매가 저마다 바깥 모서리로 들어간다
+    expect(new Vector3(0, 0.9, 0).applyMatrix4(l).x).toBeCloseTo(-0.75, 2)
+    expect(new Vector3(0, 0.9, 0).applyMatrix4(r).x).toBeCloseTo(0.75, 2)
+    // 깊이 방향은 그대로다
+    expect(new Vector3(0, 0.9, 0.03).applyMatrix4(l).z).toBeCloseTo(0.03, 6)
+    // 닫힌 문은 그대로다
+    expect(leafPose(left, middle, 0, 'sliding', 0).equals(new Matrix4())).toBe(true)
+  })
+
+  it('문이 다 열리고 닫히는 데 원작 클립 길이가 걸린다', () => {
+    const clip = doorClip(70, null)
+    const door = { tag: 1, x: 0, z: 0, yaw: 0, phase: 'opening' as const, since: 1000 }
+    expect(progress(door, clip, 1000)).toBe(0)
+    expect(progress(door, clip, 1000 + clip.openMs / 2)).toBeCloseTo(0.5, 6)
+    expect(progress(door, clip, 1000 + clip.openMs)).toBe(1)
+    expect(progress({ ...door, phase: 'closing' }, clip, 1000 + clip.shutMs)).toBe(0)
   })
 })
