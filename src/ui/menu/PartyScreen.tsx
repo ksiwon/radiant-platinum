@@ -53,7 +53,8 @@ import { formTables, withHeldItem } from './formChange'
 import { SHAYMIN_BEATS } from '../../engine/pokemon/formChangeBeat'
 import { music } from '../../engine/audio/music'
 import { MenuScreen } from './MenuScreen'
-import { PARTY_SLOT_NONE, partyChoice } from './partyChoice'
+import { PARTY_SLOT_NONE, partyChoice, partyStartCursor, setPartyReturnSlot } from './partyChoice'
+import { LevelPanel, type LevelPanelShow } from './LevelPanel'
 import * as css from './menuChrome.css'
 import * as own from './partyScreen.css'
 import { HP_VARS, STATUS_VARS } from '../theme/window.css'
@@ -113,11 +114,10 @@ const P = {
   /** 「써도 효과가 없다!」 (`PartyMenu_Text_ItWontHaveAnyEffect`) */
   noEffect: 105,
   /**
-   * 이상한사탕 (`PartyMenuCB_LevelUp`) — 185~190이 능력치 이름(최대HP · 공격 · 방어 ·
-   * 특수공격 · 특수방어 · 스피드 차례), 191이 「+n」, 192가 새 값, 193이 「레벨 n로
-   * 올랐다!」, 194가 레벨업으로 「배웠다!」다
+   * 이상한사탕 (`PartyMenuCB_LevelUp`) — 193이 「레벨 n로 올랐다!」, 194가 레벨업으로
+   * 「배웠다!」다. 그 사이의 능력치 창(185~192)은 `LevelPanel`이 적는다
    */
-  statNames: 185, statGain: 191, statValue: 192, levelUp: 193, levelLearned: 194,
+  levelUp: 193, levelLearned: 194,
   switch_: 145, summary: 146, item: 147, mail: 148, mailRead: 149, mailTake: 150,
   cancel: 152, give: 160, take: 161,
   /** 「맡긴다」 — 키우미집 갈래의 첫 줄 (`PartyMenu_Text_MailStore` · 갈래 번호 8) */
@@ -163,12 +163,6 @@ function pagesOf(text: string): string[] {
   return text.split(/[\r\f]/).map((one) => one.trim()).filter((one) => one !== '')
 }
 
-/**
- * 레벨업 창에 적는 차례 (`PartyMenu_DrawLevelUpStatIncreases`의 `stats[]`) —
- * 최대HP · 공격 · 방어 · 특수공격 · 특수방어 · 스피드. 스피드가 **맨 끝**이다
- */
-const STAT_ORDER = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'] as const
-
 /** 갈래 하나 */
 interface Choice {
   label: string
@@ -191,11 +185,10 @@ export function PartyScreen() {
   const locale = useGameLocale()
   const [names, setNames] = useState<string[]>([])
   const [moveNames, setMoveNames] = useState<string[]>([])
-  // 스크립트가 자리를 주고 열었으면 거기서 시작한다 — 키우미집은 요약에서 돌아올 때 그 자리로 다시 연다
-  const [cursor, setCursor] = useState(() => {
-    const m = useMenuStore.getState()
-    return m.choosingMon ? m.chooseStart : 0
-  })
+  // 스크립트가 준 자리, 이 화면이 연 요약에서 돌아왔으면 요약이 닫힌 자리 (`StartMenu_ExitSummary`)
+  const [cursor, setCursor] = useState(() => partyStartCursor(useMenuStore.getState()))
+  // 돌아올 자리는 **한 번 읽고 비운다** — 남겨 두면 나중에 따로 연 파티 화면이 그 자리로 선다
+  useEffect(() => { setPartyReturnSlot(null) }, [])
   /** 자리를 바꾸려고 집어 든 카드. null이면 안 집었다 */
   const [held, setHeld] = useState<number | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -221,7 +214,7 @@ export function PartyScreen() {
    * 오른 폭을 먼저 보이고 A·B에 새 값으로 바꾼다
    */
   const [levelPanel, setLevelPanel] = useState<
-    { slot: number; before: Stats; after: Stats; show: 'gain' | 'value'; then: () => void } | null
+    { slot: number; before: Stats; after: Stats; show: LevelPanelShow; then: () => void } | null
   >(null)
   const [menuAt, setMenuAt] = useState(0)
   /** 우유마시기 · 알낳기로 나눠 주는 중. null이면 아니다 */
@@ -291,12 +284,14 @@ export function PartyScreen() {
    * ⚠️ 자리 바꾸기를 `setCursor` 갱신 함수 **안에서** 하면 안 된다. React가 그
    * 함수를 두 번 부를 수 있어서(StrictMode) 한 번 누른 것이 두 번 바뀐다
    */
-  const stepParty = (d: number) => () => {
+  const stepParty = (d: number) => (): boolean => {
     setNotice(null)
     const next = clampCursor(at, d, party.length)
-    if (next === at) return
+    // 끝에 닿아 안 움직였으면 소리도 없다 (`useMenuKeys`)
+    if (next === at) return false
     if (held !== null) { swapParty(at, next); setHeld(next) }
     setCursor(next)
+    return true
   }
 
   /**
@@ -390,7 +385,7 @@ export function PartyScreen() {
   const rootChoices = (): Choice[] => {
     const text = (id: number): string => partyText[id] ?? ''
     const out: Choice[] = [
-      { label: text(P.summary), run: () => { setMenu(null); openSummary(at) } },
+      { label: text(P.summary), run: () => { setMenu(null); setPartyReturnSlot(at); openSummary(at) } },
     ]
     if (selected && !selected.isEgg) {
       for (const slot of selected.moves) {
@@ -462,7 +457,7 @@ export function PartyScreen() {
    * ⚠️ **우편함이 꽉 차면 안 뗀다.** 떼고 나서 넣을 데가 없으면 편지가 사라진다
    */
   const takeMail = (): void => {
-    if (!selected?.mail) { setNotice('편지를 안 지니고 있다.'); return }
+    if (!selected?.mail) { setNotice('메일을 지니고 있지 않다.'); return }
     const moved = toMailbox(useSaveStore.getState().mailbox, selected.mail)
     if (!moved) { setNotice('메일박스가 가득 차 있다.'); return }
     const next = [...party]
@@ -837,12 +832,26 @@ export function PartyScreen() {
   // 움직이면 무엇을 고르는 중인지가 사라진다. 넘길 글이 있으면 그것이 먼저다
   const paging = pages.length > 0 || levelPanel !== null
   const inMenu = menu !== null && !paging
-  const still = (): void => { /* 글을 넘기는 동안 커서는 안 움직인다 */ }
+  // 글을 넘기는 동안 커서는 안 움직인다 — 아무것도 안 바뀌었으니 소리도 없다
+  const still = (): boolean => false
+  /**
+   * 갈래 메뉴 커서. 보이는 자리(`menuAt`을 줄 수에 맞춘 것)에서 옮긴다 — 끝이면 false.
+   *
+   * 갈래가 줄어든 뒤에도 `menuAt`이 옛 값으로 남아 있을 수 있어서, 그 값에서 세면
+   * 화면의 커서는 그대로인데 한 번 누른 것이 헛돈다
+   */
+  const stepMenu = (d: number) => (): boolean => {
+    const now = Math.min(menuAt, choices.length - 1)
+    const next = clampCursor(now, d, choices.length)
+    if (next === now) return false
+    setMenuAt(next)
+    return true
+  }
   useMenuKeys({
     // ⚠️ **위아래는 두 칸씩이다.** 판이 두 줄로 서 있어서 한 칸씩 옮기면
     // ↑가 옆으로 가는 것처럼 보인다 (`GridMenuCursor_CheckNavigation`)
-    up: paging ? still : inMenu ? () => { setMenuAt((c) => clampCursor(c, -1, choices.length)) } : stepParty(-2),
-    down: paging ? still : inMenu ? () => { setMenuAt((c) => clampCursor(c, 1, choices.length)) } : stepParty(2),
+    up: paging ? still : inMenu ? stepMenu(-1) : stepParty(-2),
+    down: paging ? still : inMenu ? stepMenu(1) : stepParty(2),
     left: paging ? still : inMenu ? undefined : stepParty(-1),
     right: paging ? still : inMenu ? undefined : stepParty(1),
     confirm: () => {
@@ -957,7 +966,7 @@ export function PartyScreen() {
         </div>
 
         {/*
-          레벨업 능력치 창. 이름은 185~190 차례, 값은 오른쪽 끝에 맞춘다.
+          레벨업 능력치 창 (`LevelPanel` — 배틀의 레벨업도 같은 창을 쓴다).
 
           ⚠️ **대상이 없는 쪽 열에 띄운다.** 원작은 늘 왼쪽 위 (1,1)에 14×12칸
           (`windows.c` `PartyMenu_DrawLevelUpStatIncreases`)이라 0·2번 판을 덮는데,
@@ -965,23 +974,13 @@ export function PartyScreen() {
           JOURNEY21_NEXT_DECISIONS §4)
         */}
         {levelPanel !== null && (
-          <div
+          <LevelPanel
+            before={levelPanel.before}
+            after={levelPanel.after}
+            show={levelPanel.show}
+            text={partyText}
             className={levelPanel.slot % 2 === 0 ? own.levelPanelRight : own.levelPanel}
-            data-level-panel={levelPanel.show}
-          >
-            {STAT_ORDER.map((key, i) => (
-              <div key={key} className={own.levelRow}>
-                <span>{plainText(partyText[P.statNames + i])}</span>
-                <span className={own.levelValue}>
-                  {fillMenuText(partyText[levelPanel.show === 'gain' ? P.statGain : P.statValue] ?? '', [
-                    String(levelPanel.show === 'gain'
-                      ? levelPanel.after[key] - levelPanel.before[key]
-                      : levelPanel.after[key]),
-                  ])}
-                </span>
-              </div>
-            ))}
-          </div>
+          />
         )}
 
         {/* 갈래 메뉴는 원작처럼 오른쪽 아래 구석에 창 하나로 뜬다 */}

@@ -15,7 +15,7 @@
 // `OpenSummaryScreenTeachMove`). 원작도 같은 화면 하나를 모드만 바꿔 쓴다 —
 // 기술 쪽으로 고정하고, 마리를 넘기는 ↑↓를 **칸 고르기**로 돌리고, Z가 곧 답이다.
 // 기술 삭제사와 조각 교사 셋이 이 모드 없이는 한 발짝도 못 나간다.
-import { summaryLast } from './partyChoice'
+import { followPartyReturn, setPartyReturnSlot, summaryLast } from './partyChoice'
 import { useEffect, useMemo, useState } from 'react'
 import {
   loadItemIcons, loadItemNames, loadLabels, loadMoveNames, loadMoves, loadSpecies,
@@ -109,8 +109,17 @@ export function SummaryScreen() {
   const picking = useMenuStore((s) => s.selectMove)
   const finishPick = useMenuStore((s) => s.finishSelectMove)
   const [at, setAt] = useState(opened)
-  // 닫힐 때 보던 자리를 스크립트가 묻는다 (`GetMonPartySlot` · 키우미집)
-  useEffect(() => { summaryLast.slot = at }, [at])
+  // 닫힐 때 보던 자리를 스크립트가 묻는다 (`GetMonPartySlot` · 키우미집). 파티 화면이 연
+  // 요약이면 파티 화면도 그 자리로 돌아간다 (`StartMenu_ExitSummary`) — 그 화면이 연 것만 따라간다
+  useEffect(() => {
+    summaryLast.slot = at
+    followPartyReturn(at)
+  }, [at])
+  // ⚠️ 파티 화면으로 안 돌아가고 닫혔으면(메뉴째 닫힘) 돌아올 자리를 버린다 — 남기면
+  // 다음에 따로 연 파티 화면이 그 자리로 선다. 닫힌 뒤라 스택은 이미 바뀌어 있다
+  useEffect(() => () => {
+    if (!useMenuStore.getState().stack.includes('party')) setPartyReturnSlot(null)
+  }, [])
   const [page, setPage] = useState<Page>(picking === null ? 'info' : 'moves')
   const [moveAt, setMoveAt] = useState(0)
 
@@ -158,17 +167,35 @@ export function SummaryScreen() {
     : picking.teach === null ? moves.length : moves.length + 1
   const moveOn = Math.min(moveAt, Math.max(0, rows - 1))
 
-  const stepPage = (d: number) => () => {
+  // 쪽은 돈다 — 쪽이 하나뿐인 알이면 안 넘어가니 소리도 없다
+  const stepPage = (d: number) => (): boolean => {
     const next = pages[(pageAt + d + pages.length) % pages.length]
-    if (next) setPage(next)
+    if (!next || next === shown) return false
+    setPage(next)
+    return true
   }
   /** ↑↓는 **다른 마리**로 옮긴다 — 원작도 위아래가 파티를 넘긴다 */
-  const stepMon = (d: number) => () => {
-    if (shown === 'moves' && rows > 0) {
-      setMoveAt((c) => clampCursor(c, d, rows))
-      return
-    }
-    setAt((c) => clampCursor(c, d, party.length))
+  const stepMon = (d: number) => (): boolean => {
+    if (shown === 'moves' && rows > 0) return stepMove(d, rows)()
+    return stepAt(d)()
+  }
+  /**
+   * 커서 하나를 옮긴다. 끝에 닿아 안 움직였으면 false — 그때는 소리가 없다 (`useMenuKeys`).
+   * 갱신 함수 안이 아니라 **보이는 자리**에서 센다 — 바뀌었는지를 누르는 자리에서 알아야 하고,
+   * 기술이 적은 마리로 넘어오면 `moveAt`이 줄 수를 넘어 남아 있을 수 있다
+   */
+  const stepMove = (d: number, length: number) => (): boolean => {
+    const now = Math.min(moveAt, length - 1)
+    const next = clampCursor(now, d, length)
+    if (next === now) return false
+    setMoveAt(next)
+    return true
+  }
+  const stepAt = (d: number) => (): boolean => {
+    const next = clampCursor(at, d, party.length)
+    if (next === at) return false
+    setAt(next)
+    return true
   }
 
   /**
@@ -184,8 +211,8 @@ export function SummaryScreen() {
 
   useMenuKeys(picking !== null
     ? {
-      up: () => { setMoveAt((c) => clampCursor(c, -1, Math.max(1, rows))) },
-      down: () => { setMoveAt((c) => clampCursor(c, 1, Math.max(1, rows))) },
+      up: stepMove(-1, Math.max(1, rows)),
+      down: stepMove(1, Math.max(1, rows)),
       confirm: () => { answer(moveOn) },
       // B는 「그만둔다」다. 원작도 네 칸 밖의 자리를 돌려준다
       cancel: () => { answer(MOVES_MAX) },
@@ -195,7 +222,7 @@ export function SummaryScreen() {
       right: stepPage(1),
       up: stepMon(-1),
       down: stepMon(1),
-      tab: () => { setAt((c) => clampCursor(c, 1, party.length)) },
+      tab: stepAt(1),
       confirm: back,
       cancel: back,
     })
