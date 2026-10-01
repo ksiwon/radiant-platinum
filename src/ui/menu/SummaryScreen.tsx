@@ -15,6 +15,10 @@
 // `OpenSummaryScreenTeachMove`). 원작도 같은 화면 하나를 모드만 바꿔 쓴다 —
 // 기술 쪽으로 고정하고, 마리를 넘기는 ↑↓를 **칸 고르기**로 돌리고, Z가 곧 답이다.
 // 기술 삭제사와 조각 교사 셋이 이 모드 없이는 한 발짝도 못 나간다.
+//
+// ⚠️ **보관 시스템은 이 화면을 스스로 띄운다** (`BoxAppMan_InitSummary`). 박스에서 연 요약은
+// 파티가 아니라 **그 박스 서른 칸**을 넘겨 보고, 닫히면 박스 커서가 마지막으로 본 자리로
+// 간다 — 메뉴 스택의 파티 자리(`summarySlot`)로는 박스 마리를 가리킬 수 없어서 `source`로 받는다.
 import { followPartyReturn, setPartyReturnSlot, summaryLast } from './partyChoice'
 import { useEffect, useMemo, useState } from 'react'
 import {
@@ -35,12 +39,13 @@ import { buildMemo, type MemoNames } from '../../engine/pokemon/memo'
 import { otMatches } from '../../engine/pokemon/origin'
 import { cured, infected } from '../../engine/pokemon/pokerus'
 import { natureEffect } from '../../engine/pokemon/stats'
+import { nextSummaryMon, swapMoveSlots } from '../../engine/pokemon/boxes'
 import { parseMessage } from '../../engine/script/text'
 import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { playerTrainer, useSaveStore } from '../../state/saveStore'
 import { useAssetImage } from '../../data/providers/useAssetUrl'
-import { spriteKey } from '../../engine/pokemon/form'
+import { SPECIES_EGG, spriteKey } from '../../engine/pokemon/form'
 import { MenuScreen } from './MenuScreen'
 import { itemIcon } from './itemIcon'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
@@ -98,30 +103,56 @@ interface Tables {
   memo: MemoNames
 }
 
-export function SummaryScreen() {
+/**
+ * 보관 시스템이 직접 띄우는 요약 (`BoxAppMan_InitSummary`).
+ *
+ * 화면이 마리 목록을 **살아 있는 채로** 넘긴다 — 기술 자리를 바꾸면 그 목록이 다시 온다
+ */
+interface SummarySource {
+  /** 넘겨 볼 자리. 박스면 빈 칸까지 서른 칸(`monMax = MAX_MONS_PER_BOX`), 파티면 파티다 */
+  mons: readonly (PokemonInstance | null)[]
+  /** 처음 볼 자리 (`monIndex`) */
+  at: number
+  /** 기술 자리를 바꾼 마리를 그 자리에 쓴다 (`SwapSelectedMoves`) */
+  write: (at: number, mon: PokemonInstance) => void
+  /** 닫힌다. 마지막으로 본 자리를 넘긴다 (`BoxApp_SetCursorPosToSummaryMonPos`) */
+  exit: (at: number) => void
+}
+
+export function SummaryScreen({ source }: { source?: SummarySource } = {}) {
   const locale = useGameLocale()
   const [t, setT] = useState<Tables | null>(null)
   const party = useSaveStore((s) => s.party)
   const trainer = useSaveStore((s) => s.trainer)
   const back = useMenuStore((s) => s.back)
   const opened = useMenuStore((s) => s.summarySlot)
-  // 스크립트가 기술을 고르라고 열었으면 이 화면은 그 일만 한다
-  const picking = useMenuStore((s) => s.selectMove)
+  // 스크립트가 기술을 고르라고 열었으면 이 화면은 그 일만 한다. 박스가 띄운 요약은 그럴 일이 없다
+  const asked = useMenuStore((s) => s.selectMove)
+  const picking = source ? null : asked
   const finishPick = useMenuStore((s) => s.finishSelectMove)
-  const [at, setAt] = useState(opened)
+  const list: readonly (PokemonInstance | null)[] = source?.mons ?? party
+  const [at, setAt] = useState(source?.at ?? opened)
   // 닫힐 때 보던 자리를 스크립트가 묻는다 (`GetMonPartySlot` · 키우미집). 파티 화면이 연
-  // 요약이면 파티 화면도 그 자리로 돌아간다 (`StartMenu_ExitSummary`) — 그 화면이 연 것만 따라간다
+  // 요약이면 파티 화면도 그 자리로 돌아간다 (`StartMenu_ExitSummary`) — 그 화면이 연 것만 따라간다.
+  // ⚠️ 박스가 띄운 요약은 파티 자리가 아니다 — 안 적는다
+  const boxed = source !== undefined
   useEffect(() => {
+    if (boxed) return
     summaryLast.slot = at
     followPartyReturn(at)
-  }, [at])
+  }, [at, boxed])
   // ⚠️ 파티 화면으로 안 돌아가고 닫혔으면(메뉴째 닫힘) 돌아올 자리를 버린다 — 남기면
   // 다음에 따로 연 파티 화면이 그 자리로 선다. 닫힌 뒤라 스택은 이미 바뀌어 있다
   useEffect(() => () => {
-    if (!useMenuStore.getState().stack.includes('party')) setPartyReturnSlot(null)
-  }, [])
+    if (!boxed && !useMenuStore.getState().stack.includes('party')) setPartyReturnSlot(null)
+  }, [boxed])
   const [page, setPage] = useState<Page>(picking === null ? 'info' : 'moves')
   const [moveAt, setMoveAt] = useState(0)
+  /**
+   * 기술 자리 바꾸기에서 먼저 고른 칸 (`cursorTmp` · `SUMMARY_STATE_MOVE_SWAP`). 아니면 null.
+   * 원작은 기술 쪽에서 A로 칸을 고르고, 다른 칸에서 A를 한 번 더 누르면 맞바꾼다
+   */
+  const [swapFrom, setSwapFrom] = useState<number | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -147,7 +178,7 @@ export function SummaryScreen() {
     return () => { alive = false }
   }, [locale])
 
-  const mon = party[Math.min(at, Math.max(0, party.length - 1))]
+  const mon = (boxed ? list[at] : list[Math.min(at, Math.max(0, list.length - 1))]) ?? undefined
   const info = mon && t ? t.species.of(mon) : undefined
   // 알은 메모 쪽만 볼 수 있다 (`PokemonSummaryScreen_PageIsVisble`)
   const isEgg = mon?.isEgg ?? false
@@ -157,6 +188,8 @@ export function SummaryScreen() {
   const shown = pages[pageAt] ?? 'memo'
 
   useEffect(() => { if (!pages.includes(page)) setPage(pages[0] ?? 'memo') }, [pages, page])
+  // 마리나 쪽이 바뀌면 고르던 자리 바꾸기는 무른다
+  useEffect(() => { setSwapFrom(null) }, [at, shown])
 
   const moves = mon?.moves ?? []
   /**
@@ -169,6 +202,8 @@ export function SummaryScreen() {
 
   // 쪽은 돈다 — 쪽이 하나뿐인 알이면 안 넘어가니 소리도 없다
   const stepPage = (d: number) => (): boolean => {
+    // 자리 바꾸기 동안은 ↑↓ · A · B만 받는다 (`HandleInput_MoveSwap`)
+    if (swapFrom !== null) return false
     const next = pages[(pageAt + d + pages.length) % pages.length]
     if (!next || next === shown) return false
     setPage(next)
@@ -191,10 +226,38 @@ export function SummaryScreen() {
     setMoveAt(next)
     return true
   }
+  /** 다른 마리로 — 빈 자리는 건너뛰고, 알은 메모 쪽에서만 선다 (`TryAdvanceSummaryMonIndex`) */
   const stepAt = (d: number) => (): boolean => {
-    const next = clampCursor(at, d, party.length)
-    if (next === at) return false
+    if (swapFrom !== null) return false
+    const next = nextSummaryMon(list, at, d, shown === 'memo')
+    if (next < 0) return false
     setAt(next)
+    return true
+  }
+
+  /** 닫는다. 박스가 띄운 요약은 박스에 마지막 자리를 넘긴다 */
+  const close = (): void => {
+    if (source) source.exit(at)
+    else back()
+  }
+
+  /**
+   * A (`HandleInput_Main`).
+   *
+   * ⚠️ **정보·메모·능력 쪽에서는 아무 일도 안 한다.** 원작 A는 기술·콘테스트 기술·리본·나가기
+   * 쪽에서만 받는다 — 닫는 것은 B뿐이다. 기술 쪽에서는 자리 바꾸기다 (`HandleInput_MoveDetails`
+   * → `HandleInput_MoveSwap`): 한 칸을 고르고, 다른 칸에서 다시 누르면 맞바꾼다. 같은 칸이면
+   * 그냥 내려놓는다
+   */
+  const confirm = (): boolean => {
+    if (shown !== 'moves' || !mon || moves.length === 0) return false
+    if (swapFrom === null) { setSwapFrom(moveOn); return true }
+    if (swapFrom !== moveOn) {
+      const next = swapMoveSlots(mon, swapFrom, moveOn)
+      if (source) source.write(at, next)
+      else useSaveStore.getState().setPartySlot(at, next)
+    }
+    setSwapFrom(null)
     return true
   }
 
@@ -223,23 +286,32 @@ export function SummaryScreen() {
       up: stepMon(-1),
       down: stepMon(1),
       tab: stepAt(1),
-      confirm: back,
-      cancel: back,
+      confirm,
+      // 자리 바꾸기 중의 B는 고른 칸만 내려놓는다 (`HandleInput_MoveSwap`)
+      cancel: () => { if (swapFrom !== null) setSwapFrom(null); else close() },
     })
 
   const text = (id: number): string => t?.summary[id] ?? ''
-  const name = mon ? mon.nickname ?? t?.speciesNames[mon.species] ?? '' : ''
+  // ⚠️ 알의 이름은 「알」이다 — 종족 이름을 찍으면 안에 무엇이 들었는지가 새어 나간다
+  const name = mon
+    ? mon.isEgg ? t?.speciesNames[SPECIES_EGG] ?? '' : mon.nickname ?? t?.speciesNames[mon.species] ?? ''
+    : ''
+  /** 넘겨 볼 수 있는 마리 수와 지금 몇째인가 — 박스의 빈 칸은 안 센다 */
+  const present = list.filter((m) => m !== null).length
+  const order = list.slice(0, at + 1).filter((m) => m !== null).length
 
   const foot = picking !== null
     ? '↑↓ 기술 · Z 고른다 · X 그만둔다'
-    : shown === 'moves' && moves.length > 0
-      ? '←→ 쪽 · ↑↓ 기술 · Tab 다음 포켓몬 · X 닫기'
-      : '←→ 쪽 · ↑↓ 포켓몬 · X 닫기'
+    : swapFrom !== null
+      ? '↑↓ 자리 · Z 여기와 바꾼다 · X 그만둔다'
+      : shown === 'moves' && moves.length > 0
+        ? '←→ 쪽 · ↑↓ 기술 · Z 자리 바꾸기 · Tab 다음 포켓몬 · X 닫기'
+        : '←→ 쪽 · ↑↓ 포켓몬 · X 닫기'
 
   return (
     <MenuScreen
       title={text(PAGE_TITLE[shown])}
-      note={party.length > 1 ? `${String(at + 1)} / ${String(party.length)}` : undefined}
+      note={present > 1 ? `${String(order)} / ${String(present)}` : undefined}
       foot={foot}
     >
       <div className={css.tabs} hidden={picking !== null}>
@@ -264,7 +336,7 @@ export function SummaryScreen() {
                 : shown === 'skills' ? <SkillsPage mon={mon} t={t} />
                   : (
                     <MovesPage
-                      mon={mon} t={t} at={moveOn} teach={picking?.teach ?? null}
+                      mon={mon} t={t} at={moveOn} teach={picking?.teach ?? null} swapFrom={swapFrom}
                       onPick={(i) => { setMoveAt(i) }}
                     />
                   )
@@ -300,7 +372,8 @@ function Rail(
         {/* 다 나은 뒤에 남는 점. 노력치가 계속 두 배라는 표시다 (PARITY §3.9) */}
         {!mon.isEgg && cured(mon) && <span className={own.pokerusCured} title="포켓루스">●</span>}
       </span>
-      {!mon.isEgg && <span className={own.level}>Lv.{mon.level}</span>}
+      {/* 배틀 체력판과 같은 꼴이다 (BattleScreen의 `Lv{mon.level}`) */}
+      {!mon.isEgg && <span className={own.level}>Lv{mon.level}</span>}
       {!mon.isEgg && infected(mon) && (
         <span className={own.pokerus} style={STATUS_VARS.pkrs}>포켓루스</span>
       )}
@@ -460,10 +533,12 @@ function SkillsPage({ mon, t }: { mon: PokemonInstance; t: Tables }) {
 
 /** 기술 쪽 — 넉 칸과 고른 기술의 위력·명중·설명 (`DrawBattleMovesPageWindows`) */
 function MovesPage(
-  { mon, t, at, teach, onPick }: {
+  { mon, t, at, teach, swapFrom, onPick }: {
     mon: PokemonInstance; t: Tables; at: number
     /** 「가르침」 모드에서 목록 끝에 한 줄 더 붙는 새 기술. 아니면 null */
     teach: number | null
+    /** 자리 바꾸기에서 먼저 고른 칸 — 원작은 둘째 커서(`SUMMARY_SPRITE_MOVE_SELECTOR_2`)를 거기 남긴다 */
+    swapFrom: number | null
     onPick: (i: number) => void
   },
 ) {
@@ -489,7 +564,8 @@ function MovesPage(
           return (
             <div
               key={`${String(slot.move)}/${String(i)}`}
-              className={own.move[i === at ? 'on' : 'off']}
+              className={own.move[i === at ? 'on' : i === swapFrom ? 'from' : 'off']}
+              data-swap-from={i === swapFrom ? 'on' : undefined}
               onPointerEnter={() => { onPick(i) }}
             >
               <span

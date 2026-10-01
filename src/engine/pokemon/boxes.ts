@@ -201,3 +201,41 @@ export function releaseReturns(
 export function releaseFromBox(boxes: Boxes, at: BoxSpot): Boxes {
   return withSlot(boxes, at, null)
 }
+
+// ── 요약 화면 (`pokemon_summary_screen/main.c`) ─────────────────────────────
+
+/**
+ * 요약에서 ↑↓로 넘어갈 다음 자리 (`TryAdvancePartyMonIndex` · `TryAdvanceBoxMonIndex`).
+ * 못 가면 -1이다 — 끝에서 돌지 않는다.
+ *
+ * ⚠️ **빈 자리는 건너뛴다.** 박스에서 연 요약은 서른 칸 전부를 넘겨 보는데(`monMax =
+ * MAX_MONS_PER_BOX`) 그 사이의 빈 칸에는 서지 않는다.
+ *
+ * ⚠️ **알은 메모 쪽에서만 선다** (`CanAdvanceToEgg`). 정보·능력·기술 쪽에서 넘기면 알을
+ * 건너뛴다 — 알이면 그 쪽들이 막혀 있어서, 서 버리면 보던 쪽이 바뀐다
+ */
+export function nextSummaryMon(
+  mons: readonly (PokemonInstance | null | undefined)[], at: number, delta: number, eggOk: boolean,
+): number {
+  for (let i = at + delta; i >= 0 && i < mons.length; i += delta) {
+    const mon = mons[i]
+    if (!mon) continue
+    if (mon.isEgg && !eggOk) continue
+    return i
+  }
+  return -1
+}
+
+/**
+ * 기술 두 칸을 맞바꾼 마리 (`BoxPokemon_SwapMoveSlots`) — 기술·PP·포인트업을 **한 벌로**
+ * 옮긴다. 요약의 기술 쪽에서 Z 두 번으로 바꾸는 것이 이것이다 (`SwapSelectedMoves`).
+ * 같은 칸이거나 칸 밖이면 그대로 돌려준다
+ */
+export function swapMoveSlots(mon: PokemonInstance, a: number, b: number): PokemonInstance {
+  const first = mon.moves[a], second = mon.moves[b]
+  if (a === b || !first || !second) return mon
+  const moves = [...mon.moves]
+  moves[a] = second
+  moves[b] = first
+  return { ...mon, moves }
+}

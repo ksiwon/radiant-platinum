@@ -226,6 +226,39 @@ export const detail = style({
   borderTop: `1px solid ${EDGE}`,
 })
 
+/**
+ * 미리보기 — 그림 하나와 그 옆의 글줄 (`ov19_021DB0E4`).
+ *
+ * 원작은 그림이 왼쪽 기둥에 서고 글이 그 둘레에 붙는다. 칸이 넓은 우리는 그림을 왼쪽에,
+ * 글을 오른쪽에 세운다 — 상자를 두르지 않고 그림과 글줄만 놓는다
+ */
+export const preview = style({
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: 14,
+})
+
+/** 정면 그림. 원작 80px 그림의 두 배다 — 요약 화면 기둥(150)과 같은 자료를 같은 결로 쓴다 */
+export const previewArt = style({
+  width: 160,
+  height: 160,
+  flex: '0 0 auto',
+  objectFit: 'contain',
+  imageRendering: 'pixelated',
+})
+
+export const previewText = style({
+  minWidth: 0,
+  flex: '1 1 auto',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+  paddingTop: 10,
+})
+
+/** 「지닌물건 없음」 — 원작은 이름표 없이 이 한 줄을 그대로 찍는다 */
+export const detailNone = style({ opacity: 0.62 })
+
 export const detailName = style({
   display: 'flex',
   alignItems: 'baseline',

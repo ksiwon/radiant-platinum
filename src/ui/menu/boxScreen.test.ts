@@ -4,7 +4,10 @@
 // 6열 끝에서 오른쪽을 누르면 박스를 떠난다 (`box_app_manager`의
 // `boxCol == MAX_PC_COLS - 1`). 그 경계를 안 만들면 파티로 갈 길이 Tab뿐이다.
 import { describe, expect, it } from 'vitest'
-import { move } from './BoxScreen'
+import { BOX_MODE } from '../../engine/pokemon/boxes'
+import type { PokemonInstance } from '../../engine/pokemon/instance'
+import { noOrigin } from '../../engine/pokemon/origin'
+import { monMenuItems, move } from './BoxScreen'
 
 describe('박스 안에서', () => {
   it('끝에서 안 돈다 — 왼쪽 위에서 왼쪽은 제자리 · 위는 박스 이름 머리다', () => {
@@ -55,5 +58,37 @@ describe('파티 쪽에서', () => {
     expect(move({ pane: 'party', at: 2 }, 0, 1, 2)).toEqual({ pane: 'party', at: 2 })
     // 여섯 마리면 마지막 칸까지 간다
     expect(move({ pane: 'party', at: 2 }, 0, 1, 6)).toEqual({ pane: 'party', at: 5 })
+  })
+})
+
+/**
+ * 마리 메뉴 (`BoxMenu_FillTopLevelMenuItems`). 번호는 원작 `enum BoxMenuItem`이다 —
+ * 잡는다 34 · 상태를 본다 37 · 데리고 간다 38 · 맡긴다 39 · 지닌물건 40 · 놓아준다 42 · 그만둔다 43
+ */
+describe('마리 메뉴', () => {
+  const mon = (over: Partial<PokemonInstance> = {}): PokemonInstance => ({
+    species: 387, pid: 1, nickname: null, exp: 0, level: 5,
+    ivs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
+    evs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
+    moves: [], hp: 20, status: 'ok', statusTurns: 0, heldItem: 0,
+    friendship: 70, isEgg: false, otId: 0, otSecretId: 0, ball: 0,
+    origin: noOrigin({ name: '', gender: 'male' }),
+    form: 0, pokerus: 0, mail: null,
+    ...over,
+  })
+
+  it('상태를 본다는 박스 마리에도 선다 — 맡기기 · 꺼내기 갈래도 둘째 자리다', () => {
+    expect(monMenuItems(BOX_MODE.withdraw, true, mon())).toEqual([38, 37, 42, 43])
+    expect(monMenuItems(BOX_MODE.deposit, false, mon())).toEqual([39, 37, 42, 43])
+    expect(monMenuItems(BOX_MODE.move, true, mon())).toEqual([34, 37, 38, 42, 43])
+  })
+
+  it('지닌물건은 정리하기에서 물건을 든 마리에만 선다 — 상태를 본다 바로 다음이다', () => {
+    expect(monMenuItems(BOX_MODE.move, true, mon({ heldItem: 234 }))).toEqual([34, 37, 40, 38, 42, 43])
+    expect(monMenuItems(BOX_MODE.move, false, mon({ heldItem: 234 }))).toEqual([34, 37, 40, 39, 42, 43])
+    // 알은 원작도 안 세운다 (`preview->isEgg == FALSE`)
+    expect(monMenuItems(BOX_MODE.move, true, mon({ heldItem: 234, isEgg: true }))).not.toContain(40)
+    // 맡기기 · 꺼내기 갈래에는 원작에도 없다
+    expect(monMenuItems(BOX_MODE.withdraw, true, mon({ heldItem: 234 }))).not.toContain(40)
   })
 })

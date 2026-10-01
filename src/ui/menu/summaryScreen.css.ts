@@ -236,6 +236,13 @@ export const move = styleVariants({
   on: [moveBase, {
     ...PICKED,
   }],
+  /**
+   * 자리 바꾸기에서 먼저 고른 칸. 원작은 커서를 하나 더 남겨 둔다
+   * (`SUMMARY_SPRITE_MOVE_SELECTOR_2`) — 칠하지 않고 테두리만 둘러 지금 커서와 가른다
+   */
+  from: [moveBase, {
+    boxShadow: `inset 0 0 0 2px ${vars.pick.edge}`,
+  }],
 })
 
 export const moveName = style({ flex: '1 1 auto' })

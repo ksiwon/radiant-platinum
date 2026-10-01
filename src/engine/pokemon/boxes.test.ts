@@ -9,8 +9,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   BOX_CAPACITY, BOX_COUNT, BOX_SIZE, countAll, countInBox, defaultWallpaper, emptyBoxes,
-  freeSlots, knowsMove, nextSpace, onLastAliveMon, RELEASE_BLOCKING_MOVES, releaseFromBox,
-  releaseRefusal, releaseReturns, store, swapSlots, withSlot,
+  freeSlots, knowsMove, nextSpace, nextSummaryMon, onLastAliveMon, RELEASE_BLOCKING_MOVES,
+  releaseFromBox, releaseRefusal, releaseReturns, store, swapMoveSlots, swapSlots, withSlot,
 } from './boxes'
 import { FIELD_MOVES } from '../script/fieldMoves'
 import { MAIL_ITEM_FIRST } from '../world/mail'
@@ -215,5 +215,48 @@ describe('놓아주기 (`BoxAppMan_ReleaseMonAction`)', () => {
     expect(after[2]![5]?.species).toBe(390)
     expect(boxes[2]![4]?.species).toBe(387)
     expect(countAll(after)).toBe(1)
+  })
+})
+
+describe('요약에서 넘기기 (`TryAdvanceBoxMonIndex` · `TryAdvancePartyMonIndex`)', () => {
+  it('박스의 빈 칸은 건너뛰고, 끝에서는 안 돈다', () => {
+    const box = withSlot(withSlot(emptyBoxes(), { box: 0, slot: 3 }, mon(387)), { box: 0, slot: 17 }, mon(390))[0]!
+    expect(nextSummaryMon(box, 3, 1, false)).toBe(17)
+    expect(nextSummaryMon(box, 17, -1, false)).toBe(3)
+    // 앞뒤로 더 없으면 -1 — 제자리다
+    expect(nextSummaryMon(box, 17, 1, false)).toBe(-1)
+    expect(nextSummaryMon(box, 3, -1, false)).toBe(-1)
+  })
+
+  it('알은 메모 쪽에서만 선다 (`CanAdvanceToEgg`)', () => {
+    const party = [mon(387), { ...mon(390), isEgg: true }, mon(393)]
+    expect(nextSummaryMon(party, 0, 1, false)).toBe(2)
+    expect(nextSummaryMon(party, 0, 1, true)).toBe(1)
+    expect(nextSummaryMon(party, 2, -1, false)).toBe(0)
+  })
+})
+
+describe('기술 자리 바꾸기 (`BoxPokemon_SwapMoveSlots`)', () => {
+  const four = {
+    ...mon(387),
+    moves: [
+      { move: 33, pp: 35, ppUps: 0 }, { move: 44, pp: 10, ppUps: 3 },
+      { move: 75, pp: 25, ppUps: 1 }, { move: 89, pp: 2, ppUps: 0 },
+    ],
+  }
+
+  it('기술 · PP · 포인트업이 한 벌로 옮겨 간다', () => {
+    const after = swapMoveSlots(four, 1, 3)
+    expect(after.moves[1]).toEqual({ move: 89, pp: 2, ppUps: 0 })
+    expect(after.moves[3]).toEqual({ move: 44, pp: 10, ppUps: 3 })
+    expect(after.moves[0]).toBe(four.moves[0])
+    // 원래 마리는 안 건드린다 — 스토어가 바뀐 것을 알아야 한다
+    expect(four.moves[1]?.move).toBe(44)
+  })
+
+  it('같은 칸 · 빈 칸이면 그대로다', () => {
+    expect(swapMoveSlots(four, 2, 2)).toBe(four)
+    const two = { ...four, moves: four.moves.slice(0, 2) }
+    expect(swapMoveSlots(two, 0, 3)).toBe(two)
   })
 })

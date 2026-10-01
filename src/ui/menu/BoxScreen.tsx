@@ -11,10 +11,12 @@
 // (`data/pokeIcons.png`). 벽지도 원작 것이다 — 박스 열여덟 개를 눈으로 가르는
 // 것이 이름이 아니라 벽지 색이다.
 import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import {
-  loadBoxWallpapers, loadItemNames, loadMoveNames, loadPokeIcons, loadSpecies, loadSpeciesNames,
+  loadBoxWallpapers, loadItemNames, loadItems, loadMoveNames, loadMoves, loadPokeIcons, loadSpecies,
+  loadSpeciesNames,
 } from '../../data/gameData'
-import type { SpeciesTable } from '../../data/gameData'
+import type { ItemTable, MoveTable, SpeciesTable } from '../../data/gameData'
 import type { BoxWallpapers, PokeIcons } from '../../data/schema'
 import { BOX_TEXT, fillMenuText, loadUiText, PC_MENU } from '../../data/uiText'
 import { genderOf, maxHp, natureOf, PARTY_MAX, statsOf } from '../../engine/pokemon/instance'
@@ -29,11 +31,15 @@ import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { SPECIES_CHATOT } from '../../engine/pokemon/chatotCry'
+import { ITEM_GRISEOUS_ORB, SPECIES_EGG, SPECIES_GIRATINA, spriteKey } from '../../engine/pokemon/form'
+import { mailTypeOfItem } from '../../engine/world/mail'
 import { LocationEvent } from '../../engine/world/journal'
 import { journalPlain } from '../../scene/journal'
+import { useAssetImage } from '../../data/providers/useAssetUrl'
+import { withHeldItem } from './formChange'
 import { MenuScreen } from './MenuScreen'
-import { summaryLast } from './partyChoice'
 import { boxWallpaper, monIcon } from './pokeIcon'
+import { SummaryScreen } from './SummaryScreen'
 import { useMenuKeys, wrapCursor } from './useMenuKeys'
 import * as css from './menuChrome.css'
 import * as own from './boxScreen.css'
@@ -53,8 +59,9 @@ type Pane = 'box' | 'party' | 'header'
  */
 const BOX_MENU = {
   jump: 0, wallpaper: 1, name: 2, cancel: 3, firstTheme: 4, friends1: 8, friends2: 9, firstWall: 10, firstFriendWall: 26,
-  // 마리 메뉴 — 잡는다 34 · 상태를 본다 37 · 데리고 간다 38 · 맡긴다 39 · 놓아준다 42 · 그만둔다 43 · 예 54 · 아니오 55
-  move: 34, summary: 37, withdraw: 38, store: 39, release: 42, monCancel: 43, yes: 54, no: 55,
+  // 마리 메뉴 — 잡는다 34 · 상태를 본다 37 · 데리고 간다 38 · 맡긴다 39 · 지닌물건 40 · 놓아준다 42 · 그만둔다 43 ·
+  // 예 54 · 아니오 55
+  move: 34, summary: 37, withdraw: 38, store: 39, item: 40, release: 42, monCancel: 43, yes: 54, no: 55,
 } as const
 const MENU_LABEL = 24
 /** 테마마다의 벽지 넷 (`sWallpaperPages`) */
@@ -63,8 +70,8 @@ const WALL_PAGES = [[10, 11, 12, 13], [14, 15, 16, 17], [18, 19, 20, 21], [22, 2
 const BOX_NAME_MAX = 8
 
 interface HeaderMenu {
-  /** 머리 셋(`header`·`jump`·`theme`·`walls`)과 마리 셋(`mon`·`store`·`release`) */
-  kind: 'header' | 'jump' | 'theme' | 'walls' | 'mon' | 'store' | 'release'
+  /** 머리 셋(`header`·`jump`·`theme`·`walls`)과 마리 넷(`mon`·`store`·`release`·`take`) */
+  kind: 'header' | 'jump' | 'theme' | 'walls' | 'mon' | 'store' | 'release' | 'take'
   /** 항목 — 점프·맡기기면 박스 번호, 나머지는 `BOX_MENU` 번호 */
   items: readonly number[]
   at: number
@@ -79,17 +86,22 @@ interface HeaderMenu {
  * 마킹 · 놓아준다 · 그만둔다, 맡기기·꺼내기는 맡긴다/데리고 간다 · 상태를 본다 · 마킹 ·
  * 놓아준다 · 그만둔다. 데리고 간다/맡긴다는 커서가 박스에 있는가로 갈린다.
  *
- * ⚠️ **셋이 빠져 있다.** 지닌물건은 가방을 여는 흐름(`BoxAppMan_GiveItemFromBagAction`)이고,
- * 마킹은 마리에 마킹 칸이 없다(`PokemonInstance`·저장 스키마). 상태를 본다는 **파티 마리만**
- * 선다 — 요약 화면이 파티 자리만 읽는다. 셋 다 고를 수 있게 두면 눌러도 아무 일이 없다
+ * 상태를 본다는 박스 마리도 선다 — 이 화면이 요약을 직접 띄운다 (`BoxAppMan_InitSummary`).
+ *
+ * ⚠️ **마킹이 빠져 있다.** 마리에 마킹 칸이 없다(`PokemonInstance`·저장 스키마) — 고를 수
+ * 있게 두면 눌러도 아무 일이 없다.
+ *
+ * ⚠️ **지닌물건은 물건을 든 마리에만 선다.** 원작은 알이 아니면 늘 세우고, 빈손이면 가방을
+ * 열어 쥐여 준다(`BoxAppMan_GiveItemFromBagAction`). 가방을 이 화면 위로 여는 길이 아직
+ * 없어서 빈손 갈래는 접었다 — 든 것을 가방으로 가져오는 갈래(`BoxAppMan_MonItemHeldAction`)만 선다
  */
-function monMenuItems(mode: number, inBox: boolean): number[] {
+export function monMenuItems(mode: number, inBox: boolean, mon: PokemonInstance): number[] {
   const swap = inBox ? BOX_MENU.withdraw : BOX_MENU.store
-  const summary = inBox ? [] : [BOX_MENU.summary]
   if (mode === BOX_MODE.deposit || mode === BOX_MODE.withdraw) {
-    return [swap, ...summary, BOX_MENU.release, BOX_MENU.monCancel]
+    return [swap, BOX_MENU.summary, BOX_MENU.release, BOX_MENU.monCancel]
   }
-  return [BOX_MENU.move, ...summary, swap, BOX_MENU.release, BOX_MENU.monCancel]
+  const item = !mon.isEgg && mon.heldItem !== 0 ? [BOX_MENU.item] : []
+  return [BOX_MENU.move, BOX_MENU.summary, ...item, swap, BOX_MENU.release, BOX_MENU.monCancel]
 }
 
 /** `box_messages` 뱅크 — 마리 메뉴와 놓아주기 흐름의 줄 (`BoxText_*`) */
@@ -104,29 +116,17 @@ const MON_TEXT = {
   depositWhere: 19,
   /** 「{이름} 되돌아와 버렸다!」 → 「걱정했었나...」 */
   returned: 32, worried: 33,
+  /**
+   * 지닌물건 (`BoxAppMan_MonItemHeldAction`) — 「{도구} 가져오겠습니까?」 → 「{도구} 가져왔다!」.
+   * 가방이 차면 「가방이 가득 찼습니다!」, 편지면 묻지도 않고 「메일은 가져올 수 없습니다!」
+   */
+  takeAsk: 23, took: 15, bagFull: 14, cantTakeMail: 24,
+  /** 알에게는 못 쥐여 준다 · 백금옥은 기라티나만 (`BoxAppMan_MonItemMenuAction`) */
+  eggNoItem: 34, cantHold: 45,
 } as const
 
 /** 묻기 전에 막는 까닭의 줄 (`BoxAppMan_CheckReleaseMonValid`) */
 const REFUSAL_TEXT: Record<ReleaseRefusal, number> = { egg: 31, mail: 30, lastMon: BOX_TEXT.lastMon }
-
-/**
- * 요약을 보고 돌아올 때 들고 갈 것.
- *
- * 요약을 쌓으면 `MenuLayer`가 이 화면을 내렸다가 다시 세운다 — 커서와 「옮겼다」를
- * 화면이 못 들고 있다. 원작은 요약에서 마지막으로 본 마리 자리로 커서를 둔다
- * (`BoxApp_SetCursorPosToSummaryMonPos`).
- *
- * ⚠️ 박스가 스택에서 사라지면(메뉴째 닫힘) 버린다 — 남기면 다음에 따로 연 박스가 그 자리로 선다
- */
-let resume: { moved: boolean } | null = null
-function holdForSummary(moved: boolean): void {
-  resume = { moved }
-  const stop = useMenuStore.subscribe((s) => {
-    if (s.stack.includes('box')) return
-    resume = null
-    stop()
-  })
-}
 
 /** 테마 줄 (`BoxMenu_FillWallpaperMenu`) — 애호가 줄은 푼 벽지가 있어야 서고, 다섯부터 둘째 줄이 선다 */
 function themeItems(unlocked: number): number[] {
@@ -181,9 +181,7 @@ export function BoxScreen() {
   const wallpapers = useSaveStore((s) => s.wallpapers)
   const setCurrentBox = useSaveStore((s) => s.setCurrentBox)
   // 이 화면에서 한 마리라도 옮겼는가. 노트가 나갈 때 이 값을 본다
-  const moved = useRef(resume?.moved ?? false)
-  // 돌아온 자리는 한 번만 읽는다
-  useEffect(() => { resume = null }, [])
+  const moved = useRef(false)
   const setBoxSlot = useSaveStore((s) => s.setBoxSlot)
   const setPartySlot = useSaveStore((s) => s.setPartySlot)
   const depositMon = useSaveStore((s) => s.depositMon)
@@ -194,9 +192,7 @@ export function BoxScreen() {
   // 맡기러 왔으면 파티에서, 꺼내러 왔으면 박스에서 시작한다.
   // 원작도 갈래마다 처음 잡는 손이 다르다
   const [cursor, setCursor] = useState<Cursor>(
-    () => (resume !== null
-      ? { pane: 'party', at: summaryLast.slot }
-      : { pane: mode === BOX_MODE.deposit ? 'party' : 'box', at: 0 }),
+    () => ({ pane: mode === BOX_MODE.deposit ? 'party' : 'box', at: 0 }),
   )
   const [held, setHeld] = useState<Held | null>(null)
   const [menu, setMenu] = useState<HeaderMenu | null>(null)
@@ -206,7 +202,13 @@ export function BoxScreen() {
   const [notice, setNotice] = useState<string | null>(null)
   /** 메뉴 자리에 띄운 원작 줄. Z·X로 한 줄씩 넘기고 다 읽으면 닫힌다 */
   const [say, setSay] = useState<string[] | null>(null)
-  const openSummary = useMenuStore((s) => s.openSummary)
+  /**
+   * 띄운 요약 (`BoxAppMan_OpenSummaryAction`). 그 마리가 선 칸(박스·파티)과 자리다.
+   *
+   * ⚠️ **메뉴 스택에 안 쌓는다.** 쌓으면 `MenuLayer`가 이 화면을 내렸다가 다시 세워서 커서와
+   * 「옮겼다」가 날아가고, 스택의 `summarySlot`은 파티 자리라 박스 마리를 못 가리킨다
+   */
+  const [viewing, setViewing] = useState<{ pane: 'box' | 'party'; at: number } | null>(null)
   /** 도구 옮기기(3)에서 집어 든 도구. 어디서 집었는지까지 든다 */
   const [heldItem, setHeldItem] = useState<{ from: Held; item: number } | null>(null)
   /** 비교하기(4)에 올려 둔 두 마리. 채운 차례대로 들어간다 */
@@ -215,6 +217,9 @@ export function BoxScreen() {
   const [comparePage, setComparePage] = useState(0)
   const [itemNames, setItemNames] = useState<string[]>([])
   const [moveNames, setMoveNames] = useState<string[]>([])
+  /** 도구의 주머니(가방에 넣을 때)와 폼을 바꿀 때 세는 기술 PP (`withHeldItem`) */
+  const [items, setItems] = useState<ItemTable | null>(null)
+  const [moveTable, setMoveTable] = useState<MoveTable | null>(null)
 
   /** 올려 둔 자리의 마리. 박스를 넘겨도 그 박스에서 찾는다 */
   const monAtHeld = (at: Held): PokemonInstance | null => (at.pane === 'box'
@@ -227,13 +232,14 @@ export function BoxScreen() {
       loadSpecies(), loadSpeciesNames(locale), loadPokeIcons(), loadBoxWallpapers(),
       loadUiText('storageSystem', locale), loadUiText('boxMessages', locale),
       loadUiText('menuEntries', locale), loadItemNames(locale), loadMoveNames(locale),
-      loadUiText('natureNames', locale),
+      loadUiText('natureNames', locale), loadItems(), loadMoves(),
     ])
-      .then(([table, list, icon, wall, names18, names19, entries, items, moves, natures]) => {
+      .then(([table, list, icon, wall, names18, names19, entries, itemText, moves, natures, itemData, moveData]) => {
         if (!alive) return
         setSpecies(table); setNames(list); setIcons(icon); setWalls(wall)
         setBoxText(names18); setMsg(names19); setPcText(entries)
-        setItemNames(items); setMoveNames(moves); setNatureNames(natures)
+        setItemNames(itemText); setMoveNames(moves); setNatureNames(natures)
+        setItems(itemData); setMoveTable(moveData)
       })
       .catch(() => { /* 그림과 이름만 빈다. 자리는 선다 */ })
     return () => { alive = false }
@@ -265,7 +271,10 @@ export function BoxScreen() {
     if (menu === null) return
     const item = menu.items[at]
     if (item === undefined) return
-    if (menu.kind === 'mon' || menu.kind === 'store' || menu.kind === 'release') { pickMon(menu, item); return }
+    if (menu.kind === 'mon' || menu.kind === 'store' || menu.kind === 'release' || menu.kind === 'take') {
+      pickMon(menu, item)
+      return
+    }
     if (menu.kind === 'header') {
       if (item === BOX_MENU.jump) setMenu({ kind: 'jump', items: [...Array(BOX_COUNT).keys()], at: box })
       else if (item === BOX_MENU.wallpaper) setMenu({ kind: 'theme', items: themeItems(unlockedWallpapers), at: 0 })
@@ -286,10 +295,15 @@ export function BoxScreen() {
   /** 원작 줄 하나. 마리를 주면 그 이름이 0번 칸이다 (`StringTemplate_SetNickname`) */
   const line = (at: number, mon?: PokemonInstance): string =>
     fillMenuText(msg[at] ?? '', mon ? [nameOf(mon)] : [])
+  /** 도구 이름이 0번 칸인 줄 (`StringTemplate_SetItemName(…, 0, item)`) */
+  const itemLine = (at: number, item: number): string =>
+    fillMenuText(msg[at] ?? '', [itemNames[item] ?? ''])
 
   /** Z가 마리 위에서 메뉴를 연다 (`BoxAppMan_MonCursorMenuAction`) */
   const openMonMenu = (target: Held): void => {
-    setMenu({ kind: 'mon', items: monMenuItems(mode, target.pane === 'box'), at: 0, target })
+    const mon = monAtHeld(target)
+    if (!mon) return
+    setMenu({ kind: 'mon', items: monMenuItems(mode, target.pane === 'box', mon), at: 0, target })
   }
 
   /**
@@ -318,6 +332,19 @@ export function BoxScreen() {
       moved.current = true
       return
     }
+    if (open.kind === 'take') {
+      // 예를 고르면 가방에 넣고 손을 비운다 (`ITEM_HELD_ADD_TO_BAG`). 가방이 차면 그대로 든다
+      setMenu(null)
+      if (item !== BOX_MENU.yes) return
+      const held = mon.heldItem
+      if (!useSaveStore.getState().addItem(items?.get(held).pocket ?? 0, held, 1)) {
+        setSay([msg[MON_TEXT.bagFull] ?? ''])
+        return
+      }
+      giveItem(target, mon, 0)
+      setSay([itemLine(MON_TEXT.took, held)])
+      return
+    }
     if (open.kind === 'release') {
       setMenu(null)
       if (item !== BOX_MENU.yes) return
@@ -342,10 +369,15 @@ export function BoxScreen() {
         setHeld(target)
         return
       case BOX_MENU.summary:
+        // 박스면 그 박스 서른 칸을, 파티면 파티를 넘겨 본다 (`BoxAppMan_InitSummary`)
         setMenu(null)
-        if (target.pane !== 'party') return
-        holdForSummary(moved.current)
-        openSummary(target.at)
+        setViewing(target.pane === 'box' ? { pane: 'box', at: target.at.slot } : { pane: 'party', at: target.at })
+        return
+      case BOX_MENU.item:
+        // 편지는 묻지도 않고 막는다. 나머지는 「가져오겠습니까?」를 **예에 커서를 두고** 묻는다
+        // (`BoxMenu_FillYesNo(…, 0)`)
+        if (mailTypeOfItem(mon.heldItem) !== null) { setMenu(null); setSay([msg[MON_TEXT.cantTakeMail] ?? '']); return }
+        setMenu({ kind: 'take', items: [BOX_MENU.yes, BOX_MENU.no], at: 0, target })
         return
       case BOX_MENU.withdraw:
         setMenu(null)
@@ -423,24 +455,46 @@ export function BoxScreen() {
   }
 
   /**
+   * 지닌 물건을 바꿔 쓴다 (`BoxApp_GiveItemToSelectedMon`). 기라티나·아르세우스는 든 것에 따라
+   * 모습이 바뀐다 — 원작도 여기서 폼을 다시 정한다(`BoxPokemon_SetGiratinaForm` ·
+   * `BoxPokemon_SetArceusForm`). PC 앞은 깨어진 세계가 아니라 폼을 붙드는 검사가 없다
+   */
+  const giveItem = (at: Held, mon: PokemonInstance, item: number): void => {
+    writeMon(at, withHeldItem({ ...mon, heldItem: item }, species, moveTable))
+  }
+
+  /**
    * 도구를 집고 놓는다 (`PC_MODE_MOVE_ITEMS`).
    *
    * ⚠️ **빈 칸에는 못 놓는다.** 도구는 마리가 들고 있는 것이라 놓을 데가
    * 없으면 갈 곳이 없다 — 원작도 빈 칸을 그냥 안 받는다
    */
   const grabItem = (): void => {
+    // 알은 도구를 못 든다 — 집을 것도 놓을 데도 없다 (`BoxApp_IsPreviewedMonEgg`)
+    if (selected?.isEgg) { setNotice(msg[MON_TEXT.eggNoItem] ?? null); return }
     if (heldItem === null) {
       if (!selected || selected.heldItem === 0) { setNotice('지닌 물건이 없다'); return }
+      // 편지는 떼어 낼 수 없다 (`BOX_MENU_TAKE`의 `Item_IsMail`)
+      if (mailTypeOfItem(selected.heldItem) !== null) { setNotice(msg[MON_TEXT.cantTakeMail] ?? null); return }
       const from = here()
-      writeMon(from, { ...selected, heldItem: 0 })
+      giveItem(from, selected, 0)
       setHeldItem({ from, item: selected.heldItem })
+      // 집기만 해도 박스를 쓴 것이다 (`BOX_MENU_TAKE`의 `BoxAppMan_FlagRecordBoxUseInJournal`)
+      moved.current = true
       return
     }
     if (!selected) { setNotice(msg[BOX_TEXT.noItem] ?? '여기에는 못 놓는다'); return }
+    // 백금옥은 기라티나만 든다 (`BOX_MENU_GIVE` · `BOX_MENU_SWITCH`)
+    if (heldItem.item === ITEM_GRISEOUS_ORB && selected.species !== SPECIES_GIRATINA) {
+      setNotice(itemLine(MON_TEXT.cantHold, ITEM_GRISEOUS_ORB))
+      return
+    }
+    // 맞바꿀 것이 편지면 못 바꾼다 (`BOX_MENU_SWITCH`의 `Item_IsMail`)
+    if (mailTypeOfItem(selected.heldItem) !== null) { setNotice(msg[MON_TEXT.cantTakeMail] ?? null); return }
     const to = here()
     // 상대가 이미 들고 있으면 **맞바꾼다** — 원작도 그렇다
     const swapped = selected.heldItem
-    writeMon(to, { ...selected, heldItem: heldItem.item })
+    giveItem(to, selected, heldItem.item)
     if (swapped !== 0) { setHeldItem({ from: to, item: swapped }); return }
     setHeldItem(null)
     moved.current = true
@@ -492,6 +546,12 @@ export function BoxScreen() {
     return true
   }
 
+  /** 요약에서 돌아온다 — 커서가 마지막으로 본 자리로 간다 (`BoxApp_SetCursorPosToSummaryMonPos`) */
+  const closeSummary = (at: number): void => {
+    if (viewing !== null) setCursor({ pane: viewing.pane, at })
+    setViewing(null)
+  }
+
   useMenuKeys({
     up: step(0, -1),
     down: step(0, 1),
@@ -530,7 +590,7 @@ export function BoxScreen() {
       // ⚠️ **들고 있던 도구를 돌려놓고 닫는다.** 안 그러면 도구가 사라진다
       if (heldItem !== null) {
         const owner = monAtHeld(heldItem.from)
-        if (owner) writeMon(heldItem.from, { ...owner, heldItem: heldItem.item })
+        if (owner) giveItem(heldItem.from, owner, heldItem.item)
         setHeldItem(null)
         return
       }
@@ -547,9 +607,12 @@ export function BoxScreen() {
       }
       back()
     },
-  })
+    // 요약이 떠 있는 동안 키는 요약 것이다
+  }, viewing === null)
 
-  const nameOf = (mon: PokemonInstance): string => mon.nickname ?? names[mon.species] ?? ''
+  // ⚠️ 알은 「알」이다 — 종족 이름을 찍으면 안에 무엇이 들었는지가 새어 나간다 (`BoxApp_LoadBoxMonIntoPreview`)
+  const nameOf = (mon: PokemonInstance): string =>
+    (mon.isEgg ? names[SPECIES_EGG] : mon.nickname ?? names[mon.species]) ?? ''
   /** 메뉴 위의 물음 — 머리 셋은 고정 줄, 마리 메뉴는 그 마리 이름이 든 줄 */
   const askOf = (open: HeaderMenu): string => {
     switch (open.kind) {
@@ -559,6 +622,10 @@ export function BoxScreen() {
       case 'mon': return line(MON_TEXT.selected, open.target ? monAtHeld(open.target) ?? undefined : undefined)
       case 'store': return msg[MON_TEXT.depositWhere] ?? ''
       case 'release': return msg[MON_TEXT.releaseAsk] ?? ''
+      case 'take': {
+        const mon = open.target ? monAtHeld(open.target) : null
+        return mon ? itemLine(MON_TEXT.takeAsk, mon.heldItem) : ''
+      }
       default: return ''
     }
   }
@@ -579,6 +646,23 @@ export function BoxScreen() {
           : held !== null
             ? '↑↓←→ 옮기기 · Z 놓기 · Q/E 박스 · X 되돌리기'
             : '↑↓←→ 고르기 · Z 메뉴 · Tab 파티/박스 · Q/E 박스 · X 닫기'
+
+  if (viewing !== null) {
+    const shownBox = box
+    return (
+      <SummaryScreen
+        source={{
+          mons: viewing.pane === 'box' ? current : party,
+          at: viewing.at,
+          write: (at, mon) => {
+            if (viewing.pane === 'box') setBoxSlot({ box: shownBox, slot: at }, mon)
+            else setPartySlot(at, mon)
+          },
+          exit: closeSummary,
+        }}
+      />
+    )
+  }
 
   return (
     <MenuScreen
@@ -686,7 +770,7 @@ export function BoxScreen() {
                   {mon && (
                     <span className={own.partyName}>
                       <span className={css.label}>{nameOf(mon)}</span>
-                      <span className={own.partyLevel}>Lv.{mon.level}</span>
+                      {!mon.isEgg && <span className={own.partyLevel}>Lv{mon.level}</span>}
                     </span>
                   )}
                 </div>
@@ -706,34 +790,43 @@ export function BoxScreen() {
                 moveNames={moveNames}
               />
             ) : selected && info ? (
-              <>
-                <div className={own.detailName}>
-                  {nameOf(selected)}
-                  <Gender mon={selected} ratio={info.genderRatio} />
-                  <span className={own.detailSub}>Lv.{selected.level}</span>
-                </div>
-                <div className={own.detailRow}>
-                  <span className={own.detailLabel}>종족</span>
-                  <span>
-                    No.{String(selected.species).padStart(3, '0')} {names[selected.species] ?? ''}
-                  </span>
-                </div>
-                <div className={own.detailRow}>
-                  <span className={own.detailLabel}>성격</span>
-                  <span>{natureNames[natureOf(selected.pid)] ?? ''}</span>
-                </div>
-                <div className={own.detailRow}>
-                  <span className={own.detailLabel}>HP</span>
-                  <span>{selected.hp} / {maxHp(selected, info)}</span>
-                </div>
-                {/* 도구 옮기기에서는 지닌 물건이 주인공이다 */}
-                {mode === BOX_MODE.items && (
-                  <div className={own.detailRow}>
-                    <span className={own.detailLabel}>지닌 물건</span>
-                    <span>{selected.heldItem === 0 ? '없음' : itemNames[selected.heldItem] ?? ''}</span>
-                  </div>
+              <Preview mon={selected} name={nameOf(selected)}>
+                {!selected.isEgg && (
+                  <>
+                    <div className={own.detailName}>
+                      {nameOf(selected)}
+                      <Gender mon={selected} ratio={info.genderRatio} />
+                      {/* 배틀 체력판과 같은 꼴이다 (BattleScreen의 `Lv{mon.level}`) */}
+                      <span className={own.detailSub}>Lv{selected.level}</span>
+                    </div>
+                    <div className={own.detailRow}>
+                      <span className={own.detailLabel}>종족</span>
+                      <span>
+                        No.{String(selected.species).padStart(3, '0')} {names[selected.species] ?? ''}
+                      </span>
+                    </div>
+                    <div className={own.detailRow}>
+                      <span className={own.detailLabel}>성격</span>
+                      <span>{natureNames[natureOf(selected.pid)] ?? ''}</span>
+                    </div>
+                    <div className={own.detailRow}>
+                      <span className={own.detailLabel}>HP</span>
+                      <span>{selected.hp} / {maxHp(selected, info)}</span>
+                    </div>
+                    {/* 원작 미리보기도 늘 지닌 물건 줄을 둔다 — 빈손이면 「지닌물건 없음」이다 */}
+                    <div className={own.detailRow} data-box-held={selected.heldItem}>
+                      {selected.heldItem === 0 ? (
+                        <span className={own.detailNone}>{msg[BOX_TEXT.noItem] ?? ''}</span>
+                      ) : (
+                        <>
+                          <span className={own.detailLabel}>{boxText[MENU_LABEL + BOX_MENU.item] ?? ''}</span>
+                          <span>{itemNames[selected.heldItem] ?? ''}</span>
+                        </>
+                      )}
+                    </div>
+                  </>
                 )}
-              </>
+              </Preview>
             ) : null}
             {mode === BOX_MODE.items && heldItem !== null && (
               <div className={own.detailRow}>
@@ -745,6 +838,29 @@ export function BoxScreen() {
         </div>
       </div>
     </MenuScreen>
+  )
+}
+
+/**
+ * 고른 한 마리의 미리보기 (`BoxApp_LoadBoxMonIntoPreview` · `ov19_021DB0E4`).
+ *
+ * 원작은 위 화면 왼쪽 기둥에 그 마리의 **정면 그림**을 크게 세우고(80px 그림을 `44, 84`에)
+ * 그 둘레에 종족 이름 · 도감 번호 · 별명 · 성별 · 레벨 · 지닌 물건을 찍는다. 알이면 이름 칸에
+ * 「알」만 남고 번호 · 레벨 · 지닌 물건이 다 빠진다 — 그래서 알은 그림과 이름뿐이다.
+ *
+ * ⚠️ 마킹 줄(`ov19_021DB24C`의 여섯 칸)은 없다 — 마리에 마킹 칸이 없다
+ */
+function Preview({ mon, name, children }: { mon: PokemonInstance; name: string; children: ReactNode }) {
+  const art = useAssetImage(`data/pokemon/${spriteKey(mon.species, mon.form, mon.isEgg)}_front.png`)
+  return (
+    <div className={own.preview} data-box-preview={mon.isEgg ? 'egg' : 'mon'}>
+      {art === null
+        ? <div className={own.previewArt} />
+        : <img className={own.previewArt} src={art} alt="" />}
+      <div className={own.previewText}>
+        {mon.isEgg ? <div className={own.detailName}>{name}</div> : children}
+      </div>
+    </div>
   )
 }
 
@@ -810,8 +926,9 @@ function ComparePanel(
     moveNames: string[]
   },
 ) {
+  // 알은 「알」이다 (`BoxApp_LoadBoxMonIntoComparison`이 알이면 종족 이름 칸을 쓴다)
   const nameOf = (mon: PokemonInstance): string =>
-    mon.nickname ?? names[mon.species] ?? `#${String(mon.species)}`
+    (mon.isEgg ? names[SPECIES_EGG] : mon.nickname ?? names[mon.species]) ?? `#${String(mon.species)}`
   const both = mons.filter((m): m is PokemonInstance => m !== null)
   if (!both.length) {
     return <div className={own.compareNote}>Z로 두 마리를 올린다 · Tab으로 쪽을 넘긴다</div>
