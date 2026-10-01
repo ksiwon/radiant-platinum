@@ -28,10 +28,110 @@ import {
 import { APP_ROOT } from '../../data/assetBase'
 import { useSaveStore } from '../../state/saveStore'
 import { verifyEverything } from '../../app/integrityWatch'
-import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
+import { groupLabel } from '../../import/install/groupLabels'
+import { vars } from '../theme/contract.css'
+import { useMenuKeys, wrapCursor } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
 import * as own from './dialog.css'
+
+/** 자리는 `LANGUAGES`의 차례와 같다 — 한국어 · 영어 · 일본어 */
+const pickLang = <T,>(language: Language, ko: T, en: T, ja: T): T => [ko, en, ja][language] ?? ko
+
+/**
+ * 「처음부터」의 설명과 되묻는 말.
+ *
+ * ⚠️ **'되돌릴 수 없다'고도 '언제든 되돌린다'고도 안 쓴다.** `resetSave`는 지우기
+ * 전에 `backupBeforeOverwrite`로 세이브 파일을 받고 백업 슬롯에 한 벌을 남긴다 —
+ * 그러니 되돌릴 수 없다는 말은 거짓이다. 그런데 다운로드도 슬롯 쓰기도 실패할 수
+ * 있어서(`backupReport().catch`) 늘 되돌린다고 약속할 수도 없다. 그래서 **하는 일만**
+ * 적는다.
+ *
+ * ⚠️ 「백업에서 되찾기」는 타이틀 단추의 글(`TitleScreen`의 `label`)과 글자까지
+ * 같아야 한다. 타이틀 단추는 한국어 한 벌이라 영어·일본어에서도 그 글 그대로 가리킨다
+ */
+export function resetText(language: Language): { help: string; prompt: string } {
+  const kept = pickLang(language,
+    '지우기 전에 세이브 파일로 받고, 타이틀 「백업에서 되찾기」에 한 벌을 남깁니다',
+    'It is first saved as a file, and a copy is kept under 「백업에서 되찾기」 on the title screen.',
+    '消す前にセーブファイルとして保存し、タイトルの「백업에서 되찾기」に一つ残します',
+  )
+  return {
+    help: pickLang(language,
+      `리포트를 지우고 새로 시작합니다\n${kept}`,
+      `Erases your report and starts over.\n${kept}`,
+      `レポートを消して最初から始めます\n${kept}`,
+    ),
+    prompt: pickLang(language,
+      `리포트를 지우고 처음부터 시작합니다\n${kept}\n정말로 괜찮겠습니까?`,
+      `Your report will be erased and the game starts over.\n${kept}\nIs that really all right?`,
+      `レポートを消して最初から始めます\n${kept}\n本当によろしいですか？`,
+    ),
+  }
+}
+
+/** 「에셋 확인」의 진행·결과 한 줄. `warn`이면 경고색으로 그린다 */
+interface VerifyNote { text: string; warn: boolean }
+
+/** 그룹 이름을 늘어놓는 한도. 넘으면 몇 곳인지만 말한다 — 도움말 칸은 두 줄이다 */
+const LISTED_GROUPS = 3
+
+/**
+ * 손으로 부른 에셋 확인의 결과를 플레이어 말로 적는다.
+ *
+ * ⚠️ **내부 그룹 키(`rooms`·`pokegra`…)를 그대로 안 보인다.** `groupLabel`로 그린다.
+ * 깨진 것이 있으면 끝에 할 일을 붙인다 — 다시 만드는 단추는 타이틀에만 있다.
+ * 같은 결과가 `verifyEverything`을 거쳐 타이틀의 무결성 경고에도 들어가므로 그
+ * 단추는 타이틀로 돌아가면 서 있다.
+ *
+ * `'failed'`는 확인 자체가 못 끝난 때다. 원문은 부른 쪽이 `console.warn`에 남긴다
+ */
+export function verifyNote(
+  got: Awaited<ReturnType<typeof verifyEverything>> | 'failed',
+  language: Language,
+): VerifyNote {
+  const our = <T,>(ko: T, en: T, ja: T): T => pickLang(language, ko, en, ja)
+  if (got === 'failed') {
+    return {
+      text: our('확인하지 못했습니다 — 다시 시도하세요', 'Could not check — please try again.', '確認できませんでした — もう一度お試しください'),
+      warn: true,
+    }
+  }
+  if (!got) {
+    return {
+      text: our('개발판이라 확인할 설치 기록이 없습니다', 'Dev build — nothing installed to check', '開発版なので確認する記録がありません'),
+      warn: false,
+    }
+  }
+  if (got.broken.length === 0) {
+    return {
+      text: our(`파일 ${got.ok}개가 전부 온전합니다`, `All ${got.ok} files are intact`, `ファイル${got.ok}件すべて無事です`),
+      warn: false,
+    }
+  }
+  const n = got.broken.length
+  const k = got.groups.length
+  const locale = LANGUAGES[language] ?? 'ko'
+  const names = got.groups.map((id) => groupLabel(id, locale)).join(' · ')
+  // 그룹이 안 잡혔으면(0) 부분을 말하지 않는다 — '0곳'은 말이 안 된다
+  const parts = k === 0 ? null : k <= LISTED_GROUPS ? 'names' : 'count'
+  // ⚠️ 깨진 그룹만 말한다. 나머지는 그대로 쓴다
+  return {
+    text: our(
+      `파일 ${n}개가 어긋납니다`
+        + (parts === 'names' ? ` — 다시 만들 부분: ${names}` : parts === 'count' ? ` — 다시 만들 부분 ${k}곳` : '')
+        + '\n타이틀의 「어긋난 에셋 다시 만들기」로 다시 만드세요',
+      `${n} ${n === 1 ? 'file is' : 'files are'} wrong`
+        + (parts === 'names' ? ` — parts to rebuild: ${names}`
+          : parts === 'count' ? ` — ${k} parts to rebuild` : '')
+        + '\nRebuild them with 「어긋난 에셋 다시 만들기」 on the title screen.',
+      `ファイル${n}件が食い違います`
+        + (parts === 'names' ? ` — 作り直す部分: ${names}` : parts === 'count' ? ` — 作り直す部分 ${k}か所` : '')
+        + '\nタイトルの「어긋난 에셋 다시 만들기」で作り直してください',
+    ),
+    warn: true,
+  }
+}
 
 interface Row {
   key: keyof Options | 'reset' | 'verify'
@@ -49,7 +149,14 @@ export function OptionsScreen() {
   const [cursor, setCursor] = useState(0)
   const [confirming, setConfirming] = useState(false)
   /** 손으로 부른 에셋 확인의 진행·결과. 없으면 안 눌렀다는 뜻이다 */
-  const [verifying, setVerifying] = useState<string | null>(null)
+  const [verifying, setVerifying] = useState<VerifyNote | null>(null)
+  /**
+   * 확인이 도는 중인가.
+   *
+   * ⚠️ **결과(`verifying`)와 따로 둔다.** 결과가 남아 있다고 막으면 '다시 시도하세요'
+   * 뒤에 Z를 눌러도 아무 일이 없다
+   */
+  const [busy, setBusy] = useState(false)
   const back = useMenuStore((s) => s.back)
   const closeAll = useMenuStore((s) => s.closeAll)
   const options = useOptionsStore()
@@ -73,7 +180,7 @@ export function OptionsScreen() {
    *
    * 자리는 `LANGUAGES`의 차례와 같다 — 한국어 · 영어 · 일본어
    */
-  const our = <T,>(ko: T, en: T, ja: T): T => [ko, en, ja][options.language] ?? ko
+  const our = <T,>(ko: T, en: T, ja: T): T => pickLang(options.language, ko, en, ja)
 
   // 설치된 언어와 지금 언어. 화면과 `move`가 같은 목록을 봐야 한다
   const langs = availableLanguages()
@@ -142,7 +249,7 @@ export function OptionsScreen() {
     {
       key: 'verify', label: our('에셋 확인', 'CHECK ASSETS', 'アセット確認'),
       values: [], at: 0,
-      help: verifying ?? our(
+      help: verifying?.text ?? our(
         '설치된 파일을 전부 다시 읽어 확인합니다\n켤 때마다 하지 않는 검사입니다 — 몇 분 걸립니다',
         'Re-reads every installed file and checks it.\nThis is the check we skip on every start — it takes minutes.',
         'インストール済みのファイルを全部読み直して確かめます\n起動のたびには行わない検査です — 数分かかります',
@@ -151,11 +258,7 @@ export function OptionsScreen() {
     {
       key: 'reset', label: our('처음부터', 'NEW GAME', 'はじめから'),
       values: [], at: 0,
-      help: our(
-        '리포트를 지우고 새로 시작합니다\n지운 것은 되돌릴 수 없습니다',
-        'Erases your report and starts over.\nWhat is erased cannot be brought back.',
-        'レポートを消して最初から始めます\n消したものは元に戻せません',
-      ), ours: true,
+      help: resetText(options.language).help, ours: true,
     },
   ]
 
@@ -168,26 +271,22 @@ export function OptionsScreen() {
    * 설치 기록이 없어서 `null`이 오고, 그때는 할 말이 없다고 말한다
    */
   const checkAssets = (): void => {
-    if (verifying) return
-    setVerifying(our('확인하는 중… 0%', 'Checking… 0%', '確認中… 0%'))
-    void verifyEverything((done, total) => {
-      const pct = total > 0 ? Math.round((done / total) * 100) : 0
-      setVerifying(our(`확인하는 중… ${pct}%`, `Checking… ${pct}%`, `確認中… ${pct}%`))
+    if (busy) return
+    setBusy(true)
+    const checking = (pct: number): VerifyNote => ({
+      text: our(`확인하는 중… ${pct}%`, `Checking… ${pct}%`, `確認中… ${pct}%`), warn: false,
     })
-      .then((got) => {
-        if (!got) { setVerifying(our('개발판이라 확인할 설치 기록이 없습니다', 'Dev build — nothing installed to check', '開発版なので確認する記録がありません')); return }
-        if (got.broken.length === 0) {
-          setVerifying(our(`파일 ${got.ok}개가 전부 온전합니다`, `All ${got.ok} files are intact`, `ファイル${got.ok}件すべて無事です`))
-          return
-        }
-        // ⚠️ 깨진 그룹만 말한다. 나머지는 그대로 쓴다
-        setVerifying(our(
-          `⚠️ 파일 ${got.broken.length}개가 어긋납니다 — 다시 만들 그룹: ${got.groups.join(' · ')}`,
-          `⚠️ ${got.broken.length} files are wrong — groups to rebuild: ${got.groups.join(' · ')}`,
-          `⚠️ ファイル${got.broken.length}件が食い違います — 作り直すグループ: ${got.groups.join(' · ')}`,
-        ))
+    setVerifying(checking(0))
+    void verifyEverything((done, total) => {
+      setVerifying(checking(total > 0 ? Math.round((done / total) * 100) : 0))
+    })
+      .then((got) => { setVerifying(verifyNote(got, options.language)) })
+      .catch((e: unknown) => {
+        // 원문은 플레이어 말이 아니다. 화면에는 할 일만, 원문은 콘솔에
+        console.warn('[options] 에셋 확인 실패', e)
+        setVerifying(verifyNote('failed', options.language))
       })
-      .catch((e: unknown) => { setVerifying(`⚠️ ${String(e)}`) })
+      .finally(() => { setBusy(false) })
   }
 
   const move = (delta: number): void => {
@@ -201,8 +300,9 @@ export function OptionsScreen() {
   }
 
   useMenuKeys({
-    up: () => { setCursor((c) => clampCursor(c, -1, rows.length)) },
-    down: () => { setCursor((c) => clampCursor(c, 1, rows.length)) },
+    // 원작 설정도 끝에서 감긴다 — `options_menu.c`의 `(cursor + 7 - 1) % 7` · `(cursor + 1) % 7`
+    up: () => { setCursor((c) => wrapCursor(c, -1, rows.length)) },
+    down: () => { setCursor((c) => wrapCursor(c, 1, rows.length)) },
     left: () => { move(-1) },
     right: () => { move(1) },
     confirm: () => {
@@ -223,7 +323,7 @@ export function OptionsScreen() {
     <MenuScreen
       title={at(OPTIONS_TEXT.title) || our('설정', 'OPTIONS', '設定')}
       foot={our(
-        '↑↓ 항목 · ←→ 값 · Z 결정 · X 돌아가기',
+        '↑↓ 항목 · ←→ 값 · Z 결정 · X 닫기',
         '↑↓ Item · ←→ Value · Z Set · X Back',
         '↑↓ 項目 · ←→ 値 · Z 決定 · X もどる',
       )}
@@ -256,23 +356,36 @@ export function OptionsScreen() {
             </div>
           ))}
         </div>
-        <div className={own.help}>{row?.help}</div>
+        {/* 경고는 글머리 이모지가 아니라 색으로 — OS 컬러 이모지는 게임 글꼴과 따로 논다.
+            ⚠️ 결과는 「에셋 확인」 칸에서만 보이므로 그 칸일 때만 칠한다 */}
+        <div
+          className={own.help}
+          style={row?.key === 'verify' && verifying?.warn ? { color: vars.state.bad, fontWeight: 700 } : undefined}
+        >
+          {row?.help}
+        </div>
       </div>
     </MenuScreen>
   )
 }
 
-/** 되돌릴 수 없는 것은 한 번 더 묻는다 */
+/** 리포트를 지우는 것은 한 번 더 묻는다 */
 function ResetConfirm(
   { text, language, onYes, onNo }:
   { text: string[]; language: Language; onYes: () => void; onNo: () => void },
 ) {
-  /** 자리는 `LANGUAGES`의 차례와 같다 — 한국어 · 영어 · 일본어 */
-  const our = (ko: string, en: string, ja: string): string => [ko, en, ja][language] ?? ko
+  const our = (ko: string, en: string, ja: string): string => pickLang(language, ko, en, ja)
   const [yes, setYes] = useState(false)
+  // 예/아니오는 가로로 놓였지만 두 축을 다 받는다 — 필드의 예/아니오는 ↑↓다
+  // (`field.ts`). 이 창에서만 ↑↓가 죽어 있으면 손에 익은 키가 안 먹는다.
+  // 이미 그 자리면 `false` — 안 움직인 키는 소리를 안 낸다 (`useMenuKeys`)
+  const toYes = (): boolean => { if (yes) return false; setYes(true); return true }
+  const toNo = (): boolean => { if (!yes) return false; setYes(false); return true }
   useMenuKeys({
-    left: () => { setYes(true) },
-    right: () => { setYes(false) },
+    left: toYes,
+    up: toYes,
+    right: toNo,
+    down: toNo,
     confirm: () => { if (yes) onYes(); else onNo() },
     cancel: onNo,
   })
@@ -280,11 +393,7 @@ function ResetConfirm(
     <div className={css.overlay}>
       <div className={own.center}>
         <div className={own.prompt}>
-          {our(
-            '리포트를 지우고 처음부터 시작합니다\n정말로 괜찮겠습니까?',
-            'Your report will be erased and the game starts over.\nIs that really all right?',
-            'レポートを消して最初から始めます\n本当によろしいですか？',
-          )}
+          {resetText(language).prompt}
         </div>
         <div className={own.choices}>
           <span className={yes ? own.choiceOn : own.choice}>{text[OPTIONS_TEXT.yes] ?? '예'}</span>
