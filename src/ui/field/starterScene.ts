@@ -64,20 +64,35 @@ export const SCREEN = { width: 256, height: 192 } as const
 /**
  * `otherSelectionMatrix` — 커서 스프라이트를 놓는 화면 좌표.
  *
- * 그리는 데는 안 쓴다(우리는 커서도 3D 자리에 붙인다). **화각과 카메라가 맞는지
- * 재는 잣대**다 — 이 셋을 맞히는 조합은 하나뿐이라 자유 변수가 없다
+ * 커서는 이 자리에 선다(`cursorShot`). 그리고 **화각과 카메라가 맞는지 재는 잣대**이기도
+ * 하다 — 이 셋을 맞히는 조합은 하나뿐이라 자유 변수가 없다
  */
 export const CURSOR_SCREEN: readonly (readonly [number, number])[] = [
   [78, 55], [130, 82], [172, 50],
 ]
 
 /**
- * 가방이 열리는 데 걸리는 프레임 (`psel_all`).
+ * 커서가 위아래로 떠다니는 폭과 주기 — `StartCursorMovement`의
+ * `SetupStarterRotation(…, 8 * FX32_ONE, 32)`.
  *
- * ⚠️ 곡선은 아직 안 굽는다 — 지금은 이 시간만큼 덮인 모델을 두었다가 열린
- * 모델로 갈아 끼운다. 길이는 JNT0 헤더에서 읽어 `starter/index.json`에 적어 둔다
+ * `AdvanceCursorMovementRotation`이 매 틱 `sin(360° · k / 32) · 8`을 세로 자리에 더한다.
+ * 화면 좌표라 **양수가 아래**다. `k`는 화면을 연 순간부터 센다 — 커서를 감춰 둔 동안에도
+ * 돈다(`SysTask`가 `ChooseStarter_Init`에서 바로 선다)
  */
+export const CURSOR_BOB = { pixels: 8, frames: 32 } as const
+
+/** 가방이 열리는 데 걸리는 프레임 (`psel_all`). 길이는 `starter/index.json`의 `clips`와 같다 */
 export const OPEN_FRAMES = 41
+
+/**
+ * 가방이 열리기 시작한 시각(`performance.now`) — `CHOICE_STEP_SHOW_3D_GRAPHICS`에 든 틱.
+ *
+ * 화면(`ChooseStarter`)이 적고 무대(`scene/field/StarterStage`)가 `psel_all`을 이 자리부터
+ * 돌린다. 원작은 이 단계에서 매 틱 한 프레임씩 넘기다가(`Advance3DGraphicsAnimationIfNotLastFrame`)
+ * 마지막 프레임에 닿으면 덮인 가방을 감추고 열린 가방과 볼 셋을 켠다 — 그 갈아 끼우기는
+ * `starterScene.opened`가 맡는다. 아직 안 열었으면 `null`이다
+ */
+export const bagClock: { since: number | null } = { since: null }
 
 /** 원작 프레임(초당 60) */
 export const FRAME_MS = 1000 / 60
@@ -203,4 +218,62 @@ export function projectToScreen(
     SCREEN.width / 2 + (right / depth) * scale,
     SCREEN.height / 2 - (up / depth) * scale,
   ]
+}
+
+/**
+ * 원작 화면 좌표 한 점을 **카메라에서 `depth`만큼 앞**의 3D 점으로 되돌린다 — `projectToScreen`의 역.
+ *
+ * 원작 커서는 화면에 바로 찍는 2D 스프라이트다. 우리는 3D 무대에 판으로 세우되, 시선에
+ * 수직인 판을 이 자리에 이 크기(`pixelAt`)로 놓으면 원작 화면의 그 픽셀 자리·크기에 그대로
+ * 찍힌다 — 깊이가 같은 판은 원근이 한 배율로만 줄이기 때문이다
+ */
+export function screenToWorld(
+  screen: readonly [number, number], depth: number, shot: CameraShot, halfFov = FOV_HALF,
+): [number, number, number] {
+  const [ex, ey, ez] = cameraPosition(shot)
+  const p = (shot.pitch * Math.PI) / 180
+  const px = pixelAt(depth, halfFov)
+  const right = (screen[0] - SCREEN.width / 2) * px
+  const up = (SCREEN.height / 2 - screen[1]) * px
+  // 시선 (0, −sin, −cos) · 위 (0, cos, −sin) · 오른쪽 +X
+  return [
+    ex + right,
+    ey - Math.sin(p) * depth + Math.cos(p) * up,
+    ez - Math.cos(p) * depth - Math.sin(p) * up,
+  ]
+}
+
+/** 카메라에서 `depth`만큼 앞에서 원작 화면 한 픽셀이 차지하는 길이 (DS 유닛) */
+export function pixelAt(depth: number, halfFov = FOV_HALF): number {
+  return (depth * Math.tan((halfFov * Math.PI) / 180)) / (SCREEN.height / 2)
+}
+
+/** 그 점이 카메라 앞으로 얼마나 깊은가 — 시선 방향 성분 */
+export function depthOf(point: readonly [number, number, number], shot: CameraShot): number {
+  const [, ey, ez] = cameraPosition(shot)
+  const p = (shot.pitch * Math.PI) / 180
+  // 시선이 (0, −sin, −cos)라 x는 깊이에 안 든다
+  return -(point[1] - ey) * Math.sin(p) - (point[2] - ez) * Math.cos(p)
+}
+
+/**
+ * 커서가 지금 서는 화면 좌표 — 고른 볼의 `otherSelectionMatrix`에 떠다니는 폭을 더한 것.
+ *
+ * @param frames 화면을 연 뒤 지난 프레임 (소수도 받는다)
+ */
+export function cursorShot(at: number, frames: number): [number, number] {
+  const [x, y] = CURSOR_SCREEN[at] ?? CURSOR_SCREEN[0]!
+  const k = frames % CURSOR_BOB.frames
+  return [x, y + Math.sin((2 * Math.PI * k) / CURSOR_BOB.frames) * CURSOR_BOB.pixels]
+}
+
+/**
+ * `{COLOR n}`의 글자색 — 글창 팔레트(`ev_pokeselect` 16번 첫 줄, `starter/index.json`의 `text`)의
+ * `n·2+1`번이다 (`render_text.c`의 `CHAR_CONTROL_SET_COLOR`가 `fgColor = n * 2 + 1`로 둔다).
+ *
+ * 0은 본문 색이라 창의 글자색을 그대로 쓴다 — `undefined`를 돌려준다
+ */
+export function textColor(palette: readonly string[], color: number): string | undefined {
+  if (color === 0) return undefined
+  return palette[color * 2 + 1]
 }

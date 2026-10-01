@@ -16,13 +16,11 @@
 // ⚠️ **0번은 버튼을 안 기다린다.** 원작이 `Text_IsPrinterActive`만 보고 곧바로
 // 7번으로 넘어간다 — 다 찍히면 저절로 갈린다.
 //
-// ⚠️ **관절 애니는 아직 안 굽는다.** 가방이 열리는 `psel_all`(41프레임)과 고른
-// 볼이 흔들리는 `psel_mb_*`(73프레임)가 그것이다. 지금은 그 **길이만큼** 덮인
-// 모델을 두었다가 열린 모델로 갈아 끼운다 — 박자는 원작과 같고 도중의 움직임만
-// 없다.
+// 1~3번의 `{COLOR n}`은 **원작 글창 팔레트로 칠한다** (`starter/index.json`의 `text` ·
+// `textColor`). 모부기가 초록 · 불꽃숭이가 빨강 · 팽도리가 파랑이다.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { loadDialogueBank } from '../../data/gameData'
-import { MessagePrinter, printedText } from '../../engine/script/printer'
+import { MessagePrinter, printedText, type Line } from '../../engine/script/printer'
 import { MessageSlots } from '../../engine/script/text'
 import { fieldScripts } from '../../engine/script/field'
 import { resetFade, screenFade } from '../../engine/script/fade'
@@ -34,8 +32,10 @@ import { useMenuStore } from '../../state/menuStore'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import { STARTER_BANK, STARTER_TEXT as TEXT, STARTERS } from './starterChoice'
 import {
-  BAG_NOISE_DELAY, CAMERA_FRAMES, CURSOR_DELAY, FRAME_MS, OPEN_FRAMES, PREVIEW_FRAMES,
+  BAG_NOISE_DELAY, CAMERA_FRAMES, CURSOR_DELAY, FRAME_MS, OPEN_FRAMES, PREVIEW_FRAMES, bagClock,
+  textColor,
 } from './starterScene'
+import { assets, readJson } from '../../data/providers/assetProvider'
 import * as css from './chooseStarter.css'
 
 /** `Menu_MakeYesNoChoice` — 위가 "예"다 */
@@ -71,7 +71,10 @@ export function ChooseStarter() {
   const [step, setStep] = useState<Step>('blend')
   const [pick, setPick] = useState(0)
   const [answer, setAnswer] = useState(MENU_YES)
-  const [text, setText] = useState('')
+  /** 지금 창에 보이는 줄 — 색을 입히려고 글자가 아니라 줄·조각으로 받는다 */
+  const [lines, setLines] = useState<readonly Line[]>([])
+  /** 글창 팔레트 첫 줄 (`ev_pokeselect` 16번) — `{COLOR n}`의 색 */
+  const [palette, setPalette] = useState<readonly string[]>([])
   /** 지금 글을 다 찍었나. 고를 것은 이때만 뜬다 */
   const [ready, setReady] = useState(false)
   /** 커서를 띄웠나. `choose` 글을 다 찍은 뒤다 */
@@ -82,8 +85,22 @@ export function ChooseStarter() {
 
   useEffect(() => {
     resetStarterScene()
+    bagClock.since = null
     return () => {
       resetStarterScene()
+      bagClock.since = null
+    }
+  }, [])
+
+  useEffect(() => {
+    let alive = true
+    void (readJson(assets(), 'data/starter/index.json') as Promise<{ text?: string[] }>)
+      .then((index) => {
+        if (alive) setPalette(index.text ?? [])
+      })
+      .catch(() => { /* 팔레트가 없으면 본문 색 하나로 찍는다 */ })
+    return () => {
+      alive = false
     }
   }, [])
 
@@ -144,7 +161,7 @@ export function ChooseStarter() {
 
   useEffect(() => {
     printer.current = new MessagePrinter(showing, slots.current)
-    setText('')
+    setLines([])
     setReady(false)
   }, [showing])
 
@@ -169,6 +186,8 @@ export function ChooseStarter() {
     if (step === 'blend') {
       const id = setTimeout(() => {
         fieldScripts.services.sound?.playEffect(SFX.BAG_OPEN)
+        // 무대가 이 틱부터 `psel_all`을 넘긴다 (`CHOICE_STEP_SHOW_3D_GRAPHICS`)
+        bagClock.since = performance.now()
         setStep('opening')
       }, BAG_NOISE_DELAY * FRAME_MS)
       return () => {
@@ -220,10 +239,11 @@ export function ChooseStarter() {
       const p = printer.current
       if (p === null) return
       p.tick({ pressed: false, held: false })
-      const shown = printedText(p)
+      // 바뀌었는지는 글자로 보고, 올리는 것은 색이 남은 줄이다
+      const shown = printedText(p) + p.lines.map((l) => l.runs.map((r) => r.color).join()).join('|')
       if (shown !== last) {
         last = shown
-        setText(shown)
+        setLines(p.lines.map((l) => ({ ...l, runs: [...l.runs] })))
       }
       // ⚠️ **이 화면은 인쇄기에 누름을 안 넘긴다.** 그래서 `finished`만 보면
       // 끝에서 기다리는 상태에서 영영 안 열린다 — 다 보여 준 것도 「다 됐다」다
@@ -321,9 +341,15 @@ export function ChooseStarter() {
         포켓몬이다. 여기서 그리면 DOM이 캔버스 위라 포켓몬을 덮는다
       */}
 
-      {text !== '' && (
+      {lines.some((l) => l.runs.some((r) => r.text !== '')) && (
         <div className={css.box} role="status">
-          {stripTags(text)}
+          {lines.map((line, i) => (
+            <div key={i} style={line.indent ? { paddingLeft: line.indent } : undefined}>
+              {line.runs.map((run, j) => (
+                <span key={j} style={{ color: textColor(palette, run.color) }}>{run.text}</span>
+              ))}
+            </div>
+          ))}
           {step === 'confirm' && ready && (
             <div className={css.menu} role="radiogroup" aria-label="예 아니오">
               {['예', '아니오'].map((label, at) => (
@@ -342,15 +368,4 @@ export function ChooseStarter() {
       )}
     </div>
   )
-}
-
-/**
- * `{COLOR n}` 같은 제어 표시를 뗀다.
- *
- * 이 뱅크의 1~3번이 분류와 이름에 색을 입히는데, 우리 창은 한 색이라 표시만
- * 남으면 글자로 보인다. 색은 **아직 안 쓴다** — 원작 팔레트 번호라 그대로
- * 옮길 수 없고, 잘못된 색을 지어내느니 안 칠하는 쪽이 낫다
- */
-function stripTags(s: string): string {
-  return s.replace(/\{[^}]*\}/g, '')
 }
