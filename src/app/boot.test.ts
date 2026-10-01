@@ -11,7 +11,7 @@
 //   ③ 공개판 + 미설치 → **HTTP로 안 되돌아간다.** 콘텐츠를 한 번도 안 부른다
 //   ④ partial·invalid·미지원이 각각 다른 이유로 갈린다
 //   ⑤ 설치 직후 갈아 끼운 것이 다시 켜도 복구된다
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { boot, activateInstall, type BootEnv } from './boot'
 import { assets, setAssetProvider } from '../data/providers/assetProvider'
 import { memoryPackStore, type WritablePackStore } from '../data/providers/packStore'
@@ -170,7 +170,10 @@ describe('공개판 + 설치본 없음', () => {
     await s.root.write(INSTALL_FILE, enc.encode(JSON.stringify(got)))
 
     const state = await boot(prod(s.root, s.assets))
-    expect(state).toEqual({ kind: 'install', reason: 'outdated', detail: '새로 굽는 그룹: monVariants' })
+    // 그룹은 id(`monVariants`)가 아니라 사람 이름으로 적는다
+    expect(state).toEqual({
+      kind: 'install', reason: 'outdated', detail: '새로 생긴 1가지만 더 만들면 됩니다: 이로치·암컷 모습',
+    })
     expect(assets().kind).toBe('absent')
   })
 
@@ -181,12 +184,74 @@ describe('공개판 + 설치본 없음', () => {
     expect(state.kind).toBe('install')
     if (state.kind !== 'install') return
     expect(state.reason).toBe('invalid')
+    // 화면 문장은 사람 말이고, 검사기가 준 원문은 따로 든다
+    expect(state.detail).toContain('다시 설치합니다')
+    expect(state.raw).toContain('install.json')
+  })
+
+  // 원문은 갈래 표식 옆 속성에 남는다 — 표식 자체는 그대로 견줄 수 있어야 한다
+  it('원문은 `data-boot-why`에, 갈래는 `data-boot`에 따로 적는다', async () => {
+    const dataset: Record<string, string> = { bootWhy: '지난번 것' }
+    vi.stubGlobal('document', { documentElement: { dataset } })
+    try {
+      const root = memoryPackStore()
+      await root.write(INSTALL_FILE, enc.encode('{ 반쯤 쓰다 만'))
+      await boot(prod(root))
+      expect(dataset.boot).toBe('install:invalid')
+      expect(dataset.bootWhy).toContain('install.json')
+      // 원문이 없는 갈래로 다시 뜨면 지난 원문을 지운다
+      await boot(prod(memoryPackStore()))
+      expect(dataset.boot).toBe('install:none')
+      expect('bootWhy' in dataset).toBe(false)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('⚠️ 하다 만 설치의 상태 이름(`installing`)을 화면 문장에 안 낸다', async () => {
+    const s = await installed()
+    const got = JSON.parse(new TextDecoder().decode((await s.root.read(INSTALL_FILE))!)) as {
+      state: string; commit?: unknown
+    }
+    got.state = 'installing'
+    delete got.commit
+    await s.root.write(INSTALL_FILE, enc.encode(JSON.stringify(got)))
+    const state = await boot(prod(s.root, s.assets))
+    expect(state.kind === 'install' && state.reason).toBe('partial')
+    if (state.kind !== 'install') return
+    expect(state.detail).toBe('지난번 설치가 중간에 멈췄습니다.')
+    expect(state.detail).not.toMatch(/[a-z]{4,}/)
+    expect(state.raw).toBe('state: installing')
   })
 
   it('OPFS가 없으면 unsupported다', async () => {
     const state = await boot({ dev: false, opfs: false })
     expect(state).toEqual({ kind: 'install', reason: 'unsupported' })
     expect(assets().kind).toBe('absent')
+  })
+
+  // ⚠️ **함수가 있어도 거부될 수 있다** (사생활 보호 창). 그 거부가 부팅 밖으로
+  // 새면 `boot()`이 끝나지 않고 「준비하는 중…」에서 영원히 선다
+  it('⚠️ OPFS가 있는데 열기가 거부되면 unsupported다 — 던지지 않는다', async () => {
+    const state = await boot({
+      dev: false, opfs: true,
+      probeOpfs: () => Promise.reject(new DOMException('denied', 'SecurityError')),
+    })
+    expect(state.kind === 'install' && state.reason).toBe('unsupported')
+    if (state.kind !== 'install') return
+    expect(state.detail).toContain('일반 창')
+    expect(state.raw).toBe('SecurityError: denied')
+    expect(assets().kind).toBe('absent')
+    expect(fetched).toEqual([])
+  })
+
+  it('열어 보기가 되면 그대로 설치 기록을 읽는다', async () => {
+    let probed = 0
+    const state = await boot({
+      ...prod(memoryPackStore()), probeOpfs: () => { probed++; return Promise.resolve() },
+    })
+    expect(probed).toBe(1)
+    expect(state).toEqual({ kind: 'install', reason: 'none' })
   })
 })
 

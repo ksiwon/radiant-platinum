@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest'
 import { existsSync, statSync, openSync, readSync, closeSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { bytesSource, narcCount, openNds, readHeader, type ByteSource } from './nds'
-import { explain, SUPPORTED, validatePlatinum } from './validate'
+import { explain, STEP_LABEL, SUPPORTED, validatePlatinum, type Validation } from './validate'
 import { withRom, romPath } from '../../data/romData.testkit'
 
 // ── 가짜 롬 ──────────────────────────────────────────────────────────────────
@@ -110,7 +110,27 @@ describe('가짜 롬 — 거절해야 하는 것들', () => {
     if (!got.ok) {
       expect(got.step).toBe('header')
       expect(explain(got)).toContain('Platinum')
+      // ⚠️ 화면 글에 마크다운 백틱이 글자 그대로 찍혔다 — 맨글자로 쓴다
+      expect(explain(got)).not.toContain('`')
+      // 내부 표기(`title=… maker=…`)가 아니라 사람이 읽는 문장이다
+      expect(got.detail).toBe('고른 파일의 게임 이름: MARIOKARTDS')
     }
+  })
+
+  it('진행 줄의 단계마다 사람 이름이 있다', async () => {
+    const steps: string[] = []
+    await validatePlatinum(fakeRom({ gameCode: 'CPUF' }), (s) => { steps.push(s) })
+    expect(steps.length).toBeGreaterThan(1)
+    for (const s of steps) expect(STEP_LABEL[s as keyof typeof STEP_LABEL], s).toMatch(/확인$/)
+  })
+
+  it('파일·표본에서 걸리면 계약 판 번호 대신 사람 말을 한다', () => {
+    const v: Validation = {
+      ok: false, step: 'samples',
+      why: '게임 데이터 일부의 개수가 맞지 않습니다.', detail: '/a.narc — 1개 · 필요 2개',
+    }
+    expect(explain(v)).toBe('게임 데이터 일부의 개수가 맞지 않습니다. 이 앱이 지원하는 판의 파일과 다릅니다.')
+    expect(explain({ ...v, step: 'files' })).not.toMatch(/계약|\d+판/)
   })
 
   it('오버레이 표가 없으면 거절한다', async () => {

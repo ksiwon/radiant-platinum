@@ -591,8 +591,9 @@ await run('08', '설치 기록이 ready가 되면 reload 없이 OPFS로 전환',
   await page.getByRole('heading', { name: '에셋 설치' }).waitFor({ timeout: 20_000 })
   await seed(page, { state: 'ready', groups: REQUIRED_GROUPS })
   const before = requests.length
-  // 화면을 안 새로 켠다. 설치 화면이 스스로 부팅을 다시 물을 때 갈래가 바뀐다
-  await page.getByRole('button', { name: '타이틀로 돌아가기' }).click()
+  // 화면을 안 새로 켠다. 설치 화면이 스스로 부팅을 다시 물을 때 갈래가 바뀐다.
+  // 부팅에서 뜬 설치 화면에는 돌아갈 타이틀이 없어 단추가 「설치 상태 다시 확인」이다
+  await page.getByRole('button', { name: '설치 상태 다시 확인' }).click()
   await page.waitForFunction(() => document.documentElement.dataset.boot === 'play:opfs',
     null, { timeout: 20_000 })
   const bad = contentRequests(requests.slice(before))
@@ -621,7 +622,7 @@ async function armWizard(page, bdsp = fakeBdsp(), timeout = 60_000) {
   await page.getByText('지원됩니다').waitFor({ timeout: 120_000 })
   await page.locator('input[webkitdirectory]').setInputFiles(bdsp)
   await page.getByText('찾았습니다:').waitFor({ timeout })
-  await page.getByRole('button', { name: '공간 확인하고 자리 잡기' }).click()
+  // 저장 공간은 화면이 뜰 때 스스로 잰다 — 누를 단추가 없다. 다 재면 켜진다
   await page.getByRole('button', { name: '설치 시작' })
     .and(page.locator('button:not([disabled])')).waitFor({ timeout: 30_000 })
 }
@@ -695,7 +696,7 @@ await (haveRom ? run : skip)('09', '진짜 롬으로 변환해 OPFS에 설치한
   const base = await heap()
   const t0 = Date.now()
   await page.getByRole('button', { name: '설치 시작' }).click()
-  await page.getByText(/옮겨진 그룹은 설치됐지만/).waitFor({ timeout: 900_000 })
+  await page.getByText(/만든 것은 설치됐지만/).waitFor({ timeout: 900_000 })
   const took = Date.now() - t0
   const peak = await heap()
 
@@ -749,7 +750,7 @@ await (haveRom ? run : skip)('10', '손상된 파일을 다시 만든다 (진짜
   await waitBoot(page)
   await armWizard(page)
   await page.getByRole('button', { name: '설치 시작' }).click()
-  await page.getByText(/옮겨진 그룹은 설치됐지만/).waitFor({ timeout: 900_000 })
+  await page.getByText(/만든 것은 설치됐지만/).waitFor({ timeout: 900_000 })
 
   // 한 파일을 0바이트로 자른다. 저널에는 "끝났다"고 적혀 있다 —
   // 이름만 세던 시절에는 이걸 완료로 지나갔다
@@ -765,7 +766,7 @@ await (haveRom ? run : skip)('10', '손상된 파일을 다시 만든다 (진짜
   assert(wrecked === 0, '자르지 못했다')
 
   await page.getByRole('button', { name: '설치 시작' }).click()
-  await page.getByText(/옮겨진 그룹은 설치됐지만/).waitFor({ timeout: 900_000 })
+  await page.getByText(/만든 것은 설치됐지만/).waitFor({ timeout: 900_000 })
   const got = await page.evaluate(readInstalled)
   // 견줄 노드 해시가 없어도 **다시 만들었는지**는 잰다 — 0바이트가 아니면 된다
   assert(sameAsNode(got.sha['data/moves.json'], 'moves'),
@@ -1000,7 +1001,7 @@ await (haveRom ? run : skip)('17', '두 번째 실행에서 다시 변환하지 
   await waitBoot(first)
   await armWizard(first)
   await first.getByRole('button', { name: '설치 시작' }).click()
-  await first.getByText(/옮겨진 그룹은 설치됐지만/).waitFor({ timeout: 300_000 })
+  await first.getByText(/만든 것은 설치됐지만/).waitFor({ timeout: 300_000 })
   const made = await first.evaluate(readInstalled)
   assert(sameAsNode(made.sha['data/moves.json'], 'moves'), '첫 설치가 틀렸다')
 
@@ -1207,6 +1208,9 @@ await run('27', '에셋을 지워도 리포트가 남고, 리포트를 지워도
 
   // 사람이 누르는 그 단추다. 안에서 `clearAssets(stores())`가 돈다
   await page.getByRole('button', { name: /에셋 다시 설치/ }).click({ timeout: 60_000 })
+  // 한 번 눌러서는 안 지운다 — 확인 단추가 따로 선다
+  assert(await page.evaluate(ASSETS_LEFT) === before, '확인도 안 받고 지웠다')
+  await page.getByRole('button', { name: '정말 처음부터 다시 만듭니다' }).click()
   await page.getByText('리포트는 그대로입니다').first().waitFor({ timeout: 30_000 })
   const afterAssets = await page.evaluate(ASSETS_LEFT)
   const kept = await page.evaluate(READ_REPORT)
@@ -1390,9 +1394,10 @@ await run('24', 'persist가 거부돼도 설치는 되고 경고가 뜬다', asy
   await page.goto(`${origin}/`, { waitUntil: 'load' })
   await waitBoot(page)
   await page.getByRole('heading', { name: '에셋 설치' }).waitFor({ timeout: 20_000 })
-  await page.getByRole('button', { name: '공간 확인하고 자리 잡기' }).click()
-  await page.getByText(/오래 보관/).first().waitFor({ timeout: 20_000 })
-  const said = await page.getByText(/오래 보관/).first().innerText()
+  // 보호 요청은 「설치 시작」 클릭에서만 한다(제스처). 그 전에는 화면이 뜰 때 잰
+  // 상태를 그대로 적는다 — 꺼져 있으면 그렇다고 말해야 한다
+  await page.getByText(/지우지 않도록 보호/).first().waitFor({ timeout: 20_000 })
+  const said = await page.getByText(/지우지 않도록 보호/).first().innerText()
   assert(/안 켜짐|되찾아/.test(said), `경고가 아니다: ${said}`)
   return `거부돼도 화면이 남고 경고가 뜬다 — "${said.slice(0, 40)}…"`
 })
@@ -1432,7 +1437,7 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     // (`activateInstall` → `onReady`). 둘 중 먼저 오는 쪽을 잡는다
     await Promise.race([
       atTitle(first).waitFor({ timeout: 2_400_000 }),
-      first.getByText(/옮겨진 그룹은 설치됐지만/).first().waitFor({ timeout: 2_400_000 })
+      first.getByText(/만든 것은 설치됐지만/).first().waitFor({ timeout: 2_400_000 })
         .then(() => { throw new Error('필수 그룹이 모자라 partial에서 섰다') }),
     ])
     const took = Date.now() - t0
@@ -1785,8 +1790,24 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     const fatal = errors.filter((e) => !/ResizeObserver|WebGL|Download the React/.test(e))
     assert(fatal.length === 0, `콘솔 오류: ${fatal.slice(0, 2).join(' / ')}`)
 
+    // ── 키만으로 새 게임 ──
+    //
+    // ⚠️ **위의 검사는 전부 마우스 클릭이다.** 리포트가 있을 때 「시작」이 띄우는
+    // 확인 창이 한동안 키를 못 받았는데, 클릭만 하는 시험은 그 구멍을 못 봤다.
+    // 커서는 리포트가 있으면 「이어하기」에 서므로 ←로 「시작」에 가고, 확인 창은
+    // 「그만두기」에 서므로 ←로 「처음부터 시작하기」에 간다. **맨 끝에 둔다** —
+    // 새 게임은 리포트를 지운다
+    await page.keyboard.press('ArrowLeft')
+    await page.keyboard.press('Enter')
+    await seen(page, page.getByRole('button', { name: '처음부터 시작하기' }),
+      '키로 「시작」을 눌렀는데 확인 창이 안 뜬다')
+    await page.keyboard.press('ArrowLeft')
+    await page.keyboard.press('Enter')
+    await where(page, () => location.pathname === '/intro', '키만으로는 새 게임에 못 들어간다')
+
     return `새 게임 → 오버월드(${zone.slice(0, 12)}) → 걷기 4방향 → 리포트 → `
-      + `.rpsave ${(bytes.length / 1024).toFixed(1)}kB 왕복 · 게임 중 요청 0건 · 콘솔 오류 0건`
+      + `.rpsave ${(bytes.length / 1024).toFixed(1)}kB 왕복 · 게임 중 요청 0건 · 콘솔 오류 0건 · `
+      + '키만으로 시작 → 확인 → /intro'
   },
 )
 

@@ -189,6 +189,21 @@ function hexAt(s: string, gameCode: string, what: string): number {
 type ValidationStep =
   | 'size' | 'truncated' | 'header' | 'release' | 'files' | 'samples'
 
+/**
+ * 단계의 사람 이름. 진행 줄에 이것을 쓴다.
+ *
+ * ⚠️ **식별자를 그대로 내지 않는다.** 한동안 진행 줄이 「Platinum 확인: header」였다 —
+ * 무엇을 보고 있는지 알리려고 둔 줄이 정작 사람에게는 안 읽혔다
+ */
+export const STEP_LABEL: Readonly<Record<ValidationStep, string>> = {
+  size: '파일 크기 확인',
+  truncated: '잘림 확인',
+  header: '헤더 확인',
+  release: '지역판 확인',
+  files: '필수 파일 확인',
+  samples: '내용 표본 확인',
+}
+
 export type Validation =
   | {
       ok: true
@@ -210,10 +225,12 @@ export function explain(v: Validation): string {
     // 잘려 있는 것이므로, 사용자가 할 일은 파일을 바꾸는 것이 아니라 **덤프를
     // 다시 뜨는 것**이다
     case 'truncated': return `${v.why} 덤프가 중간에 끊겼을 수 있습니다.`
-    case 'header': return `${v.why} Pokémon Platinum의 \`.nds\` 파일이 필요합니다.`
+    case 'header': return `${v.why} Pokémon Platinum의 .nds 파일이 필요합니다.`
     case 'release': return `${v.why} 지원하는 지역판인지 확인해 주세요.`
+    // ⚠️ **계약 판 번호를 안 적는다.** 「지원 계약 3판과 다릅니다」는 우리 쪽 장부의
+    // 말이라 사람에게는 아무 뜻이 없다. 숫자와 경로는 `detail`(접힌 「자세히」)에 있다
     case 'files':
-    case 'samples': return `${v.why} 지원 계약 ${String(SUPPORTED.contractVersion)}판과 다릅니다.`
+    case 'samples': return `${v.why} 이 앱이 지원하는 판의 파일과 다릅니다.`
   }
 }
 
@@ -260,7 +277,7 @@ export async function validatePlatinum(
     return {
       ok: false, step: 'header',
       why: '다른 게임입니다.',
-      detail: `title=${fs.header.title} maker=${fs.header.makerCode}`,
+      detail: `고른 파일의 게임 이름: ${fs.header.title}`,
     }
   }
   if (fs.overlays === 0) {
@@ -313,13 +330,15 @@ export async function validatePlatinum(
     const bytes = await fs.read(path)
     const got = bytes ? narcCount(bytes) : null
     if (got === null) {
-      return { ok: false, step: 'samples', why: `${path}을(를) 못 읽었습니다.` }
+      return { ok: false, step: 'samples', why: '게임 데이터 일부를 읽지 못했습니다.', detail: path }
     }
     samples[path] = got
+    // 화면에는 한 문장만 간다. 경로와 숫자는 접힌 「자세히」로 (`detail`)
     if (got !== want) {
       return {
         ok: false, step: 'samples',
-        why: `${path}의 엔트리 수가 다릅니다 (${String(got)} · 필요 ${String(want)}).`,
+        why: '게임 데이터 일부의 개수가 맞지 않습니다.',
+        detail: `${path} — ${String(got)}개 · 필요 ${String(want)}개`,
       }
     }
   }
@@ -329,7 +348,8 @@ export async function validatePlatinum(
   if (banks !== release.messageBanks) {
     return {
       ok: false, step: 'samples',
-      why: `대사 뱅크 수가 다릅니다 (${String(banks)} · ${release.locale}는 ${String(release.messageBanks)}).`,
+      why: '대사 데이터의 개수가 맞지 않습니다.',
+      detail: `대사 뱅크 ${String(banks)}개 · ${release.label}는 ${String(release.messageBanks)}개`,
     }
   }
   samples['/msgdata/pl_msg.narc'] = banks

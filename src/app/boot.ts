@@ -27,6 +27,7 @@ import { verifiedPackStore, type VerifiedStore } from '../data/providers/verifie
 import { needsSource, planAssets } from '../import/install/assetFormat'
 import { installReady, readInstall, type InstallManifest } from '../import/install/installer'
 import { missingRequired } from '../import/install/required'
+import { groupLabels } from '../import/install/groupLabels'
 import { setContentContract } from '../state/save/contract'
 import { setAvailableLocales } from '../state/optionsStore'
 
@@ -35,12 +36,24 @@ type InstallReason =
   | 'none'         // 아직 안 했다
   | 'partial'      // 하다 말았다. 이어서 할 수 있다
   | 'invalid'      // 기록이 깨졌다. 다시 설치해야 한다 (리포트는 그대로)
-  | 'unsupported'  // 이 브라우저로는 못 한다 (OPFS 없음)
-  | 'outdated'     // 설치물 모양이 낡았거나 필수 그룹이 새로 생겼다 — **원본이 있어야** 굽는다
+  | 'unsupported'  // 이 브라우저로는 못 한다 (OPFS가 없거나, 있는데 이 창에서 안 열린다)
+  | 'outdated'     // 설치물 모양이 낡았거나 필수 그룹이 새로 생겼다 — **원본이 있어야** 만든다
 
 export type BootState =
   | { kind: 'play'; source: 'dev' | 'opfs'; manifest: InstallManifest | null }
-  | { kind: 'install'; reason: InstallReason; detail?: string }
+  | {
+      kind: 'install'
+      reason: InstallReason
+      /** 화면에 그대로 나가는 문장. 합니다체고 그룹은 사람 이름으로 적는다 (`groupLabels`) */
+      detail?: string
+      /**
+       * 브라우저·검사기가 준 원문. 설치 화면의 접힌 「자세히」에만 간다.
+       *
+       * ⚠️ **`detail`에 섞지 않는다.** 예전에는 zod 메시지와 `상태: installing`이
+       * 그대로 배너에 붙었다 — 사람에게는 안 읽히고, 지원 문의에는 필요하다
+       */
+      raw?: string
+    }
 
 export interface BootEnv {
   /** `import.meta.env.DEV`. 시험이 양쪽을 다 돌릴 수 있어야 한다 */
@@ -69,12 +82,24 @@ export interface BootEnv {
   rootStore?: WritablePackStore
   /** 게임이 읽을 저장소. 같은 이유로 갈아 끼울 수 있다 */
   assetStore?: PackStore
+  /**
+   * OPFS를 **실제로 열어 본다.** 거부되면 던진다.
+   *
+   * ⚠️ **함수가 있다는 것과 열린다는 것은 다르다.** `opfsAvailable()`은
+   * `getDirectory`가 있는지만 보는데, 사생활 보호 창 같은 곳에서는 있는 함수가
+   * `SecurityError`로 거부된다. 그 거부가 `installReady`에서 그대로 터지자
+   * 부팅이 끝나지 않고 「준비하는 중…」에서 영원히 섰다. 안 주면 안 열어 본다 —
+   * 시험이 메모리 저장소를 줄 때다
+   */
+  probeOpfs?: () => Promise<void>
 }
 
 function bootEnv(): BootEnv {
+  const opfs = opfsAvailable()
   return {
     dev: import.meta.env.DEV,
-    opfs: opfsAvailable(),
+    opfs,
+    ...(opfs ? { probeOpfs: () => navigator.storage.getDirectory().then(() => undefined) } : {}),
     // 프로덕션에서는 `import.meta.env.DEV`가 상수 `false`라 이 줄이 통째로 접힌다
     ...(import.meta.env.DEV && typeof location !== 'undefined'
       && new URLSearchParams(location.search).get('assets') === 'opfs'
@@ -103,7 +128,15 @@ export async function boot(env: BootEnv = bootEnv()): Promise<BootState> {
  */
 function mark(state: BootState): BootState {
   const tag = state.kind === 'play' ? `play:${state.source}` : `install:${state.reason}`
-  if (typeof document !== 'undefined') document.documentElement.dataset.boot = tag
+  if (typeof document !== 'undefined') {
+    const root = document.documentElement
+    root.dataset.boot = tag
+    // 검사기·브라우저가 준 원문은 **옆 속성에** 둔다 (`data-boot-why`). 갈래 표식에
+    // 붙이면 `install:invalid`를 그대로 견주는 쪽이 전부 틀리게 된다
+    const raw = state.kind === 'install' ? state.raw : undefined
+    if (raw === undefined) delete root.dataset.bootWhy
+    else root.dataset.bootWhy = raw
+  }
   return state
 }
 
@@ -120,29 +153,65 @@ async function decide(env: BootEnv): Promise<BootState> {
     return { kind: 'install', reason: 'unsupported' }
   }
 
+  if (env.probeOpfs) {
+    try {
+      await env.probeOpfs()
+    } catch (e) {
+      setAssetProvider(absentAssetProvider('이 창에서는 브라우저 저장소(OPFS)를 열 수 없습니다'))
+      return {
+        kind: 'install', reason: 'unsupported',
+        detail: '이 창에서는 브라우저 저장소를 열 수 없습니다 — 사생활 보호(시크릿) 창이면 '
+          + '일반 창에서 열어 주세요.',
+        raw: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
+      }
+    }
+  }
+
   const root = env.rootStore ?? opfsPackStore(OPFS_ROOT)
   const manifest = await installReady(root)
   if (!manifest) {
     // ⚠️ **HTTP로 안 되돌아간다.** 왜 설치 화면인지만 정해서 넘긴다
     setAssetProvider(absentAssetProvider())
     const got = await readInstall(root)
-    if (got.kind === 'invalid') return { kind: 'install', reason: 'invalid', detail: got.why }
+    if (got.kind === 'invalid') {
+      return {
+        kind: 'install', reason: 'invalid',
+        detail: '설치 기록이 손상되어 처음부터 다시 설치합니다. 리포트는 그대로입니다.',
+        raw: got.why,
+      }
+    }
     if (got.kind === 'none') return { kind: 'install', reason: 'none' }
     // 기록은 멀쩡한데 산출물 모양이 낡아서 원본이 필요한 경우를 따로 말한다 —
     // "하다 말았다"와 "다시 만들어야 한다"는 사용자가 할 일이 다르다
     const stale = planAssets(got.value.groups)
     if (got.value.state === 'ready' && needsSource(stale)) {
-      const names = stale.regenerate.map((r) => r.group).join(' · ')
-      return { kind: 'install', reason: 'outdated', detail: `다시 만들 그룹: ${names}` }
+      const names = stale.regenerate.map((r) => r.group)
+      return {
+        kind: 'install', reason: 'outdated',
+        detail: `만드는 방식이 바뀐 ${String(names.length)}가지만 다시 만들면 됩니다: ${groupLabels(names)}`,
+      }
     }
     // ⚠️ **다 깔았는데 필수가 늘어난 사람도 `outdated`다.** 하다 만 것이 아니다 —
     // 그 설치 뒤에 필수 그룹이 새로 생겼다(`monVariants`·`particles`). `partial`로
     // 보내면 화면이 「지난 설치가 끝나지 않았습니다」라고 한다
     const added = missingRequired(Object.keys(got.value.groups))
     if (got.value.state === 'ready' && added.length > 0) {
-      return { kind: 'install', reason: 'outdated', detail: `새로 굽는 그룹: ${added.join(' · ')}` }
+      return {
+        kind: 'install', reason: 'outdated',
+        detail: `새로 생긴 ${String(added.length)}가지만 더 만들면 됩니다: ${groupLabels(added)}`,
+      }
     }
-    return { kind: 'install', reason: 'partial', detail: `상태: ${got.value.state}` }
+    // 상태 이름(`installing`·`partial`)은 화면에 안 낸다 — 무슨 일이 있었는지로 말한다.
+    // 이름 자체는 `data-boot`(`install:partial`)과 원문 칸에 남는다
+    return {
+      kind: 'install', reason: 'partial',
+      detail: got.value.state === 'installing'
+        ? '지난번 설치가 중간에 멈췄습니다.'
+        : got.value.state === 'ready'
+          ? '지난번 설치가 마지막 확인을 끝내지 못했습니다.'
+          : '지난번 설치에서 일부를 만들지 못했습니다.',
+      raw: `state: ${got.value.state}`,
+    }
   }
 
   activateInstall(manifest, env.assetStore)

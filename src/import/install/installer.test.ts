@@ -194,6 +194,28 @@ describe('끊기고 다시 잇기', () => {
     expect(manifest.state).toBe('ready')
   })
 
+  // ⚠️ **재개는 끝난 것부터 다시 읽는다.** 그 해싱이 끝나야 `resumed`가 나오므로,
+  // 소식이 없으면 그 사이 화면이 0%에 멈춰 있다 (IMPORT.md §4 변환 줄)
+  it('재개 전 확인이 `checking`으로 0부터 끝까지 나온다 — `resumed`보다 먼저', async () => {
+    const s = stores()
+    await run(s, [FULL[0]!, group(FULL[1]!.name, {}, { fail: '한 번 터진다' })])
+    const seen: InstallEvent[] = []
+    await run(s, FULL, { onEvent: (e) => seen.push(e) })
+
+    const checking = seen.filter((e) => e.kind === 'checking')
+    expect(checking[0]).toEqual({ kind: 'checking', done: 0, total: 1 })
+    expect(checking.at(-1)).toEqual({ kind: 'checking', done: 1, total: 1 })
+    const at = (kind: InstallEvent['kind']) => seen.findIndex((e) => e.kind === kind)
+    expect(at('checking')).toBeLessThan(at('resumed'))
+    expect(at('resumed')).toBeLessThan(at('group'))
+  })
+
+  it('처음 설치에는 확인할 것이 없어 `checking`이 안 나온다', async () => {
+    const seen: InstallEvent[] = []
+    await run(stores(), FULL, { onEvent: (e) => seen.push(e) })
+    expect(seen.some((e) => e.kind === 'checking')).toBe(false)
+  })
+
   it('⚠️ 저널만 믿지 않는다 — 파일이 사라졌으면 다시 만든다', async () => {
     // 저널을 쓴 직후 탭이 죽으면 "끝났다"고 적힌 그룹의 파일이 없을 수 있다
     const s = stores()

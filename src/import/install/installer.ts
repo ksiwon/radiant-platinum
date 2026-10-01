@@ -55,6 +55,13 @@ export type InstallEvent =
   | { kind: 'group'; name: string; index: number; total: number }
   | { kind: 'progress'; name: string; done: number; total: number }
   | { kind: 'wrote'; path: string; bytes: number }
+  /**
+   * 이미 만든 그룹을 다시 읽어 맞춰 보는 중 (파일 수 기준).
+   *
+   * ⚠️ **이게 없으면 이어하기가 멈춘 것처럼 보인다.** 재개는 끝난 그룹 전부를
+   * 해싱한 뒤에야 `resumed`를 낸다 — 1GB를 넘게 읽는 동안 화면에는 0%만 있었다
+   */
+  | { kind: 'checking'; done: number; total: number }
   | { kind: 'resumed'; skipped: string[]; rebuilt: string[] }
   | { kind: 'verifying'; done: number; total: number }
   /** 그룹 하나가 실패했다. **설치는 계속 간다** — 아래 ⚠️ 참고 */
@@ -131,7 +138,7 @@ function writeJson(store: WritablePackStore, path: string, value: unknown): Prom
 export async function readInstall(store: WritablePackStore): Promise<ReadResult<InstallManifest>> {
   const raw = await readJson(store, INSTALL_FILE)
   if (raw === undefined) return { kind: 'none' }
-  if (raw === null) return { kind: 'invalid', why: 'install.json이 JSON이 아니다' }
+  if (raw === null) return { kind: 'invalid', why: '설치 기록(install.json)을 JSON으로 읽을 수 없습니다' }
   const { parseManifest } = await import('./manifestSchema')
   return parseManifest(raw)
 }
@@ -196,10 +203,12 @@ export async function verifyGroups(
   const broken = new Map<string, Broken[]>()
   const total = names.reduce((a, n) => a + (manifest.groups[n]?.files.length ?? 0), 0)
   let done = 0
+  // 시작을 먼저 알린다. 해싱은 첫 32파일이 끝나야 소식이 오는데, 그 사이 화면이 멈춘 것처럼 보인다
+  onProgress?.(0, total)
 
   for (const name of names) {
     const group = manifest.groups[name]
-    if (!group) { broken.set(name, [{ path: name, why: 'missing', detail: '기록이 없다' }]); continue }
+    if (!group) { broken.set(name, [{ path: name, why: 'missing', detail: '설치 기록에 이 그룹이 없습니다' }]); continue }
     const bad: Broken[] = []
     for (const record of group.files) {
       const fault = await checkFile((p) => assets.read(p), record)
@@ -223,6 +232,8 @@ export async function verifyGroups(
 export async function resumableGroups(
   stores: InstallStores,
   groups: readonly GroupSpec[],
+  /** 해싱 진행 (파일 수). 설치기가 `checking`으로 내보낸다 */
+  onProgress?: (done: number, total: number) => void,
 ): Promise<{ skip: string[]; rebuild: string[]; journal: InstallJournal }> {
   const journal = await readJournal(stores.root)
   const got = await readInstall(stores.root)
@@ -238,7 +249,7 @@ export async function resumableGroups(
   // 통째로 다시 굽는 자리였다. 판이 다른 것은 파일이 멀쩡해도 다시 만든다
   const stale = listed.filter((n) => (got.value.groups[n]?.format ?? 1) !== groupFormat(n))
   const fresh = listed.filter((n) => !stale.includes(n))
-  const { ok, broken } = await verifyGroups(stores.assets, got.value, fresh)
+  const { ok, broken } = await verifyGroups(stores.assets, got.value, fresh, onProgress)
   return { skip: ok, rebuild: [...stale, ...broken.keys()], journal }
 }
 
@@ -254,7 +265,8 @@ export async function runInstall(options: InstallOptions): Promise<InstallManife
   const { root, assets, locale, groups, produce, signal, onEvent } = options
   const now = options.now ?? (() => new Date())
 
-  const { skip, rebuild } = await resumableGroups(options, groups)
+  const { skip, rebuild } = await resumableGroups(options, groups,
+    (done, total) => { onEvent?.({ kind: 'checking', done, total }) })
   if (skip.length > 0 || rebuild.length > 0) onEvent?.({ kind: 'resumed', skipped: skip, rebuilt: rebuild })
 
   const before = await readInstall(root)

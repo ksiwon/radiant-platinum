@@ -195,7 +195,12 @@ export const body = style({
 })
 
 export const ok = style({ color: vars.state.good })
-export const bad = style({ color: vars.state.bad })
+
+/**
+ * 안 된 것. **고를 수 있게 둔다** — `index.html`의 `body`가 `user-select: none`이라
+ * 그대로 두면 오류 문장을 복사해 물어볼 길이 없다. 붉은 글은 거의 늘 그 문장이다
+ */
+export const bad = style({ color: vars.state.bad, userSelect: 'text' })
 
 export const row = style({
   display: 'flex',
@@ -232,6 +237,44 @@ export const groups = style({
   gap: `${GAP.tight}px ${GAP.base}px`,
   fontSize: TEXT.small,
   alignItems: 'baseline',
+})
+
+/**
+ * 막대 위 한 줄 — 지금 하는 일 · % · 쓴 용량.
+ *
+ * ⚠️ **막대만 두지 않는다.** 이어하기는 이미 만든 것을 먼저 다시 읽고 끝에는
+ * 전부를 한 번 더 읽는다 — 그 구간에 무엇을 하는지 안 적으면 멈춘 것처럼 읽힌다
+ */
+export const progressHead = style({
+  display: 'flex',
+  alignItems: 'baseline',
+  gap: GAP.base,
+  fontSize: TEXT.small,
+  fontVariantNumeric: 'tabular-nums',
+})
+
+/**
+ * 접힌 덧붙임 (「자세히」·「진단 정보」). 원문·경로·바이트가 들어간다.
+ *
+ * 펼친 사람은 그것을 복사해 지원 문의에 붙인다 — 그래서 고를 수 있게 둔다
+ */
+export const fold = style({
+  fontSize: TEXT.tiny,
+  color: vars.ink.dim,
+})
+
+export const foldHead = style({
+  cursor: 'pointer',
+  width: 'fit-content',
+})
+
+export const foldBody = style({
+  marginTop: GAP.tight,
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-all',
+  userSelect: 'text',
+  maxHeight: 240,
+  overflowY: 'auto',
 })
 
 /** 진행 막대. 원작 막대와 같은 구조다 — 짙은 테두리 안에 흰 바탕 */

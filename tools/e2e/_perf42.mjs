@@ -78,13 +78,12 @@ async function installReal(page) {
   await page.getByText('지원됩니다').waitFor({ timeout: 180_000 })
   await page.locator('input[webkitdirectory]').setInputFiles(BDSP)
   await page.getByText('찾았습니다:').waitFor({ timeout: 600_000 })
-  await page.getByRole('button', { name: '공간 확인하고 자리 잡기' }).click()
   const go = page.getByRole('button', { name: '설치 시작' })
   await go.and(page.locator('button:not([disabled])')).waitFor({ timeout: 60_000 })
   await go.click()
   await Promise.race([
     page.getByRole('button', { name: '시작', exact: true }).waitFor({ timeout: 2_400_000 }),
-    page.getByText(/옮겨진 그룹은 설치됐지만/).first().waitFor({ timeout: 2_400_000 })
+    page.getByText(/만든 것은 설치됐지만/).first().waitFor({ timeout: 2_400_000 })
       .then(() => { throw new Error('필수 그룹이 모자라 partial에서 섰다') }),
   ])
 }
