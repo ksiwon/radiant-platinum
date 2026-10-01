@@ -30,7 +30,7 @@ type Phase = 'ask' | 'overwrite' | 'writing' | 'done' | 'failed'
  * 못했다"가 뜬다. 사실은 써졌다. 그래서 두 줄로 나눠 보여 주고, 못 받았으면
  * 그 자리에 "백업 파일 받기"를 남긴다
  */
-type Backup = { started: boolean; fileName: string } | null
+type Backup = { started: boolean } | null
 
 /**
  * 지금 키가 하는 일.
@@ -115,6 +115,19 @@ export function failedLine(common: readonly string[]): string {
   return common[SAVE_TEXT.failed] ?? ''
 }
 
+/**
+ * 리포트 아래 백업 줄의 글.
+ *
+ * ⚠️ **파일 이름을 안 적는다.** 한때 「백업 파일도 받았다 — radiant-platinum_플래티넘_…rpsave」
+ * 처럼 저장소 이름·밑줄·확장자가 대사 아래에 그대로 찍혔다. 받은 파일은 브라우저가
+ * 내려받기 목록에 이미 보여 주고, 여기서 알릴 것은 받았는지 막혔는지 하나다
+ */
+export function backupLine(backup: NonNullable<Backup>): string {
+  return backup.started
+    ? '백업 파일도 받았다'
+    : '브라우저가 백업 파일 다운로드를 막았다. 리포트는 남아 있다'
+}
+
 export function SaveScreen() {
   const [common, setCommon] = useState<string[]>([])
   /** 예·아니오. 리포트 뱅크가 아니라 메뉴 뱅크에 있다 (`YES_NO`) */
@@ -169,7 +182,7 @@ export function SaveScreen() {
         avatar: avatarState(),
       })
       .then((got) => {
-        setBackup({ started: got.backup.started, fileName: got.fileName })
+        setBackup({ started: got.backup.started })
         // 막혔으면 커서는 「백업 파일 받기」에서 시작한다
         if (got.saved) { setYes(true); setPhase('done'); return }
         console.warn('[report] 리포트를 쓰지 못했다', got.why)
@@ -185,7 +198,7 @@ export function SaveScreen() {
   const retryBackup = (): void => {
     void useSaveStore.getState().exportReport().then((got) => {
       if (got.kind === 'none') return
-      setBackup({ started: got.outcome.started, fileName: got.fileName })
+      setBackup({ started: got.outcome.started })
     })
   }
 
@@ -223,9 +236,7 @@ export function SaveScreen() {
             // 이모지 대신 경고색이다 — OS 이모지는 창 글꼴과 색이 튄다
             style={backup.started ? undefined : { color: vars.state.bad, fontWeight: 700 }}
           >
-            {backup.started
-              ? `백업 파일도 받았다 — ${backup.fileName}`
-              : '브라우저가 백업 파일 다운로드를 막았다. 리포트는 남아 있다'}
+            {backupLine(backup)}
           </div>
         )}
 
@@ -237,7 +248,8 @@ export function SaveScreen() {
           </div>
         )}
       </div>
-      <div className={css.hint}>{SAVE_HINT[keys]}</div>
+      {/* 창 없이 어두운 덮개 위에 바로 선다 — 밝은 창용 `css.hint`는 여기서 안 읽힌다 */}
+      <div className={own.hint}>{SAVE_HINT[keys]}</div>
     </div>
   )
 }

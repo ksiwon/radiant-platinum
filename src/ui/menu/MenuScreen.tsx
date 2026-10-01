@@ -12,6 +12,7 @@ export function MenuScreen({
   tag,
   note,
   foot,
+  framed,
   children,
 }: {
   title: string
@@ -21,9 +22,18 @@ export function MenuScreen({
   note?: ReactNode
   /** 바닥 조작 안내 */
   foot?: ReactNode
+  /**
+   * 3D가 주인공인 화면이라도 **창을 그린다.** 무대가 비어 뒤로 비칠 것이 없을 때다.
+   *
+   * ⚠️ 한때 명예의 전당이 기록이 없을 때도 투명 창이었다. 무대는 비워졌는데
+   * (`HallOfFameStage`가 clear) 창 얼굴도 테두리도 없어서, 마트 진열대 위에
+   * 머리·바닥 선 두 줄과 흐린 글자만 떠 있었다
+   */
+  framed?: boolean
   children: ReactNode
 }) {
-  const cinematic = title === '진화' || title === '알' || title === '명예의 전당'
+  // 3D 무대가 창 뒤를 채우는 화면 — 진화·부화·명예의 전당. 창 얼굴을 안 칠한다
+  const cinematic = !framed && (title === '진화' || title === '알' || title === '명예의 전당')
   return (
     <div className={cinematic ? css.cinematicOverlay : css.overlay}>
       <div className={cinematic ? css.cinematicScreen : css.screen}>

@@ -4,7 +4,7 @@
 // 하나에 예/아니오만 붙는다.
 import { globalStyle, style } from '@vanilla-extract/css'
 import { GAP, RADIUS, TEXT } from '../theme/scale'
-import { PICKED, WINDOW } from '../theme/window.css'
+import { PICKED, WINDOW, WINDOW_SMALL } from '../theme/window.css'
 import { vars } from '../theme/contract.css'
 import { row, rowOn } from './menuChrome.css'
 
@@ -81,18 +81,36 @@ export const choiceOn = style([choiceBase, {
  * 파일 백업 줄 — 리포트 성공 **아래** 한 줄 (IMPORT.md §10).
  *
  * 내부 저장과 다른 줄인 것이 요점이다. 같은 줄에 두면 다운로드가 막혔을 때
- * 리포트까지 실패한 것처럼 읽힌다
+ * 리포트까지 실패한 것처럼 읽힌다.
+ *
+ * ⚠️ **작은 창 한 장이다.** 한때 테두리 선만 있고 얼굴이 없어서, 어두운 글자가
+ * 덮개 너머 바닥 타일 위에 겹쳐 흐렸고 첫 글자가 왼쪽 선에 닿았다. 예/아니오와
+ * 같은 `WINDOW_SMALL`을 입는다
  */
 export const backup = style({
+  ...WINDOW_SMALL,
   display: 'flex',
   alignItems: 'center',
   gap: 10,
   maxWidth: 620,
-  padding: '8px 14px',
+  padding: '8px 18px',
   fontSize: TEXT.small,
   lineHeight: 1.6,
-  borderRadius: RADIUS.cell,
-  border: `1px solid ${vars.window.rule}`,
+})
+
+/**
+ * 리포트·되돌릴 수 없는 물음의 조작 안내 — **창 없이 어두운 덮개 위에 바로 선다.**
+ *
+ * ⚠️ `menuChrome`의 `hint`는 밝은 창 안에서 쓰는 `ink.faint`라 여기서는 덮개
+ * 위에 회청색 12px로 찍혀 확대해야 읽혔다. 어두운 바탕용 글자색으로 바꾼다 —
+ * 오프닝 안내(`intro.css`의 `hint`)와 같은 값이고, 그늘은 안 깐다 (DESIGN.md §2)
+ */
+export const hint = style({
+  fontSize: TEXT.small,
+  color: vars.ink.onDark,
+  opacity: 0.85,
+  textAlign: 'center',
+  paddingBottom: GAP.tight,
 })
 
 export const backupButton = style({

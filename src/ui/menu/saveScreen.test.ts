@@ -1,15 +1,16 @@
-// 리포트 화면의 키와 글 (`SaveScreen.tsx`의 `saveKeys` · `saveMenuKeys` · `SAVE_HINT` · `failedLine`)
+// 리포트 화면의 키와 글 (`SaveScreen.tsx`의 `saveKeys` · `saveMenuKeys` · `SAVE_HINT` · `failedLine` · `backupLine`)
 //
 // 다운로드가 막혔을 때 「백업 파일 받기」가 맨 단추뿐이라 키로는 못 눌렀다. 예/아니오는
 // ←→만 받아서 필드의 ↑↓ 손버릇이 죽었고, 다 쓴 뒤에도 안내가 「X 그만둔다」를 띄웠다.
-// 못 썼을 때는 롬 줄 대신 지은 문장 아래에 개발 말 원인을 붙였다.
+// 못 썼을 때는 롬 줄 대신 지은 문장 아래에 개발 말 원인을 붙였다. 백업 줄에는
+// 저장소 이름·확장자가 붙은 파일 이름이 그대로 찍혔다.
 import { describe, expect, it, vi } from 'vitest'
 import { SAVE_TEXT } from '../../data/uiText'
 
-const { failedLine, SAVE_HINT, saveKeys, saveMenuKeys } = await import('./SaveScreen')
+const { backupLine, failedLine, SAVE_HINT, saveKeys, saveMenuKeys } = await import('./SaveScreen')
 
-const blocked = { started: false, fileName: 'r.sav' }
-const got = { started: true, fileName: 'r.sav' }
+const blocked = { started: false }
+const got = { started: true }
 
 function acts() {
   return { setYes: vi.fn(), write: vi.fn(), back: vi.fn(), retryBackup: vi.fn(), closeAll: vi.fn() }
@@ -124,5 +125,19 @@ describe('못 썼을 때의 대사', () => {
 
   it('글이 아직 안 왔으면 비워 둔다', () => {
     expect(failedLine([])).toBe('')
+  })
+})
+
+describe('백업 줄', () => {
+  it('받았는지 막혔는지만 적는다 — 파일 이름·확장자를 안 찍는다', () => {
+    expect(backupLine(got)).toBe('백업 파일도 받았다')
+    for (const b of [got, blocked]) {
+      expect(backupLine(b)).not.toMatch(/rpsave|radiant|_/)
+    }
+  })
+
+  it('막혔으면 리포트는 남았다고 따로 알린다', () => {
+    expect(backupLine(blocked)).toContain('막았다')
+    expect(backupLine(blocked)).toContain('리포트는 남아 있다')
   })
 })

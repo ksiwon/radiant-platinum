@@ -105,11 +105,20 @@ export const FLY_SPOTS: readonly FlySpot[] = [
   { spawn: 19, map: 172, x: 26, z: 17, dx: 0, dy: 0, shape: FlyShape.SQUARE_1X1, city: true },
 ]
 
-/** 격자가 도는 범위. 지도 그림(32×24타일) 안에 들어가는 칸까지다 */
-export const GRID_MIN_X = 0
-export const GRID_MAX_X = 30
-export const GRID_MIN_Z = 4
-export const GRID_MAX_Z = 30
+/**
+ * 커서가 도는 범위 — 원작 그대로다 (`town_map/graphics.c` 커서 입력:
+ * ↑ `cursorZ >= 7` · ↓ `cursorZ <= 27` · → `cursorX <= 27` · ← `cursorX >= 2`).
+ * 그래서 z 6..28 · x 1..28이다.
+ *
+ * ⚠️ **z 29·30으로 내려가면 커서가 이름 띠 위에 선다.** 한때 30까지 열어 뒀더니
+ * 떡잎마을에서 ↓ 두 번에 커서가 지도 아래 노란 띠(그림 y 168~)로 들어가 이름도
+ * 안내도 사라졌다. z 28이 y = 7·28 − 34 = 162로 띠 바로 위다. 날 수 있는 곳도
+ * 가장 남쪽이 z 28(221번도로 · 팔파크 앞)이고 가장 서쪽이 x 1(운하시티)이다
+ */
+export const GRID_MIN_X = 1
+export const GRID_MAX_X = 28
+export const GRID_MIN_Z = 6
+export const GRID_MAX_Z = 28
 
 /**
  * 커서가 선 칸에서 날 수 있는 곳 (`TownMap_GetFlyLocationAtPos`).

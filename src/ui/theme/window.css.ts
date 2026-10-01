@@ -78,10 +78,15 @@ export const RULE = `${EDGE.rule}px solid ${vars.window.rule}`
  * 테두리도 배경도 그림자도 없다 — 목록은 글자가 늘어선 것이지 판이 쌓인 게
  * 아니다. 왼쪽 22px은 커서 자리라 고를 때 글자가 안 밀린다.
  * `div`에도 쓰이므로 `button` 전용 속성은 안 넣는다.
+ *
+ * ⚠️ **`boxSizing`을 빼면 띠가 창 테두리 밖으로 나간다.** 전역 리셋이 없어
+ * 기본값 content-box라 `width: 100%`에 가로 padding이 **더해진다.** 시작 메뉴의
+ * 고른 줄 띠가 그렇게 창 오른쪽 테두리를 6~7px 넘어 있었다
  */
 export const row = style({
   position: 'relative',
   display: 'block',
+  boxSizing: 'border-box',
   width: '100%',
   height: LINE.row,
   flex: '0 0 auto',

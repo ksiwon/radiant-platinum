@@ -74,9 +74,10 @@ export const moves = style({
 export const male = style({ color: vars.state.male })
 export const female = style({ color: vars.state.female })
 
+/** 기록이 없을 때 — 밝은 창 안이다 (`MenuScreen`의 `framed`) */
 export const empty = style({
   display: 'grid',
   placeItems: 'center',
   minHeight: 160,
-  color: vars.ink.onDarkDim,
+  color: vars.ink.faint,
 })

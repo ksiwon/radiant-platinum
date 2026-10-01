@@ -161,7 +161,8 @@ export function PCHallOfFameScreen() {
 
   if (count === 0 || !shown) {
     return (
-      <MenuScreen title="명예의 전당" foot="X 닫기">
+      // 기록이 없으면 무대가 비어 있다 — 뒤로 비칠 것이 없으니 창을 그린다
+      <MenuScreen title="명예의 전당" foot="X 닫기" framed>
         <div className={css.empty}>아직 전당에 든 기록이 없다.</div>
       </MenuScreen>
     )
