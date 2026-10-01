@@ -26,7 +26,18 @@ export function fieldWeatherKind(weather: number): FieldWeatherKind {
 }
 
 interface WeatherProfile {
+  /** 3인칭 입자 수 */
   count: number
+  /**
+   * 1인칭 입자 수. 상자가 작아지므로(`FIRST_LAYOUT`) 같은 수로도 여섯 배 빽빽하다.
+   *
+   * 빗방울만 2.5배로 더 늘린다 — 3인칭 부감은 위에서 내려다보는 겹침 덕에 성긴
+   * 비도 비로 읽히지만, 수평 시선에서는 앞에 선 가닥 수가 곧 빗발이다.
+   *
+   * 값이 가장 큰 폭풍 650개가 프레임당 행렬 갱신 0.09~0.17ms(노드에서 5000프레임
+   * 평균, 여러 판) · 그리기 한 번 · 삼각형 10,400개다 — 프레임 예산(16.7ms)의 1%다
+   */
+  firstCount: number
   fall: number
   drift: number
   color: string
@@ -36,16 +47,86 @@ interface WeatherProfile {
 
 export function weatherProfile(kind: FieldWeatherKind): WeatherProfile | null {
   switch (kind) {
-    case 'rain': return { count: 190, fall: 19, drift: 2.2, color: '#a7cfff', opacity: 0.72, shape: 'drop' }
-    case 'storm': return { count: 260, fall: 24, drift: 3.6, color: '#c3dcff', opacity: 0.82, shape: 'drop' }
-    case 'snow': return { count: 150, fall: 2.5, drift: 1.4, color: '#ffffff', opacity: 0.82, shape: 'flake' }
-    case 'blizzard': return { count: 240, fall: 5.2, drift: 8.5, color: '#f1f7ff', opacity: 0.9, shape: 'flake' }
-    case 'ash': return { count: 130, fall: 1.6, drift: 2.8, color: '#b6aaa1', opacity: 0.56, shape: 'grain' }
-    case 'sand': return { count: 220, fall: 0.35, drift: 11, color: '#d7b66e', opacity: 0.58, shape: 'grain' }
-    case 'hail': return { count: 110, fall: 12, drift: 2, color: '#d9f3ff', opacity: 0.86, shape: 'grain' }
-    case 'spirits': return { count: 46, fall: -0.55, drift: 1.2, color: '#b58cff', opacity: 0.7, shape: 'orb' }
+    case 'rain': return { count: 190, firstCount: 480, fall: 19, drift: 2.2, color: '#a7cfff', opacity: 0.72, shape: 'drop' }
+    case 'storm': return { count: 260, firstCount: 650, fall: 24, drift: 3.6, color: '#c3dcff', opacity: 0.82, shape: 'drop' }
+    case 'snow': return { count: 150, firstCount: 150, fall: 2.5, drift: 1.4, color: '#ffffff', opacity: 0.82, shape: 'flake' }
+    case 'blizzard': return { count: 240, firstCount: 240, fall: 5.2, drift: 8.5, color: '#f1f7ff', opacity: 0.9, shape: 'flake' }
+    case 'ash': return { count: 130, firstCount: 130, fall: 1.6, drift: 2.8, color: '#b6aaa1', opacity: 0.56, shape: 'grain' }
+    case 'sand': return { count: 220, firstCount: 220, fall: 0.35, drift: 11, color: '#d7b66e', opacity: 0.58, shape: 'grain' }
+    case 'hail': return { count: 110, firstCount: 110, fall: 12, drift: 2, color: '#d9f3ff', opacity: 0.86, shape: 'grain' }
+    case 'spirits': return { count: 46, firstCount: 46, fall: -0.55, drift: 1.2, color: '#b58cff', opacity: 0.7, shape: 'orb' }
     default: return null
   }
+}
+
+/** 카메라 갈래. `worldState.camera.mode`와 같다 */
+type WeatherView = 'third' | 'first'
+
+/** 날씨 입자를 까는 상자 */
+interface WeatherLayout {
+  /** 가로·세로 반폭(타일). 상자는 `2·range × 2·range`다 */
+  range: number
+  /** 높이(타일) */
+  height: number
+  /** 상자 중심을 시선 앞쪽으로 미는 거리(타일) */
+  ahead: number
+  /** 빗방울 원통의 굵기·길이 배율. 기하는 하나고 인스턴스 축척으로 늘린다 */
+  dropWidth: number
+  dropLength: number
+}
+
+/** 3인칭. 플레이어를 가운데 두고 위에서 내려다본다 */
+export const THIRD_LAYOUT: WeatherLayout = {
+  range: 22, height: 18, ahead: 0, dropWidth: 1, dropLength: 1,
+}
+
+/**
+ * 1인칭.
+ *
+ * ⚠️ 3인칭 상자(44×44×18칸)를 그대로 쓰면 비가 0.0055개/칸³라, 85° 화각 앞
+ * 10칸 부채꼴(높이 18)에 일곱 가닥 남짓이다 — 안개만 끼고 비는 안 오는 화면이
+ * 된다. 그래서 상자를 24×24×10칸으로 줄이고 중심을 시선 앞 5칸으로 민다(뒤
+ * 7칸 · 앞 17칸). 비 480개면 0.083개/칸³로 같은 부채꼴에 예순 가닥이 넘는다
+ * (`weatherVisual.test`).
+ *
+ * 빗방울은 반지름 평균 0.015 → 0.025, 길이 0.82 → 1.15다. 눈높이에서 보면
+ * 3인칭 굵기로는 한 픽셀도 안 되는 실선이다
+ */
+export const FIRST_LAYOUT: WeatherLayout = {
+  range: 12, height: 10, ahead: 5, dropWidth: 0.025 / 0.015, dropLength: 1.15 / 0.82,
+}
+
+export function weatherLayout(view: WeatherView): WeatherLayout {
+  return view === 'first' ? FIRST_LAYOUT : THIRD_LAYOUT
+}
+
+/** 그 시점에서 그리는 입자 수 */
+export function weatherCount(profile: WeatherProfile, view: WeatherView): number {
+  return view === 'first' ? profile.firstCount : profile.count
+}
+
+/** 인스턴스를 잡아 둘 수. 시점이 바뀌어도 다시 안 만들고 `mesh.count`로 줄인다 */
+export function weatherCapacity(profile: WeatherProfile): number {
+  return Math.max(profile.count, profile.firstCount)
+}
+
+/** 상자 안 입자 밀도(개/칸³) */
+export function weatherDensity(profile: WeatherProfile, view: WeatherView): number {
+  const { range, height } = weatherLayout(view)
+  return weatherCount(profile, view) / (4 * range * range * height)
+}
+
+/**
+ * 월드 좌표 `world`를 `center` 둘레 `[−range, range)`로 접은 상대 좌표.
+ *
+ * 1인칭은 상자 중심이 시선을 따라 돈다. 입자를 상자에 붙여 두면 고개를 돌릴
+ * 때 빗발 전체가 옆으로 미끄러진다. 그래서 입자는 **월드에 고정된 격자**로
+ * 두고 상자는 창문처럼 그 위를 움직인다 — 넘어간 입자는 반대편 끝(뒤쪽이나
+ * 안개 속)에서 다시 나온다
+ */
+export function wrapAround(world: number, center: number, range: number): number {
+  const size = range * 2
+  return ((((world - center + range) % size) + size) % size) - range
 }
 
 interface WeatherFogProfile {

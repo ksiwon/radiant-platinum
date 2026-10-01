@@ -6,12 +6,32 @@
 //
 // 셰이더를 쓸 일이 아니다 — 2×N 캔버스 하나면 충분하고, 배틀 무대와 오버월드가
 // 같은 함수를 쓰므로 하늘색이 두 화면에서 어긋나지 않는다.
-import { CanvasTexture, LinearFilter, SRGBColorSpace } from 'three'
+import { CanvasTexture, Color, LinearFilter, SRGBColorSpace } from 'three'
+
+/**
+ * **지평선이 그라디언트의 어디에 오는가.** 0.5다.
+ *
+ * 하늘은 캔버스 위→아래 그라디언트를 구 **전체**에 입힌다. 구의 v는 극각에
+ * 비례하고 돔 중심이 y=0이라(`MapStreamer`의 하늘 돔), 수평 시선은 정확히
+ * 그라디언트의 한가운데를 본다. 0.5 아래(0.68 · 0.86 · 1)는 적도 밑이라 거의
+ * 안 보인다.
+ *
+ * ⚠️ 그래서 **0.5 자리에 안개색을 정지점으로 박는다.** 이 정지점이 없던 때
+ * 지평선은 0.42와 0.68 사이를 보간한 값이었다 — 낮이 #8eb8dc인데 안개는
+ * #c3dbe6이라, 안개에 묻힌 먼 땅이 바로 위 하늘보다 밝아서 지형과 하늘 사이에
+ * 희뿌연 띠가 떴다. 반대로 안개를 #8eb8dc로 내리면 땅 전체가 파랗고 칙칙해진다.
+ * 그래서 안개는 두고 0.42~0.5 구간을 안개색까지 끌어올린다 — 실제 하늘도
+ * 지평선 쪽이 희다
+ */
+export const HORIZON = 0.5
 
 /** 하늘 한 벌. `stops`는 위(0)에서 아래(1)로 간다 */
 interface SkyPreset {
   stops: readonly (readonly [number, string])[]
-  /** 안개 색. 지평선 색과 같아야 먼 지형이 하늘로 녹아든다 */
+  /**
+   * 안개 색. **`HORIZON` 정지점과 같아야 한다** — 먼 지형이 하늘로 녹아든다
+   * (`sky.test`가 `skyAt`으로 다섯 벌 전부 잰다)
+   */
   fog: string
   /** 안개가 시작하고 끝나는 거리(타일) */
   fogNear: number
@@ -21,13 +41,15 @@ interface SkyPreset {
 /**
  * 낮.
  *
- * 아래로 갈수록 옅어지다 지평선에서 지면 색으로 넘어간다. 마지막 정지점을
- * 지면 계열로 두는 것이 요령이다 — 하늘색으로 끝내면 지평선에 띠가 생긴다.
+ * 아래로 갈수록 옅어져 지평선(`HORIZON`)에서 안개색이 된다. 그 밑 0.68~0.86은
+ * 적도 아래라 거의 안 보이고, 마지막 정지점은 지면 계열이다 — 하늘색으로
+ * 끝내면 지형 끝에 띠가 생긴다.
  */
 export const DAY: SkyPreset = {
   stops: [
     [0, '#3f6ea8'],
     [0.42, '#79aad6'],
+    [HORIZON, '#c3dbe6'],
     [0.68, '#bcd9ea'],
     [0.86, '#dcebe8'],
     [1, '#a8bf94'],
@@ -87,31 +109,31 @@ export interface TimeLook extends SkyPreset {
  */
 export const TIME_LOOKS: readonly TimeLook[] = [
   {
-    stops: [[0, '#5b7fae'], [0.4, '#9db6cf'], [0.7, '#e2d0bd'], [0.88, '#f0d8bc'], [1, '#b0bd90']],
+    stops: [[0, '#5b7fae'], [0.4, '#9db6cf'], [HORIZON, '#e0d2c2'], [0.7, '#e2d0bd'], [0.88, '#f0d8bc'], [1, '#b0bd90']],
     fog: '#e0d2c2', fogNear: 34, fogFar: 120,
     sun: 0.92, sunColor: '#ffe6c4', ambient: 0.82,
     skyColor: '#cfe0f0', groundColor: '#9a8a6a', fill: 0.34,
   },
   {
-    stops: [[0, '#3f6ea8'], [0.42, '#79aad6'], [0.68, '#bcd9ea'], [0.86, '#dcebe8'], [1, '#a8bf94']],
+    stops: [[0, '#3f6ea8'], [0.42, '#79aad6'], [HORIZON, '#c3dbe6'], [0.68, '#bcd9ea'], [0.86, '#dcebe8'], [1, '#a8bf94']],
     fog: '#c3dbe6', fogNear: 38, fogFar: 130,
     sun: 1.05, sunColor: '#fff4e0', ambient: 0.85,
     skyColor: '#d4e9f7', groundColor: '#8d8468', fill: 0.38,
   },
   {
-    stops: [[0, '#37507f'], [0.36, '#7d6a97'], [0.64, '#d78b62'], [0.85, '#f0a86a'], [1, '#9a8a63']],
+    stops: [[0, '#37507f'], [0.36, '#7d6a97'], [HORIZON, '#d99a70'], [0.64, '#d78b62'], [0.85, '#f0a86a'], [1, '#9a8a63']],
     fog: '#d99a70', fogNear: 30, fogFar: 110,
     sun: 0.78, sunColor: '#ffbe86', ambient: 1.06,
     skyColor: '#e0a882', groundColor: '#6e5a44', fill: 0.30,
   },
   {
-    stops: [[0, '#243459'], [0.42, '#3a4f7d'], [0.72, '#57709f'], [0.9, '#7387ac'], [1, '#65707f']],
+    stops: [[0, '#243459'], [0.42, '#3a4f7d'], [HORIZON, '#5b6d9c'], [0.72, '#57709f'], [0.9, '#7387ac'], [1, '#65707f']],
     fog: '#5b6d9c', fogNear: 26, fogFar: 100,
     sun: 0.45, sunColor: '#9fb6e0', ambient: 1.00,
     skyColor: '#99b2e4', groundColor: '#6b7285', fill: 0.34,
   },
   {
-    stops: [[0, '#182444'], [0.42, '#26365c'], [0.72, '#3c507c'], [0.9, '#4f6091'], [1, '#4a525f']],
+    stops: [[0, '#182444'], [0.42, '#26365c'], [HORIZON, '#425678'], [0.72, '#3c507c'], [0.9, '#4f6091'], [1, '#4a525f']],
     fog: '#425678', fogNear: 22, fogFar: 88,
     sun: 0.36, sunColor: '#8ea6d6', ambient: 0.80,
     skyColor: '#8aa4de', groundColor: '#5a6172', fill: 0.28,
@@ -390,20 +412,92 @@ export function mixHex(a: string, b: string, k: number): string {
 }
 
 /**
+ * 그라디언트의 `v` 자리 색. 캔버스 `createLinearGradient`와 같은 계산이다 —
+ * 이웃한 두 정지점을 sRGB 8비트에서 선형으로 잇고, 양끝 밖은 끝 색으로 붙든다.
+ *
+ * 안개색이 지평선과 맞는지를 이걸로 잰다. 눈으로 맞추면 어긋난다
+ */
+export function skyAt(stops: SkyPreset['stops'], v: number): string {
+  const first = stops[0]!, last = stops[stops.length - 1]!
+  if (v <= first[0]) return first[1]
+  if (v >= last[0]) return last[1]
+  for (let i = 1; i < stops.length; i++) {
+    const [at, col] = stops[i]!
+    if (v > at) continue
+    const [prevAt, prevCol] = stops[i - 1]!
+    return at === prevAt ? col : mixHex(prevCol, col, (v - prevAt) / (at - prevAt))
+  }
+  return last[1]
+}
+
+/** 날씨가 하늘·안개를 물들이는 몫. `weatherFogProfile`의 `tint`·`mix`다 */
+interface SkyAtmosphere {
+  tint: string
+  mix: number
+}
+
+/**
+ * 날씨를 탄 안개색. `MapStreamer`가 안개에 넣는 것과 **같은 계산**이다 —
+ * three `Color`의 `lerp`라 선형 공간에서 섞는다. `mixHex`(sRGB)로 섞으면 지평선
+ * 정지점과 안개가 몇 단계씩 어긋난다
+ */
+export function weatherFogColor(preset: SkyPreset, atmosphere: SkyAtmosphere): string {
+  if (atmosphere.mix <= 0) return preset.fog
+  return `#${new Color(preset.fog).lerp(new Color(atmosphere.tint), atmosphere.mix).getHexString()}`
+}
+
+/**
+ * 천정이 날씨에 물드는 비율. 지평선은 1이다.
+ *
+ * 하늘 전체를 안개와 같은 비율로 누르면 흐린 날도 그라디언트가 사라져 회색
+ * 판이 된다. 천정을 덜 누르면 맑음·흐림은 위가 짙고 아래가 흰 하늘을 지키고,
+ * 폭풍·안개처럼 `mix`가 큰 날만 하늘이 납작한 잿빛으로 내려앉는다
+ */
+export const ZENITH_WEATHER = 0.6
+
+/**
+ * 날씨를 탄 정지점. `atmosphere`가 없거나 `mix`가 0이면 그대로 돌려준다.
+ *
+ * ⚠️ 각 정지점을 **안개와 같은 날씨색(`tint`)** 쪽으로 섞는다 — 안개색이 아니라.
+ * 그래야 지평선 정지점(= `preset.fog`)이 `weatherFogColor`와 정확히 같아진다.
+ * 안개색 쪽으로 `mix`만큼 섞으면 지평선이 안개에 못 미쳐 띠가 다시 뜬다.
+ *
+ * 비율은 천정 `mix × ZENITH_WEATHER`에서 지평선 `mix`까지 오르고, 지평선 밑은
+ * 지평선과 같다
+ */
+export function skyStops(
+  preset: SkyPreset, atmosphere?: SkyAtmosphere,
+): SkyPreset['stops'] {
+  if (!atmosphere || atmosphere.mix <= 0) return preset.stops
+  const tint = new Color(atmosphere.tint)
+  return preset.stops.map(([at, col]) => {
+    const up = Math.min(1, at / HORIZON)
+    const k = atmosphere.mix * (ZENITH_WEATHER + (1 - ZENITH_WEATHER) * up)
+    return [at, `#${new Color(col).lerp(tint, k).getHexString()}`] as const
+  })
+}
+
+/**
  * 그라디언트 텍스처. 구(sphere) 안쪽에 입힌다.
+ *
+ * `atmosphere`는 야외 날씨다 (`weatherFogProfile`). 비·폭풍·안개 날에 하늘만
+ * 맑은 파랑으로 남으면 회청색 안개에 묻힌 땅 위로 쨍한 하늘이 떠서 둘 사이에
+ * 밝은 단절선이 생긴다 — 1인칭은 하늘이 화면 절반이라 특히 어색했다.
  *
  * ⚠️ 구를 `scale={[-1,1,1]}`로 뒤집으면 안 된다 — 감기 방향만 바뀌고 컬링은
  * 그대로라 통째로 안 보인다(배틀 무대에서 그렇게 만들었다가 배경이 검게 나왔다).
  * `side={BackSide}`가 맞다.
  */
-export function makeSkyTexture(preset: SkyPreset): CanvasTexture | null {
+export function makeSkyTexture(
+  preset: SkyPreset, atmosphere?: SkyAtmosphere,
+): CanvasTexture | null {
   const canvas = document.createElement('canvas')
   canvas.width = 2
   canvas.height = 256
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
   const grad = ctx.createLinearGradient(0, 0, 0, 256)
-  for (const [at, color] of preset.stops) grad.addColorStop(at, color)
+  for (const [at, color] of skyStops(preset, atmosphere)) grad.addColorStop(at, color)
   ctx.fillStyle = grad
   ctx.fillRect(0, 0, 2, 256)
   const tex = new CanvasTexture(canvas)

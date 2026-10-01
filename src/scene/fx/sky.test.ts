@@ -1,10 +1,12 @@
 // 시간대 조명과 인물 키 라이트 (PLAN §6.2)
 import { describe, it, expect } from 'vitest'
 import {
-  CHAR_KEY_COLOR, CHAR_KEY_GAIN, CHAR_KEY_OFFSET, CHAR_KEY_RANGE, DOWN_DIR, NIGHT_FLOOR,
-  TIME_LOOKS, backFill, blendLooks, bodyLight, characterKey, downFill, faceLight, groundLight,
-  litBody, luminance, mixHex,
+  CHAR_KEY_COLOR, CHAR_KEY_GAIN, CHAR_KEY_OFFSET, CHAR_KEY_RANGE, DAY as DAY_PRESET, DOWN_DIR,
+  HORIZON, NIGHT_FLOOR, TIME_LOOKS, ZENITH_WEATHER, backFill, blendLooks, bodyLight,
+  characterKey, downFill, faceLight, groundLight, litBody, luminance, mixHex, skyAt, skyStops,
+  weatherFogColor,
 } from './sky'
+import { weatherFogProfile } from '../weatherVisual'
 
 /** 사방을 보는 세로면 넷 — 건물의 네 벽 */
 const WALLS: readonly (readonly [number, number, number])[] = [
@@ -289,5 +291,103 @@ describe('밑빛 — 깨어진 세계', () => {
       const ratio = withDown(look, DOWN) / withDown(look, UP)
       expect(ratio, `시간대 ${String(i)}`).toBeGreaterThan(0.5)
     }
+  })
+})
+
+/** `#rrggbb` 두 색의 거리. 8비트 채널 차이의 유클리드 거리다 */
+function colorDistance(a: string, b: string): number {
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16)
+  return Math.hypot(
+    ((pa >> 16) & 255) - ((pb >> 16) & 255),
+    ((pa >> 8) & 255) - ((pb >> 8) & 255),
+    (pa & 255) - (pb & 255),
+  )
+}
+
+/** 시간대 이름. 실패 문구에 쓴다 */
+const NAMES = ['아침', '낮', '해질녘', '밤', '심야'] as const
+
+describe('지평선과 안개', () => {
+  it('캔버스 그라디언트처럼 잇는다 — 정지점 사이는 선형, 양끝 밖은 끝 색', () => {
+    const stops = [[0.2, '#000000'], [0.6, '#ffffff']] as const
+    expect(skyAt(stops, 0)).toBe('#000000')
+    expect(skyAt(stops, 0.4)).toBe('#808080')
+    expect(skyAt(stops, 1)).toBe('#ffffff')
+  })
+
+  it('다섯 시간대 전부 수평 시선(v=0.5)의 하늘이 안개색과 같다', () => {
+    // 어긋나면 안개에 묻힌 먼 땅이 바로 위 하늘보다 밝거나 어두워 띠가 뜬다.
+    // 정지점이 없던 때 낮은 #8eb8dc 대 안개 #c3dbe6이었다
+    for (const [i, look] of TIME_LOOKS.entries()) {
+      expect(skyAt(look.stops, HORIZON), NAMES[i]!).toBe(look.fog)
+    }
+    expect(skyAt(DAY_PRESET.stops, HORIZON)).toBe(DAY_PRESET.fog)
+  })
+
+  it('시간대가 섞이는 동안에도 맞는다', () => {
+    // `blendLooks`는 정지점을 색인으로 섞는다 — 다섯 벌 모두 지평선이 같은 칸이어야 한다
+    for (let i = 0; i + 1 < TIME_LOOKS.length; i++) {
+      for (const k of [0.25, 0.5, 0.75]) {
+        const look = blendLooks(TIME_LOOKS[i]!, TIME_LOOKS[i + 1]!, k)
+        expect(skyAt(look.stops, HORIZON), `${NAMES[i]!}→${NAMES[i + 1]!} ${String(k)}`)
+          .toBe(look.fog)
+      }
+    }
+  })
+
+  it('지평선 위 하늘이 안개보다 짙다 — 위가 짙고 아래가 흰 그라디언트를 지킨다', () => {
+    for (const [i, look] of TIME_LOOKS.entries()) {
+      expect(luminance(skyAt(look.stops, 0)), NAMES[i]!).toBeLessThan(luminance(look.fog))
+    }
+  })
+})
+
+describe('날씨를 탄 하늘', () => {
+  const RAIN = weatherFogProfile('rain')
+
+  it('맑은 날은 하늘을 안 건드린다', () => {
+    expect(skyStops(DAY, weatherFogProfile('clear'))).toBe(DAY.stops)
+    expect(skyStops(DAY)).toBe(DAY.stops)
+    expect(weatherFogColor(DAY, weatherFogProfile('clear'))).toBe(DAY.fog)
+  })
+
+  it('지평선이 날씨를 탄 안개색과 같다 — 날씨 갈래와 시간대 전부', () => {
+    const kinds = ['cloudy', 'rain', 'storm', 'snow', 'blizzard', 'ash', 'sand', 'hail',
+      'spirits', 'fog', 'deepFog', 'dark'] as const
+    for (const kind of kinds) {
+      const atmosphere = weatherFogProfile(kind)
+      for (const [i, look] of TIME_LOOKS.entries()) {
+        expect(skyAt(skyStops(look, atmosphere), HORIZON), `${kind} ${NAMES[i]!}`)
+          .toBe(weatherFogColor(look, atmosphere))
+      }
+    }
+  })
+
+  it('비 하늘은 맑은 하늘보다 그날의 안개색에 가깝다', () => {
+    // 비 오는 날 땅은 회청색 안개에 묻히는데 하늘만 쨍한 파랑이면 둘 사이에 단절선이 뜬다
+    const fog = weatherFogColor(DAY, RAIN)
+    for (const v of [0, 0.2, 0.42]) {
+      expect(colorDistance(skyAt(skyStops(DAY, RAIN), v), fog), `v=${String(v)}`)
+        .toBeLessThan(colorDistance(skyAt(DAY.stops, v), DAY.fog))
+    }
+  })
+
+  it('천정은 지평선보다 덜 물든다 — 비 오는 날도 그라디언트가 남는다', () => {
+    const rain = skyStops(DAY, RAIN)
+    expect(luminance(rain[0]![1])).toBeLessThan(luminance(weatherFogColor(DAY, RAIN)))
+    // 천정은 `mix × ZENITH_WEATHER`만큼만 날씨색으로 간다
+    const tint = RAIN.tint
+    const full = colorDistance(DAY.stops[0]![1], tint)
+    expect(colorDistance(rain[0]![1], tint) / full).toBeCloseTo(1 - RAIN.mix * ZENITH_WEATHER, 1)
+  })
+
+  it('폭풍은 비보다 더 눌린다', () => {
+    const storm = weatherFogProfile('storm')
+    const spread = (a?: typeof RAIN) => {
+      const s = skyStops(DAY, a)
+      return colorDistance(skyAt(s, 0), skyAt(s, HORIZON))
+    }
+    expect(spread(storm)).toBeLessThan(spread(RAIN))
+    expect(spread(RAIN)).toBeLessThan(spread())
   })
 })
