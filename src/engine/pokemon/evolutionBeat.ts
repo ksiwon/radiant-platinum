@@ -131,6 +131,31 @@ export function evolutionBeats(file: SplFile | null): EvolutionBeats {
   }
 }
 
+/** 마디에 붙는 효과음 하나. `sound`는 `audio/sfx`의 `SFX` 이름이다 */
+interface EvoSoundCue {
+  readonly frame: number
+  readonly sound: 'EVO_FADE' | 'EVO_ALTERNATE' | 'EVO_SWAP' | 'EVO_REVEAL'
+}
+
+/**
+ * 마디마다 내는 효과음 (`Evolution_Main`).
+ *
+ * 원작은 이미터를 세우는 **그 상태 안에서** 소리도 낸다 — 그래서 소리 넷이
+ * 이미터 마디 넷과 프레임까지 같다: `START_FADE`(W025) · `CLAMP_IN` 끝(W060C) ·
+ * 교대 끝(W062) · `CLAMP_OUT_AND_FADE`(W080).
+ *
+ * ⚠️ **울음소리 둘과 팡파르는 여기 없다.** 그쪽은 마디가 아니라 「앞 소리가 다
+ * 끝났는가」(`Sound_IsPokemonCryPlaying`)를 기다려 나므로 화면이 그 자리에서 낸다
+ */
+export function evolutionSoundCues(beats: EvolutionBeats): readonly EvoSoundCue[] {
+  return [
+    { frame: 0, sound: 'EVO_FADE' },
+    { frame: EVO_CLAMP_FRAMES, sound: 'EVO_ALTERNATE' },
+    { frame: beats.swap, sound: 'EVO_SWAP' },
+    { frame: beats.clampOut, sound: 'EVO_REVEAL' },
+  ]
+}
+
 /** `MON_AFFINE_SCALE(1)` */
 const FULL = 256
 /** `evolutionData->attributeDelta = 8` */

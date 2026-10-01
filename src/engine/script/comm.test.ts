@@ -342,8 +342,8 @@ mapData('통신 맵으로 가는 길', () => {
 
   it('⚠️ 지하통로(맵 2)도 들어오는 워프가 아예 없다 — 입구는 탐험세트뿐이다', () => {
     // 지하통로는 범위 밖이다 (PARITY §9 · 3D_GAP_AUDIT §9). 원작도 워프가 아니라
-    // 탐험세트를 쓰는 순간 들어가고, 우리 탐험세트는 「없음」으로 답한다
-    // (`bag/fieldUse`의 `MISSING`)
+    // 탐험세트를 쓰는 순간 들어가고, 우리 탐험세트는 「이 게임에서는 지하통로에
+    // 갈 수 없다.」로 답한다 (`bag/fieldUse`의 `MISSING`)
     const UNDERGROUND = 2
     const into = maps.flatMap((mm, i) => (mm?.events == null ? [] : (events[mm.events]?.warps ?? [])
       .filter((w) => w.to === UNDERGROUND).map(() => i)))

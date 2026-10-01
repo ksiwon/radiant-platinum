@@ -26,6 +26,7 @@ import { fillMenuText, loadUiText } from '../../data/uiText'
 import { totalAccessories } from '../../engine/world/fashionCase'
 import { berryPatchAhead } from '../../scene/berryPatches'
 import { beginEscapeRope, beginSweetScent } from '../../scene/fieldMoveTask'
+import { withObject } from '../korean'
 
 /** `VAR_0x8000` = `SCRIPT_DATA_PARAMETER_0` */
 const SCRIPT_PARAM_0 = 0x8000
@@ -47,6 +48,22 @@ function bagMessageLine(what: keyof typeof BAG_MESSAGE_LINE): string {
       : what === 'fashion' ? [String(totalAccessories(save.fashionCase)), '0']
         : [String(save.battlePoints)]
   return fillMenuText(bagText?.[BAG_MESSAGE_LINE[what]] ?? '', values)
+}
+
+/**
+ * 가방 뱅크의 「썼다!」 셋 (`UseItemInBag`) — 61 스프레이 · 63 하얀비드로 · 64 검은비드로.
+ *
+ * 롬 줄이 주인공 이름(칸 0)과 도구 이름(칸 1)을 받고 조사도 제가 고른다
+ * (`{STRVAR_1 8, 1, 2}` — 을/를). ⚠️ **비드로도 「불었다」가 아니라 「썼다」다** —
+ * 뒤에 출현률이 어떻게 바뀌었는지가 한 쪽 더 붙는다
+ */
+const BAG_USED_LINE = { repel: 61, whiteFlute: 63, blackFlute: 64 } as const
+
+function usedLine(what: keyof typeof BAG_USED_LINE, item: string): string {
+  const raw = bagText?.[BAG_USED_LINE[what]]
+  // 뱅크가 아직 안 왔으면 같은 말을 조사만 골라 짓는다 — 「을(를)」을 찍지 않는다
+  if (raw === undefined || raw === '') return `${withObject(item)} 썼다!`
+  return fillMenuText(raw, [useSaveStore.getState().trainer.name, item])
 }
 
 /**
@@ -127,14 +144,15 @@ export function performItemAction(action: FieldItemAction, deps: ItemActionDeps)
       const steps = useSaveStore.getState().steps
       useSaveStore.setState({ steps: { ...steps, repel: action.steps } })
       deps.consume(deps.pocket, deps.item, 1)
-      deps.say(`${deps.name}을(를) 썼다!`)
+      deps.say(usedLine('repel', deps.name))
       return true
     }
     case 'flute':
       // 걸음을 안 센다. 이 맵을 벗어나면 풀린다 (`FieldSystem_InitFlagsWarp`)
       useSaveStore.setState({ flute: action.factor })
       deps.consume(deps.pocket, deps.item, 1)
-      deps.say(`${deps.name}을(를) 불었다!`)
+      // `FLUTE_FACTOR_USED_BLACK` 1 · `_WHITE` 2 (`engine/bag/fieldUse`의 `fluteFactorOf`)
+      deps.say(usedLine(action.factor === 1 ? 'blackFlute' : 'whiteFlute', deps.name))
       return true
     case 'escapeRope':
       // 빙글 돌며 하얗게 덮이고 굴 입구에 선다 (`FieldWarp_InitEscapeRope` · `scene/fieldMoveTask`).
@@ -160,7 +178,8 @@ export function performItemAction(action: FieldItemAction, deps: ItemActionDeps)
       deps.push(action.screen)
       return true
     case 'missing':
-      deps.say(`${action.what}이(가) 아직 없다.`)
+      // 이 게임에 없는 계통 (지하통로·포핀·통신). 문장은 `engine/bag/fieldUse`가 통째로 든다
+      deps.say(action.message)
       return false
     case 'radar':
       // 켜는 순간 가방을 닫는다. 원작도 필드 과제(`RefreshRadarChain`)가

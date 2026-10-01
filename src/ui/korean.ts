@@ -12,6 +12,9 @@ const HANGUL_END = 0xd7a3
 /** 종성 개수. 이걸로 나눈 나머지가 0이면 받침이 없다 */
 const FINAL_COUNT = 28
 
+/** 종성 표에서 ㄹ의 자리. 「으로」만 ㄹ받침을 받침 없는 것처럼 다룬다 (`engine/script/text`의 `particleFor` 5번) */
+const FINAL_RIEUL = 8
+
 /** 받침이 있으면 true. 한글 음절이 아니면 null */
 export function hasFinalConsonant(word: string): boolean | null {
   if (!word) return null
@@ -33,7 +36,22 @@ export const object = (word: string) => particle(word, '을', '를')
 /** 보조사 — 모부기**는** / 팬텀**은** */
 export const topic = (word: string) => particle(word, '은', '는')
 
+/**
+ * 방향격 — 수풀부기**로** / 토대부기**로** / 엠페르트**로** / 팬텀**으로**.
+ *
+ * ⚠️ **ㄹ받침은 받침이 없는 쪽이다** — 「골덕으로」지만 「자포코일로」다. 롬도 같은
+ * 셈이다(`{STRVAR_1 …, 5}로`가 ㄹ에서 「으」를 안 넣는다)
+ */
+export function direction(word: string): string {
+  const final = hasFinalConsonant(word)
+  if (final === null) return '(으)로'
+  if (!final) return '로'
+  const code = word.charCodeAt(word.length - 1)
+  return (code - HANGUL_START) % FINAL_COUNT === FINAL_RIEUL ? '로' : '으로'
+}
+
 /** 단어 + 조사를 붙여 돌려준다 */
 export function withSubject(word: string) { return word + subject(word) }
 export function withObject(word: string) { return word + object(word) }
 export function withTopic(word: string) { return word + topic(word) }
+export function withDirection(word: string) { return word + direction(word) }

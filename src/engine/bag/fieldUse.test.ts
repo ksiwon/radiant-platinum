@@ -137,7 +137,24 @@ maybe('필드 도구', () => {
     expect(fieldAction(named('ITEM_POKE_BALL'), town()).kind).toBe('blocked')
     // ⚠️ **탐험세트는 지하통로로 가는 유일한 입구다** — 지하통로가 범위 밖이라
     // 「없음」으로 답한다. 들어오는 워프가 0개인 것은 `script/comm.test.ts`가 잰다
-    expect(fieldAction(named('ITEM_EXPLORER_KIT'), town())).toEqual({ kind: 'missing', what: '지하통로' })
+    expect(fieldAction(named('ITEM_EXPLORER_KIT'), town()))
+      .toEqual({ kind: 'missing', message: '이 게임에서는 지하통로에 갈 수 없다.' })
+  })
+
+  it('범위 밖 도구 넷은 완성 문장으로 답한다 — 병기형 조사도 「아직」도 없다', () => {
+    const lines = ['ITEM_EXPLORER_KIT', 'ITEM_POFFIN_CASE', 'ITEM_PAL_PAD', 'ITEM_VS_RECORDER'].map((c) => {
+      const got = fieldAction(named(c), town())
+      if (got.kind !== 'missing') throw new Error(`${c}이 막히지 않았다 (${got.kind})`)
+      return got.message
+    })
+    expect(lines).toEqual([
+      '이 게임에서는 지하통로에 갈 수 없다.',
+      '포핀은 이 게임에서 만들 수 없다.',
+      '친구수첩은 통신 없이는 쓸 수 없다.',
+      '배틀레코더는 통신 없이는 쓸 수 없다.',
+    ])
+    // ⚠️ 한때 「지하통로이(가) 아직 없다.」가 떴다 — 곧 생길 것처럼 읽히고 조사가 안 풀렸다
+    for (const line of lines) expect(line).not.toMatch(/아직|\((이|을|은|으)\)/)
   })
 
   it('달콤한꿀은 어디서든 달콤한향기 과제를 건다 — 검사가 없다 (`UseHoneyFromMenu`)', () => {

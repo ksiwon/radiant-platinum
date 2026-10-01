@@ -193,6 +193,40 @@ export const SFX = {
    * 길이를 잰다 (`VS_SEEKER_STATE_WAIT_FOR_VS_SEEKER_SFX`)
    */
   VS_SEEKER: 1568,
+
+  /**
+   * 진화 연출의 소리 넷 (`evolution.c`의 상태 기계). 마디는 `pokemon/evolutionBeat`의
+   * `EVO_BEATS`가 정하고, 소리마다 그 마디의 첫 프레임에 한 번 난다:
+   *
+   *   `SEQ_SE_DP_W025`  `START_FADE` — 몸이 하얘지기 시작할 때 (361줄)
+   *   `SEQ_SE_DP_W060C` `CLAMP_IN`이 끝나고 교대가 시작할 때 (380줄)
+   *   `SEQ_SE_DP_W062`  교대가 끝나고 흰 막이 설 때 (398줄)
+   *   `SEQ_SE_DP_W080`  창이 열리며 흰 막이 걷힐 때 (415줄)
+   */
+  EVO_FADE: 1529,
+  EVO_ALTERNATE: 1530,
+  EVO_SWAP: 1531,
+  EVO_REVEAL: 1532,
+  /**
+   * 팡파르 둘. 원작은 곡을 잠깐 멈추고 트는데(`Sound_PlayFanfare`) 우리는 곡을 안
+   * 멈추므로 효과음 길로 낸다 — 스크립트의 `PlayFanfare`와 같다 (`scene/fieldServices`).
+   *
+   * · `SEQ_FANFA5` — 「축하합니다! …진화했습니다!」 줄의 `{CALLBACK 3}` (`Evolution_TextPrinterCallback`)
+   * · `SEQ_FANFA1` — 「…배웠다!」 줄의 `{CALLBACK 5}` (같은 함수 · 배틀 뱅크 4번 줄)
+   */
+  FANFARE_EVOLVED: 1156,
+  FANFARE_LEARNED: 1155,
+  /**
+   * `SEQ_SE_DP_DOKU2`. 독 걸린 포켓몬을 데리고 걸어서 독이 들 때
+   * (`Field_DoPoisonEffect`, `overlay005/ov5_021EF4BC.c:76`) — 화면이 일렁이는 그 순간에 난다
+   */
+  FIELD_POISON: 1552,
+  /**
+   * `SEQ_SE_DP_REGI`. 계산대 소리 — 프렌들리숍에서 값 확인에 「예」를 고른 순간
+   * (`Shop_SelectConfirmPurchase`, `overlay007/shop_menu.c:1196`)과
+   * 가방에서 팔 때(`applications/bag/main.c:2804`의 `ResolveSale`)
+   */
+  CASH_REGISTER: 1604,
 } as const
 
 export type SfxName = keyof typeof SFX

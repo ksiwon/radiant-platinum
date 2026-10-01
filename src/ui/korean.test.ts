@@ -1,7 +1,7 @@
 // 조사 선택 검증. 실제로 게임에 나오는 이름으로 고정한다 —
 // "찌르꼬이(가) 나타났다"가 화면에 뜬 걸 보고 만든 모듈이다.
 import { describe, it, expect } from 'vitest'
-import { hasFinalConsonant, subject, object, topic, withSubject } from './korean'
+import { direction, hasFinalConsonant, subject, object, topic, withDirection, withSubject } from './korean'
 
 describe('받침 판정', () => {
   it('받침이 없는 글자', () => {
@@ -41,5 +41,27 @@ describe('조사 선택', () => {
     expect(subject('Turtwig')).toBe('이(가)')
     expect(object('Turtwig')).toBe('을(를)')
     expect(withSubject('Starly')).toBe('Starly이(가)')
+  })
+})
+
+describe('방향격 (으)로', () => {
+  it('받침이 없으면 「로」', () => {
+    for (const w of ['수풀부기', '토대부기', '엠페르트', '찌르호크', '럭시오']) expect(direction(w), w).toBe('로')
+  })
+  it('ㄹ받침도 「로」다 — 종성 8번', () => {
+    // 코'일' · 레어코'일' · 자포코'일'은 ㄹ받침이다. 「으로」를 넣으면 「자포코일으로」가 된다
+    for (const w of ['코일', '레어코일', '자포코일']) expect(direction(w), w).toBe('로')
+  })
+  it('다른 받침은 「으로」', () => {
+    for (const w of ['팬텀', '골덕', '잉어킹', '이상해꽃', '괴력몬']) expect(direction(w), w).toBe('으로')
+  })
+  it('한글이 아니면 병기형으로 물러난다', () => {
+    expect(direction('Grotle')).toBe('(으)로')
+    expect(direction('')).toBe('(으)로')
+  })
+  it('이름에 붙여 쓴다', () => {
+    expect(withDirection('수풀부기')).toBe('수풀부기로')
+    expect(withDirection('팬텀')).toBe('팬텀으로')
+    expect(withDirection('자포코일')).toBe('자포코일로')
   })
 })

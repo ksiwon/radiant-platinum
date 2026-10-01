@@ -63,9 +63,9 @@ const NO_FISHING_LAST = 583
 /**
  * 이 도구를 지금 쓰면 무슨 일이 일어나는가.
  *
- * `blocked`는 **원작이 막는 자리**고, `missing`은 **우리에게 그 계통이 아직
- * 없는 자리**다. 둘을 안 가르면 "이 게임은 원래 안 되는 것"과 "우리가 아직
- * 못 만든 것"이 화면에서 같은 말로 보인다.
+ * `blocked`는 **원작이 막는 자리**고, `missing`은 **이 게임에 그 계통이 없는
+ * 자리**다(지하통로·포핀·통신 — PARITY §9). 둘을 안 가르면 "원작도 여기서는
+ * 안 되는 것"과 "이 게임에는 없는 것"이 화면에서 같은 말로 보인다.
  */
 /** 파티 화면이 무엇을 하러 열리는가. `menuStore`의 `usingItem.use`와 같은 값이다 */
 export type PartyItemUse = 'heal' | 'tmhm' | 'evoStone' | 'mail' | 'gracidea'
@@ -123,8 +123,8 @@ export type FieldItemAction =
   | { kind: 'mail'; type: number }
   /** 원작도 여기서는 못 쓴다. `why`가 그 이유다 */
   | { kind: 'blocked'; why: string }
-  /** 그 계통이 아직 없다 */
-  | { kind: 'missing'; what: string }
+  /** 그 계통이 이 게임에 없다. `message`가 화면에 그대로 뜨는 완성 문장이다 */
+  | { kind: 'missing'; message: string }
 
 /** 지금 어디에 서 있는가. 쓸 수 있는지가 여기서 갈린다 */
 export interface FieldContext {
@@ -182,12 +182,22 @@ export interface FieldContext {
   evoItems?: ReadonlySet<string>
 }
 
-/** 아직 계통이 없는 갈래의 이름. 화면이 그대로 보여 준다 */
+/**
+ * 이 게임에 없는 계통으로 가는 도구 넷과 그 안내. 화면이 그대로 띄운다.
+ *
+ * ⚠️ **「아직」이라고 쓰지 않는다.** 지하통로·콘테스트(포핀)·통신은 끝까지 범위
+ * 밖이다(PARITY §9) — 「아직 없다」는 곧 생길 것처럼 읽힌다. 롬의 「지금은 쓸 수
+ * 없다.」도 안 쓴다 — 원작이 막는 자리(`blocked`)와 같은 말이 되어 까닭이 사라진다.
+ *
+ * ⚠️ **이름에 조사를 붙여 짓지 않는다.** 한때 이름만 들고 화면이 조사를 덧대서
+ * 「지하통로이(가) 아직 없다.」가 떴다. 문장을 통째로 들면 조사가 글 안에서
+ * 이미 맞는다
+ */
 const MISSING: Partial<Record<number, string>> = {
-  [FieldUse.EXPLORER_KIT]: '지하통로',
-  [FieldUse.POFFIN_CASE]: '포핀',
-  [FieldUse.PAL_PAD]: '친구수첩',
-  [FieldUse.VS_RECORDER]: '배틀레코더',
+  [FieldUse.EXPLORER_KIT]: '이 게임에서는 지하통로에 갈 수 없다.',
+  [FieldUse.POFFIN_CASE]: '포핀은 이 게임에서 만들 수 없다.',
+  [FieldUse.PAL_PAD]: '친구수첩은 통신 없이는 쓸 수 없다.',
+  [FieldUse.VS_RECORDER]: '배틀레코더는 통신 없이는 쓸 수 없다.',
 }
 
 /** 가방 안에서 한 줄로 답하는 넷 (`BagContext_FormatUsageMessage`). 이름으로 가르는 것이 원작이다 */
@@ -328,8 +338,8 @@ export function fieldAction(item: Item, ctx: FieldContext): FieldItemAction {
     }
 
     default: {
-      const what = MISSING[item.fieldUseFunc ?? FieldUse.NONE]
-      if (what !== undefined) return { kind: 'missing', what }
+      const message = MISSING[item.fieldUseFunc ?? FieldUse.NONE]
+      if (message !== undefined) return { kind: 'missing', message }
       return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
     }
   }

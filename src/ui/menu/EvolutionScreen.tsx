@@ -2,11 +2,19 @@
 //
 // 원작의 상태 기계를 그대로 따라간다:
 //
-//   어라!? ○○의 모습이…!            ← 여기서 **X로 멈출 수 있다** (레벨 진화만)
-//   축하합니다! ○○는 △△로 진화했다!
+//   ...오잉!? ○○의 모습이...!             ← 여기서 **X로 멈출 수 있다** (레벨 진화만)
+//   축하합니다! ○○는 △△로 진화했습니다!
 //   (새 종족이 지금 레벨에 배우는 기술 — 칸이 차 있으면 무엇을 지울지 묻는다)
 //   (아둥지면 껍질몬이 하나 더)
-//   어라? ○○의 모습이…?             ← 멈췄을 때
+//   얼라리...? ○○의 변화가 멈췄다!         ← 멈췄을 때
+//
+// **글은 롬의 배틀 글 뱅크(us 368)에서 온다** — 원작 진화 화면도 그 뱅크를 연다
+// (`Evolution_PrintString`). 뱅크가 안 왔으면 같은 말을 `ui/korean`으로 조사만 골라 짓는다.
+//
+// **소리도 원작 차례다** (`Evolution_Main`): 옛 종의 울음 → 다 울면 진화 곡
+// (`SEQ_SHINKA`) → 마디마다 효과음 넷(`evolutionSoundCues`) → 새 종의 울음 → 다 울면
+// 축하 줄과 팡파르(`SEQ_FANFA5`). 멈추면 곡을 끊고 옛 종이 다시 운다. 화면을 닫으면
+// 들어올 때의 곡으로 돌아간다.
 //
 // 멈춰도 **다음에 또 물어본다** — 원작에 "진화 안 함" 표식이 없다. 다음 레벨업에
 // 이 화면이 다시 뜬다.
@@ -44,8 +52,11 @@ import {
   type PokemonInstance,
 } from '../../engine/pokemon/instance'
 import {
-  EVO_BEATS, evolutionCanCancel, evolutionClamp, evolutionVeil,
+  EVO_BEATS, evolutionCanCancel, evolutionClamp, evolutionSoundCues, evolutionVeil,
 } from '../../engine/pokemon/evolutionBeat'
+import { music } from '../../engine/audio/music'
+import { SFX } from '../../engine/audio/sfx'
+import { fieldBgm } from '../../engine/audio/songs'
 import { useEvolutionStore } from '../../state/evolutionStore'
 import { addRecord, RECORD_POKEMON_EVOLVED } from '../../engine/world/gameRecords'
 import { useMenuStore } from '../../state/menuStore'
@@ -54,7 +65,10 @@ import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { useSessionStore } from '../../state/sessionStore'
 import { worldState } from '../../state/worldState'
-import { withSubject, withTopic } from '../korean'
+import { withDirection, withObject, withSubject, withTopic } from '../korean'
+import { romLine } from '../battle/romLine'
+import { BATTLE_BANK } from '../battle/romText'
+import { useRomLines } from '../battle/useRomLines'
 import { useMenuKeys } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
@@ -68,15 +82,91 @@ interface Tables {
   items: ItemTable
 }
 
+/**
+ * 진화가 끝나고 띄우는 한 줄. 글로 굳혀 두지 않고 **재료만** 든다 — 롬 뱅크가
+ * 늦게 와도 그 자리에서 롬 글로 채워진다
+ */
+type DoneLine =
+  /** 「축하합니다! ○○는 △△로 진화했습니다!」 */
+  | { kind: 'evolved'; name: string; grown: string }
+  /** 「○○는 ◇◇를 배웠다!」 */
+  | { kind: 'learned'; name: string; move: string }
+  /** 아둥지 — 껍질몬이 하나 더 */
+  | { kind: 'shedinja'; name: string }
+
 /** 지금 무엇을 보여 주고 있는가 */
 type Stage =
   | { kind: 'idle' }
   | { kind: 'changing'; slot: number; mon: PokemonInstance; evo: EvoResult }
-  | { kind: 'done'; slot: number; to: number; form: number; lines: string[]; at: number }
-  | { kind: 'canceled'; name: string }
+  | { kind: 'done'; slot: number; to: number; form: number; lines: DoneLine[]; at: number }
+  /** `ready`는 옛 종이 다 울었는가 — 원작은 그 뒤에야 「얼라리...?」를 찍는다 */
+  | { kind: 'canceled'; name: string; ready: boolean }
   | { kind: 'forget'; slot: number; move: number }
 
-/** "모습이…!"를 보여 주는 시간(ms). 원작은 그동안 축소·확대를 되풀이한다 */
+/**
+ * 배틀 글 뱅크(us 368) 안의 진화 줄. `import/platinum/battleStrings`의 이름 순서로 셌다.
+ *
+ * ⚠️ **915 하나로 연다.** 배틀 뒤 진화(`flags & 0x2`)는 같은 말을 916(「...오잉!?」)·917로
+ * 두 쪽에 나눠 찍고, 필드에서는 915 한 쪽이다 — 글자가 같아 한 쪽으로 둔다
+ */
+const EVO_LINE = {
+  /** `BattleStrings_Text_WhatPokemonIsEvolving` — 칸 0이 이름 */
+  evolving: 915,
+  /** `…_CongratulationsYourPokemonEvolvedIntoPokemon` — 칸 0이 이름, 칸 1이 새 종족. `{CALLBACK 3}`이 팡파르다 */
+  evolved: 918,
+  /** `…_HuhPokemonStoppedEvolving` */
+  stopped: 919,
+  /** `…_PokemonLearnedMove` — `EVOLUTION_STATE_CHECK_LEARN_MOVE`가 찍는 줄. `{CALLBACK 5}`가 팡파르다 */
+  learned: 4,
+} as const
+
+/**
+ * 진화 곡 (`SEQ_SHINKA`).
+ *
+ * ⚠️ **직접 틀지 않는다.** 곡을 고르는 자리가 하나뿐이라(`MusicDirector`) 여기서
+ * `music.play`를 부르면 다음 초에 지휘자가 필드 곡을 다시 얹는다 — 교환 장면처럼
+ * 가로채기 칸에 놓고 맡긴다
+ */
+const EVOLUTION_BGM = 1141
+
+const FRAME_MS = 1000 / 60
+
+/**
+ * 울음소리가 다 끝나면 `then`을 부른다. 걷는 함수를 돌려준다.
+ *
+ * 원작의 세 상태가 이것을 기다린다 — 진화 곡을 틀기 전, 축하 줄을 찍기 전, 「얼라리」를
+ * 찍기 전 (`Sound_IsPokemonCryPlaying() == FALSE`)
+ */
+function whenCryEnds(then: () => void): () => void {
+  const id = setInterval(() => {
+    if (music.isCryPlaying()) return
+    clearInterval(id)
+    then()
+  }, FRAME_MS)
+  return () => { clearInterval(id) }
+}
+
+/** 줄 하나를 롬 글로. 뱅크가 없으면 같은 말을 조사만 골라 짓는다 */
+function doneText(line: DoneLine, bank: readonly string[]): string {
+  switch (line.kind) {
+    case 'evolved':
+      return romLine(bank, EVO_LINE.evolved, line.name, line.grown)
+        ?? `축하합니다! ${withTopic(line.name)}\n${withDirection(line.grown)} 진화했습니다!`
+    case 'learned':
+      return romLine(bank, EVO_LINE.learned, line.name, line.move)
+        ?? `${withTopic(line.name)}\n${withObject(line.move)} 배웠다!`
+    case 'shedinja':
+      return `${withSubject(line.name)} 나타났다!`
+  }
+}
+
+/** 그 줄이 찍힐 때 나는 팡파르 (`Evolution_TextPrinterCallback`의 3·5번) */
+function doneFanfare(line: DoneLine | undefined): number | null {
+  if (line?.kind === 'evolved') return SFX.FANFARE_EVOLVED
+  if (line?.kind === 'learned') return SFX.FANFARE_LEARNED
+  return null
+}
+
 /**
  * 모습이 바뀌는 데 걸리는 시간.
  *
@@ -100,6 +190,10 @@ export function EvolutionScreen() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** 칸이 없어서 못 배운 기술. 한 마리분씩 쌓았다가 하나씩 묻는다 */
   const pendingMoves = useRef<number[]>([])
+  /** 새 종의 울음을 낸 진화. 효과가 다시 돌아도 두 번 울지 않게 */
+  const grownCry = useRef<Stage | null>(null)
+  /** 배틀 글 뱅크 — 진화 줄이 여기 있다 (`EVO_LINE`) */
+  const battleLines = useRomLines(BATTLE_BANK)
 
   useEffect(() => {
     let alive = true
@@ -117,12 +211,15 @@ export function EvolutionScreen() {
     }
   }, [locale])
 
-  useEffect(
-    () => () => {
+  // 들어올 때의 곡 가로채기를 쥐고 있다가 나갈 때 돌려놓는다 — 스크립트가 건
+  // 곡이 있었으면 그 곡으로, 없었으면 맵의 곡으로 돌아간다
+  useEffect(() => {
+    const override = fieldBgm.override
+    return () => {
       useCinematicStore.getState().clear()
-    },
-    [],
-  )
+      fieldBgm.override = override
+    }
+  }, [])
 
   const nameOf = useCallback(
     (mon: PokemonInstance): string =>
@@ -180,6 +277,8 @@ export function EvolutionScreen() {
           shiny: isShiny(mon.pid, mon.otId, mon.otSecretId),
         },
       )
+      // 옛 종이 먼저 운다 (`PRINT_POKEMON_IS_EVOLVING`). 진화 곡은 이 울음이 끝나야 깔린다
+      void music.playCry(mon.species)
       setStage({ kind: 'changing', slot, mon, evo })
       return
     }
@@ -206,12 +305,12 @@ export function EvolutionScreen() {
       party[s.slot] = taught.mon
 
       const grownName = tables.names[s.evo.to] ?? `#${String(s.evo.to)}`
-      const lines = [
-        `축하합니다! ${withSubject(nameOf(before))} ${grownName}(으)로 진화했다!`,
-        ...taught.learned.map(
-          (m) =>
-            `${withTopic(nameOf(taught.mon))} 새로 ${tables.moveNames[m] ?? `#${String(m)}`}을(를) 배웠다!`,
-        ),
+      const lines: DoneLine[] = [
+        // 칸 0은 **바뀌기 전의 이름**이다 — 원작이 종족을 바꾼 뒤에도 별명 칸(아직 옛 종족 이름)을 넣는다
+        { kind: 'evolved', name: nameOf(before), grown: grownName },
+        ...taught.learned.map((m): DoneLine => ({
+          kind: 'learned', name: nameOf(taught.mon), move: tables.moveNames[m] ?? `#${String(m)}`,
+        })),
       ]
 
       // 껍질몬. 몬스터볼 하나를 쓰고 파티에 빈자리가 있어야 한다
@@ -230,7 +329,7 @@ export function EvolutionScreen() {
           status: 'ok',
           statusTurns: 0,
         })
-        lines.push(`${withSubject(tables.names[SPECIES_SHEDINJA] ?? '')} 나타났다!`)
+        lines.push({ kind: 'shedinja', name: tables.names[SPECIES_SHEDINJA] ?? '' })
       }
 
       // 진화시킨 수 (PARITY §7.5)
@@ -256,16 +355,50 @@ export function EvolutionScreen() {
   }, [tables, stage.kind, advance])
 
   // 모습이 바뀌는 동안. 이 사이에 X를 누르면 멈춘다
+  //
+  // ⚠️ **시각은 무대의 시계로 잰다** (`cinematicStore`의 `startedAt`). 이 효과가 도중에
+  // 다시 돌아도(표가 바뀌어 `apply`가 새로 서면) 남은 만큼만 기다리고, 이미 난 소리는
+  // 다시 안 낸다
   useEffect(() => {
     if (stage.kind !== 'changing') return
+    const elapsed = performance.now() - useCinematicStore.getState().startedAt
+    const stops: (() => void)[] = []
+    // 옛 종이 다 울면 진화 곡 (`WAIT_PRINT_POKEMON_IS_EVOLVING` → `Sound_PlayBasicBGM(SEQ_SHINKA)`)
+    stops.push(whenCryEnds(() => { fieldBgm.override = EVOLUTION_BGM }))
+    for (const cue of evolutionSoundCues(EVO_BEATS)) {
+      const wait = (cue.frame * 1000) / 60 - elapsed
+      if (wait < -FRAME_MS) continue
+      const id = setTimeout(() => { void music.playEffect(SFX[cue.sound]) }, Math.max(0, wait))
+      stops.push(() => { clearTimeout(id) })
+    }
+    // 연출이 끝나면 새 종이 울고(`PLAY_EVOLVED_POKEMON_ANIMATION_AND_CRY`), 다 울어야
+    // 진화가 적힌다 (`SET_POKEMON_VALUES_AND_PRINT_CONGRATULATIONS`)
     const at = setTimeout(() => {
-      apply(stage)
-    }, CHANGE_MS)
+      if (grownCry.current !== stage) {
+        grownCry.current = stage
+        void music.playCry(stage.evo.to)
+      }
+      stops.push(whenCryEnds(() => { apply(stage) }))
+    }, Math.max(0, CHANGE_MS - elapsed))
     timer.current = at
     return () => {
       clearTimeout(at)
+      for (const stop of stops) stop()
     }
   }, [stage, apply])
+
+  // 멈춘 뒤 옛 종이 다 울어야 「얼라리...?」가 뜬다 (`PRINT_POKEMON_STOPPED_EVOLVING`)
+  useEffect(() => {
+    if (stage.kind !== 'canceled' || stage.ready) return undefined
+    return whenCryEnds(() => { setStage({ ...stage, ready: true }) })
+  }, [stage])
+
+  // 축하 줄과 배운 줄은 찍히는 순간 팡파르가 난다 (`{CALLBACK 3}` · `{CALLBACK 5}`)
+  useEffect(() => {
+    if (stage.kind !== 'done') return
+    const fanfare = doneFanfare(stage.lines[stage.at])
+    if (fanfare !== null) void music.playEffect(fanfare)
+  }, [stage])
 
   const cancel = useCallback((): void => {
     if (stage.kind !== 'changing') return
@@ -276,16 +409,23 @@ export function EvolutionScreen() {
     if (!evolutionCanCancel(frame, EVO_BEATS)) return
     if (timer.current) clearTimeout(timer.current)
     useCinematicStore.getState().cancelEvolution()
-    setStage({ kind: 'canceled', name: nameOf(stage.mon) })
+    // `CANCEL_EVOLUTION` — 진화 곡을 끊고(`Sound_StopBGM(SEQ_SHINKA)`) 옛 종이 다시 운다
+    fieldBgm.override = 'stop'
+    void music.playCry(stage.mon.species)
+    setStage({ kind: 'canceled', name: nameOf(stage.mon), ready: false })
   }, [stage, nameOf])
 
   /** 글 한 줄을 넘긴다 */
   const next = useCallback((): void => {
     if (stage.kind === 'canceled') {
-      setStage({ kind: 'idle' })
+      if (stage.ready) setStage({ kind: 'idle' })
       return
     }
     if (stage.kind !== 'done') return
+    // 팡파르가 끝나야 넘어간다 — 원작 줄 끝의 `{CALLBACK 2}`가 그것을 기다린다
+    // (`Sound_IsBGMPausedByFanfare`)
+    const fanfare = doneFanfare(stage.lines[stage.at])
+    if (fanfare !== null && music.isEffectPlaying(fanfare)) return
     if (stage.at + 1 < stage.lines.length) {
       setStage({ ...stage, at: stage.at + 1 })
       return
@@ -308,11 +448,20 @@ export function EvolutionScreen() {
   // 그대로 도롱마담의 옷감이라, 여기서 폼을 버리면 장면에서만 풀 옷감으로 바뀐다
 
   const line = useMemo(() => {
-    if (stage.kind === 'changing') return `어라!? ${withSubject(nameOf(stage.mon))} 모습이…!`
-    if (stage.kind === 'done') return stage.lines[stage.at] ?? ''
-    if (stage.kind === 'canceled') return `어라? ${withSubject(stage.name)} 모습이…?`
+    const evolving = (name: string): string =>
+      romLine(battleLines, EVO_LINE.evolving, name) ?? `...오잉!?\n${name}의 모습이...!`
+    if (stage.kind === 'changing') return evolving(nameOf(stage.mon))
+    if (stage.kind === 'done') {
+      const at = stage.lines[stage.at]
+      return at === undefined ? '' : doneText(at, battleLines)
+    }
+    if (stage.kind === 'canceled') {
+      // 「얼라리」가 찍히기 전까지는 창에 앞 줄이 그대로 남아 있다
+      if (!stage.ready) return evolving(stage.name)
+      return romLine(battleLines, EVO_LINE.stopped, stage.name) ?? `얼라리...?\n${stage.name}의 변화가 멈췄다!`
+    }
     return ''
-  }, [stage, nameOf])
+  }, [stage, nameOf, battleLines])
 
   if (!tables || stage.kind === 'idle') return null
 
@@ -336,7 +485,15 @@ export function EvolutionScreen() {
     <MenuScreen title="진화" foot={stage.kind === 'changing' ? 'X 그만둔다' : 'Z 넘기기'}>
       <div className={own.stage}>
         <EvolutionFrame running={stage.kind === 'changing'} />
-        <div className={own.line}>{line}</div>
+        {/* 롬 글은 한 쪽 안에서 줄을 바꾼다(`\n`) — 줄마다 끊어 놓는다 */}
+        <div className={own.line}>
+          {line.split('\n').map((row, i) => (
+            <span key={i}>
+              {i > 0 && <br />}
+              {row}
+            </span>
+          ))}
+        </div>
       </div>
     </MenuScreen>
   )
@@ -445,7 +602,7 @@ function ForgetMove({
     <MenuScreen title="기술" note={name} foot="↑↓ 고르기 · Z 결정 · X 그만둔다">
       <div className={css.stageWide}>
         <div className={css.list}>
-          <div className={css.hint}>{`${name}을(를) 배우려면 잊을 기술을 골라야 한다.`}</div>
+          <div className={css.hint}>{`${withObject(name)} 배우려면 잊을 기술을 골라야 한다.`}</div>
           {rows.map((s, i) => (
             <button
               key={`${String(i)}-${String(s.move)}`}
