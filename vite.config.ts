@@ -105,14 +105,33 @@ function appShellOnly(): Plugin {
     apply: 'build',
     generateBundle() {
       for (const rel of collectShell(PUBLIC_DIR) as string[]) {
+        const source = readFileSync(resolve(PUBLIC_DIR, rel))
         this.emitFile({
           type: 'asset',
           fileName: rel,
-          source: readFileSync(resolve(PUBLIC_DIR, rel)),
+          source: rel === 'sw.js' ? stampWorker(source.toString('utf8')) : source,
         })
       }
     },
   }
+}
+
+/**
+ * 서비스 워커의 판 이름을 이 빌드의 `BUILD_ID`로 박는다 (`public/sw.js` 머리).
+ *
+ * ⚠️ **이름이 판마다 바뀌어야 앞 판 캐시를 가를 수 있다.** 워커는 활성화할 때
+ * 지금 판과 바로 앞 판 캐시만 남기는데(`keepOnActivate`), 이름이 늘 같으면
+ * 「앞 판」이 없어서 옛 청크가 한 캐시에 끝없이 쌓인다. 바이트가 바뀌니
+ * 브라우저도 배포마다 새 워커를 깐다 — 설치 때 받는 것은 `SHELL_FILES`의 다섯
+ * 조각이고 이름이 안 변하는 것들이라 HTTP 캐시가 있으면 304로 끝난다.
+ *
+ * 그 줄을 못 찾으면 **빌드를 세운다.** 조용히 넘어가면 판 이름이 `dev`로 굳은
+ * 워커가 올라간다
+ */
+function stampWorker(source: string): string {
+  const line = /^const VERSION = '[^']*'$/m
+  if (!line.test(source)) throw new Error("sw.js에 `const VERSION = '…'` 줄이 없다 — 판 이름을 못 박는다")
+  return source.replace(line, `const VERSION = '${BUILD_ID}'`)
 }
 
 /**
@@ -182,6 +201,48 @@ function cspMetaTag(): Plugin {
   }
 }
 
+/**
+ * 배포하는 `index.html`에서 HTML 주석을 걷는다.
+ *
+ * ⚠️ **소스의 주석은 개발자에게 쓴 것이다.** 도구 경로(`tools/assets/…`)·내부
+ * 문서의 절 번호·상표에 관한 메모가 들어 있고, 그대로 실으면 페이지 소스와
+ * 공유 미리보기 수집기가 그것을 읽는다. 소스는 그대로 두고 **산출물에서만**
+ * 걷는다 — 설명은 소스에 남아야 한다.
+ *
+ * 걷기 전에 확인한 것: 조건부 주석(`<!--[if …]>`)도, CSP를 가리키는 표식 주석도
+ * `index.html`에 없다. CSP는 위 `cspMetaTag`가 `<meta>`로 넣고 주석에 기대지 않는다.
+ * 조건부 주석이 새로 생기면 걷는 순간 뜻이 바뀌므로 그때는 **빌드를 세운다.**
+ *
+ * ⚠️ **`<script>`·`<style>` 안은 안 건드린다.** 그 안의 `<!--`는 주석이 아니다.
+ * `order: 'post'`라 Vite가 청크 태그를 다 넣은 뒤에 돈다. 다시 생기는지는
+ * `verifyDeploy.mjs`가 올라간 `index.html`을 받아 잰다.
+ *
+ * 같은 자리에서 `description`을 한 줄로 편다. 소스는 읽기 좋게 줄을 나눠 두었는데
+ * 그 줄바꿈과 들여쓰기가 속성값에 그대로 들어가 미리보기 문구에 실린다
+ */
+function stripHtmlComments(): Plugin {
+  return {
+    name: 'radiant-strip-html-comments',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html: string) {
+        if (/<!--\s*\[if|<!\[endif\]/i.test(html)) {
+          throw new Error('index.html에 조건부 주석이 있다 — 걷으면 뜻이 바뀐다')
+        }
+        return html
+          .replace(/(<(script|style)\b[\s\S]*?<\/\2\s*>)|<!--[\s\S]*?-->/gi,
+            (_whole: string, kept: string | undefined) => kept ?? '')
+          // 주석이 서 있던 줄은 빈 줄로 남는다
+          .replace(/\n[ \t]*(?=\n)/g, '')
+          .replace(/(<meta\s+name="description"\s+content=")([^"]*)(")/,
+            (_whole: string, head: string, text: string, tail: string) =>
+              `${head}${text.replace(/\s+/g, ' ').trim()}${tail}`)
+      },
+    },
+  }
+}
+
 export default defineConfig({
   /**
    * 미리 묶어 둔 의존성을 어디에 두는가.
@@ -224,7 +285,7 @@ export default defineConfig({
     // 대역으로 바꿔 `.css.ts`가 **그대로 실행되게** 둔다 — 이름도 구조도 같고,
     // 굽지만 않는다 (`tools/test/vanillaExtractStub.ts`)
     ...(TESTING ? [] : [vanillaExtractPlugin()]),
-    appShellOnly(), bundleProvenance(), buildStamp(), cspMetaTag(),
+    appShellOnly(), bundleProvenance(), buildStamp(), cspMetaTag(), stripHtmlComments(),
   ],
   ...(TESTING
     ? {

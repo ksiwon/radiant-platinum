@@ -14,6 +14,7 @@ import { useSessionStore } from '../state/sessionStore'
 import { RECOVERY_TIMEOUT_MS, useRendererStore } from '../state/rendererStore'
 import { RendererTrouble } from '../ui/screens/RendererTrouble'
 import { SceneBoundary } from '../ui/screens/SceneBoundary'
+import { ChunkBoundary } from '../ui/screens/ChunkBoundary'
 import { markMap, markMenu, markScene } from './sceneMark'
 
 const Stage = lazy(() => import('../scene/Stage').then((m) => ({ default: m.Stage })))
@@ -105,9 +106,16 @@ export function App() {
       */}
       {stageMounted && (
         <SceneBoundary where="3D 무대">
-          <Suspense fallback={null}>
-            <Stage />
-          </Suspense>
+          {/*
+            ⚠️ **청크 경계는 지연 화면마다 따로 둔다** (`ChunkBoundary`). 하나로
+            뭉치면 배틀 화면 청크 하나를 못 받아도 3D 무대와 필드가 같이 내려간다.
+            청크 실패가 아닌 오류는 그대로 위(`SceneBoundary`)로 간다
+          */}
+          <ChunkBoundary where="3D 무대">
+            <Suspense fallback={null}>
+              <Stage />
+            </Suspense>
+          </ChunkBoundary>
         </SceneBoundary>
       )}
       {/*
@@ -129,9 +137,11 @@ export function App() {
       */}
       <RendererTrouble />
       {battleUp && (
-        <Suspense fallback={null}>
-          <BattleScreen />
-        </Suspense>
+        <ChunkBoundary where="배틀 화면">
+          <Suspense fallback={null}>
+            <BattleScreen />
+          </Suspense>
+        </ChunkBoundary>
       )}
       <BrowserRouter>
         <Routes>
@@ -139,17 +149,21 @@ export function App() {
           <Route
             path="/intro"
             element={
-              <Suspense fallback={null}>
-                <IntroRoute />
-              </Suspense>
+              <ChunkBoundary where="오프닝">
+                <Suspense fallback={null}>
+                  <IntroRoute />
+                </Suspense>
+              </ChunkBoundary>
             }
           />
           <Route
             path="/play"
             element={
-              <Suspense fallback={null}>
-                <PlayRoute />
-              </Suspense>
+              <ChunkBoundary where="필드 화면">
+                <Suspense fallback={null}>
+                  <PlayRoute />
+                </Suspense>
+              </ChunkBoundary>
             }
           />
         </Routes>

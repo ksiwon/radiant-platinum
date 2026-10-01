@@ -2,11 +2,13 @@
 //
 //     pnpm verify:deploy https://example.invalid/
 //
-// 재는 것 넷:
+// 재는 것 여섯:
 //   ① CSP **응답 헤더**가 정본과 같은가 (meta로는 못 대신한다 — `csp.mjs`)
 //   ② 그 밖의 보안 헤더가 있는가
 //   ③ 첫 화면이 자기 오리진 밖으로 요청하는가
 //   ④ SPA fallback이 도는가 (`/play` 같은 경로가 index.html로 오는가)
+//   ⑤ 올라간 것이 이 나무의 빌드인가
+//   ⑥ 올라간 index.html에 개발 주석이 남았는가
 //
 // ③은 playwright가 있으면 실제로 브라우저를 띄워 잰다. 없으면 index.html과
 // 그 안의 스크립트를 받아 바깥 오리진 문자열이 있는지만 본다 — 약한 검사라
@@ -111,13 +113,28 @@ const entryOf = (html) => {
   const hit = [...html.matchAll(/<script[^>]+src=["']([^"']+\.js)["']/g)].map((m) => m[1])
   return hit.map((h) => h.replace(/^https?:\/\/[^/]+/, '')).sort()
 }
-const servedEntry = entryOf(await (await fetch(base)).text())
+const servedHtml = await (await fetch(base)).text()
+const servedEntry = entryOf(servedHtml)
 if (servedEntry.length === 0) problems.push('index.html에 묶음 스크립트가 없다')
+
+// ── ⑥ 배포한 index.html에 개발 주석이 없는가 ─────────────────────────────────
+//
+// 소스 `index.html`의 주석에는 도구 경로·내부 문서 절 번호·상표 메모가 들어 있다.
+// 빌드가 걷는다(`vite.config.ts`의 `stripHtmlComments`) — 여기서는 **올라간 것**과
+// 여기 `dist/`를 둘 다 다시 본다. 플러그인이 빠지거나 순서가 밀려도 이 줄이 선다
+const commentsIn = (html) => (html.match(/<!--/g) ?? []).length
+if (commentsIn(servedHtml) > 0) {
+  problems.push(`올라간 index.html에 HTML 주석이 ${commentsIn(servedHtml)}개 있다`)
+}
 
 let localEntry = []
 try {
   const { readFileSync } = await import('node:fs')
-  localEntry = entryOf(readFileSync(resolve(ROOT, 'dist/index.html'), 'utf8'))
+  const localHtml = readFileSync(resolve(ROOT, 'dist/index.html'), 'utf8')
+  localEntry = entryOf(localHtml)
+  if (commentsIn(localHtml) > 0) {
+    problems.push(`dist/index.html에 HTML 주석이 ${commentsIn(localHtml)}개 있다`)
+  }
 } catch {
   notes.push('여기 dist/가 없다 — 올라간 것이 이 나무의 빌드인지 대조하지 못했다')
 }
