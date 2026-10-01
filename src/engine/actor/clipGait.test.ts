@@ -6,15 +6,16 @@
 //     여기서는 답을 아는 발을 만들어 놓고 잰다.
 //  ② **옮긴 동작이 같은 자세인가.** 뼈 길이가 달라도 **쉬는 자세에서 돌아간
 //     양**은 같아야 한다.
-//  ③ **속도에 따라 서기·걷기·뛰기가 섞이는가.**
+//  ③ **속도에 따라 서기·걷기·뛰기가 섞이는가.** 서 있으면 서 있는 클립이 비중을
+//     다 받아야 한다 — 걷기 첫 장(한 발을 내디딘 자세)으로 굳으면 안 된다.
 import { describe, it, expect } from 'vitest'
 import {
   AnimationClip, Group, Object3D, Quaternion, QuaternionKeyframeTrack, Vector3,
   VectorKeyframeTrack,
 } from 'three'
 import {
-  GAIT_REST, captureRest, measureCycle, pickGaitClips, retargetClip, restorePose,
-  snapshotPose, stepGait,
+  GAIT_REST, GaitPlayer, captureRest, measureCycle, pickFieldIdleClip, pickGaitClips,
+  recordClip, retargetClip, restorePose, snapshotPose, stepGait,
 } from './clipGait'
 
 /** 한 바퀴 1초, 표본 마흔여덟 */
@@ -194,6 +195,13 @@ describe('클립 고르기', () => {
     expect(pickGaitClips([clip('wait_b'), clip('advent_b')])).toBeNull()
   })
 
+  it('필드의 서 있기는 치비의 `wait_f`뿐이다 — 등신의 `wait_b`는 배틀 자세다', () => {
+    expect(pickFieldIdleClip([clip('wait_b'), clip('wait_f')])?.name).toBe('wait_f')
+    // 아지트 조무래기(`tr1073_00`)가 든 넷. 이 몸은 필드에서 설 자세가 없다
+    expect(pickFieldIdleClip([clip('wait_b'), clip('order_b'), clip('advent_b'), clip('lose01_b')]))
+      .toBeNull()
+  })
+
   it('크기 트랙은 버리고 골반 자리만 남긴다 — 치비 머리가 도로 안 커진다', () => {
     const times = new Float32Array([0, 1])
     const three = new Float32Array([0, 0, 0, 0, 0, 0])
@@ -263,5 +271,98 @@ describe('자세 되돌리기', () => {
     expect(waist.position.y).toBeCloseTo(1, 6)
     expect(waist.quaternion.angleTo(arm(0.2, 1).getObjectByName('Waist')!.quaternion))
       .toBeLessThan(1e-6)
+  })
+})
+
+describe('함수로 뜬 클립', () => {
+  it('돈 뼈만 트랙이 되고, 다 뜨면 뼈가 제자리로 돌아온다', () => {
+    const root = arm(0, 1)
+    const waist = root.getObjectByName('Waist')!
+    const hand = root.getObjectByName('LHand')!
+    const before = hand.quaternion.clone()
+    const axis = new Vector3(1, 0, 0)
+    const clip = recordClip('stand', root, 1, (t) => {
+      hand.quaternion.setFromAxisAngle(axis, t)
+    })
+    expect(clip.tracks.map((t) => t.name)).toEqual(['LHand.quaternion'])
+    expect(hand.quaternion.angleTo(before)).toBeLessThan(1e-6)
+    expect(waist.quaternion.angleTo(new Quaternion())).toBeLessThan(1e-6)
+    // 처음과 끝 칸이 함수가 그때 건 자세다
+    const v = clip.tracks[0]!.values
+    const last = v.length - 4
+    const end = new Quaternion(v[last]!, v[last + 1]!, v[last + 2]!, v[last + 3]!)
+    // 칸은 Float32라 acos 근처에서 2e-4rad쯤 어긋난다
+    expect(end.angleTo(new Quaternion().setFromAxisAngle(axis, 1))).toBeLessThan(1e-3)
+  })
+})
+
+describe('서 있으면 서 있는 클립이 다 받는다', () => {
+  /** 넓적다리 하나짜리 몸. 쉬는 자세는 곧게 선 것이다 */
+  function leg(): { root: Object3D, thigh: Object3D } {
+    const root = new Object3D()
+    root.name = 'Origin'
+    const thigh = new Object3D()
+    thigh.name = 'LThigh'
+    root.add(thigh)
+    return { root, thigh }
+  }
+  const x = new Vector3(1, 0, 0)
+  /** 넓적다리를 `angle`만큼 앞으로 든 채 가만히 있는 클립 */
+  const hold = (name: string, angle: number): AnimationClip => {
+    const q = new Quaternion().setFromAxisAngle(x, angle)
+    return new AnimationClip(name, 1, [new QuaternionKeyframeTrack(
+      'LThigh.quaternion', new Float32Array([0, 1]), new Float32Array([...q.toArray(), ...q.toArray()]),
+    )])
+  }
+  const cycle = { distance: 1.6, leftForward: 0 }
+
+  /** 1초 동안 서 있게 민다 */
+  function stand(player: GaitPlayer): void {
+    for (let i = 0; i < 60; i++) player.update(1 / 60, 0, 4.5, 8)
+  }
+
+  it('뛰기가 있든 없든 서 있기 1 · 걷기 0이다', () => {
+    for (const run of [hold('run_b', 0.9), null]) {
+      const { root, thigh } = leg()
+      const player = new GaitPlayer(root, {
+        clips: { wait: hold('stand', 0.1), walk: hold('walk_b', 0.6), run },
+        walk: cycle, run: run ? cycle : null,
+      })
+      stand(player)
+      const w = player.weights()
+      expect(w.wait).toBeCloseTo(1, 6)
+      expect(w.walk).toBeCloseTo(0, 6)
+      expect(w.run).toBeCloseTo(0, 6)
+      expect(thigh.quaternion.angleTo(new Quaternion().setFromAxisAngle(x, 0.1))).toBeLessThan(1e-4)
+    }
+  })
+
+  it('걸으면 걷기로 넘어가고 비중의 합은 늘 1이다', () => {
+    const { root } = leg()
+    const player = new GaitPlayer(root, {
+      clips: { wait: hold('stand', 0.1), walk: hold('walk_b', 0.6), run: null },
+      walk: cycle, run: null,
+    })
+    for (let i = 0; i < 60; i++) {
+      player.update(1 / 60, 4.5, 4.5, 8)
+      const w = player.weights()
+      expect(w.wait + w.walk + w.run).toBeCloseTo(1, 6)
+    }
+    expect(player.weights().walk).toBeGreaterThan(0.99)
+  })
+
+  it('서 있기가 없는 몸은 쉬는 자세로 선다 — 걷기 첫 장에 안 굳는다', () => {
+    for (const run of [hold('run_b', 0.9), null]) {
+      const { root, thigh } = leg()
+      const rest = captureRest(root)
+      const player = new GaitPlayer(root, {
+        clips: { wait: null, walk: hold('walk_b', 0.6), run },
+        walk: cycle, run: run ? cycle : null,
+      }, rest)
+      stand(player)
+      expect(player.weights().walk).toBeCloseTo(0, 6)
+      // 쉬는 자세는 곧게 선 것이다 (넓적다리 회전 없음)
+      expect(thigh.quaternion.angleTo(new Quaternion())).toBeLessThan(1e-4)
+    }
   })
 })

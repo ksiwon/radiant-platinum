@@ -13,8 +13,9 @@
 // ⚠️ **어느 몸이 무엇을 가졌나** (`.audit/probe/walkDonors.mjs` 실측):
 //
 //   등신 걷기·뛰기(`walk_b`·`run_b`)   주인공 두 벌(`pc0001`·`pc0002`)에만 있다
-//   등신 서 있기(`wait_b`)             등신 124벌 전부
+//   등신 서 있기(`wait_b`)             등신 124벌 전부 — **배틀 자세다** (`pickFieldIdleClip`)
 //   치비 걷기(`walk_f`)                치비 161벌 중 151
+//   치비 서 있기(`wait_f`)             치비 161벌 중 158
 //
 // 필드에 서는 트레이너는 등신이라 걷기가 없다. 그래서 **주인공의 걷기를 그 몸으로
 // 옮긴다** (`retargetClip`). 치비는 안 옮긴다 — 제 걷기가 있고, 무엇보다 **뼈
@@ -55,11 +56,24 @@ export function pickGaitClips(clips: readonly AnimationClip[]): GaitClips | null
 }
 
 /**
- * 서 있는 동작만 고른다. 걷기를 남에게 꿔 오는 몸이 쓴다 — **서 있기는 제 것이
- * 있다** (`wait_b`는 등신 124벌 전부에 들어 있다)
+ * **필드에서 서 있는 동작**만 고른다. 치비의 `wait_f`뿐이다 — 없으면 `null`.
+ *
+ * ⚠️ **등신의 `wait_b`는 필드의 서 있기가 아니다. 배틀에서 명령을 기다리는
+ * 자세다.** 발을 앞뒤로 벌리고 팔을 든 채 거의 안 움직인다 — 갤럭시단 아지트의
+ * 조무래기 서른여섯이 그 자세로 서서 **걷다 멈춘 것처럼** 보였다. 잰 값은
+ * 두 발의 앞뒤 간격을 골반~발 높이로 나눈 것이다 (`public/models/npc`의 GLB 그대로,
+ * 클립 한 바퀴에서 제일 벌어진 때 · `.audit/probe/idleStance.mjs`):
+ *
+ *   치비 `wait_f` 24벌             0.02~0.09 — 발을 모으고 선다
+ *   등신 `wait_b` 93벌             0.00~0.84 — 중앙값 0.31
+ *     조무래기 `tr1073_00`          0.39 (열쇠 셋, 1.33초 동안 몇 도만 흔들린다)
+ *     주인공 `pc0001_00`            0.52
+ *
+ * 원작(DS)의 NPC도 판때기의 서 있는 장이고, BDSP도 필드에서는 치비가 `wait_f`로
+ * 선다. 그러니 등신에는 이것이 `null`이고 서 있기를 따로 세운다 (`scene/NpcModels`)
  */
-export function pickIdleClip(clips: readonly AnimationClip[]): AnimationClip | null {
-  return find(clips, NAMES.wait)
+export function pickFieldIdleClip(clips: readonly AnimationClip[]): AnimationClip | null {
+  return find(clips, ['wait_f'])
 }
 
 /**
@@ -132,6 +146,68 @@ export function snapshotPose(root: Object3D): PoseSnapshot {
 /** 떠 둔 자세로 되돌린다. 클립에서 절차형으로 넘어갈 때 한 번 부른다 */
 export function restorePose(snap: PoseSnapshot): void {
   for (const [node, { q, p }] of snap) { node.quaternion.copy(q); node.position.copy(p) }
+}
+
+/**
+ * 뼈를 직접 움직이는 함수를 **클립으로 떠 둔다.** 이름이 있는 노드 중 한 번이라도
+ * 돈 것만 트랙이 된다 — 안 건드린 뼈는 믹서가 제 자리에 둔다.
+ *
+ * 절차형 자세(`actor/locomotion`)를 이동 클립과 **같은 믹서에서 섞으려고** 쓴다.
+ * 믹서 밖에서 뼈를 쓰면 다음 `mixer.update`가 덮어 버리고, 비중으로 섞을 수도 없다.
+ *
+ * 다 뜨고 나면 뼈를 떴던 자리로 되돌린다 (`snapshotPose`)
+ */
+export function recordClip(
+  name: string, root: Object3D, duration: number, pose: (t: number) => void,
+): AnimationClip {
+  const snap = snapshotPose(root)
+  const nodes: Object3D[] = []
+  const named = new Set<string>()
+  // 이름이 겹치면 처음 것만 — 트랙은 이름으로 묶이므로 둘째는 어차피 못 잡는다
+  root.traverse((o) => { if (o.name && !named.has(o.name)) { named.add(o.name); nodes.push(o) } })
+  const count = Math.max(2, Math.round(duration / RETARGET_STEP) + 1)
+  const times = new Float32Array(count)
+  const values = nodes.map(() => new Float32Array(count * 4))
+  for (let i = 0; i < count; i++) {
+    const t = (duration * i) / (count - 1)
+    times[i] = t
+    pose(t)
+    nodes.forEach((o, k) => { o.quaternion.toArray(values[k]!, i * 4) })
+  }
+  restorePose(snap)
+  const tracks: KeyframeTrack[] = []
+  const got = new Quaternion()
+  nodes.forEach((o, k) => {
+    const v = values[k]!
+    const q = snap.get(o)!.q
+    let moved = false
+    for (let i = 0; i < count && !moved; i++) {
+      got.set(v[i * 4]!, v[i * 4 + 1]!, v[i * 4 + 2]!, v[i * 4 + 3]!)
+      moved = got.angleTo(q) > 1e-5
+    }
+    if (moved) tracks.push(new QuaternionKeyframeTrack(`${o.name}.quaternion`, times, v))
+  })
+  return new AnimationClip(name, duration, tracks)
+}
+
+/**
+ * 쉬는 자세(`captureRest`)를 그대로 세우는 클립.
+ *
+ * 서 있기가 정말 없는 몸이 쓴다 (`GaitPlayer`). 그때 남는 비중을 **걷기 첫 장에
+ * 몰면** 한 발을 내디딘 채 굳는다 — 쉬는 자세가 그보다 낫다
+ */
+function restClip(rest: RestPose): AnimationClip {
+  const times = new Float32Array([0, 1])
+  const tracks: KeyframeTrack[] = []
+  for (const [bone, { rest: q }] of rest.bones) {
+    tracks.push(new QuaternionKeyframeTrack(`${bone}.quaternion`, times, new Float32Array([...q, ...q])))
+  }
+  const pelvis = rest.position.get(PELVIS)
+  if (pelvis) {
+    const p = pelvis.toArray()
+    tracks.push(new VectorKeyframeTrack(`${PELVIS}.position`, times, new Float32Array([...p, ...p])))
+  }
+  return new AnimationClip('rest', 1, tracks)
 }
 
 /** 트랙 이름 `뼈.속성`을 가른다 */
@@ -415,16 +491,21 @@ export function stepGait(
  * 세 동작을 늘 함께 걸어 두고 비중만 바꾼다. 걷기·뛰기는 **시간을 직접 쓴다**
  * (`timeScale` 0) — 믹서가 시간을 밀면 제 빠르기로 돌아 발이 미끄러진다.
  * 서 있기만 제 빠르기로 돈다.
+ *
+ * ⚠️ **서 있는 비중은 늘 서 있는 클립이 받는다.** 서 있기가 없는 몸은 쉬는
+ * 자세(`rest` — 안 주면 지금 자세를 뜬다)를 그 자리에 세운다. 한때 남는 비중을
+ * 걷기에 몰았는데, 그러면 서 있는 사람이 **걷기 첫 장(한 발을 내디딘 자세)**으로
+ * 굳었다
  */
 export class GaitPlayer {
   readonly set: GaitSet
   private readonly mixer: AnimationMixer
-  private readonly wait: AnimationAction | null
+  private readonly wait: AnimationAction
   private readonly walk: AnimationAction
   private readonly run: AnimationAction | null
   state: GaitState = GAIT_REST
 
-  constructor(root: Object3D, set: GaitSet) {
+  constructor(root: Object3D, set: GaitSet, rest?: RestPose) {
     this.set = set
     this.mixer = new AnimationMixer(root)
     const start = (clip: AnimationClip | null, scale: number): AnimationAction | null => {
@@ -435,19 +516,25 @@ export class GaitPlayer {
       a.play()
       return a
     }
-    this.wait = start(set.clips.wait, 1)
+    this.wait = start(set.clips.wait ?? restClip(rest ?? captureRest(root)), 1)!
     this.walk = start(set.clips.walk, 0)!
     this.run = start(set.clips.run, 0)
+  }
+
+  /** 지금 걸린 비중. 셋을 더하면 1이다 — 못 미치면 믹서가 뼈를 원래 값과 섞어 반쯤 T자로 선다 */
+  weights(): { wait: number, walk: number, run: number } {
+    return {
+      wait: this.wait.getEffectiveWeight(),
+      walk: this.walk.getEffectiveWeight(),
+      run: this.run?.getEffectiveWeight() ?? 0,
+    }
   }
 
   update(dt: number, speed: number, walkSpeed: number, runSpeed: number): void {
     this.state = stepGait(this.state, this.set, dt, speed, walkSpeed, runSpeed)
     const { phase, moving, run } = this.state
-    // 서 있기 클립이 없는 몸은 걷기 첫 자세에 비중을 다 준다 — 비중 합이 1에
-    // 못 미치면 믹서가 뼈를 원래 값과 섞어서 반쯤 T자로 선다
-    const still = this.wait ? 1 - moving : 0
-    this.wait?.setEffectiveWeight(still)
-    this.walk.setEffectiveWeight(this.run ? moving * (1 - run) : 1 - still)
+    this.wait.setEffectiveWeight(1 - moving)
+    this.walk.setEffectiveWeight(this.run ? moving * (1 - run) : moving)
     this.run?.setEffectiveWeight(moving * run)
     this.walk.time = phase * this.set.clips.walk.duration
     if (this.run && this.set.run) {

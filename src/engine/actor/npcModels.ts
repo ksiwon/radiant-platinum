@@ -546,3 +546,48 @@ export function trainerModelBundle(trainerClass: number | null): string | null {
   if (trainerClass === null) return null
   return BUNDLE_BY_CLASS.get(trainerClass) ?? null
 }
+
+/** 모델 칸을 줄 후보 하나 (`nearestFirst`) */
+interface ModelCandidate<A> {
+  actor: A
+  /** 칸을 줄 차례를 가르는 거리(타일). 이미 선 사람은 `hold`만큼 짧다 */
+  d: number
+  /** 가로·세로 어느 쪽이든 `near`를 넘었는가. 그러면 동작을 띄엄띄엄 민다 */
+  far: boolean
+}
+
+/**
+ * 모델로 세울 만한 사람을 **가까운 차례로** 늘어놓는다 (`scene/NpcModels`).
+ *
+ * ⚠️ **배치표 차례로 칸을 주면 먼 사람이 칸을 먹는다.** 칸(`MAX`)이 차면
+ * 남는 사람은 판때기로 서는데, 그게 바로 앞사람일 수 있다.
+ *
+ * - 거리 밖 판정은 **판때기(`NpcSprites`)와 같은 네모**다 — 가로·세로를 따로
+ *   `range`와 견준다. 둘이 다르면 그 틈의 사람이 판때기로만 선다.
+ * - 차례는 곧은 거리다. **이미 선 사람은 `hold`만큼 당긴다** — 거리가 비슷한
+ *   둘이 걸음마다 칸을 주고받으면 모델과 판때기가 번갈아 깜빡인다.
+ * - **스크립트가 잡은 사람(`focus`)은 거리와 상관없이 맨 앞이다.** 이야기의
+ *   한가운데 선 사람이 칸이 모자라 판때기로 서면 안 된다 — 창기둥의 아카기처럼.
+ *   동작도 매 프레임 민다 (`far`가 거짓)
+ * - 거리가 같으면 목록 차례를 지킨다 (`Array.prototype.sort`는 안정 정렬이다)
+ */
+export function nearestFirst<A extends { x: number, z: number }>(
+  list: readonly A[], p: { x: number, z: number },
+  opts: {
+    range: number, near: number, hold: number,
+    accept: (actor: A) => boolean, standing: (actor: A) => boolean,
+    focus?: (actor: A) => boolean,
+  },
+): ModelCandidate<A>[] {
+  const first: ModelCandidate<A>[] = []
+  const rest: ModelCandidate<A>[] = []
+  for (const actor of list) {
+    if (!opts.accept(actor)) continue
+    const dx = Math.abs(actor.x - p.x), dz = Math.abs(actor.z - p.z)
+    if (opts.focus?.(actor)) { first.push({ actor, d: Math.hypot(dx, dz), far: false }); continue }
+    if (dx > opts.range || dz > opts.range) continue
+    const d = Math.hypot(dx, dz) - (opts.standing(actor) ? opts.hold : 0)
+    rest.push({ actor, d, far: Math.max(dx, dz) > opts.near })
+  }
+  return [...first, ...rest.sort((a, b) => a.d - b.d)]
+}

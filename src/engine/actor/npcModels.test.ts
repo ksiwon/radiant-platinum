@@ -15,8 +15,8 @@ import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
   NPC_BUNDLE, NPC_MODEL_ALIAS, NPC_MODEL_BUNDLE, NPC_RECOLOR, SPRITE_CLASS_ALIAS, baseBundle,
-  bundlesByTag, buildOf, classOfSprite,
-  modelFor, modelTagFor, normalize, trainerModelBundle, type NpcModelTable,
+  bundlesByTag, buildOf, classOfSprite, clipFilterFor,
+  modelFor, modelTagFor, nearestFirst, normalize, trainerModelBundle, type NpcModelTable,
 } from './npcModels'
 import { MASK_CHANNEL_PROPS } from '../../import/bdsp/albedo'
 import { TRAINER_MODELS } from '../../import/bdsp/trainerModels'
@@ -423,5 +423,70 @@ describe('다시 칠하기', () => {
       expect(key, key).not.toBe(baseBundle(key))
       expect(plain.has(baseBundle(key)) ? key : 'ok').not.toBe(baseBundle(key))
     }
+  })
+})
+
+describe('실을 클립', () => {
+  it('치비는 필드에서 설 `wait_f`를 싣고, 등신은 배틀 넷만 싣는다', () => {
+    // 아지트 조무래기의 두 몸. 치비 쪽 `wait_f`가 굽기에서 떨어지면 서 있는 사람이 걷기 첫 장으로 굳는다
+    const chibi = clipFilterFor('fc1073_00')
+    for (const name of ['walk_f', 'run_f', 'wait_f']) expect(chibi.test(name)).toBe(true)
+    expect(chibi.test('wait_b')).toBe(false)
+    const trainer = clipFilterFor('tr1073_00')
+    for (const name of ['advent_b', 'wait_b', 'order_b', 'lose01_b']) expect(trainer.test(name)).toBe(true)
+    expect(trainer.test('wait_f')).toBe(false)
+  })
+})
+
+describe('모델 칸을 줄 차례', () => {
+  const at = (x: number, z: number, name = '') => ({ x, z, name })
+  const opts = {
+    range: 48, near: 24, hold: 2,
+    accept: () => true, standing: () => false,
+  }
+
+  it('가까운 사람부터다 — 배치표 차례가 아니다', () => {
+    const list = [at(0, 40, 'far'), at(0, 3, 'near'), at(0, 28, 'mid')]
+    expect(nearestFirst(list, { x: 0, z: 0 }, opts).map((c) => c.actor.name))
+      .toEqual(['near', 'mid', 'far'])
+  })
+
+  it('판때기와 같은 네모로 자른다 — 24~48칸 사람도 후보다', () => {
+    // 창기둥: 아카기(z 28)를 계단 아래(z 56쯤)에서 본다
+    const got = nearestFirst([at(10, 28, 'cyrus')], { x: 10, z: 56 }, opts)
+    expect(got.map((c) => c.actor.name)).toEqual(['cyrus'])
+    expect(got[0]!.far).toBe(true)
+    // 가로·세로 각각 48이 끝이다. 대각선 거리는 50을 넘어도 네모 안이면 든다
+    expect(nearestFirst([at(48, 48)], { x: 0, z: 0 }, opts)).toHaveLength(1)
+    expect(nearestFirst([at(49, 0)], { x: 0, z: 0 }, opts)).toHaveLength(0)
+  })
+
+  it('NEAR 안은 매 프레임 미는 쪽이다', () => {
+    const [c] = nearestFirst([at(24, -24)], { x: 0, z: 0 }, opts)
+    expect(c!.far).toBe(false)
+  })
+
+  it('이미 선 사람은 덤만큼 당긴다 — 거리가 비슷한 둘이 칸을 주고받지 않는다', () => {
+    const a = at(0, 10, 'a'), b = at(0, 9, 'b')
+    const got = nearestFirst([b, a], { x: 0, z: 0 }, { ...opts, standing: (x) => x === a })
+    expect(got.map((c) => c.actor.name)).toEqual(['a', 'b'])
+  })
+
+  it('스크립트가 잡은 사람은 거리와 상관없이 맨 앞이고 매 프레임 민다', () => {
+    const cyrus = at(0, 60, 'cyrus')
+    const got = nearestFirst([at(0, 2, 'grunt'), cyrus, at(0, 1, 'mars')], { x: 0, z: 0 },
+      { ...opts, focus: (x) => x === cyrus })
+    expect(got.map((c) => c.actor.name)).toEqual(['cyrus', 'mars', 'grunt'])
+    expect(got[0]!.far).toBe(false)
+    // 숨은 사람은 잡혀 있어도 안 선다
+    expect(nearestFirst([cyrus], { x: 0, z: 0 }, { ...opts, accept: () => false, focus: () => true }))
+      .toHaveLength(0)
+  })
+
+  it('받지 않는 사람은 뺀다', () => {
+    const hidden = at(0, 1, 'hidden')
+    const got = nearestFirst([hidden, at(0, 2, 'shown')], { x: 0, z: 0 },
+      { ...opts, accept: (x) => x !== hidden })
+    expect(got.map((c) => c.actor.name)).toEqual(['shown'])
   })
 })
