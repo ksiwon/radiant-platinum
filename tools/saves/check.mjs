@@ -77,8 +77,10 @@ for (const name of files) {
     await page.setInputFiles('input[type=file][accept=".rpsave"]', at)
     const go = page.getByRole('button', { name: '이 리포트로 이어하기' })
     await go.waitFor({ timeout: 30_000 })
-    // 계약이 다르면 화면이 한 줄 더 적는다 — 막지는 않지만 표에 남긴다
-    if (await page.getByText('콘텐츠 계약이 다릅니다').count() > 0) note = '계약 다름'
+    // 계약이 다르면 화면이 한 줄 더 적는다 — 막지는 않지만 표에 남긴다. 무엇이 다른지에
+    // 따라 말이 갈린다(`TitleScreen`의 `pending.contract`) — 두 말 그대로 찾는다
+    if (await page.getByText('다른 지역판 롬으로 설치한 곳에서 만든 리포트입니다').count() > 0) note = '지역판 다름'
+    else if (await page.getByText('다른 버전의 게임 파일로 만든 리포트입니다').count() > 0) note = '게임 파일 다름'
     await go.click()
     await page.waitForURL('**/play', { timeout: 60_000 })
     await page.waitForSelector('canvas', { timeout: 120_000 })

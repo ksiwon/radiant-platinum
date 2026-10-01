@@ -14,6 +14,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { App } from './App'
 import { boot, type BootState } from './boot'
 import { dayTheme } from '../ui/theme/day.css'
+import { ChunkBoundary } from '../ui/screens/ChunkBoundary'
 
 const ImportWizard = lazy(() => import('../import/ui/ImportWizard')
   .then((m) => ({ default: m.ImportWizard })))
@@ -60,19 +61,25 @@ export function BootGate() {
   // **배포된 첫 화면의 글자색과 글꼴이 통째로 기본값**이었다 — 어두운 배경 위
   // 어두운 글자라 안 읽혔다. 개발에서는 마법사를 `App` 안에서 열어 보므로
   // 멀쩡해 보였다: 개발만 보던 것과 사용자가 보던 것이 달랐던 자리다
+  //
+  // ⚠️ **설치 화면에도 청크 경계를 따로 둔다** (`ChunkBoundary`). 못 받으면 맨 바깥
+  // 경계(`main.tsx`)가 「앱」을 못 받았다고 적는다 — 무엇을 못 받았는지가 안 남는다.
+  // 청크 실패가 아닌 오류는 그대로 위로 간다
   return (
     <div className={dayTheme} style={{ height: '100%' }}>
-      <Suspense fallback={<Splash>{'설치 화면을 여는 중…'}</Splash>}>
-        <ImportWizard
-          from="boot"
-          // 여기서는 돌아갈 타이틀이 없다. 단추는 「설치 상태 다시 확인」이고, 누르면
-          // 부팅을 다시 묻는다 — 기록이 ready가 됐으면 그 자리에서 게임으로 넘어간다
-          onClose={() => { setTick((t) => t + 1) }}
-          onReady={() => { setTick((t) => t + 1) }}
-          // 왜 설치 화면이 떴는가. 화면이 그 말을 해야 사용자가 할 일을 안다
-          why={why}
-        />
-      </Suspense>
+      <ChunkBoundary where="설치 화면">
+        <Suspense fallback={<Splash>{'설치 화면을 여는 중…'}</Splash>}>
+          <ImportWizard
+            from="boot"
+            // 여기서는 돌아갈 타이틀이 없다. 단추는 「설치 상태 다시 확인」이고, 누르면
+            // 부팅을 다시 묻는다 — 기록이 ready가 됐으면 그 자리에서 게임으로 넘어간다
+            onClose={() => { setTick((t) => t + 1) }}
+            onReady={() => { setTick((t) => t + 1) }}
+            // 왜 설치 화면이 떴는가. 화면이 그 말을 해야 사용자가 할 일을 안다
+            why={why}
+          />
+        </Suspense>
+      </ChunkBoundary>
     </div>
   )
 }

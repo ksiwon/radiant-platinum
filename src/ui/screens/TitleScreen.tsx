@@ -38,16 +38,58 @@ import {
 } from '../../app/integrityWatch'
 import { groupLabels } from '../../import/install/groupLabels'
 import { controlRows } from '../../engine/input/controlLegend'
+import { typingInto } from '../../engine/input/keys'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import { playSong, warmMenu } from '../../engine/audio/lazy'
 import { TITLE_SONG } from '../../engine/audio/songIds'
 import { unreadPatch } from './patchLog'
+import { ChunkBoundary } from './ChunkBoundary'
 import * as css from './titleScreen.css'
 
 /** 게임 청크를 미리 받아둔다 — 클릭 시점의 대기를 없앤다 (PLAN §10.4) */
 function prefetchGameChunk() {
   void import('../../scene/Stage')
   void import('../../app/PlayRoute')
+}
+
+/**
+ * 무대가 서기 전의 타이틀에서 **브라우저 기본 동작을 막는다** — 붙이면 떼는 함수를 준다.
+ *
+ * ⚠️ **무대의 막기는 여기까지 안 온다.** `attachKeyboard`(`engine/input/keys`)가 같은
+ * 셋을 막지만 그것은 `scene/Stage`가 설 때 붙는다 — 타이틀은 무대 전이라 맨몸이었고,
+ * Tab을 누르면 ▶ 커서와 따로 브라우저 포커스가 돌고, 오른쪽 클릭이 「뒤로 · 새로고침
+ * · 검사」를 띄웠다. 그래서 같은 셋을 같은 판별로 여기서도 막는다.
+ *
+ * - **Tab** — 글 칸(버그 제보의 칸들)은 비켜 준다. 칸 사이를 옮기는 키다
+ * - **오른쪽 클릭** — 글 칸은 붙여넣기 메뉴가 있어야 해 비켜 준다
+ * - **그림 끌기** — 끌면 반투명 그림이 따라붙는다
+ *
+ * 그것을 무대 쪽으로 옮겨 붙이지 않고 여기 따로 두는 까닭은 `attachKeyboard`가 한 번
+ * 붙으면 안 떼고, 눌린 키를 세기 시작한다는 데 있다 — 타이틀에는 셀 것이 없다.
+ * 무대가 서면 타이틀은 내려가므로(`TitleScreen`) 두 막기가 함께 서는 일은 없다
+ *
+ * @param tabFree Tab을 브라우저에 돌려주는가. **설치 화면이 떠 있는 동안이다** —
+ *                그 화면은 제 키 커서가 없어 포커스로만 다룬다. 막으면 키로는 단추에 못 닿는다
+ */
+export function guardTitleShell(target: Window, tabFree: boolean): () => void {
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.code !== 'Tab' || tabFree || typingInto(e.target)) return
+    e.preventDefault()
+  }
+  const onMenu = (e: MouseEvent): void => {
+    if (!typingInto(e.target)) e.preventDefault()
+  }
+  const onDrag = (e: DragEvent): void => {
+    if (typeof HTMLImageElement !== 'undefined' && e.target instanceof HTMLImageElement) e.preventDefault()
+  }
+  target.addEventListener('keydown', onKey)
+  target.addEventListener('contextmenu', onMenu)
+  target.addEventListener('dragstart', onDrag)
+  return () => {
+    target.removeEventListener('keydown', onKey)
+    target.removeEventListener('contextmenu', onMenu)
+    target.removeEventListener('dragstart', onDrag)
+  }
 }
 
 /**
@@ -178,6 +220,10 @@ function TitleMenu() {
   // 만난다 — 그래서 화면이 뜬 뒤 한가할 때 본다. 개발판은 설치 기록이 없어서
   // 아무 일도 안 일어난다
   useEffect(() => watchIntegrity(), [])
+
+  // 무대 전의 타이틀에서 브라우저가 새지 않게 (`guardTitleShell`). 설치 화면이 떠 있는
+  // 동안만 Tab을 돌려준다
+  useEffect(() => guardTitleShell(window, importing), [importing])
 
   /**
    * 설치 화면을 닫는다 — 끝까지 고쳤든(`onReady`) 도중에 닫았든.
@@ -750,54 +796,73 @@ function TitleMenu() {
         <p className={css.hint}>{controlLine}</p>
       </div>
 
+      {/*
+        ⚠️ **지연 화면마다 청크 경계를 따로 둔다** (`ChunkBoundary`). 안 두면 맨 바깥
+        경계(`main.tsx`)가 받아서 앱이 통째로 내려가고 화면 전체가 창 하나가 된다 —
+        「더보기」 하나를 못 받았을 뿐인데 타이틀이 사라진다. 여기서 받으면 타이틀은
+        안 내려가고 그 위에 창이 서며, 창이 **어느 화면을 못 받았는지**를 적는다.
+        청크 실패가 아닌 오류는 경계가 그대로 위로 넘긴다
+      */}
       {menuTop === 'options' && (
-        <Suspense fallback={null}>
-          <OptionsScreen />
-        </Suspense>
+        <ChunkBoundary where="설정">
+          <Suspense fallback={null}>
+            <OptionsScreen />
+          </Suspense>
+        </ChunkBoundary>
       )}
 
       {importing && (
-        <Suspense fallback={null}>
-          {/* ⚠️ **다 고쳤으면 스스로 닫힌다.** 설치 화면은 「끝나면 넘어갑니다」라고
-              말하는데 여기에 `onReady`가 없어서 다 끝나도 그 화면이 그대로 남았다 */}
-          <ImportWizard
-            onClose={closeWizard}
-            onReady={() => { setNotice('어긋난 에셋을 다시 만들었습니다'); closeWizard() }}
-          />
-        </Suspense>
+        <ChunkBoundary where="설치 화면">
+          <Suspense fallback={null}>
+            {/* ⚠️ **다 고쳤으면 스스로 닫힌다.** 설치 화면은 「끝나면 넘어갑니다」라고
+                말하는데 여기에 `onReady`가 없어서 다 끝나도 그 화면이 그대로 남았다 */}
+            <ImportWizard
+              onClose={closeWizard}
+              onReady={() => { setNotice('어긋난 에셋을 다시 만들었습니다'); closeWizard() }}
+            />
+          </Suspense>
+        </ChunkBoundary>
       )}
 
       {showOther && (
-        <Suspense fallback={null}>
-          <OtherGames onClose={() => { setShowOther(false) }} />
-        </Suspense>
+        <ChunkBoundary where="이런 게임은 어떠세요?">
+          <Suspense fallback={null}>
+            <OtherGames onClose={() => { setShowOther(false) }} />
+          </Suspense>
+        </ChunkBoundary>
       )}
 
       {showPatch && (
-        <Suspense fallback={null}>
-          <PatchNotes onClose={() => { setShowPatch(false) }} />
-        </Suspense>
+        <ChunkBoundary where="패치노트">
+          <Suspense fallback={null}>
+            <PatchNotes onClose={() => { setShowPatch(false) }} />
+          </Suspense>
+        </ChunkBoundary>
       )}
 
       {showBug && (
-        <Suspense fallback={null}>
-          <BugReport onClose={() => { setShowBug(false) }} />
-        </Suspense>
+        <ChunkBoundary where="버그 제보">
+          <Suspense fallback={null}>
+            <BugReport onClose={() => { setShowBug(false) }} />
+          </Suspense>
+        </ChunkBoundary>
       )}
 
       {/* ⚠️ **여는 창마다 「더보기」를 닫는다.** 겹쳐 두면 X를 두 번 눌러야
           타이틀로 돌아오고, 뒤에 깔린 창이 스크림을 한 겹 더 얹어 어두워진다 */}
       {showMore && (
-        <Suspense fallback={null}>
-          <MoreMenu
-            newPatch={newPatch}
-            onOptions={() => { setShowMore(false); useMenuStore.getState().open('options') }}
-            onPatchNotes={() => { setShowMore(false); setShowPatch(true); setNewPatch(false) }}
-            onBugReport={() => { setShowMore(false); setShowBug(true) }}
-            onOtherGames={() => { setShowMore(false); setShowOther(true) }}
-            onClose={() => { setShowMore(false) }}
-          />
-        </Suspense>
+        <ChunkBoundary where="더보기">
+          <Suspense fallback={null}>
+            <MoreMenu
+              newPatch={newPatch}
+              onOptions={() => { setShowMore(false); useMenuStore.getState().open('options') }}
+              onPatchNotes={() => { setShowMore(false); setShowPatch(true); setNewPatch(false) }}
+              onBugReport={() => { setShowMore(false); setShowBug(true) }}
+              onOtherGames={() => { setShowMore(false); setShowOther(true) }}
+              onClose={() => { setShowMore(false) }}
+            />
+          </Suspense>
+        </ChunkBoundary>
       )}
     </div>
   )

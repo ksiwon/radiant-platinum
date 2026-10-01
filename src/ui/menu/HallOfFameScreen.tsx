@@ -48,9 +48,9 @@ import * as css from './hallOfFame.css'
  * 파티 장면을 넘기는 키 — A와 B.
  *
  * ⚠️ **손으로 적지 않는다.** 한때 `KeyZ`·`KeyX`·`Enter`만 적어 두어서 A의 임자인
- * 스페이스가 빠졌다. Enter는 메뉴 키처럼 덤으로 받는다 (`useMenuKeys`)
+ * 스페이스가 빠졌다. 덤인 Enter도 `BINDINGS.interact`에 들어 있다
  */
-const SKIP_KEYS = new Set([...BINDINGS.interact, ...BINDINGS.cancel, 'Enter'])
+const SKIP_KEYS = new Set([...BINDINGS.interact, ...BINDINGS.cancel])
 
 /** 전당의 곡 (`SEQ_BLD_EV_DENDO2`) */
 const BGM = 1171
