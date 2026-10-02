@@ -16,7 +16,7 @@ import { objectFxTick } from '../engine/actor/objectFx'
 import { quakeOffset } from '../engine/world/fieldQuake'
 import { updateLocomotion } from '../engine/actor/locomotion'
 import { restorePose } from '../engine/actor/clipGait'
-import { cameraSystem, firstPersonView } from '../engine/actor/camera'
+import { cameraSystem, FIELD_NEAR, firstPersonView } from '../engine/actor/camera'
 import { warpSystem } from '../engine/map/world'
 import { fieldScripts, scriptStepSystem, scriptSystem } from '../engine/script/field'
 import { encounterSystem } from '../engine/battle/encounterSystem'
@@ -337,8 +337,13 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
     const fov = cinematicStage.active ? cinematicStage.fov
       : starterStage.active ? starterStage.fov
         : battleStage.active ? battleStage.fov : cameraSystem.fov
-    if (lens.isPerspectiveCamera && lens.fov !== fov) {
+    // near도 같다 — 1인칭은 벽 코앞에 서므로 낮춘다(`FIRST_NEAR`). 영상 무대는 원작 렌즈를 제가 끼우므로
+    // (`aimDemoCamera`) 손대지 않는다
+    const near = cinematicStage.active ? lens.near
+      : shot === worldState.camera ? cameraSystem.near : FIELD_NEAR
+    if (lens.isPerspectiveCamera && (lens.fov !== fov || lens.near !== near)) {
       lens.fov = fov
+      lens.near = near
       lens.updateProjectionMatrix()
     }
 

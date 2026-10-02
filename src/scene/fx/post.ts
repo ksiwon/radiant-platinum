@@ -241,9 +241,18 @@ function withOutline(renderer: WebGPURenderer, scene: Scene, camera: Camera): Bu
      * 0.0004인데 z=40과 41은 0.00006이다. 거리마다 문턱값이 달라져야 해서
      * 하나로는 못 잡는다. 시점 공간으로 되돌리면 단위가 타일이 된다
      */
+    //
+    // ⚠️ **렌즈도 굽지 않는다.** 1인칭은 near를 낮추고(`cameraSystem.near`) 영상 무대는 원작 렌즈를 끼운다
+    // (`demoInstance`의 `aimDemoCamera` — 배 9.4 · 56칸, 창기둥 0.6 · 63칸). 0.1 · 200으로 구워 두면 배에서 참 깊이
+    // 12 · 40이 0.14 · 1.2로 풀려 윤곽이 사라졌다. 그릴 때마다 지금 렌즈를 읽는다(`syncLens`)
+    const lensNear = uniform(cam.near)
+    const lensFar = uniform(cam.far)
+    const syncLens = () => {
+      if (lensNear.value !== cam.near) lensNear.value = cam.near
+      if (lensFar.value !== cam.far) lensFar.value = cam.far
+    }
     const at = (dx: Tsl, dy: Tsl) =>
-      perspectiveDepthToViewZ(depthTex.sample(uv.add(vec2(dx, dy))),
-        float(cam.near), float(cam.far)).negate()
+      perspectiveDepthToViewZ(depthTex.sample(uv.add(vec2(dx, dy))), lensNear, lensFar).negate()
 
     // ⚠️ **깊이 텍스처는 가까운 화소를 집는다**(`DepthTexture`의 기본 `NearestFilter`).
     // 1.4화소 옆을 물으면 화소 중심에서 −0.9 · +1.9가 되어 **바로 옆 화소**가 온다 —
@@ -290,7 +299,7 @@ function withOutline(renderer: WebGPURenderer, scene: Scene, camera: Camera): Bu
     post.outputNode = shaded.add(glow)
     return {
       step: 'outline',
-      render: () => { warp.sync(); wobble.sync(); syncFog(); post.render() },
+      render: () => { warp.sync(); wobble.sync(); syncFog(); syncLens(); post.render() },
       syncSize,
       // ⚠️ **우리가 만든 셋만 놓는다.** 씬·카메라·거기 걸린 재질과 텍스처는
       // 월드가 쥔 것이고 다음 체인도 같은 것을 쓴다 — 여기서 놓으면 물러난

@@ -182,6 +182,26 @@ describe('진짜 체인 (GPU 없이)', () => {
     }
   })
 
+  it('렌즈 near · far를 굽지 않고 그릴 때마다 다시 읽는다', () => {
+    // ⚠️ 1인칭은 near를 낮추고 영상 무대(`aimDemoCamera`)는 원작 렌즈를 끼운다 — 만들 때 구운 0.1 · 200으로
+    // 깊이를 풀면 배 위에서 윤곽이 통째로 사라진다
+    const { gl } = fakeGl({ width: 960, height: 640 })
+    const cam = new PerspectiveCamera()
+    let reads = 0
+    Object.defineProperty(cam, 'near', { get() { reads++; return 0.1 }, configurable: true })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const chain = createPostChain(gl, new Scene(), cam)
+      const atBuild = reads
+      expect(atBuild).toBeGreaterThan(0)
+      chain?.render()
+      expect(reads).toBeGreaterThan(atBuild)
+      chain?.dispose()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it('독 일렁임을 그릴 때마다 읽는다 — 다 돈 것은 그 프레임에 놓는다', () => {
     // 걸음 쪽(`scene/stepSystem`)은 시각만 적고, 몇 픽셀 밀지는 그리는 쪽이 그 프레임의
     // 시각으로 낸다. 다 돈 것을 놓는 것도 여기다 — 그래서 이미 끝난 일렁임을 걸어 두고

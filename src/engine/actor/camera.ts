@@ -265,11 +265,17 @@ export function roomAt(rooms: readonly RoomBox[], x: number, z: number): RoomBox
 export const FIELD_FOV = 55
 
 /**
- * 필드 렌즈의 near(미터). `Stage`의 카메라가 이 값으로 선다 (`scene/fieldCamera`).
- *
- * 1인칭 눈을 벽에서 띄우는 틈(`EYE_GAP`)이 이 값에 걸려 있다 — 렌즈를 바꾸면 틈도 같이 바뀐다
+ * 필드 렌즈의 near(미터). `Stage`의 카메라가 이 값으로 선다 (`scene/fieldCamera`). 3인칭 · 배틀 · 스타팅이 이것이다
  */
 export const FIELD_NEAR = 0.1
+/**
+ * **1인칭 렌즈의 near**(미터) — 눈이 벽 · 문 · 기둥 코앞에 서므로 3인칭보다 낮춘다 (`cameraSystem.near`).
+ *
+ * 깊이는 24비트 · 뒤집지 않은 z다(`Stage`). 칸 하나 깊이 결은 z²/(near·2²⁴)라 0.05면 안개 끝(130칸)에서 2cm,
+ * 실내 안개 끝(44칸)에서 2.3mm다 — 겹쳐 그리는 판은 다 `polygonOffset`으로 갈라 둔다. 윤곽 패스는 렌즈를 굽지 않고
+ * 그릴 때마다 읽는다(`fx/post`의 `syncLens`) — 구워 두면 낮춘 near로 깊이를 잘못 풀어 선이 사라진다
+ */
+export const FIRST_NEAR = 0.05
 
 /**
  * **깨어진 세계의 렌즈** (`ov9_02249960`의 `DISTORTION_WORLD_CAMERA_BASE_*`).
@@ -306,18 +312,14 @@ const FIRST_DAMPING = 12
 const LOOK_AHEAD = 6
 
 /**
- * 1인칭 눈과 앞을 막은 면 사이에 남기는 틈(미터) — 렌즈 near에 0.05를 더한다.
+ * 1인칭 눈과 앞을 막은 면 사이에 남기는 틈(미터) — 1인칭 near의 두 배다.
  *
- * ⚠️ **near보다 가까이 붙으면 그 면이 잘려 나가 벽 속이 보인다.** 눈을 0.12 내밀면 앞 면과의 거리가 그만큼 준다 —
- * 영원시티 센터 문 앞 칸(305, 531)에서 area002의 바깥문 판(`M_C_001_DoorOuter_02`)이 머리 0.20 앞이라 눈에서 0.08,
- * near 안쪽이다 (glb 삼각형에 레이를 쏴서 잼). 면에 수직으로 서면 화면 어디서나 거리가 같으므로 앞으로 쏜 레이
- * 하나가 화면 전체를 지킨다.
- *
- * ⚠️ **그 자리의 근본은 배치다.** area002는 이 센터를 area003보다 **한 칸 남쪽**(z +1)에 두고 둘 다 선다 —
- * 원작 문(소품 70)은 z 530.06, area003 문은 530.32, area002 문은 531.32다. 그래서 주인공이 area002의 현관 기둥
- * (좌우 0.55) 사이에 선다. 이 틈은 앞만 지키고, 옆 기둥이 화면을 채우는 것은 못 고친다
+ * ⚠️ **near보다 가까이 붙으면 그 면이 잘려 나가 벽 속이 보인다.** 눈을 0.12 내밀면 앞 면과의 거리가 그만큼 준다.
+ * near 면은 눈에서 near만큼 앞의 판이고 그 귀퉁이는 화각 55도에서 눈으로부터 16:9면 1.46·near, 21:9면 1.66·near
+ * 떨어져 있다 — 앞을 막은 면에 수직으로 서면 귀퉁이까지 지키는 틈이 그 값이다. 두 배면 화면비 3.17까지, 비스듬한 면은
+ * 43도까지 지킨다. 앞으로 쏜 레이 하나(`probeEye`)가 그 면을 잰다
  */
-const EYE_GAP = FIELD_NEAR + 0.05
+const EYE_GAP = 2 * FIRST_NEAR
 /**
  * 다시 쏘기 전에 머리가 움직여도 되는 거리(미터) · 돌아도 되는 각 · 지나도 되는 시간(초).
  *
@@ -472,6 +474,13 @@ export const cameraSystem = {
   fov: FIELD_FOV,
 
   /**
+   * 지금 필드 렌즈의 **near**(미터) — 1인칭이면 `FIRST_NEAR`, 아니면 `FIELD_NEAR`. `EngineDriver`가 렌더 직전에 읽는다.
+   *
+   * 화각과 달리 따라가지 않는다 — 자리가 뚝 앉는 프레임(`placeReady`)에 같이 갈린다
+   */
+  near: FIELD_NEAR,
+
+  /**
    * 카메라가 **가려던 자리에서 아직 얼마나 떨어져 있나** (월드 단위).
    *
    * ⚠️ **맵을 갈아 끼운 직후에는 이 값이 크다.** 자리는 감쇠(5)로 따라가므로
@@ -574,6 +583,7 @@ export const cameraSystem = {
       eyeMemo.ready = false
     }
     lastLensFirst = first
+    cameraSystem.near = first ? FIRST_NEAR : FIELD_NEAR
     const frame = distortionBridge.frame?.() ?? null
     // 1인칭은 눈이 사람 머리에 붙어 있다 — 8도로 보면 코앞만 보인다
     const inDistortion = !first && distortionBridge.inWorld?.() === true

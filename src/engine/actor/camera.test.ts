@@ -10,7 +10,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { Vector3 } from 'three'
 import {
-  aimPitch, cameraDolly, cameraSystem, clampToRoom, eyeForward, eyeProbeStale, firstPersonView, roomAt,
+  aimPitch, cameraDolly, cameraSystem, clampToRoom, eyeForward, eyeProbeStale, FIELD_FOV, FIELD_NEAR, FIRST_NEAR,
+  firstPersonView, roomAt,
   scriptCameraActive, type EyeProbeMemo, type RoomBox,
 } from './camera'
 import { worldState } from '../../state/worldState'
@@ -249,7 +250,7 @@ describe('타고 있으면 1인칭 눈도 그만큼 든다', () => {
 })
 
 // 문 앞 칸에서 1인칭 눈이 문틀 · 바깥문 속에 들었다 (영원시티 센터 · 배틀프런티어). 머리에서 시선으로 쏜 레이가
-// 맞으면 그 앞 틈(near 0.1 + 0.05)까지만 내민다
+// 맞으면 그 앞 틈(1인칭 near 0.05의 두 배 · 0.10)까지만 내민다
 describe('1인칭 눈은 앞을 막은 면 앞에서 멈춘다', () => {
   const head = new Vector3(305.5, 8.38, 531.5)
   const north = new Vector3(0, 0, -1)
@@ -262,9 +263,9 @@ describe('1인칭 눈은 앞을 막은 면 앞에서 멈춘다', () => {
     expect(eyeForward(head, north, new Vector3(305.5, 8.38, 530.5))).toBe(0.12)
   })
 
-  // 실측 자리: area002 바깥문 판이 머리 0.20 앞이다 — 0.12를 내밀면 눈에서 0.08, near 안쪽이다
-  it('⚠️ 머리 0.20 앞이 막혔으면 0.05만 내민다', () => {
-    expect(eyeForward(head, north, new Vector3(305.5, 8.38, 531.3))).toBeCloseTo(0.05, 9)
+  // 문 판이 머리 0.20 앞이면 0.12를 내밀 때 눈에서 0.08 — 틈 안쪽이다
+  it('⚠️ 머리 0.20 앞이 막혔으면 0.10만 내민다', () => {
+    expect(eyeForward(head, north, new Vector3(305.5, 8.38, 531.3))).toBeCloseTo(0.10, 9)
   })
 
   it('틈보다 가까우면 머리에 머문다 — 뒤로는 안 뺀다', () => {
@@ -276,7 +277,7 @@ describe('1인칭 눈은 앞을 막은 면 앞에서 멈춘다', () => {
   it('맞은 자리를 지금 시선에 투영한다 — 옆으로 비낀 것은 그만큼 멀다', () => {
     const east = new Vector3(1, 0, 0)
     // 시선(동쪽)으로 0.2 · 옆으로 0.3 비낀 자리는 시선으로 0.2다
-    expect(eyeForward(head, east, new Vector3(305.7, 8.38, 531.2))).toBeCloseTo(0.05, 9)
+    expect(eyeForward(head, east, new Vector3(305.7, 8.38, 531.2))).toBeCloseTo(0.10, 9)
   })
 })
 
@@ -324,7 +325,7 @@ describe('씬이 꽂은 레이가 1인칭 눈을 끌어온다', () => {
     return t >= 0 && t <= reach ? h.clone().addScaledVector(d, t) : null
   }
 
-  it('⚠️ 문 앞에 서서 북쪽을 보면 눈이 문 판 앞 0.15에서 멈춘다', () => {
+  it('⚠️ 문 앞에 서서 북쪽을 보면 눈이 문 판 앞 0.10에서 멈춘다', () => {
     const calls = { n: 0 }
     cameraSystem.eyeProbe = wallAt(9.8, calls)
     worldState.player.position.set(10, 0, 10)
@@ -332,8 +333,27 @@ describe('씬이 꽂은 레이가 1인칭 눈을 끌어온다', () => {
     worldState.camera.mode = 'first'
     cameraSystem.snap()
     cameraSystem.update(1 / 60)
-    expect(worldState.camera.position.z).toBeCloseTo(9.95, 9)
+    expect(worldState.camera.position.z).toBeCloseTo(9.90, 9)
     expect(worldState.camera.position.y).toBeCloseTo(1.38, 9)
+  })
+
+  it('1인칭이면 렌즈 near를 낮추고 3인칭이면 되돌린다', () => {
+    cameraSystem.eyeProbe = wallAt(5, { n: 0 })
+    worldState.player.position.set(10, 0, 10)
+    worldState.camera.mode = 'first'
+    cameraSystem.snap()
+    cameraSystem.update(1 / 60)
+    expect(cameraSystem.near).toBe(FIRST_NEAR)
+    worldState.camera.mode = 'third'
+    cameraSystem.update(1 / 60)
+    expect(cameraSystem.near).toBe(FIELD_NEAR)
+  })
+
+  it('틈이 near 면의 귀퉁이까지 지킨다 — 21:9 화면에서도', () => {
+    const t = Math.tan((FIELD_FOV / 2) * Math.PI / 180)
+    const head = new Vector3(305.5, 8.38, 531.5)
+    const gap = 0.20 - eyeForward(head, new Vector3(0, 0, -1), new Vector3(305.5, 8.38, 531.3))
+    expect(gap).toBeGreaterThanOrEqual(FIRST_NEAR * Math.hypot(1, t, t * 21 / 9))
   })
 
   it('막힌 것이 없으면 눈은 예전 자리다', () => {
@@ -370,10 +390,10 @@ describe('씬이 꽂은 레이가 1인칭 눈을 끌어온다', () => {
     cameraSystem.update(1 / 60)
     // 처음엔 벽이 머리 0.4 앞이라 0.12를 다 내민다
     expect(worldState.camera.position.z).toBeCloseTo(9.88, 9)
-    // 0.2 들어오면 벽이 머리 0.2 앞이다 — 0.05만 내민다. 0.25 안이라 레이는 새로 안 쏜다
+    // 0.2 들어오면 벽이 머리 0.2 앞이다 — 0.10만 내민다. 0.25 안이라 레이는 새로 안 쏜다
     worldState.player.position.set(10, 0, 9.8)
     for (let i = 0; i < 25; i++) cameraSystem.update(1 / 60)
     expect(calls.n).toBe(1)
-    expect(worldState.camera.position.z).toBeCloseTo(9.75, 2)
+    expect(worldState.camera.position.z).toBeCloseTo(9.70, 2)
   })
 })
