@@ -38,8 +38,9 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
   moves: 1,
   marts: 1,
   /**
-   * 4 — **area002가 품은 영원시티 · 206번도로 사본을 안 세운다** (`import/bdsp/field.ts`의 `FOREIGN_ZONES`). 그 사본만 한 칸 남쪽에 있어
-   * 영원시티 건물이 두 벌 겹쳐 섰다. 206번도로와 207번도로 사이 한 줄은 그 사본에서 빌린다(`ZONE_SEAMS`). area002.glb와 표만 바뀐다.
+   * 4 — **이웃 구역의 사본을 한 지역에만 남긴다** (`import/bdsp/field.ts`의 `FOREIGN_ZONES`). 지역 여럿이 같은 구역을 품어 같은 삼각형을
+   * 두세 번 그렸고, 섞어 그리는 그림자 · 더해 그리는 입구 빛이 겹친 만큼 진했다. area002의 영원시티 · 206번도로 사본은 한 칸 남쪽이라
+   * 건물이 두 벌 섰다 — 206번도로와 207번도로 사이 한 줄만 그 사본에서 빌린다(`ZONE_SEAMS`).
    * ⚠️ 3도 그대로 쓴다(`GROUP_ACCEPTS`) — 겹쳐 서도 길은 다 걸린다
    *
    * 3 — **문 너머 가짜 실내(`RoomInner`) 바닥과 같은 높이로 겹친 바깥 면을 굽기에서 잘라 낸다** (`import/bdsp/field.ts`). 원작은
@@ -352,7 +353,7 @@ const GROUP_ACCEPTS: Readonly<Record<string, readonly number[]>> = {
   npcModels: [15],
   monModels: [4],
   monVariants: [1],
-  // 영원시티 사본 (`GROUP_FORMAT.fields` 4) — 겹쳐 서는 것만 다르다
+  // 구역 사본 (`GROUP_FORMAT.fields` 4) — 겹쳐 서는 것만 다르다
   fields: [3],
 }
 
