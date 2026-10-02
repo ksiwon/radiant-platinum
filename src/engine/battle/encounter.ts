@@ -510,8 +510,10 @@ export function rollsOnMudPress(behavior: number): boolean {
  *
  * 걷는 조우와 **같은 길이다** — 선 칸의 출현률(`GetTileEncounterRateAndType`) · 선두
  * 보정 · 피리 · 지닌 물건 · `ShouldGetRandomEncounter`(유예 구간과 40% 관문) · 배회 ·
- * 사파리 · 대습초원 오늘의 포켓몬 · 동행 더블까지 다 거친다. 다른 것은 **레이더를 안
- * 본다**는 것 하나다(`radarData.isRadarEncounter = FALSE`).
+ * 사파리 · 대습초원 오늘의 포켓몬 · 동행 더블까지 다 거친다. 다른 것은 셋이다 — **레이더를
+ * 안 본다**(`radarData.isRadarEncounter = FALSE`) · **배회를 관문보다 먼저 묻는다**(관문에
+ * 떨어져도 배회는 나온다 · 619~626줄) · **유예는 배틀이 열릴 때만 다시 건다**(681줄 — 걷는
+ * 쪽은 관문을 넘으면 벌레회피스프레이에 막혀도 건다). 그래서 굴리는 함수가 따로다(`mudRoll`).
  *
  * ⚠️ **그래서 여기서 굴리지 않고 다리만 둔다.** 유예 구간을 세는 값이 걷는 조우와
  * **하나다**(`fieldSystem->wildBattleMetadata.encounterAttempts`) — 따로 세면 버둥거린

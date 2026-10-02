@@ -55,6 +55,7 @@ import { setGameActive } from '../engine/input/keyboard'
 import { exitLook, setMouseActive } from '../engine/input/mouse'
 import { encounters, resetEncounterTile } from '../engine/battle/encounterSystem'
 import { installRoamers, roamersWalked, roamersWarped } from './roamers'
+import { installDeepMudRecord } from './deepMudRecord'
 import { installSafari, safariActive } from './safari'
 import { settleAvatarForWarp } from './warpArrival'
 import { journalArrived, journalChangedMap, journalEnterMap, journalResetWildWins } from './journal'
@@ -786,6 +787,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
 
   // 배회 포켓몬을 조우 시스템에 꽂는다 (PARITY §6.3)
   useEffect(() => installRoamers(), [])
+  // 깊은 진흙에 붙들린 횟수를 기록에 쌓는다 (`RECORD_TIMES_STUCK_IN_DEEP_MUD`)
+  useEffect(() => installDeepMudRecord(), [])
   useEffect(() => installRadar(), [])
   // 마지막 볼을 헛던졌을 때 안내원 스크립트를 돌린다 (PARITY §2.19)
   useEffect(() => installSafari(), [])

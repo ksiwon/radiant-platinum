@@ -46,6 +46,7 @@ import { OVERWORLD_WEATHER, overworldWeather } from '../world/overworldWeather'
 import { rockClimbSeconds, WATERFALL_SECONDS } from '../actor/heroClips'
 import { clearPanelSlide } from '../actor/slidePanel'
 import { clearIceSlide } from '../actor/ice'
+import { deepMud } from '../actor/player'
 import {
   FIELD_MOVES, fieldMoveHere, flyDenial, menuMoveDenial, menuMoveOf, movesUsableHere, whyNot,
   type FieldMoveId, type FieldSpot, type FlyDenial, type MenuMoveId, type Trainer,
@@ -1044,7 +1045,9 @@ function tryStartScripts(): void {
   if (fieldScripts.ctx === null) tryTrigger(); else triggerWatch.skipped.script++
   // 그 다음이 눈이 마주치는 것이다. 내가 A를 누르기 전에 저쪽이 먼저 온다
   if (fieldScripts.ctx === null) trySight()
-  if (fieldScripts.ctx === null && edges.a) tryTalk()
+  // ⚠️ **깊은 진흙에 붙들린 동안은 말을 못 건다** — 그 사이가 필드 태스크라(`FieldTask_StuckInDeepMud`)
+  // 원작 `HandleFieldInput`이 A를 안 받는다. 앞에 사람이 서 있어도 버둥거리기만 한다
+  if (fieldScripts.ctx === null && edges.a && !deepMud.stuck) tryTalk()
 }
 
 /**

@@ -2,10 +2,12 @@
 //
 // ⚠️ **표는 디컴프에서 구운 것이다** (`pnpm gen:records`). 여기서 못 박는 것은
 // **모양과 규칙**이지 값 하나하나가 아니다 — 값은 굽는 쪽이 책임진다
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   addRecord, addTrainerScore, MAX_RECORDS, MAX_TRAINER_SCORE_EVENTS, newGameRecords,
-  RANKED_RECORDS, RECORD_CAUGHT_POKEMON, RECORD_STEPS, RECORD_TRAINER_SCORE,
+  RANKED_RECORDS, RECORD_CAUGHT_POKEMON, RECORD_STEPS, RECORD_TIMES_STUCK_IN_DEEP_MUD, RECORD_TRAINER_SCORE,
   rankedValue, recordLimit, recordValue,
   SCORE_BADGE_EARNED, SCORE_HALL_OF_FAME_ENTRY, SCORE_WON_WILD_BATTLE,
 } from './gameRecords'
@@ -13,6 +15,7 @@ import {
   HIGH_LIMIT_U16, HIGH_LIMIT_U32, LOW_LIMIT_U16, LOW_LIMIT_U32, NUM_U32_RECORDS,
   TRAINER_SCORE_INCREMENT, USES_HIGH_LIMIT,
 } from './gameRecordsTable'
+import { withDecomp } from '../../data/romData.testkit'
 
 describe('표의 모양', () => {
   it('기록 148칸 · 앞 71칸이 u32다', () => {
@@ -95,5 +98,19 @@ describe('랭킹 열세 줄', () => {
       if ((RANKED_RECORDS[row] ?? -1) < 0) expect(rankedValue(r, row)).toBe(0)
     }
     expect(rankedValue(r, 7)).toBe(7)
+  })
+})
+
+// ⚠️ `raw/`는 리포에 안 들어간다(§14.1). 표가 있을 때만 돌린다
+withDecomp('generated/game_records.txt')('원작 번호와 맞대기', () => {
+  it('깊은 진흙 칸이 원작 표의 그 자리다 — 붙들릴 때마다 하나씩 쌓인다', () => {
+    const names = readFileSync(resolve(__dirname, '../../../raw/decomp/generated/game_records.txt'), 'utf8')
+      .split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== '')
+    expect(names.indexOf('RECORD_TIMES_STUCK_IN_DEEP_MUD')).toBe(RECORD_TIMES_STUCK_IN_DEEP_MUD)
+    expect(RECORD_TIMES_STUCK_IN_DEEP_MUD).toBe(56)
+    let r = newGameRecords()
+    r = addRecord(r, RECORD_TIMES_STUCK_IN_DEEP_MUD)
+    r = addRecord(r, RECORD_TIMES_STUCK_IN_DEEP_MUD)
+    expect(recordValue(r, RECORD_TIMES_STUCK_IN_DEEP_MUD)).toBe(2)
   })
 })

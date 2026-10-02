@@ -44,6 +44,8 @@ export const RECORD_BATTLE_POINTS_SPENT = 69
 export const RECORD_PREMIER_BALLS_RECEIVED = 50
 /** `RECORD_FAINTED_IN_BATTLE` — 랭킹 일곱째 줄 */
 export const RECORD_FAINTED_IN_BATTLE = 41
+/** 깊은 진흙에 붙들린 횟수 — 붙들릴 때 한 번 (`FieldSystem_CreateTaskStuckInDeepMud`, `ov5_021DFB54.c` 886줄) */
+export const RECORD_TIMES_STUCK_IN_DEEP_MUD = 56
 
 /** `TRAINER_SCORE_EVENT_*` 중 우리가 실제로 거는 것 */
 export const SCORE_WON_WILD_BATTLE = 8

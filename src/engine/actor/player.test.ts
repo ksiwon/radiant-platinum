@@ -263,6 +263,31 @@ describe('깊은 진흙은 붙든다', () => {
     expect(deepMud.doNotSink).toBe(false)
   })
 
+  it('붙들릴 때마다 한 번 알린다 — 기록 `RECORD_TIMES_STUCK_IN_DEEP_MUD`의 자리 (886줄)', () => {
+    let stuck = 0
+    deepMud.onStuck = () => { stuck++ }
+    try {
+      walkIn(Behavior.MUD_DEEP)
+      expect(stuck).toBe(1)
+      // 버둥거리는 동안은 더 안 센다 — 과제를 세울 때 한 번이다
+      for (const d of [NORTH, EAST, NORTH, EAST]) hold(d, MUD_TURN_FRAMES + 2)
+      expect(stuck).toBe(1)
+      hold(NORTH, 1)
+      stand(30)
+      expect(deepMud.escaped).toBe(true)
+      // 빠져나와 그 칸에 있는 동안도 그대로다
+      expect(stuck).toBe(1)
+      hold(EAST, 30)
+      expect(Math.floor(worldState.player.position.x)).toBeGreaterThan(5)
+      // 떠났다가 다시 들어서면 또 붙들리고 또 센다
+      hold([-1, 0], 120)
+      expect(deepMud.stuck).toBe(true)
+      expect(stuck).toBe(2)
+    } finally {
+      deepMud.onStuck = null
+    }
+  })
+
   it('풀 없는 깊은 진흙은 굴리지 않는다', () => {
     let rolls = 0
     mudEncounter.roll = () => { rolls++; return true }

@@ -3,6 +3,7 @@
 // 원작 `HandleFieldInput`은 `FieldSystem_IsRunningTask`가 거짓일 때만 입력을 받는다. 깨어진 세계의 승강 발판·
 // 판 사이 뛰기·사건(폭포 포함)이 전부 `FieldSystem_CreateTask`로 도는 필드 태스크다.
 import { afterEach, describe, expect, it } from 'vitest'
+import { deepMud } from '../engine/actor/player'
 import { world as mapWorld } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import { fieldTaskRunning } from './fieldTask'
@@ -14,6 +15,7 @@ describe('필드 태스크', () => {
     p.flying = false
     p.hop.active = false
     mapWorld.pending = null
+    deepMud.stuck = false
   })
 
   it('아무것도 안 돌면 거짓이다', () => {
@@ -34,5 +36,12 @@ describe('필드 태스크', () => {
     worldState.player.hop.active = false
     mapWorld.pending = { to: 411, matrix: 0, x: 0, z: 0, viaDoor: false }
     expect(fieldTaskRunning()).toBe(true)
+  })
+
+  it('깊은 진흙에 붙들린 동안도 참이다 (`FieldTask_StuckInDeepMud`)', () => {
+    deepMud.stuck = true
+    expect(fieldTaskRunning()).toBe(true)
+    deepMud.stuck = false
+    expect(fieldTaskRunning()).toBe(false)
   })
 })

@@ -6,7 +6,7 @@ import { worldState } from '../../state/worldState'
 import { StepTrace } from '../actor/stepTrace'
 import { world } from '../map/world'
 import {
-  encounterKind, newEncounterState, rollLand, rollWater, shouldEncounter, wildForm,
+  encounterKind, mudEncounter, newEncounterState, rollLand, rollWater, shouldEncounter, wildForm,
   type EncounterTable, type EncountersEx, type Rng, type WildEncounter,
 } from './encounter'
 import { Behavior } from '../map/zone'
@@ -154,13 +154,7 @@ function rollAt(grid: NonNullable<typeof world.grid>, tx: number, tz: number): v
   // 선두 특성·피리·클리어부적이 출현률을 여기서 바꾼다 (PARITY §1.22)
   const mods = encounters.mods
   const rate = walkRate(raw, mods)
-  // 긴 풀 위에서는 관문이 40에서 70으로 올라간다 — 원작이 그렇게 만든 자리라
-  // 210번도로가 다른 도로보다 훨씬 자주 나온다
-  const where = {
-    veryTallGrass: behavior === Behavior.VERY_TALL_GRASS,
-    cycling: worldState.player.cycling,
-    date: (gate: number) => dateGate(gate, mods.month, mods.day),
-  }
+  const where = footing(behavior)
   // ⚠️ **무더기를 밟으면 관문을 안 본다** (PARITY §6.5). 원작이
   // `gettingEncounter = TRUE`로 덮어쓴다 — 흔들리는 풀은 반드시 나온다.
   // 그리고 그 판에서는 배회도 안 물어본다
@@ -177,14 +171,70 @@ function rollAt(grid: NonNullable<typeof world.grid>, tx: number, tz: number): v
   draw(kind, table, partner, radar, true)
 }
 
+/** 관문의 높이를 가르는 발밑 (`ShouldGetRandomEncounter`) */
+function footing(behavior: number) {
+  const mods = encounters.mods
+  // 긴 풀 위에서는 관문이 40에서 70으로 올라간다 — 원작이 그렇게 만든 자리라
+  // 210번도로가 다른 도로보다 훨씬 자주 나온다
+  return {
+    veryTallGrass: behavior === Behavior.VERY_TALL_GRASS,
+    cycling: worldState.player.cycling,
+    date: (gate: number) => dateGate(gate, mods.month, mods.day),
+  }
+}
+
+/**
+ * 깊은 진흙에서 버둥거릴 때의 조우 (`WildEncounters_TryMudEncounter`, `wild_encounters.c` 559줄).
+ * `engine/actor/player`가 `mudEncounter.roll`로 부른다. 걸었으면 참이고 `encounters.pending`에 담긴다.
+ *
+ * 선 칸의 출현률 · 선두 보정 · 피리 · 지닌 물건 · 관문 · 동행 더블까지 걷는 조우와 같은 길인데,
+ * 셋이 다르다:
+ * - **레이더를 안 본다** — 원작이 `radarData`를 0으로 비운다
+ * - ⚠️ **배회를 관문보다 먼저 묻는다.** 관문 결과를 안 보고 `TryEncounterRoamer`로 간다(619줄) —
+ *   걷는 조우는 관문에서 떨어지면 거기서 끝난다(287줄). 배회가 나온 판은 유예도 안 연다(626줄)
+ * - ⚠️ **유예는 배틀이 열릴 때만 다시 연다**(681줄). 관문을 지나도 리펠·특성이 막으면 그대로다 —
+ *   걷는 조우는 관문만 지나면 막혀도 연다(`rollAt`)
+ *
+ * 유예를 세는 값은 걷는 조우와 **하나다**(`encounterAttempts`) — 같은 `state`를 쓴다
+ */
+function mudRoll(): boolean {
+  const grid = world.grid
+  if (!grid || encounters.suspended || encounters.pending || world.pending) return false
+  const p = worldState.player.position
+  const behavior = grid.behavior(Math.floor(p.x), Math.floor(p.z))
+  // 진흙 풀은 늘 풀 갈래다 — 그 밖이면 원작은 단언으로 선다(666줄)
+  if (encounterKind(behavior) !== 'land') return false
+  const table = tableForCurrentMap()
+  if (!table || table.landRate === 0) return false
+  const mods = encounters.mods
+  const rng = encounters.rng
+  const pass = shouldEncounter(walkRate(table.landRate, mods), state, rng, footing(behavior))
+  if (encounters.partner === 0) {
+    const roam = encounters.roamerHere?.(world.mapId, rng) ?? null
+    if (roam) {
+      // 리펠이 막으면 그 누름은 아무 일도 없다 — 야생으로 안 넘어간다
+      if (!repelBlocks(mods.repelLevel, roam.level)) encounters.pending = roam
+      return encounters.pending !== null
+    }
+  }
+  if (!pass) return false
+  draw('land', table, encounters.partner, null, true, false)
+  if (encounters.pending === null) return false
+  state = newEncounterState()
+  return true
+}
+mudEncounter.roll = mudRoll
+
 /**
  * 관문을 지난 뒤 — 배회 · 칸 · 레벨 · 리펠과 특성 · 동행의 둘째를 뽑는다.
  *
  * `guarded`가 거짓이면 **리펠도 특성도 안 본다** — 달콤한향기가 그 길이다
- * (`WildEncounters_TrySweetScentEncounter`: `repelActive = FALSE` · `ignoreAbilityBlock = TRUE`)
+ * (`WildEncounters_TrySweetScentEncounter`: `repelActive = FALSE` · `ignoreAbilityBlock = TRUE`).
+ * `askRoamer`가 거짓이면 배회를 안 묻는다 — 진흙은 관문 앞에서 이미 물었다(`mudRoll`)
  */
 function draw(
   kind: 'land' | 'surf', table: EncounterTable, partner: number, radar: RadarStep | null, guarded: boolean,
+  askRoamer = true,
 ): void {
   const mods = encounters.mods
   const rng = encounters.rng
@@ -192,7 +242,7 @@ function draw(
   // (`TryEncounterRoamer`) — 여기 있으면 절반은 배회가 나오고, 그 판에서는
   // 표의 칸을 아예 안 굴린다. 뒤에 두면 배회는 「가끔 야생 대신」이 아니라
   // 「야생을 다 뽑고 나서 덮어쓰는 것」이 되어 확률이 달라진다
-  const roam = radar === null && encounters.partner === 0
+  const roam = askRoamer && radar === null && encounters.partner === 0
     ? encounters.roamerHere?.(world.mapId, rng) ?? null : null
   if (roam) {
     // 리펠은 배회에도 걸린다. 막히면 그 걸음은 아무 일도 없다 —

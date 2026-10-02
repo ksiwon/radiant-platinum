@@ -9,6 +9,7 @@
 // 깨어진 세계의 승강 발판(`CallElevatorPlatformHandler`)·판 사이 뛰기(`JumpOnFloatingPlatform`)·
 // 사건(`FieldTask_CallLoadedEventHandler` — 판 밀기·폭포·호수 셋·기라티나의 그림자)이 전부
 // `FieldSystem_CreateTask`로 도는 필드 태스크라, 그동안은 메뉴도 리포트도 못 연다.
+import { deepMud } from '../engine/actor/player'
 import { world } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import { cutInRunning } from './encounterCutIn'
@@ -21,8 +22,9 @@ import { cutInRunning } from './encounterCutIn'
  * - `flying` — 공중날기 연출 · `hop` — 턱·비전기술로 뛰는 걸음
  * - `world.pending` — 워프가 걸렸다(`FieldTask_ChangeMap*`)
  * - 조우 컷인 — `FieldTask_Encounter`의 첫 두 단
+ * - 깊은 진흙에 붙들림 — `FieldTask_StuckInDeepMud` (`ov5_021DFB54.c` 889줄). 빠져나오거나 배틀이 열려야 끝난다
  */
 export function fieldTaskRunning(): boolean {
   const p = worldState.player
-  return p.riding || p.flying || p.hop.active || world.pending !== null || cutInRunning()
+  return p.riding || p.flying || p.hop.active || world.pending !== null || cutInRunning() || deepMud.stuck
 }
