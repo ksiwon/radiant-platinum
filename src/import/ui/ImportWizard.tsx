@@ -789,13 +789,14 @@ export function ImportWizard({ onClose, onReady, why, from = 'title' }: {
         {/* ⚠️ **여기 적힌 것이 사실이어야 한다.** 한때 "설치를 끝내도 아직 게임은
             시작할 수 없습니다"가 박혀 있었는데, 그 말이 참이 아니게 된 뒤에도
             남아 있었다. 그래서 숫자는 전부 표에서 세어 온다.
-            모자란 것이 있으면 누구에게나 보이고, 다 됐을 때의 진행 보고는 개발판에서만 */}
+            모자란 것이 있으면 누구에게나 보이고, 다 됐을 때의 진행 보고는 개발판에서만.
+            공개판에서 감추지 않는다 — 감추면 설치가 끝났는데 왜 게임이 안 열리는지 알 길이 없다
+            (사용자 결정 2026-10-02: 남기고 사람 말로만 다듬는다) */}
         {(import.meta.env.DEV || stillMissing.length > 0) && (
           <div className={css.banner}>
             {stillMissing.length > 0
-              ? `주의 — 게임을 시작하려면 ${String(stillMissing.length)}가지가 더 필요한데, `
-                + `이 버전은 아직 그것을 만들지 못합니다. 설치를 끝내도 게임은 시작할 수 없습니다: `
-                + `${groupLabels(stillMissing)}\n`
+              ? `이 버전은 게임에 필요한 것 ${String(stillMissing.length)}가지를 아직 만들 수 없어서, `
+                + `설치를 마쳐도 게임을 시작할 수 없습니다 — ${groupLabels(stillMissing)}\n`
               : `변환 ${String(ready.length)}개가 전부 옮겨졌습니다.\n`}
             {import.meta.env.DEV && '여기서 실제로 도는 것은 입력 검증 · 폴더 판정 · 저장 공간 · '
               + 'Worker 변환 · OPFS 설치와 재개 · 파일별 무결성 검증입니다.'}
