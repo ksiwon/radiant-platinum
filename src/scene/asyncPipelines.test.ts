@@ -42,4 +42,17 @@ describe('맵을 갈아 끼우는 동안만 파이프라인을 비동기로 굽�
     expect(done.waitedMs).toBeGreaterThanOrEqual(100)
     expect(asyncPipelinesState().on).toBe(false)
   })
+
+  it('둘이 겹쳐 켜면 먼저 끝난 쪽이 끄지 않는다 — 덮개와 늦게 서는 지역', async () => {
+    const { renderer, pipelines, calls } = fakeRenderer()
+    installAsyncPipelines(renderer)
+    beginAsyncPipelines() // 이어하기 덮개
+    beginAsyncPipelines() // 덮개가 걷히기 전에 선 지역
+    await settleAsyncPipelines(() => true, 2_000)
+    expect(asyncPipelinesState().on, '하나가 남았다').toBe(true)
+    pipelines.updateForRender({})
+    expect(Array.isArray(calls.at(-1))).toBe(true)
+    await settleAsyncPipelines(() => true, 2_000)
+    expect(asyncPipelinesState()).toMatchObject({ on: false, pending: 0 })
+  })
 })

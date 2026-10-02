@@ -22,6 +22,11 @@ interface PipelinesLike {
 
 const state = {
   on: false,
+  /**
+   * 켜 둔 쪽의 수 — 워프 · 이어하기의 덮개와, 덮개가 걷힌 뒤에 서는 야외 지역(`BdspField`)이 겹쳐 켠다. 먼저 끝난 쪽이 끄면
+   * 남은 쪽이 동기로 굽게 되어(213번도로 리포트 — 지역 넷째부터 동기로 서서 다시 멎었다) 수로 센다
+   */
+  holds: 0,
   /** 탐침이 전후를 잰다 — 끄면 워프도 예전처럼 동기로 굽는다 (`setAsyncPipelinesAllowed`) */
   allowed: true,
   /** 굽는 중인 것 — three가 `createRenderPipeline(…, promises)`에서 채운다 */
@@ -44,7 +49,9 @@ export function installAsyncPipelines(renderer: WebGPURenderer): void {
 
 /** 덮개를 든 동안 켠다 */
 export function beginAsyncPipelines(): void {
-  if (state.installed && state.allowed) state.on = true
+  if (!state.installed || !state.allowed) return
+  state.holds++
+  state.on = true
 }
 
 /** 전후를 재는 탐침만 쓴다 (`.audit/probe/warpStall.mjs`) */
@@ -79,8 +86,9 @@ export async function settleAsyncPipelines(landed: () => boolean, capMs = 12_000
     if (landed()) quiet++
     if (quiet >= 2) break
   }
-  state.on = false
-  state.pending.length = 0
+  if (state.holds > 0) state.holds--
+  state.on = state.holds > 0
+  if (!state.on) state.pending.length = 0
   return { waitedMs: Math.round(performance.now() - t0), compiled }
 }
 

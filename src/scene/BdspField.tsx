@@ -27,6 +27,7 @@ import { fieldFade, type FieldFade } from './fieldFade'
 import { bdspLights, type BdspLights } from './bdspLights'
 import { disposeTree } from './disposeTree'
 import { useBdspMark } from './bdspReady'
+import { beginAsyncPipelines, settleAsyncPipelines } from './asyncPipelines'
 import { holdBdspDoors } from './DoorAnimations'
 import { holdBdspSigns } from './ObjectProps'
 import { DAY } from './fx/sky'
@@ -95,6 +96,8 @@ export function nearestFirst(fields: readonly FieldEntry[], names: readonly stri
  * 그쪽 탓이 아니다. 하나씩 세우면 먼 지역은 안개 속에서 나중에 선다
  */
 let fieldTurn: Promise<void> = Promise.resolve()
+/** 지역 하나의 파이프라인을 기다리는 상한 — 넘으면 남은 것은 동기로 굽는다 */
+const FIELD_COMPILE_CAP_MS = 8_000
 export function inTurn<T>(job: () => Promise<T>): Promise<T> {
   const run = fieldTurn.then(job)
   const rest = (): Promise<void> => new Promise((done) => {
@@ -429,7 +432,11 @@ function FieldArea({ name }: { name: string }) {
         const gltf = await loader.loadAsync(url).finally(() => { provider.releaseObjectUrl(path) })
         if (!alive) { disposeTree(gltf.scene); return }
         mine = build(gltf.scene)
+        // ⚠️ **제 파이프라인은 비동기로 굽는다** (`asyncPipelines`). 덮개가 걷힌 뒤에 서는 지역이 첫 프레임에 동기로 구우면 GPU
+        // 프로세스가 수 초 멎는다 — 먼 지역이 안개 속에서 한두 프레임 늦게 보이는 편이 낫다. 다 굽힐 때까지 다음 지역도 기다린다
+        beginAsyncPipelines()
         attach(mine)
+        await settleAsyncPipelines(() => true, FIELD_COMPILE_CAP_MS)
       })
         .catch((e: unknown) => {
           console.error(`지역 ${name}을 못 세웠다`, e)
