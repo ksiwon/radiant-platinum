@@ -71,8 +71,15 @@ describe('원작 방과 생김이 다른 BDSP 방 (`MISFIT_ROOMS`)', () => {
 
   it('목록 — 실측으로 생김이 다른 방들', () => {
     expect([...MISFIT_ROOMS].sort()).toEqual([
-      'c01r0601', 'c02gym0101', 'c04gym0101', 'c05gym0101', 'c05gym0104', 'c07gym0101', 'c07r0101',
+      'c01r0601', 'c02gym0101', 'c04gym0101', 'c05gym0101', 'c05gym0104', 'c07gym0101', 'c07r0101', 'd31r0201',
     ])
+  })
+
+  it('배틀타워 로비(맵 326)는 BDSP 던전 대신 원작 그림이 선다 — 원작 입구 (14~16, 19)가 BDSP 바닥(z 0~18) 밖이다', () => {
+    const was = world.maps
+    world.maps = [{ id: 0, name: 'D31R0201', matrix: 193 } as unknown as MapHeader]
+    expect(roomFor(0, new Set(['d31r0201']))).toBeNull()
+    world.maps = was
   })
 })
 

@@ -63,9 +63,12 @@ function roomIndex(): Promise<ReadonlySet<string>> {
  *   (3, 9) · (3, 13)이 바닥(옮긴 뒤 x 4~23) 밖이다 — 원작 방이 더 넓다(행렬 205 건물이 x 26.5까지)
  * · `c07r0101` 게임코너(맵 136) — BDSP는 게임코너를 없앴고 이 이름에 **옷가게**를 지었다(옷걸이 · 마네킹 · 매대). 칸은 맞지만
  *   슬롯 · 코인 교환대가 하나도 없다 (PARITY §7.6 — 슬롯은 돈다)
+ * · `d31r0201` 배틀타워 로비(맵 326 · 던전이지만 짝짓기가 같다) — BDSP 바닥이 x 1~22 · z 0~18인데 원작 입구는 (14~16, 19)이고
+ *   사람이 (25, 13) · (24, 7)까지 선다. 원작 방이 더 넓고 깊어서 어떻게 옮겨도 입구와 오른쪽 사람이 바닥 밖 허공이다
+ *   (`.audit/shots/review-after/places/battletower-3p-b.png`)
  */
 export const MISFIT_ROOMS: ReadonlySet<string> = new Set([
-  'c02gym0101', 'c04gym0101', 'c07gym0101', 'c05gym0101', 'c05gym0104', 'c01r0601', 'c07r0101',
+  'c02gym0101', 'c04gym0101', 'c07gym0101', 'c05gym0101', 'c05gym0104', 'c01r0601', 'c07r0101', 'd31r0201',
 ])
 
 /**
