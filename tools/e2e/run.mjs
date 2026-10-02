@@ -287,6 +287,40 @@ async function warmDev(context, url) {
 const atTitle = (page) => page.getByRole('button', { name: '시작', exact: true })
 
 /**
+ * 「설치 시작」을 누른 뒤 타이틀이 뜰 때까지 — 진짜 설치(⑮·㉕·㉖·㉙)가 다 이 길이다.
+ *
+ * ⚠️ **맨 `waitFor` 하나로 40분을 기다리면 안 된다.** ㉕가 174c69f 전체 판에서 「`시작`을 2,400초 기다렸다」 한 줄만 남기고
+ * 졌다 — 설치가 어디서 섰는지 · partial이었는지 · 오류창이었는지를 하나도 모르고, 같은 판을 다시 모는 데 또 40분이 든다.
+ * 그래서 ① partial 문구가 뜨면 그 자리에서 지고(⑮가 하던 것) ② 5분마다 진행 글을 흘리고 ③ 안 뜨면 그때 화면 글과
+ * 스크린샷(`.audit/tmp/e2e-<번호>-install.png`)을 남긴다
+ */
+async function waitInstalled(page, id, timeout = 2_400_000) {
+  const t0 = Date.now()
+  const said = async () => (await page.locator('body').innerText().catch(() => '(못 읽었다)'))
+    .replace(/\s+/g, ' ').trim()
+  const tick = setInterval(() => {
+    // 머리는 늘 같은 고지문이다 — 진행은 꼬리에 있다
+    said().then((t) => console.log(`         ${id} 설치 ${((Date.now() - t0) / 60_000).toFixed(0)}분 · …${t.slice(-200)}`))
+  }, 300_000)
+  // partial은 「진 것」이다. 안 뜨면 이 갈래는 영영 안 끝난다 — 경주가 그쪽으로 끝나면 안 되므로
+  const never = new Promise(() => {})
+  const partial = page.getByText(/만든 것은 설치됐지만/).first().waitFor({ timeout })
+    .then(() => { throw new Error('필수 그룹이 모자라 partial에서 섰다') }, () => never)
+  try {
+    await Promise.race([atTitle(page).waitFor({ timeout }), partial])
+  } catch (e) {
+    const shot = resolve(ROOT, `.audit/tmp/e2e-${id}-install.png`)
+    try { mkdirSync(resolve(ROOT, '.audit/tmp'), { recursive: true }); await page.screenshot({ path: shot }) } catch { /* 못 찍은 것은 글로만 */ }
+    throw new Error(`${String(e.message ?? e).split('\n')[0]} — ${((Date.now() - t0) / 60_000).toFixed(1)}분 · `
+      + `자리 ${new URL(page.url()).pathname} · 갈래 ${String(await bootTag(page).catch(() => null))} · `
+      + `화면 꼬리: "…${(await said()).slice(-400)}"`)
+  } finally {
+    clearInterval(tick)
+  }
+  return Date.now() - t0
+}
+
+/**
  * **막혔다** — 실패가 아니라 「이 판에서는 못 쟀다」다.
  *
  * ⚠️ **FAIL로 적으면 없는 결함을 쫓게 되고, PASS로 적으면 검사가 사라진다.**
@@ -1430,17 +1464,11 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     // 12,691개짜리 폴더를 파일 입력에 밀어 넣는 것부터가 몇십 초다
     await armWizard(first, BDSP, 300_000)
 
-    const t0 = Date.now()
     await first.getByRole('button', { name: '설치 시작' }).click()
     // ⚠️ **`partial` 문구를 기다리면 안 된다.** 그것이 뜨면 이미 진 것이다 —
     // 완주하면 화면이 **다시 켜지 않고** 그 자리에서 게임으로 넘어간다
-    // (`activateInstall` → `onReady`). 둘 중 먼저 오는 쪽을 잡는다
-    await Promise.race([
-      atTitle(first).waitFor({ timeout: 2_400_000 }),
-      first.getByText(/만든 것은 설치됐지만/).first().waitFor({ timeout: 2_400_000 })
-        .then(() => { throw new Error('필수 그룹이 모자라 partial에서 섰다') }),
-    ])
-    const took = Date.now() - t0
+    // (`activateInstall` → `onReady`). 둘 중 먼저 오는 쪽을 잡는다 (`waitInstalled`)
+    const took = await waitInstalled(first, '15')
 
     const want = ['data/moves.json', 'data/marts.json', 'data/motionTiming.json']
     const made = await first.evaluate(readInstalledLight, want)
@@ -1523,7 +1551,7 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     await waitBoot(page)
     await armWizard(page, BDSP, 300_000)
     await page.getByRole('button', { name: '설치 시작' }).click()
-    await atTitle(page).waitFor({ timeout: 2_400_000 })
+    await waitInstalled(page, '25')
     const mark = requests.length
 
     // ── 새 게임 ──
@@ -1866,7 +1894,7 @@ await ((haveRom && haveBdsp && haveRoute) ? run : () => {})(
     await waitBoot(page)
     await armWizard(page, BDSP, 300_000)
     await page.getByRole('button', { name: '설치 시작' }).click()
-    await atTitle(page).waitFor({ timeout: 2_400_000 })
+    await waitInstalled(page, '26')
     const mark = requests.length
 
     await page.getByRole('button', { name: '시작', exact: true }).click()
@@ -2019,7 +2047,7 @@ if (!(haveRom && haveBdsp)) {
 
           await armWizard(page, BDSP, 300_000)
           await page.getByRole('button', { name: '설치 시작' }).click()
-          await atTitle(page).waitFor({ timeout: 2_400_000 })
+          await waitInstalled(page, '29')
           const boot1 = await page.evaluate(() => document.documentElement.dataset.boot)
           assert(boot1 === 'play:opfs', `설치본으로 안 떴다: ${String(boot1)}`)
 
