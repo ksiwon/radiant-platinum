@@ -55,4 +55,27 @@ describe('맵을 갈아 끼우는 동안만 파이프라인을 비동기로 굽�
     await settleAsyncPipelines(() => true, 2_000)
     expect(asyncPipelinesState()).toMatchObject({ on: false, pending: 0 })
   })
+
+  it('남이 꺼내 가 굽는 중이면 빈 줄을 「다 구웠다」로 읽지 않는다 — 덮개와 지역이 같이 기다린다', async () => {
+    let finish = (): void => {}
+    const slow = new Promise<void>((resolve) => { finish = resolve })
+    const pipelines = {
+      getForRender(_ro: unknown, promises?: Promise<unknown>[] | null) { if (promises) promises.push(slow) },
+      updateForRender(_ro: unknown) { throw new Error('감싸지 않았다') },
+    }
+    installAsyncPipelines({ _pipelines: pipelines } as unknown as WebGPURenderer)
+    beginAsyncPipelines() // 지역
+    beginAsyncPipelines() // 워프 덮개
+    pipelines.updateForRender({})
+    const area = settleAsyncPipelines(() => true, 5_000)
+    await new Promise((r) => setTimeout(r, 40)) // 지역 쪽이 꺼내 가서 굽는다
+    expect(asyncPipelinesState()).toMatchObject({ pending: 0, inflight: 1 })
+    let coverDone = false
+    const cover = settleAsyncPipelines(() => true, 5_000).then(() => { coverDone = true })
+    await new Promise((r) => setTimeout(r, 120))
+    expect(coverDone, '덮개는 아직 굽는 것을 기다린다').toBe(false)
+    finish()
+    await Promise.all([area, cover])
+    expect(asyncPipelinesState()).toMatchObject({ on: false, pending: 0, inflight: 0 })
+  })
 })

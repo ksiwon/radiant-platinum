@@ -31,6 +31,12 @@ const state = {
   allowed: true,
   /** 굽는 중인 것 — three가 `createRenderPipeline(…, promises)`에서 채운다 */
   pending: [] as Promise<unknown>[],
+  /**
+   * 어느 기다림이 꺼내 가서 **아직 굽는 중인** 것의 수. ⚠️ `pending`만 보면 안 된다 — 기다림이 여럿이면(워프 덮개 · 지역마다)
+   * 한쪽이 꺼내 간 사이 다른 쪽은 빈 줄을 보고 「다 구웠다」로 끝냈다. 그 바람에 덮개가 걷히고 story가 땅 없는
+   * 연고시티(삼각형 12.9k)를 쟀다 (2026-10-02)
+   */
+  inflight: 0,
   installed: false,
 }
 
@@ -65,7 +71,7 @@ const nextFrame = (): Promise<void> => new Promise((resolve) => {
 })
 
 /**
- * 새로 굽는 것이 **이어서 두 프레임 없고** `landed()`가 참일 때까지 기다렸다가 끈다.
+ * 새로 굽는 것도 **누가 굽고 있는 것도 이어서 두 프레임 없고** `landed()`가 참일 때까지 기다렸다가 끈다.
  *
  * ⚠️ **시한이 있다** (`capMs`). 굽기가 안 풀리면 검은 화면에 갇힌다 — 그보다 한 번 멎는 편이 낫다. 끄면 남은 것은 다음 프레임에
  * 동기로 굽는다
@@ -80,9 +86,12 @@ export async function settleAsyncPipelines(landed: () => boolean, capMs = 12_000
       const batch = state.pending.splice(0)
       compiled += batch.length
       quiet = 0
+      state.inflight += batch.length
       await Promise.allSettled(batch)
+      state.inflight -= batch.length
       continue
     }
+    if (state.inflight > 0) { quiet = 0; continue }
     if (landed()) quiet++
     if (quiet >= 2) break
   }
@@ -93,6 +102,6 @@ export async function settleAsyncPipelines(landed: () => boolean, capMs = 12_000
 }
 
 /** 밖에서 읽는다 — 켜져 있는가 · 굽는 중인 것 (탐침 · 시험) */
-export function asyncPipelinesState(): { on: boolean, pending: number, installed: boolean } {
-  return { on: state.on, pending: state.pending.length, installed: state.installed }
+export function asyncPipelinesState(): { on: boolean, pending: number, inflight: number, installed: boolean } {
+  return { on: state.on, pending: state.pending.length, inflight: state.inflight, installed: state.installed }
 }

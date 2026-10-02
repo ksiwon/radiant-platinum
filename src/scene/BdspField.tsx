@@ -424,12 +424,15 @@ function FieldArea({ name }: { name: string }) {
         const url = await provider.objectUrl(path)
         const gltf = await loader.loadAsync(url).finally(() => { provider.releaseObjectUrl(path) })
         if (!alive) { disposeTree(gltf.scene); return }
-        mine = build(gltf.scene)
+        const b = build(gltf.scene)
+        mine = b
         // ⚠️ **제 파이프라인은 비동기로 굽는다** (`asyncPipelines`). 덮개가 걷힌 뒤에 서는 지역이 첫 프레임에 동기로 구우면 GPU
-        // 프로세스가 수 초 멎는다 — 먼 지역이 안개 속에서 한두 프레임 늦게 보이는 편이 낫다
+        // 프로세스가 수 초 멎는다 — 먼 지역이 안개 속에서 한두 프레임 늦게 보이는 편이 낫다.
+        // ⚠️ **씬에 붙은 뒤부터 센다.** 붙기(`setBuilt`)는 다음 커밋에 일어나서, 그 전에 조용한 두 프레임을 세면 한 번도 안 그려진
+        // 채로 「구웠다」가 된다
         beginAsyncPipelines()
-        attach(mine)
-        await settleAsyncPipelines(() => true, FIELD_COMPILE_CAP_MS)
+        attach(b)
+        await settleAsyncPipelines(() => b.scene.parent !== null, FIELD_COMPILE_CAP_MS)
         if (alive) setWarm(true)
       })()
         .catch((e: unknown) => {
