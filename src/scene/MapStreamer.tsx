@@ -686,7 +686,11 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         // ⚠️ **`enter` 뒤다.** 그 안의 `enterMap`이 `resetFade`로 덮개를 걷으므로
         // 먼저 덮으면 지워진다. 로딩 화면이 걷히는 그 순간을 이 인이 이어받는다
         coverScreen()
-        startFade(6, 3, 1, 0)
+        // ⚠️ **워프와 같이 덮개 밑에서 굽고 밝힌다** (REPAIR §8 · 위 워프 갈래). 이어하기는 이 길을 안 타서 파이프라인이
+        // 첫 프레임에 동기로 섰다 — 지역을 안개 끝(`reachFor`)까지 세우게 된 뒤 213번도로 리포트를 열면 GPU 프로세스가
+        // 20초 넘게 멎었다(자바스크립트는 그동안 idle · `.audit/probe/saveFreeze.mjs` · 파이프라인 367)
+        beginAsyncPipelines()
+        void settleAsyncPipelines(terrainLanded).then(() => { startFade(6, 3, 1, 0) })
       },
     })
     return () => {
