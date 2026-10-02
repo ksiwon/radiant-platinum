@@ -211,6 +211,9 @@ const EXTRA_BANKS = [
   'TEXT_BANK_GYM_NAMES', 'TEXT_BANK_TIMES_OF_DAY',
   // 포켓치 (`applications/poketch/`). 앱 이름 25개와 앱 셋이 쓰는 글 —
   // 기술상성체커의 「효과가 굉장함」 일곱, 포켓몬이력의 제목, 나무열매서처의 제목
+  // 트레이너 카드의 이름표 · 돈 · 도감 · 시간 · 날짜 틀 (`applications/trainer_case/card_text.c`). 빠지면 개발 서버의 카드가
+  // 이름표 없이 값만 뜬다 — 브라우저 쪽은 뱅크를 다 구워 설치본은 멀쩡했다
+  'TEXT_BANK_TRAINER_CARD',
   'TEXT_BANK_POKETCH_APP_NAMES', 'TEXT_BANK_POKETCH_MOVE_TESTER',
   'TEXT_BANK_POKETCH_POKEMON_HISTORY', 'TEXT_BANK_POKETCH_BERRY_SEARCHER',
   // 도감 완성 상장 네 줄 (`applications/diploma`)

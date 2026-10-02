@@ -6,7 +6,8 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { newGameRecords } from '../../engine/world/gameRecords'
 import { withDecomp } from '../../data/romData.testkit'
-import { cardDate, cardPlayTime, cardRow, linkRecords, TRAINER_CARD_TEXT } from './TrainerCard'
+import { fillMenuText } from '../../data/uiText'
+import { cardDate, cardPlayTime, cardRow, linkRecords, TRAINER_CARD_TEXT, VALUE_ONLY } from './TrainerCard'
 
 describe('cardRow — 카드 판 (`TrainerCase_LoadCardPalette`)', () => {
   it('도감을 받기 전에는 등급과 상관없이 「도감 없음」 판이다', () => {
@@ -36,6 +37,15 @@ describe('cardDate — 롬의 날짜 틀', () => {
 
   it('달 이름 뱅크가 없으면(일본판) 숫자로 메운다 — 틀의 부호가 글자로 새지 않는다', () => {
     expect(cardDate('{STRVAR_1 74, 3, 0}', [], at)).toBe('10')
+  })
+})
+
+describe('값 틀이 없는 뱅크 (일본 롬 — 이름표 14줄까지만)', () => {
+  it('값만 찍는다 — 낱말을 지어내지 않는다', () => {
+    expect(fillMenuText(VALUE_ONLY.money$, ['', '', '', '', '', '3,000'])).toBe('3,000')
+    expect(fillMenuText(VALUE_ONLY.count, ['', '', '', '', '', '151'])).toBe('151')
+    expect(fillMenuText(VALUE_ONLY.hhmm, ['12', '05'])).toBe('12:05')
+    expect(cardDate(VALUE_ONLY.date, [], new Date(2026, 9, 2))).toBe('26/10/02')
   })
 })
 

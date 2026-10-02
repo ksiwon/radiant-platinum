@@ -43,6 +43,15 @@ export const TRAINER_CARD_TEXT = {
   money$: 14, hhmm: 15, date: 17, win: 18, loss: 19, blankDate: 20, count: 21, times: 22,
 } as const
 
+/** 뱅크에 값 틀이 없을 때(일본 롬) 값만 찍는 틀 — 칸 번호는 원작 틀과 같다 */
+export const VALUE_ONLY = {
+  money$: '{STRVAR_1 55, 5, 0}',
+  count: '{STRVAR_1 52, 5, 0}',
+  times: '{STRVAR_1 55, 5, 0}',
+  hhmm: '{STRVAR_1 51, 0, 0}:{STRVAR_1 51, 1, 0}',
+  date: '{STRVAR_1 51, 2, 0}/{STRVAR_1 51, 3, 0}/{STRVAR_1 51, 4, 0}',
+} as const
+
 /** 카드 팔레트 일곱 줄 중 「도감 없음」 — 시트의 마지막 줄이다 (`trainer_card_normal_no_dex`) */
 const NO_DEX_ROW = 6
 
@@ -238,6 +247,11 @@ export function TrainerCard() {
   const time = cardPlayTime(trainer.playtimeMs)
 
   const t = (at: number): string => text[at] ?? ''
+  /**
+   * 값 틀. ⚠️ **일본 롬의 이 뱅크는 14줄이다** — 이름표까지만 있고 값 틀(돈 · 마리 · 날짜 · 승패 …)은 코드가 찍는다. 그 자리는
+   * 값만 찍는다(`VALUE_ONLY`) — 일본어 낱말을 지어내지 않는다
+   */
+  const tpl = (at: keyof typeof VALUE_ONLY): string => text[TRAINER_CARD_TEXT[at]] || VALUE_ONLY[at]
   const box = art?.card ?? BARE_CARD
   const ink = art?.text[row]
   const cardStyle: CSSProperties = {
@@ -254,7 +268,7 @@ export function TrainerCard() {
     transition: fold === 'in' ? `transform ${String(FOLD_MS)}ms ease-in`
       : fold === 'out' ? `transform ${String(UNFOLD_MS)}ms ease-out` : 'none',
   }
-  const dateLine = (at: number): string => cardDate(t(TRAINER_CARD_TEXT.date), months, new Date(at))
+  const dateLine = (at: number): string => cardDate(tpl('date'), months, new Date(at))
   const debut = trainer.firstClearedAt === null ? null : new Date(trainer.firstClearedAt)
 
   return (
@@ -272,13 +286,13 @@ export function TrainerCard() {
                 </div>
                 <div className={own.line} style={windowAt('money', box)}>
                   <dt>{t(TRAINER_CARD_TEXT.money)}</dt>
-                  <dd>{fillMenuText(t(TRAINER_CARD_TEXT.money$), ['', '', '', '', '', money.toLocaleString('ko-KR')])}</dd>
+                  <dd>{fillMenuText(tpl('money$'), ['', '', '', '', '', money.toLocaleString('ko-KR')])}</dd>
                 </div>
                 {/* 원작도 도감을 받기 전에는 이 줄을 이름표째 안 그린다 (`TrainerCard_DrawFrontText`) */}
                 {pokedexObtained && (
                   <div className={own.line} style={windowAt('pokedex', box)}>
                     <dt>{t(TRAINER_CARD_TEXT.pokedex)}</dt>
-                    <dd>{seen === null ? '' : fillMenuText(t(TRAINER_CARD_TEXT.count), ['', '', '', '', '', String(seen)])}</dd>
+                    <dd>{seen === null ? '' : fillMenuText(tpl('count'), ['', '', '', '', '', String(seen)])}</dd>
                   </div>
                 )}
                 {/* 트레이너 스코어 (PARITY §7.5). 기록 1번 칸이 곧 이 값이다 */}
@@ -306,14 +320,14 @@ export function TrainerCard() {
                     <span>{debut === null ? t(TRAINER_CARD_TEXT.blankDate) : dateLine(debut.getTime())}</span>
                     <span>
                       {debut === null
-                        ? fillMenuText(t(TRAINER_CARD_TEXT.hhmm), [t(TRAINER_CARD_TEXT.twoDashes), t(TRAINER_CARD_TEXT.twoDashes)])
-                        : fillMenuText(t(TRAINER_CARD_TEXT.hhmm), [String(debut.getHours()), String(debut.getMinutes()).padStart(2, '0')])}
+                        ? fillMenuText(tpl('hhmm'), [t(TRAINER_CARD_TEXT.twoDashes), t(TRAINER_CARD_TEXT.twoDashes)])
+                        : fillMenuText(tpl('hhmm'), [String(debut.getHours()), String(debut.getMinutes()).padStart(2, '0')])}
                     </span>
                   </dd>
                 </div>
                 <div className={own.line} style={windowAt('linked', box)}>
                   <dt>{t(TRAINER_CARD_TEXT.timesLinked)}</dt>
-                  <dd>{fillMenuText(t(TRAINER_CARD_TEXT.times), ['', '', '', '', '', String(link.linked)])}</dd>
+                  <dd>{fillMenuText(tpl('times'), ['', '', '', '', '', String(link.linked)])}</dd>
                 </div>
                 {/* 「승」은 창 14칸째, 「패」는 22칸째에 박고 수는 그 뒤 칸 끝에 붙인다 */}
                 <div className={own.line} style={windowAt('battles', box)}>
@@ -327,7 +341,7 @@ export function TrainerCard() {
                 </div>
                 <div className={own.line} style={windowAt('trades', box)}>
                   <dt>{t(TRAINER_CARD_TEXT.linkTrades)}</dt>
-                  <dd>{fillMenuText(t(TRAINER_CARD_TEXT.times), ['', '', '', '', '', String(link.trades)])}</dd>
+                  <dd>{fillMenuText(tpl('times'), ['', '', '', '', '', String(link.trades)])}</dd>
                 </div>
               </dl>
             )}
