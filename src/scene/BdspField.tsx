@@ -383,10 +383,15 @@ function build(scene: Group): Built {
 function FieldArea({ name }: { name: string }) {
   const [built, setBuilt] = useState<Built | null>(null)
   const [failed, setFailed] = useState(false)
+  /**
+   * 제 파이프라인이 다 구워졌는가. ⚠️ **붙은 것만으로 「섰다」고 적지 않는다** — 비동기로 굽는 동안은 붙어 있어도 안 그려진다.
+   * 붙자마자 적었더니 워프 덮개가 일찍 걷혀 story가 땅 없는 연고시티(삼각형 12.9k)를 쟀다
+   */
+  const [warm, setWarm] = useState(false)
   const tick = useRef(0)
   const cam = useRef(new Vector3())
   const aim = useRef(new Vector3())
-  useBdspMark(name, built !== null, failed)
+  useBdspMark(name, built !== null && warm, failed)
   useFrame(({ camera }, dt) => {
     const b = built
     if (!b) return
@@ -410,7 +415,8 @@ function FieldArea({ name }: { name: string }) {
       release = [holdBdspDoors(b.scene), holdBdspSigns(b.scene)]
       setBuilt(b)
     }
-    if (mine) attach(mine)
+    // 쥐어 둔 벌은 이미 구워 그렸던 것이다
+    if (mine) { attach(mine); setWarm(true) }
     else {
       const path = `models/field/${name}.glb`
       const provider = assets()
@@ -424,6 +430,7 @@ function FieldArea({ name }: { name: string }) {
         beginAsyncPipelines()
         attach(mine)
         await settleAsyncPipelines(() => true, FIELD_COMPILE_CAP_MS)
+        if (alive) setWarm(true)
       })()
         .catch((e: unknown) => {
           console.error(`지역 ${name}을 못 세웠다`, e)
