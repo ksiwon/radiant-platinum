@@ -37,6 +37,8 @@ interface Personal {
   abilities: [number, number]
   safariFlee: number
   color: number
+  /** 1이면 포켓치에서 왼쪽에 서도 아이콘을 안 뒤집는다 (`SPECIES_DATA_FLIP_SPRITE`) */
+  flip: number
   /** 기술머신·비전머신 학습 가능 비트필드 128비트 */
   tm: string
 }
@@ -72,7 +74,9 @@ export function parsePersonal(b: Uint8Array): Personal {
     eggGroups: [b[20]!, b[21]!],
     abilities: [b[22]!, b[23]!],
     safariFlee: b[24]!,
-    color: b[25]! & 0x3f,
+    // `u8 bodyColor : 7; u8 flipSprite : 1;` (struct_defs/species.h) — 맨 위 비트가 깃발이다
+    color: b[25]! & 0x7f,
+    flip: b[25]! >> 7,
     tm: hex(b, 28, 44),
   }
 }

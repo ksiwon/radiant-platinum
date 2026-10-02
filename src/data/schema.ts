@@ -62,7 +62,13 @@ const speciesSchema = z.object({
   eggGroups: z.tuple([z.number().int().min(0).max(15), z.number().int().min(0).max(15)]),
   abilities: z.tuple([z.number().int().min(0), z.number().int().min(0)]),
   safariFlee: z.number().int().min(0).max(255),
-  color: z.number().int().min(0).max(63),
+  /** 몸 색 (`bodyColor : 7`) */
+  color: z.number().int().min(0).max(127),
+  /**
+   * `flipSprite : 1` — 1이면 포켓치 상성체커 · 키우미집체커가 **왼쪽 마리를 안 뒤집는다**
+   * (`SPECIES_DATA_FLIP_SPRITE`). 롬 종족 자료 `b[25]`의 맨 위 비트다. ⚠️ 옛 설치본(종족 판 1)에는 없어 0으로 읽는다 (`GROUP_ACCEPTS`)
+   */
+  flip: z.number().int().min(0).max(1).default(0),
   /**
    * 키(데시미터)와 몸무게(헥토그램). `zukan_data.narc` 멤버 0·1이다.
    *

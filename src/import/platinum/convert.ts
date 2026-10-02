@@ -178,7 +178,8 @@ export const GROUPS: readonly GroupSpec[] = [
   {
     name: 'species',
     outputs: ['data/species.json', 'data/names/species.*.json'],
-    converter: 1,
+    // 2 — `b[25]`의 맨 위 비트를 `flip`으로 따로 읽는다 (`species.ts`의 `parsePersonal`)
+    converter: 2,
     convert: convertSpecies,
   },
   {

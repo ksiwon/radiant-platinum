@@ -29,6 +29,12 @@ export const ASSET_FORMAT = 1
  * 진행률 표시를 고친 정도로는 안 올린다 — 그건 산출물이 같다
  */
 export const GROUP_FORMAT: Readonly<Record<string, number>> = {
+  /**
+   * 2 — 종족마다 `flip`(`b[25]`의 맨 위 비트 · `SPECIES_DATA_FLIP_SPRITE`, 1인 칸 28)이 붙는다. `color`를 7비트로 넓혀도 값은
+   * 그대로다(실측: 0x40이 선 칸 0). ⚠️ **1도 그대로 쓴다**(`GROUP_ACCEPTS`) — 없으면 스키마가 0으로 채워 포켓치가 예전처럼
+   * 왼쪽 마리를 다 뒤집을 뿐이다. 그것 때문에 롬을 다시 고르게 하지 않는다
+   */
+  species: 2,
   moves: 1,
   marts: 1,
   /**
@@ -322,6 +328,7 @@ export function groupFormat(name: string): number {
  * (`installer.resumableGroups`). 새로 까는 사람은 처음부터 새 판을 받는다
  */
 const GROUP_ACCEPTS: Readonly<Record<string, readonly number[]>> = {
+  species: [1],
   pokegra: [1],
   distortion: [1],
 }

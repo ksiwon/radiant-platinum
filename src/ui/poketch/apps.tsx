@@ -713,6 +713,21 @@ export function matchupCues(level: number): MatchupCues {
 }
 
 /**
+ * 왼쪽 칸에 선 마리를 뒤집는가 (`SpeciesData_GetFormValue(…, SPECIES_DATA_FLIP_SPRITE)`).
+ *
+ * 깃발은 **폼 칸**에서 읽는다 — 원작도 종과 폼으로 묻는다(하늘 쉐이미 502번만 깃발이 서고
+ * 기본 쉐이미는 아니다). 표가 아직 없거나 표에 없는 종이면 원작 기본(뒤집기)으로 둔다
+ */
+function leftFlips(table: SpeciesLookup | null, mon: IconOf | undefined): boolean {
+  if (!table || !mon || mon.isEgg) return true
+  try {
+    return table.of(mon).flip === 0
+  } catch {
+    return true
+  }
+}
+
+/**
  * 상성체커 — 파티의 두 마리가 키우미집에서 알을 만들 궁합 (`matchup_checker`).
  *
  * 하트 칸 · 사랑동이 둘 · 아래의 두 마리와 가운데 버튼 — 원작 화면의 세 층
@@ -732,10 +747,10 @@ export function matchupCues(level: number): MatchupCues {
  * 그림(`matchup_checker_NCGR`)은 아직 굽지 않는다. 움직임(하트 하나에 16점
  * 다가가기 · 안 맞으면 등을 돌려 물러나기 · 최고면 깜빡임)은 원작 명령표를 따른다.
  *
- * ⚠️ **왼쪽 마리는 오른쪽을 보게 뒤집는다** (`UpdateMonIcon`의 애니메이션 5).
- * 원작은 종족 자료의 `SPECIES_DATA_FLIP_SPRITE`(롬 종족 자료 `b[25]`의 맨 위
- * 비트)가 선 마리만 안 뒤집는데, 우리가 구운 `species.json`은 그 바이트를 몸 색
- * (`& 0x3f`)으로만 읽어 깃발이 없다. 그래서 아직 모두 뒤집는다
+ * ⚠️ **왼쪽 마리는 오른쪽을 보게 뒤집는다** (`UpdateMonIcon`의 애니메이션 5 —
+ * `poke_icon_anim`의 `scaleX` −2). 종족 자료의 `flip`(`SPECIES_DATA_FLIP_SPRITE`)이
+ * 선 마리만 애니메이션 4로 안 뒤집는다 (`leftFlips` · 28칸). 오른쪽 마리는 깃발과
+ * 상관없이 늘 4다
  */
 function MatchupChecker({ x, press, large }: Nav) {
   const party = useSaveStore((s) => s.party)
@@ -842,7 +857,7 @@ function MatchupChecker({ x, press, large }: Nav) {
       </div>
       <div className={css.matchupRow} style={{ height: px }}>
         <span className={css.matchupMon} style={{ left: 0, outline: large && button === 0 ? '1px solid currentColor' : 'none' }}>
-          <MonIcon icons={icons} sheet={sheet} mon={left ?? null} px={px} flip />
+          <MonIcon icons={icons} sheet={sheet} mon={left ?? null} px={px} flip={leftFlips(table, left)} />
         </span>
         <span
           className={count < 2 ? css.matchupButtonDown : css.matchupButton}
@@ -870,19 +885,28 @@ function MatchupChecker({ x, press, large }: Nav) {
  * 키우미집체커 — 맡긴 둘과 알 (`daycare_checker`).
  *
  * 원작은 맡긴 둘의 아이콘과 레벨을 그리고, 알이 생기면 그 사이에 알을 띄운다
+ *
+ * ⚠️ **첫째 마리만 뒤집는다** (`DrawSprites`). 원작 화면에서 첫째가 왼쪽에 서서 둘째를
+ * 보게 애니메이션 7(`scaleX` −2)로 돌고, 종족 자료의 `flip`이 선 종만 6으로 안 뒤집는다
+ * (`leftFlips`). 둘째는 늘 6, 알은 늘 4라 깃발을 안 본다
  */
 function DaycareChecker({ large }: Nav) {
   const daycare = useSaveStore((s) => s.daycare)
-  const { names } = useSpeciesNames()
+  const { names, table } = useSpeciesNames()
   const { icons, sheet } = useMonIcons()
   const slots = daycare.slots.filter((s) => s !== null)
   if (!slots.length) return <div className={css.missing}>맡긴 포켓몬이 없다</div>
+  // 원작의 첫째는 **찬 칸 중 첫째**다 — 맡긴 수만큼 앞에서부터 채워 그린다
+  const first = daycare.slots.findIndex((s) => s !== null)
   const px = large ? 32 : 24
   return (
     <div className={css.rows}>
       {daycare.slots.map((slot, i) => (
         <div key={i} className={css.row}>
-          <MonIcon icons={icons} sheet={sheet} mon={slot ? slot.mon : null} px={px} />
+          <MonIcon
+            icons={icons} sheet={sheet} mon={slot ? slot.mon : null} px={px}
+            flip={i === first && slot !== null && leftFlips(table, slot.mon)}
+          />
           <span className={css.name}>{slot ? monName(slot.mon, names) : '—'}</span>
           {slot && <span className={css.small}>Lv.{slot.mon.level}</span>}
         </div>
