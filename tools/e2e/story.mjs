@@ -546,7 +546,9 @@ async function settle() {
   while (Date.now() < till) {
     const p = await perf(page)
     const tri = p?.triangles ?? 0
-    same = tri === last ? same + 1 : 0
+    // ⚠️ **조금 흔들리는 것은 멎은 것으로 본다** (천분의 일). 섰는데도 매 프레임 수십 개씩 오르내리는 자리가 있다 — 213번도로가
+    // 6,195,016 ~ 6,195,112를 오가서 「같은 수 세 번」이 30초 내내 안 와 프레임을 한 번도 안 잰 채 떨어졌다 (2026-10-02)
+    same = last > 0 && Math.abs(tri - last) <= last * 0.001 ? same + 1 : 0
     last = tri
     // ⚠️ **붙기가 끝난 뒤에도 화면은 한참 안 돈다** (`LIVE_FRAMES` 머리말).
     // 붙는 것만 보고 넘어가면 그 다음에 하는 일이 전부 **멎은 화면 위에서**
