@@ -7,9 +7,10 @@
 // 개수도, 양자화 단계도 블록마다 다르다. 그래서 "블록을 읽는다"가 아니라 "블록이
 // 말하는 대로 읽는 법을 먼저 정한다"가 된다.
 //
-// ⚠️ **오라클은 `texture2ddecoder`다.** 무작위 128비트를 흔들어 픽셀까지 맞춘다
-// (`astc.test.ts`). 진짜 텍스처만으로는 실제로 나오는 모드만 지나가고, 안 밟은
-// 갈래가 게임 한복판에서 터진다.
+// ⚠️ **오라클은 UnityPy가 실제로 부르는 디코더다** — ASTC는 `astc_encoder`(ARM astcenc,
+// LDR · `USE_DECODE_UNORM8`)이지 `texture2ddecoder`가 아니다 (UnityPy 1.25
+// `Texture2DConverter.astc`). 무작위 128비트를 흔들어 픽셀까지 맞춘다 (`astc.test.ts`).
+// 진짜 텍스처만으로는 실제로 나오는 모드만 지나가고, 안 밟은 갈래가 게임 한복판에서 터진다.
 //
 // ⚠️ **HDR은 안 푼다.** BDSP가 쓰는 것은 `ASTC_RGB_*`(LDR)뿐이고, HDR 끝점 모드
 // (2·3·7·11·14·15)는 색 계산이 통째로 다르다. 짐작으로 채우지 않고 세운다.
@@ -505,7 +506,12 @@ const cemValues = (cem: number): number => (((cem >> 2) + 1) * 2)
 
 // ── 블록 하나 ────────────────────────────────────────────────────────────────
 
-const ERROR_COLOR = 0xffff00ff  // 규격이 정한 오류색: 불투명 자홍
+/**
+ * 오류색. ⚠️ **자홍이 아니라 흰색이다** — 개발 추출기의 디코더(astcenc · LDR · `USE_DECODE_UNORM8`)가 규격에 없는
+ * 블록(모드 0 · HDR void extent · 부분 넷인 두 평면 · 끝점 단계 6 미만)을 **불투명 흰색 (255,255,255,255)**으로 낸다 —
+ * `blockOracle.py`로 실측했다. 진짜 BDSP 텍스처에는 그런 블록이 없지만, 두 굽는 쪽이 같은 바이트에 같은 값을 내야 한다
+ */
+const ERROR_COLOR = 0xffffffff
 
 const rgba = (r: number, g: number, b: number, a: number): number =>
   ((a << 24) | (b << 16) | (g << 8) | r) >>> 0
@@ -560,6 +566,11 @@ export function decodeAstcBlock(
       out.fill(ERROR_COLOR)
       return
     }
+    // ⚠️ 예약 비트 둘(10·11)은 1이어야 하고, 범위가 「없음」(전부 1)이 아니면 min < max여야 한다 — astcenc가 그렇게 거른다
+    const ext = new Bits(src.subarray(at, at + 16), 12)
+    const [s0, s1, t0, t1] = [ext.read(13), ext.read(13), ext.read(13), ext.read(13)]
+    const none = s0 === 0x1fff && s1 === 0x1fff && t0 === 0x1fff && t1 === 0x1fff
+    if (((head >> 10) & 3) !== 3 || (!none && (s0 >= s1 || t0 >= t1))) { out.fill(ERROR_COLOR); return }
     const r = view.getUint16(at + 8, true)
     const g = view.getUint16(at + 10, true)
     const b = view.getUint16(at + 12, true)
@@ -580,6 +591,8 @@ export function decodeAstcBlock(
   const bits = new Bits(src.subarray(at, at + 16), 11)
   const partitions = bits.read(2) + 1
   if (partitions > 4) { out.fill(ERROR_COLOR); return }
+  // 부분 넷에 두 평면은 규격에 없다 — astcenc가 오류로 낸다 (`astc.test.ts`의 지은 블록 216개가 이것과 아래 단계 문턱이었다)
+  if (partitions === 4 && dual) { out.fill(ERROR_COLOR); return }
 
   const cems = [0, 0, 0, 0]
   let extraCemBits = 0
@@ -621,7 +634,8 @@ export function decodeAstcBlock(
   const colorBits = 128 - weightBits - extraCemBits - configBits - (dual ? 2 : 0)
   if (colorBits < 1) { out.fill(ERROR_COLOR); return }
   const cq = fitQuant(valueCount, colorBits)
-  if (cq < 0) { out.fill(ERROR_COLOR); return }
+  // ⚠️ **끝점 단계가 0..5(단계 4)보다 거칠면 오류다** (astcenc `QUANT_6` 문턱). `texture2ddecoder`는 그대로 풀었다
+  if (cq < 4) { out.fill(ERROR_COLOR); return }
 
   const colorRaw = readIse(new Bits(src.subarray(at, at + 16), configBits), valueCount, cq)
   const unq = UNQUANT[cq]!
@@ -688,9 +702,13 @@ export function decodeAstcBlock(
         for (let ch = 0; ch < 4; ch++) {
           const usesThis = dual ? ((ch === plane2) === (plane === 1)) : true
           if (!usesThis) continue
+          // ⚠️ **16비트 값의 위 8비트를 쓴다** (`decode_unorm8`). 개발 추출기(UnityPy 1.25)는 ASTC를
+          // `texture2ddecoder`가 아니라 `astc_encoder`(ARM astcenc · LDR · `USE_DECODE_UNORM8`)로 푼다. 예전처럼
+          // `C · 255 / 65535`로 반올림하면 512² 그림 한 장(`pm0001_00_00_BodyA_col_rare`)에서 18,385바이트가 ±1 갈렸고, 256으로 줄이면 ±2로 벌어져 ⑮가 이상해씨 이로치
+          // `BodyA01`에서 5,504개를 셌다. 위 8비트로 자르면 0이다 (`astc.test.ts`)
           const c0 = a[ch]! * 257
           const c1 = b[ch]! * 257
-          c[ch] = (((c0 * (64 - w) + c1 * w + 32) >> 6) * 255 + 32768) >> 16
+          c[ch] = ((c0 * (64 - w) + c1 * w + 32) >> 6) >> 8
         }
       }
       out[y * bw + x] = rgba(c[0]!, c[1]!, c[2]!, c[3]!)

@@ -9,6 +9,8 @@
 이 파일들은 원본 자산의 픽셀 그대로다.
 
 ⚠️ 텍스처 대부분은 번들 안 `.resS` 스트림에 있다. `image_data`만 보면 빈손이다.
+
+⚠️ **ASTC는 UnityPy의 `astc`(astc_encoder)로 푼다** — `texture2ddecoder`가 아니다 (`blockOracle.py` 머리말)
 """
 from __future__ import annotations
 
@@ -19,6 +21,7 @@ from pathlib import Path
 
 import UnityPy
 import texture2ddecoder as td
+from UnityPy.export.Texture2DConverter import astc as unitypy_astc
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tools.raw.sources import ROOT, require_dir  # noqa: E402
@@ -77,13 +80,15 @@ def main() -> int:
             if not raw:
                 continue
             try:
-                dec = (td.decode_astc(raw, d.m_Width, d.m_Height, bw, bh) if kind == 'astc'
-                       else getattr(td, f'decode_{kind}')(raw, d.m_Width, d.m_Height))
+                if kind == 'astc':
+                    rgba = unitypy_astc(raw, d.m_Width, d.m_Height, (bw, bh)).tobytes()
+                else:
+                    dec = getattr(td, f'decode_{kind}')(raw, d.m_Width, d.m_Height)
+                    # texture2ddecoder는 BGRA를 낸다
+                    rgba = bytearray(dec)
+                    rgba[0::4], rgba[2::4] = dec[2::4], dec[0::4]
             except Exception:
                 continue
-            # texture2ddecoder는 BGRA를 낸다
-            rgba = bytearray(dec)
-            rgba[0::4], rgba[2::4] = dec[2::4], dec[0::4]
             i = len(meta)
             (out / f'{i}.raw').write_bytes(raw)
             (out / f'{i}.rgba').write_bytes(bytes(rgba))

@@ -200,6 +200,12 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 주인공이 계속 절차형으로만 낚시한다
    */
   /**
+   * 16 — **ASTC 그림을 개발 추출기와 같은 규칙으로 푼다** (`import/bdsp/astc.ts` — 16비트 보간값의 위 8비트 · astcenc `decode_unorm8`).
+   * 예전 브라우저 디코더는 `texture2ddecoder`를 따라 반올림해서 개발 추출기(UnityPy → `astc_encoder`)와 ±1씩 갈렸다 — 512² 한 장에서
+   * 18,385바이트, 256으로 줄이면 ±2로 벌어진다. 사람 그림은 526/527장이 `ASTC_RGB_6x6`이라 이 그룹 · `monModels` · `monVariants`의
+   * 그림 바이트가 달라진다. 무대 · 방 · 지역 · 던전은 ASTC가 0장이라 그대로다(`Environments` 2만 장 실측: BC · RGBA · Alpha8뿐).
+   * ⚠️ **15도 그대로 쓴다**(`GROUP_ACCEPTS`) — 갈리는 것은 1~2/255라 눈에 안 보인다. 그것 때문에 BDSP를 다시 고르게 하지 않는다
+   *
    * 15 — **길에 떨어진 몬스터볼이 몬스터볼이다** (`models/pokeball.glb` — 이 그룹이 굽는다). `ob02xx_00` 줄의 첫째 `ob0201_00`을
    * 집었는데 그것은 마스터볼이었다(윗반구 보라 · 분홍 혹 · M). 그림으로 재서 빨강 · 하양인 `ob0204_00`으로 바꿨다
    * (`import/bdsp/convert.ts`의 `POKEBALL`)
@@ -208,8 +214,10 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 쪽찐 할머니 · `fc2022`의 옷이 통째로 잘려 머리 · 손 · 발만 떠 있었고, 사이클리스트 헬멧 · 안경알이 사라졌다.
    * 파도타기 · 공중날기 포켓몬(`models/pcParts.glb`)의 눈도 알파가 거의 0이라 잘려 있었다
    */
-  npcModels: 15,
+  npcModels: 16,
   /**
+   * 5 — ASTC 그림을 개발 추출기와 같은 규칙으로 푼다 (`npcModels` 16과 같은 고침). ⚠️ 4도 그대로 쓴다(`GROUP_ACCEPTS`)
+   *
    * 2 — 재질을 못 찾은 **껍데기 하나만** 버린다. 종을 통째로 버리지 않는다.
    *
    * 옛 판으로 깔린 설치본에는 **포켓몬 쉰 종·판이 아예 없다** — 껍데기 하나가
@@ -230,7 +238,12 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 4 — **눈·입이 제 칸을 읽는다** (`_ColorBaseU`). 옛 판은 왼눈이 반쯤 감긴 칸 · 입이 옆 칸을 읽어 얼굴이 일그러지고
    * 슬퍼 보였다(눈 609 · 입 149 재질). glb의 UV 바이트와 구운 눈 그림이 달라진다
    */
-  monModels: 4,
+  monModels: 5,
+  /**
+   * 2 — 이로치 그림을 개발 추출기와 같은 ASTC 규칙으로 푼다 (`npcModels` 16과 같은 고침). `pnpm e2e` ⑮가 처음 픽셀로 견준 자리라
+   * 이상해씨 `shiny/1/BodyA01.png`에서 5,504개가 갈렸다. ⚠️ 1도 그대로 쓴다(`GROUP_ACCEPTS`)
+   */
+  monVariants: 2,
   /**
    * 2 — **텍스처 없는 재질에 확산색을 실어 준다.**
    *
@@ -331,6 +344,10 @@ const GROUP_ACCEPTS: Readonly<Record<string, readonly number[]>> = {
   species: [1],
   pokegra: [1],
   distortion: [1],
+  // ASTC 반올림 (`GROUP_FORMAT.npcModels` 16) — 1~2/255 차이라 다시 굽게 하지 않는다
+  npcModels: [15],
+  monModels: [4],
+  monVariants: [1],
 }
 
 /** 이 판의 그 그룹을 그대로 써도 되는가 */

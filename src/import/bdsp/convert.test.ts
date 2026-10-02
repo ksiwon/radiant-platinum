@@ -7,8 +7,9 @@
 //
 // 실측 근거: `pnpm exec node --import ./tools/spike/tsResolve.mjs
 // --experimental-strip-types tools/spike/bdspGroups.mjs <그룹>`으로 구워
-// `public/models`의 개발 산출물과 대조했다. 무대 g001은 **모두 같다**,
-// 인물은 그림만 최대 2~3/255 다르다 (`glbDiff.py` 머리말에 임자가 적혀 있다).
+// `public/models`의 개발 산출물과 대조했다. 무대 g001은 **모두 같다**.
+// 인물 · 포켓몬 그림은 ASTC를 푸는 반올림이 갈려 최대 2/255 달랐는데(`astc.ts` — 개발 추출기는 astcenc의
+// 위 8비트), 맞춘 뒤로 이상해씨 이로치 여섯 장은 0이고 라이벌 `tr0002_00` 여섯 장은 `wear`의 한 바이트만 1/255다.
 import { it, expect } from 'vitest'
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -19,7 +20,7 @@ import { bakeAlbedo } from './albedo'
 import { anySex, pokemonCatalog, variantSuffix } from './convert'
 import { POKEBALL, arenaFiles } from './convert'
 import { verifyGlb } from './glb'
-import { encodePng } from '../platinum/png'
+import { decodePng, encodePng } from '../platinum/png'
 import { SPRITE_NAMES } from '../platinum/spriteTable'
 import { HERO_FIELD_CLIPS, TRAINER_CLIPS, fieldClipDonor, modelFor } from '../../engine/actor/npcModels'
 import { TRAINER_CLIP } from '../../scene/battle/battleTrainerVisual'
@@ -264,6 +265,28 @@ suite('포켓몬', () => {
       expect(eye.look.uv).toEqual([2, 1, -0.5, 0])
       expect(eye.look.wrap[0]).toBe(33648) // MIRRORED_REPEAT
     }
+  }, 120_000)
+
+  // ⚠️ **⑮가 처음 픽셀로 견준 BDSP 그림이 여기다** (`tools/e2e/parity.mjs`의 `comparePixels`). 이상해씨 이로치
+  // `BodyA01`이 5,504개 갈렸다 — ASTC를 푸는 반올림이 개발 추출기(astcenc · 위 8비트)와 달랐다 (`astc.ts`).
+  // 개발 산출물이 없는 기계에서는 못 잰다 — 통과로 안 세고 건너뛴다
+  it('이로치 그림이 개발 산출물과 픽셀까지 같다 — 이상해씨', async () => {
+    const rare = mon('pm0001_00_01')
+    const nodeDir = join(__dirname, '../../../public/models/pokemon/variants/shiny/1')
+    if (rare.length !== 3 || !existsSync(nodeDir)) return
+    const baked = bakeAlbedo(openEnvironment(rare.map(bytes)), {
+      maxSize: 256, mainProps: ['_Col0Tex', '_MainTex'],
+    })
+    expect(baked.length).toBe(6)
+    const off: string[] = []
+    for (const m of baked) {
+      const node = await decodePng(bytes(join(nodeDir, `${variantSuffix(m.name)}.png`)))
+      expect([m.width, m.height]).toEqual([node.width, node.height])
+      let bad = 0
+      for (let i = 0; i < node.pixels.length; i++) if (m.pixels[i] !== node.pixels[i]) bad++
+      if (bad > 0) off.push(`${variantSuffix(m.name)} ${String(bad)}`)
+    }
+    expect(off).toEqual([])
   }, 120_000)
 
   it('번들 셋을 합쳐야 메시가 나온다', async () => {

@@ -1,4 +1,4 @@
-// ASTC 디코더 — `texture2ddecoder`와 픽셀이 같은가
+// ASTC 디코더 — UnityPy가 부르는 디코더(`astc_encoder`)와 픽셀이 같은가 (`tools/spike/blockOracle.py`)
 //
 // ⚠️ **무작위 128비트를 그냥 흔들면 안 된다.** 열에 여덟이 규격에 없는 블록이라
 // 오류색끼리 비교하게 되고, 디코더마다 오류색이 달라서 "통과"도 "실패"도 뜻이
@@ -98,13 +98,13 @@ function makeBlocks(bw: number, bh: number, n: number, seed: number): Uint8Array
 describe('ASTC 블록', () => {
   // 블록 크기 세 가지. BDSP는 6x6과 8x8을 쓰고, 4x4는 "작은 블록" 갈래를 밟는다
   for (const [bw, bh, seed] of [[6, 6, 1], [8, 8, 5], [4, 4, 9]] as const) {
-    it(`${bw}x${bh} 유효 블록 1024개가 texture2ddecoder와 픽셀까지 같다`, () => {
+    it(`${bw}x${bh} 유효 블록 1024개가 UnityPy(astc_encoder)와 픽셀까지 같다`, () => {
       const n = 1024
       const src = makeBlocks(bw, bh, n, seed)
       const width = n * bw
       const want = oracle(src, width, bh, bw, bh)
       if (!want) {
-        expect.soft(true, 'texture2ddecoder를 못 돌렸다 — 대조를 건너뛴다').toBe(true)
+        expect.soft(true, '오라클을 못 돌렸다 — 대조를 건너뛴다').toBe(true)
         return
       }
       const block = new Uint32Array(bw * bh)
@@ -126,6 +126,48 @@ describe('ASTC 블록', () => {
       expect(bad, first).toBe(0)
     })
   }
+})
+
+describe('한 색 블록 (void extent)', () => {
+  // ⚠️ 지은 블록은 void extent를 안 밟는다. 예약 비트 · 범위 · 위 8비트를 손으로 지어 오라클과 맞댄다
+  it('예약 비트 · 범위 · 색이 UnityPy(astc_encoder)와 같다', () => {
+    const block = (head: number, extent: number[], color: number[]): Uint8Array => {
+      const b = new Uint8Array(16)
+      setBits(b, 0, 16, head)
+      for (let i = 0; i < 4; i++) setBits(b, 12 + i * 13, 13, extent[i]!)
+      for (let i = 0; i < 4; i++) setBits(b, 64 + i * 16, 16, color[i]!)
+      return b
+    }
+    const color = [0x1234, 0x56ff, 0x9a80, 0x80ff]
+    const cases = [
+      block(0x0dfc, [0x1fff, 0x1fff, 0x1fff, 0x1fff], color),  // 범위 없음 — 위 8비트
+      block(0x0dfc, [0, 4, 0, 4], color),                      // 범위 있음
+      block(0x0dfc, [4, 4, 0, 4], color),                      // min = max — 오류
+      block(0x01fc, [0x1fff, 0x1fff, 0x1fff, 0x1fff], color),  // 예약 비트 0 — 오류
+      block(0x0ffc, [0x1fff, 0x1fff, 0x1fff, 0x1fff], color),  // HDR — 오류
+      new Uint8Array(16),                                      // 블록 모드 0 — 오류
+    ]
+    const src = new Uint8Array(cases.length * 16)
+    cases.forEach((c, i) => src.set(c, i * 16))
+    const want = oracle(src, cases.length * 6, 6, 6, 6)
+    if (!want) {
+      expect.soft(true, '오라클을 못 돌렸다 — 대조를 건너뛴다').toBe(true)
+      return
+    }
+    const out = new Uint32Array(36)
+    const got: number[][] = []
+    const expected: number[][] = []
+    for (let i = 0; i < cases.length; i++) {
+      decodeAstcBlock(src, i * 16, 6, 6, out)
+      const v = out[0]!
+      got.push([v & 255, (v >>> 8) & 255, (v >>> 16) & 255, v >>> 24])
+      expected.push([...want.subarray(i * 24, i * 24 + 4)])
+    }
+    expect(got).toEqual(expected)
+    // 실측값을 못 박는다 — 위 8비트 · 오류는 불투명 흰색
+    expect(got[0]).toEqual([0x12, 0x56, 0x9a, 0x80])
+    expect(got[2]).toEqual([255, 255, 255, 255])
+  })
 })
 
 describe('정수열과 역양자화', () => {
