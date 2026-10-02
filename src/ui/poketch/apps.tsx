@@ -307,10 +307,7 @@ function CoinToss({ press, large }: Nav) {
 
 /**
  * 포켓치 앱이 직접 부르는 글 뱅크 (미국 롬 번호 · `apps.test.ts`가 이름 순서와 맞댄다).
- *
- * ⚠️ **통신서치 뱅크는 노드 쪽 굽기에 아직 없다** (`tools/extract/dialogue.js`의
- * `EXTRA_BANKS`). 브라우저 설치본은 뱅크를 다 실으니 거기서는 롬 글이 뜨고,
- * 노드로 구운 자료에서는 받기가 실패해 대체 글이 뜬다
+ * 두 굽는 쪽이 다 싣는다 — 노드 쪽은 `tools/extract/dialogue.js`의 `EXTRA_BANKS`
  */
 export const POKETCH_TEXT_BANK = {
   /** `TEXT_BANK_POKETCH_POKEMON_HISTORY` — 「손에 넣은 포켓몬」 한 줄 */
