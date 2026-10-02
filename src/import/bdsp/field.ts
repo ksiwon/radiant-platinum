@@ -10,7 +10,7 @@
 // z 876~886 ↔ 원작 104~115) — 무대처럼 x를 뒤집으면 그대로 맞는다. 높이도 같다: `area001`의 땅 466자리에서 BDSP − 원작 높이의
 // 중앙값이 0.0이다 (`.audit/probe/bdspGroundH.py`)
 //
-// ⚠️ **굽는 쪽은 이것 하나다.** 개발 산출물(`tools/extract/bdspFields.mjs`)도 이 파일을 돌린다 — 두 굽는 쪽이 갈릴 자리를 안 만든다
+// ⚠️ **굽는 쪽은 이것 하나다.** 개발 산출물(`pnpm extract:fields` → `tools/spike/bdspGroups.mjs`)도 이 파일을 돌린다 — 두 굽는 쪽이 갈릴 자리를 안 만든다
 import { bakeLooks, lanes, worldOf, type ImageShare, type Mat4 } from './arena'
 import {
   ARRAY_BUFFER, ELEMENT_BUFFER, FLOAT, GlbBuffer, UINT, USHORT, verifyGlb, writeGlb, type Gltf,
@@ -52,6 +52,60 @@ interface Group {
   wide: boolean
   slots: number[]
   worlds: Mat4[]
+  /** 남의 구역에서 한 줄만 빌려 온 조각이면 그 줄의 z 범위(원작 칸) — 그 안의 삼각형만 남긴다 (`ZONE_SEAMS`) */
+  seam?: readonly [number, number]
+}
+
+/**
+ * **지역 번들이 품은 남의 구역 중 안 세우는 것** — 구역(`Offset` 밑의 `C04` · `R206` 같은 뿌리) 이름으로.
+ *
+ * BDSP는 구역마다 지역 **하나**를 띄우고(`MapInfo.ZoneData[].AssetBundleName`), 경계 너머가 비지 않게 이웃 구역을 사본으로
+ * 품는다. 우리는 지역 여럿을 한꺼번에 세우므로 그 사본이 겹쳐 선다. 열여덟 쌍은 자리가 같아 겹쳐도 안 보이는데, **area002가
+ * 품은 영원시티(`C04`)와 206번도로(`R206`)만 한 칸 남쪽**(z +1)에 있다 — 구역 뿌리가 area002에서 (−288, 0, 513) ·
+ * (−284, 0, 577), area003에서 512 · 576이다. 그 둘을 dz −1로 옮기면 배치 522/522 · 527/527이 area003과 꼭 맞는다.
+ * 원작 칸과 맞는 쪽은 area003이다 — 센터 문 열둘이 워프 칸에서 0.06~0.40(area002는 0.80~1.28), 206번도로 관문 둘이 워프
+ * 569 · 681을 품고(area002는 못 품는다) 표지판 · 나무열매 흙이 원작 칸에 선다. 그래서 area002의 사본을 버린다 —
+ * 그대로 두면 영원시티 건물이 한 칸 어긋나 두 벌 서고, 1인칭으로 센터 문 앞에 서면 area002 현관 기둥 사이에 선다
+ */
+const FOREIGN_ZONES: Readonly<Record<string, readonly string[]>> = {
+  area002: ['C04', 'R206'],
+}
+
+/**
+ * 버린 사본에서 **한 줄만** 빌려 오는 조각.
+ *
+ * BDSP의 206번도로 땅은 127줄(구역 z 0~127)이고 원작 길은 128줄(576~703)이다. area003 사본만 세우면 207번도로(704~)와
+ * 사이에 한 줄 틈(z 703~704 · x 278~329)이 나서 아래로 쏜 레이 15/15가 땅을 못 맞힌다 — area002가 한 칸 밀어 둔 것은 그
+ * 이음매를 207번도로에 대려던 것이다. 그 줄의 땅 · 절벽만 남긴다 (땅 88 · 절벽 67삼각형 · 걸친 37은 버린다)
+ */
+const ZONE_SEAMS: Readonly<Record<string, Readonly<Record<string, { objects: readonly string[], z: readonly [number, number] }>>>> = {
+  area002: { R206: { objects: ['P_R_206_Ground_01', 'P_R_206_Cliff_01'], z: [703, 704] } },
+}
+
+/** 물체가 선 구역 — `Offset` 바로 밑의 뿌리 이름. `Offset`이 없으면 번들 뿌리 바로 밑이다 (area007의 `R208`) */
+function zoneOf(env: Environment, transformPid: number, memo: Map<number, string | null>): string | null {
+  const had = memo.get(transformPid)
+  if (had !== undefined) return had
+  const chain: number[] = []
+  let p = transformPid
+  for (let guard = 0; p !== 0 && guard < 256; guard++) {
+    chain.push(p)
+    const t = env.read(p) as Props | null
+    const father = num((t?.m_Father as Props | undefined)?.m_PathID)
+    if (father === p) break
+    p = father
+  }
+  const goName = (tp: number): string | null => {
+    const t = env.read(tp) as Props | null
+    const go = env.read(num((t?.m_GameObject as Props | undefined)?.m_PathID)) as Props | null
+    return typeof go?.m_Name === 'string' ? go.m_Name : null
+  }
+  // chain: 물체 … 구역 뿌리 · Offset · 번들 뿌리
+  let zone: string | null = null
+  if (chain.length >= 3 && goName(chain[chain.length - 2]!) === 'Offset') zone = goName(chain[chain.length - 3]!)
+  else if (chain.length >= 2) zone = goName(chain[chain.length - 2]!)
+  memo.set(transformPid, zone)
+  return zone
 }
 
 /** Unity 월드 행렬 → 원작 좌표(x 뒤집기)의 행렬. `F·W·F` (F = diag(−1, 1, 1)) */
@@ -363,6 +417,7 @@ export async function exportField(
   const cache = new Map<number, Mat4>()
   const groups = new Map<string, Group>()
   const meshCache = new Map<number, { mesh: MeshData, wide: boolean } | null>()
+  const zones = new Map<number, string | null>()
   let placed = 0
   let placedTriangles = 0
   for (const filter of filters) {
@@ -402,11 +457,22 @@ export async function exportField(
       }
     }
     if (!enabled || slots.length === 0 || transformPid === 0) continue
-    const key = `${String(meshPid)}:${slots.join(',')}`
+    // 남의 구역 사본은 버린다 — 이음매 한 줄만 빌린다 (위 `FOREIGN_ZONES` · `ZONE_SEAMS`)
+    let seam: readonly [number, number] | undefined
+    const foreign = FOREIGN_ZONES[name]
+    if (foreign) {
+      const zone = zoneOf(env, transformPid, zones)
+      if (zone !== null && foreign.includes(zone)) {
+        const borrow = ZONE_SEAMS[name]?.[zone]
+        if (!borrow || typeof go.m_Name !== 'string' || !borrow.objects.includes(go.m_Name)) continue
+        seam = borrow.z
+      }
+    }
+    const key = `${String(meshPid)}:${slots.join(',')}${seam ? ':seam' : ''}`
     const world = worldOf(env, transformPid, cache)
     const g = groups.get(key)
     if (g) g.worlds.push(world)
-    else groups.set(key, { meshPid, mesh: got.mesh, wide: got.wide, slots, worlds: [world] })
+    else groups.set(key, { meshPid, mesh: got.mesh, wide: got.wide, slots, worlds: [world], ...(seam ? { seam } : {}) })
     placed++
     placedTriangles += got.mesh.subMeshes.reduce((a, s) => a + Math.floor(s.indexCount / 3), 0)
   }
@@ -418,7 +484,8 @@ export async function exportField(
   let triangles = 0
   let instanced = 0
   let lowX = Infinity, highX = -Infinity, lowZ = Infinity, highZ = -Infinity
-  const ordered = [...groups.values()].sort((a, b) => a.meshPid - b.meshPid || a.slots.join().localeCompare(b.slots.join()))
+  const ordered = [...groups.values()].sort((a, b) => a.meshPid - b.meshPid || a.slots.join().localeCompare(b.slots.join())
+    || Number(a.seam !== undefined) - Number(b.seam !== undefined))
   const subsOf = (g: Group): Uint32Array[] => g.mesh.subMeshes.map((sub) => {
     const first = Math.floor(sub.firstByte / (g.wide ? 4 : 2))
     return g.mesh.indices.subarray(first, first + sub.indexCount)
@@ -470,6 +537,23 @@ export async function exportField(
         carved += cut.touched
       }
     }
+    // 빌려 온 이음매는 그 줄 안에 세 꼭짓점이 다 든 삼각형만 남긴다 (위 `ZONE_SEAMS`)
+    if (g.seam && g.worlds.length === 1) {
+      const m = flipped(g.worlds[0]!)
+      const [z0, z1] = g.seam
+      const from = src
+      const inside = (i: number): boolean => {
+        const z = placeFlipped(m, from, i)[2]
+        return z >= z0 - 1e-4 && z <= z1 + 1e-4
+      }
+      subs = subs.map((tri) => {
+        const kept: number[] = []
+        for (let t = 0; t + 2 < tri.length; t += 3) {
+          if (inside(tri[t]!) && inside(tri[t + 1]!) && inside(tri[t + 2]!)) kept.push(tri[t]!, tri[t + 1]!, tri[t + 2]!)
+        }
+        return Uint32Array.from(kept)
+      })
+    }
     const pos = new Float32Array(n * 3)
     for (let i = 0; i < n; i++) { pos[i * 3] = -src[i * 3]!; pos[i * 3 + 1] = src[i * 3 + 1]!; pos[i * 3 + 2] = src[i * 3 + 2]! }
     const nrm = new Float32Array(n * 3)
@@ -518,7 +602,8 @@ export async function exportField(
     meshes.push({ name: `${name}-${String(g.meshPid)}`, primitives })
     const mesh = meshes.length - 1
     const worlds = g.worlds.map(flipped)
-    for (const w of worlds) {
+    // 빌려 온 이음매의 뿌리는 남의 구역 한가운데다 — 지역 상자를 거기까지 늘리지 않는다
+    for (const w of g.seam ? [] : worlds) {
       if (w[3]! < lowX) lowX = w[3]!
       if (w[3]! > highX) highX = w[3]!
       if (w[11]! < lowZ) lowZ = w[11]!

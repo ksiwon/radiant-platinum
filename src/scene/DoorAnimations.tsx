@@ -118,8 +118,8 @@ function Door({ door, y, clip }: { door: DoorVisual; y: number; clip: DoorClip }
 // 두면 닫힌 문 앞에서 덮개만 걸린다. 그래서 **구운 문짝을 원작 클립의 갈래와 길이로 움직인다** — 여닫이는 경첩 쪽 모서리를
 // 축으로 안쪽으로 돌리고, 미닫이는 문짝의 가로를 바깥 모서리 쪽으로 눌러 넣는다(`gym_door00op`과 같은 움직임 · DATA §2.31).
 //
-// 실측 (`models/field/area001~003`): 문짝 한가운데가 그 문의 워프 칸 한가운데에서 0.03~0.35칸 안이고(영원시티는 1.0~1.3칸 —
-// 워프가 문 앞 칸이다), 포켓몬센터 자동문은 0.75칸 두 짝이 나란히 선다(`DoorOuter_02_02` · `DoorOuter_04`)
+// 실측 (`models/field/area001~003`): 문짝 한가운데가 그 문의 워프 칸 한가운데에서 0.03~0.40칸 안이고, 포켓몬센터 자동문은
+// 0.75칸 두 짝이 나란히 선다(`DoorOuter_02_02` · `DoorOuter_04`)
 
 /** 구운 BDSP 문짝 재질인가. 게이트(`BarrierGate` · `PalGate` · `Gate_01`)와 문 앞 빛(`GateLight`)은 문짝이 아니다 */
 export function isDoorLeaf(m: Material): boolean {
@@ -140,7 +140,12 @@ interface DoorLeaf {
 /** 지금 씬에 붙은 BDSP 층들의 문짝 */
 const leaves = new Set<DoorLeaf>()
 
-/** 문 칸 한가운데에서 이만큼(칸) 안의 문짝이 그 문의 것이다 — 영원시티가 1.3칸이다 */
+/**
+ * 문 칸 한가운데에서 이만큼(칸) 안의 문짝이 그 문의 것이다.
+ *
+ * 지금 굽는 것은 0.40칸 안이다. 넉넉히 둔 것은 **옛 설치본** 때문이다 — 지역 판 3(`assetFormat`의 `GROUP_ACCEPTS`)은 area002가
+ * 한 칸 남쪽에 품은 영원시티 사본을 그대로 들고 있어 그쪽 문짝이 0.80~1.28칸에 선다
+ */
 const LEAF_REACH = 1.5
 /** 문짝 밑동과 문 칸 땅 높이가 이만큼(칸) 안이어야 한다 — 위층 문을 끌고 가지 않게 */
 const LEAF_RISE = 1.5

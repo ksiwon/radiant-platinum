@@ -38,6 +38,10 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
   moves: 1,
   marts: 1,
   /**
+   * 4 — **area002가 품은 영원시티 · 206번도로 사본을 안 세운다** (`import/bdsp/field.ts`의 `FOREIGN_ZONES`). 그 사본만 한 칸 남쪽에 있어
+   * 영원시티 건물이 두 벌 겹쳐 섰다. 206번도로와 207번도로 사이 한 줄은 그 사본에서 빌린다(`ZONE_SEAMS`). area002.glb와 표만 바뀐다.
+   * ⚠️ 3도 그대로 쓴다(`GROUP_ACCEPTS`) — 겹쳐 서도 길은 다 걸린다
+   *
    * 3 — **문 너머 가짜 실내(`RoomInner`) 바닥과 같은 높이로 겹친 바깥 면을 굽기에서 잘라 낸다** (`import/bdsp/field.ts`). 원작은
    * `_ZOffset`으로 실내 바닥을 앞으로 당겨 이기는데 glTF에는 깊이 밀기가 없어서, 관문 · 집 문간에서 체크 바닥과 풀이 얼룩으로 싸웠다.
    * 옛 지역 glb는 그 면을 그대로 들고 있다.
@@ -47,7 +51,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * ⚠️ **이미 깔린 것을 그냥 두면 안 된다.** 옛 지역 glb는 그 재질을 흰 반투명 판으로 들고 있어서 포켓몬센터 · 프렌들리숍 ·
    * 체육관 입구가 하얀 상자로 막힌 채 남는다
    */
-  fields: 3,
+  fields: 4,
   /**
    * 2 — **방 재질의 색 · 층 그림 · TV 칸을 싣는다** (`import/bdsp/arena.ts` · 노드 쪽 `bdspArena.py --rooms`와 같은 바이트).
    *
@@ -348,6 +352,8 @@ const GROUP_ACCEPTS: Readonly<Record<string, readonly number[]>> = {
   npcModels: [15],
   monModels: [4],
   monVariants: [1],
+  // 영원시티 사본 (`GROUP_FORMAT.fields` 4) — 겹쳐 서는 것만 다르다
+  fields: [3],
 }
 
 /** 이 판의 그 그룹을 그대로 써도 되는가 */
