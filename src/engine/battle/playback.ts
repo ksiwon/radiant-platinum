@@ -352,8 +352,9 @@ export function buildBeats(
   })
 
   /**
-   * 방금 먹은 열매 (`|-enditem|…|[eat]`). 바로 뒤따르는 치료 줄에 붙인다 — 쇼다운은
-   * 그 줄에 원인을 안 싣는데 원작은 열매를 문장에 넣는다
+   * 방금 먹은 열매 (`|-enditem|…|[eat]`) · 멘탈허브 (`|-enditem|…|Mental Herb` — `[eat]`이 없다).
+   * 바로 뒤따르는 치료 줄에 붙인다 — 쇼다운은 그 줄에 원인을 안 싣거나 `[from]`으로만 싣는데
+   * 원작은 도구를 문장에 넣는다
    */
   let eaten: { slot: SlotId; cured: CuredBy } | null = null
 
@@ -428,10 +429,13 @@ export function buildBeats(
       plain(first)
     }
     if (isSwap(e)) { swapHeld = e; continue }
-    // 열매를 먹은 바로 다음 줄만 그 열매를 안다. 다른 사건이 끼면 잊는다
+    // 열매를 먹은 바로 다음 줄만 그 열매를 안다. 다른 사건이 끼면 잊는다.
+    // 멘탈허브는 헤롱헤롱이 풀린 줄만 받는다 (`subscript_held_item_heal_infatuation`)
+    const herb = eaten?.cured.item.id === 'mentalherb'
     const cure = eaten !== null
-      && ((e.kind === 'curestatus' && e.actor.slot === eaten.slot)
-        || (e.kind === 'volatile' && !e.start && e.effect.id === 'confusion' && e.actor.slot === eaten.slot))
+      && ((!herb && e.kind === 'curestatus' && e.actor.slot === eaten.slot)
+        || (e.kind === 'volatile' && !e.start && e.actor.slot === eaten.slot
+          && e.effect.id === (herb ? 'attract' : 'confusion')))
       ? eaten.cured : null
     if (cure === null) eaten = null
 
@@ -549,7 +553,7 @@ export function buildBeats(
           const target = view.active[e.target.slot]
           told = { ...e, species: target?.species ?? null, form: target?.form ?? 0 }
         }
-        // 열매가 고친 상태이상 · 혼란
+        // 열매가 고친 상태이상 · 혼란 · 멘탈허브가 푼 헤롱헤롱
         if (cure !== null && (e.kind === 'curestatus' || e.kind === 'volatile')) told = { ...e, curedBy: cure }
         // 랭크·상태이상은 연출이 먼저고 글이 뒤다
         plain(told)
@@ -558,6 +562,10 @@ export function buildBeats(
         if (e.kind === 'enditem' && e.how === 'eat') {
           const both = curesAfter(at, e.actor.slot)
           eaten = { slot: e.actor.slot, cured: { item: e.item, all: both.status && both.confusion } }
+        }
+        // 멘탈허브 — 쇼다운은 `useItem`이라 `[eat]` 없이 내고 바로 `-end|…|move: Attract`가 잇는다
+        if (e.kind === 'enditem' && e.how === null && e.from === null && e.item.id === 'mentalherb') {
+          eaten = { slot: e.actor.slot, cured: { item: e.item, all: false } }
         }
       }
     }

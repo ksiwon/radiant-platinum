@@ -132,28 +132,28 @@ describe('지속 효과 예순셋 (PARITY §2.25)', () => {
   })
 
   withBank('롬의 글로 잰다', () => {
-    it('걸릴 때 말 안 하는 것은 여섯이고 여섯 다 까닭이 있다', () => {
+    it('걸릴 때 말 안 하는 것은 다섯이고 다섯 다 까닭이 있다', () => {
       const silent = [
         ...moves.filter((id) => say(id, 'move', true) === null),
         ...abilities.filter((id) => say(id, 'ability', true) === null),
       ]
-      // ⚠️ **이 여섯은 비운 것이지 빠뜨린 것이 아니다.**
+      // ⚠️ **이 다섯은 비운 것이지 빠뜨린 것이 아니다.**
       //   perishsong  원작은 무대 전체 줄로 말한다 (`-fieldactivate`)
       //   protect     원작은 이번 턴 줄로 말한다 (`-singleturn`)
       //   roost       쇼다운이 타입 바뀐 것을 스스로 괄호로 적는 줄이다
-      //   airlock·cloudnine·moldbreaker  4세대 뱅크에 줄이 없다 —
-      //     「틀을 깬다」도 「날씨의 영향이 없어졌다」도 뒤 세대에 생긴 글이다
+      //   airlock·cloudnine  4세대 뱅크에 줄이 없다 — 「날씨의 영향이 없어졌다」는
+      //     뒤 세대에 생긴 글이다. 틀깨기는 「{이름}은 / {특성}다!」(1087)로 말한다
       expect(silent).toEqual([
-        'perishsong', 'protect', 'roost', 'airlock', 'cloudnine', 'moldbreaker',
+        'perishsong', 'protect', 'roost', 'airlock', 'cloudnine',
       ])
     })
 
-    it('나머지 쉰일곱이 걸릴 때 말한다', () => {
+    it('나머지 쉰여덟이 걸릴 때 말한다', () => {
       const said = [
         ...moves.map((id) => say(id, 'move', true)),
         ...abilities.map((id) => say(id, 'ability', true)),
       ].filter((line) => line !== null)
-      expect(said).toHaveLength(57)
+      expect(said).toHaveLength(58)
       // 빈칸이 남으면 화면에 제어 부호가 글자로 뜬다
       expect(said.filter((l) => l.includes('{'))).toEqual([])
     })

@@ -117,6 +117,9 @@ const NAMED: Record<keyof typeof MSG, string> = {
   isExertingItsAbility: "PokemonIsExertingItsAbility_Ally",
   cantGetItGoingBecauseOfItsAbility: "PokemonCantGetItGoingBecauseOfItsAbility_Ally",
   finallyGotItsActTogether: "PokemonFinallyGotItsActTogether_Ally",
+  pokemonWasAbility: "PokemonWasAbility_Ally",
+  pokemonsAbilityMadeItShudder: "PokemonsAbilityMadeItShudder_Ally",
+  pokemonsAbilityAlertedItToMove: "PokemonsAbilityAlertedItToMove_Ally",
   moveRaisedYourTeamsSpecialDefense: "MoveRaisedYourTeamsSpecialDefense",
   moveRaisedYourTeamsDefense: "MoveRaisedYourTeamsDefense",
   yourTeamBecameCloakedInAMysticalVeil: "YourTeamBecameCloakedInAMysticalVeil",
@@ -304,6 +307,8 @@ const NAMED: Record<keyof typeof MSG, string> = {
   pokemonWasBadlyPoisonedByTheItem: "PokemonWasBadlyPoisonedByTheItem_Ally",
   pokemonGotABurnFromTheItem: "PokemonGotABurnFromTheItem_Ally",
   pokemonBecameFullyChargedDueToItsItem: "PokemonBecameFullyChargedDueToItsItem_Ally",
+  pokemonsItemLetItMoveFirst: "PokemonsItemLetItMoveFirst_Ally",
+  pokemonCuredItsStatusUsingItsItem: "PokemonCuredItsStatusUsingItsItem_Ally",
 }
 
 describe('배틀 글 줄 번호', () => {

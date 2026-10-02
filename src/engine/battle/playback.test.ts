@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Actor, BattleEvent } from './events'
 import { buildBeats, drainFrames } from './playback'
+import { parseLines } from './sim/protocol'
 import { MOVE_FRAMES, statusAnimFrames } from './vfx'
 import { applyEvents, emptyView } from './view'
 
@@ -282,6 +283,40 @@ describe('박자 순서', () => {
       '모부기는\n24 경험치를 얻었다!',
       '모부기는\n레벨6으로 올랐다!',
     ])
+  })
+
+  it('멘탈허브는 뒤따르는 헤롱헤롱이 풀린 줄에 붙는다', () => {
+    // 쇼다운은 `useItem`이라 `[eat]` 없이 `-enditem`을 내고 바로 `-end|…|move: Attract`가 잇는다.
+    // 원작 줄은 「{이름}은 {도구}로 / {상태}상태가 나았다!」 하나다 (`subscript_held_item_heal_infatuation`)
+    const herb = { id: 'mentalherb', num: 219, name: 'Mental Herb' }
+    const used: BattleEvent = { kind: 'enditem', actor: p1, item: herb, from: null, of: null, how: null, silent: false }
+    const end = (actor: Actor, id: string): BattleEvent => ({
+      kind: 'volatile', actor, start: false, of: null,
+      effect: { id, kind: 'move', num: 213, name: id },
+      extra: { num: null, move: null, moveName: null },
+    })
+    const cure: BattleEvent = { kind: 'curestatus', actor: p1, status: 'par' }
+    const tell = (e: BattleEvent): string | null => {
+      if (e.kind === 'volatile' || e.kind === 'curestatus') return `${e.kind} ${e.curedBy?.item.id ?? '-'}`
+      return null
+    }
+    const lines = (events: BattleEvent[]) => buildBeats([enter(p1, 20), enter(p2, 20), ...events], tell)
+      .map((b) => b.text).filter((t) => t !== null)
+    // 도구 줄은 조용하고 풀린 줄 하나만 도구를 부른다 — 두 줄이 되면 안 된다
+    expect(lines([used, end(p1, 'attract')])).toEqual(['volatile mentalherb'])
+    // 열매가 아니므로 상태이상·혼란 줄은 안 받는다
+    expect(lines([used, cure])).toEqual(['curestatus -'])
+    expect(lines([used, end(p1, 'confusion')])).toEqual(['volatile -'])
+    // 다른 자리의 풀림도 안 받는다
+    expect(lines([used, end(p2, 'attract')])).toEqual(['volatile -'])
+    // ⚠️ **실제 줄은 `-end`가 둘이다** — 조건이 지워지며 `|-end|…|Attract|[silent]`를 먼저 내고
+    // 도구가 `[from]`을 단 줄을 뒤에 낸다(gen4 sim 실측). 둘 다 같은 글이 되어 한 창으로 접힌다
+    const real = parseLines([
+      '|-enditem|p1a: party-0|Mental Herb',
+      '|-end|p1a: party-0|Attract|[silent]',
+      '|-end|p1a: party-0|move: Attract|[from] item: Mental Herb',
+    ])
+    expect(lines(real)).toEqual(['volatile mentalherb'])
   })
 })
 

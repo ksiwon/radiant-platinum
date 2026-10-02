@@ -45,7 +45,7 @@ import { benchStatusOf } from './benchStatus'
 import { LevelPanel, type LevelPanelShow } from '../menu/LevelPanel'
 import { GAUGE_SLOTS, gaugeSlots } from './partyGauge'
 import {
-  BATTLE_BANK, BATTLE_PARTY_BANK, BATTLE_PARTY_HM_CANT_FORGET, MOVE_BANK, MSG, STAT_BANK,
+  BATTLE_BANK, BATTLE_PARTY_BANK, BATTLE_PARTY_HM_CANT_FORGET, MOVE_BANK, MSG, STAT_BANK, STATUS_BANK,
 } from './romText'
 import { romLine } from './romLine'
 import { useRomLines } from './useRomLines'
@@ -222,13 +222,18 @@ function useNames(): {
         console.error('랭크 이름표를 못 받았다', e)
         return [] as string[]
       }),
+      // 상태 이름표 — 멘탈허브 줄의 빈칸이다. 없으면 「헤롱헤롱이 풀렸다」로 떨어진다
+      loadDialogueBank(locale, STATUS_BANK).catch((e: unknown) => {
+        console.error('상태 이름표를 못 받았다', e)
+        return [] as string[]
+      }),
       // 비전기술 잠금에 쓴다 — 없으면 잠그지 않을 뿐 배틀은 돈다
       loadItems().catch(() => null),
       loadDialogueBank(locale, BATTLE_PARTY_BANK).catch(() => [] as string[]),
     ])
-      .then(([species, moves, labels, table, items, dex, battleLines, usedLines, stats, itemTable, partyLines]) => {
+      .then(([species, moves, labels, table, items, dex, battleLines, usedLines, stats, conditions, itemTable, partyLines]) => {
         if (!alive) return
-        setNames({ species, moves, abilities: labels.abilities, items, stats })
+        setNames({ species, moves, abilities: labels.abilities, items, stats, conditions })
         setLines(battleLines)
         setMoveLines(usedLines)
         setExtras({

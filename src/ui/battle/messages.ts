@@ -54,23 +54,6 @@ export interface BattleNames {
   conditions?: readonly string[]
 }
 
-/**
- * `MSG`가 아직 안 든 롬 줄. 번호는 `messages.test.ts`가 디컴프가 붙인 이름
- * (`battleMessage`)과 하나씩 맞대 본다
- */
-const ROM = {
-  /** 틀깨기 — 「{이름}은 / {특성}다!」 (`subscript_mold_breaker`) */
-  pokemonWasAbility: 1087,
-  /** 위험예지 — 「{특성} 때문에 / {이름}은 몸을 떨었다!」. **특성 칸이 먼저**다 (`TAG_ABILITY_NICKNAME`) */
-  pokemonsAbilityMadeItShudder: 1106,
-  /** 예지몽 특성 — 「{이름}은 {특성}로 / {기술}을 간파했다!」 (`subscript_forewarn`) */
-  pokemonsAbilityAlertedItToMove: 1109,
-  /** 애슈열매 — 「{이름}은 {도구}로 / 행동이 빨라졌다!」 (`subscript_check_quick_claw`) */
-  pokemonsItemLetItMoveFirst: 1254,
-  /** 멘탈허브 — 「{이름}은 {도구}로 / {상태}상태가 나았다!」 (`subscript_held_item_heal_infatuation`) */
-  pokemonCuredItsStatusUsingItsItem: 893,
-} as const
-
 /** `MSGCOND_INFATUATION` — 상태 이름표에서 헤롱헤롱의 자리 (`battle/btlcmd.h`) */
 const COND_INFATUATION = 6
 
@@ -305,7 +288,7 @@ const ACTIVATE: Record<string, EffectLine> = {
   // 원작도 나올 때 이 한 줄뿐이고 특성 이름을 따로 안 띄운다 (`subscript_forewarn`)
   forewarn: (c, s) => (s.extra.move === null
     ? null
-    : rom(c, ROM.pokemonsAbilityAlertedItToMove, s.who, s.romLabel, s.extraMove)),
+    : rom(c, MSG.pokemonsAbilityAlertedItToMove, s.who, s.romLabel, s.extraMove)),
   // ── 도구가 일했다. 도구 이름이 빈칸이다 (`romLabel`이 도구 이름표에서 읽는다) ──
   // 기합의머리띠가 1을 남겼다 — 기합의띠와 같은 줄이다 (`subscript_move_followup_message`)
   focusband: (c, s) => rom(c, MSG.pokemonHungOnUsingItsItem, s.who, s.romLabel),
@@ -430,6 +413,9 @@ const VOLATILE_ON: Record<string, EffectLine> = {
   flashfire: (c, s) => rom(c, MSG.abilityRaisedThePowerOfItsFireTypeMoves, s.who, s.romLabel),
   pressure: (c, s) => rom(c, MSG.isExertingItsAbility, s.who, s.romLabel),
   slowstart: (c, s) => rom(c, MSG.cantGetItGoingBecauseOfItsAbility, s.who, s.romLabel),
+  // 틀깨기는 걸어 두는 것이 아니다 — 쇼다운은 `-ability`로 보내고 그 줄은 `ABILITY_SHOWN`이 말한다.
+  // `-start`로 와도 같은 글이 되게 여기도 둔다 (프레셔와 같다)
+  moldbreaker: (c, s) => rom(c, MSG.pokemonWasAbility, s.who, s.romLabel),
 }
 
 /**
@@ -540,8 +526,8 @@ const DAMAGE_BY_MOVE: Record<number, number> = {
  */
 const ABILITY_SHOWN: Record<string, (ctx: TextContext, who: string, ability: string | null) => string | null> = {
   pressure: (c, who, ability) => rom(c, MSG.isExertingItsAbility, who, ability),
-  moldbreaker: (c, who, ability) => rom(c, ROM.pokemonWasAbility, who, ability),
-  anticipation: (c, who, ability) => rom(c, ROM.pokemonsAbilityMadeItShudder, ability, who),
+  moldbreaker: (c, who, ability) => rom(c, MSG.pokemonWasAbility, who, ability),
+  anticipation: (c, who, ability) => rom(c, MSG.pokemonsAbilityMadeItShudder, ability, who),
 }
 
 /**
@@ -974,7 +960,7 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       // (`|-message|Custap Berry activated.`)만 보내고, 원작은 먹은 그 자리에서 말한다
       // (`subscript_check_quick_claw`의 `BATTLEMON_CUSTAP_BERRY` 갈래)
       if (e.how === 'eat' && e.item.id === 'custapberry') {
-        return rom(ctx, ROM.pokemonsItemLetItMoveFirst, who, item)
+        return rom(ctx, MSG.pokemonsItemLetItMoveFirst, who, item)
       }
       // 열매를 먹은 줄은 뒤따르는 회복·치료·랭크 줄이 열매를 부른다 — 여기서 또
       // 말하면 한 번 먹는 데 두 줄이 된다
@@ -1087,7 +1073,7 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       // 멘탈허브가 헤롱헤롱을 풀었다 — 상태 이름이 칸이다 (`subscript_held_item_heal_infatuation`
       // · `msgTemp = MSGCOND_INFATUATION`). 이름표가 없으면 아래 「헤롱헤롱이 풀렸다」로 떨어진다
       if (!e.start && e.curedBy && e.effect.id === 'attract') {
-        const cured = rom(ctx, ROM.pokemonCuredItsStatusUsingItsItem, ctx.label(e.actor),
+        const cured = rom(ctx, MSG.pokemonCuredItsStatusUsingItsItem, ctx.label(e.actor),
           itemName(e.curedBy.item, names), names.conditions?.[COND_INFATUATION] ?? null)
         if (cured !== null) return cured
       }

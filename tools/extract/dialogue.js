@@ -293,6 +293,10 @@ const EXTRA_BANKS = [
   // 능력 이름을 빈칸으로 받는다 — 우리가 「공격」을 적어 두면 로케일을 바꿔도
   // 한국어가 남는다. 요약 화면 뱅크의 이름표와는 다른 표다
   'TEXT_BANK_POKEMON_STAT_NAMES',
+  // 상태 이름. 멘탈허브 줄이 「{도구}로 {상태}상태가 나았다!」로 상태 이름을 빈칸으로
+  // 받는다 (`subscript_held_item_heal_infatuation`). 빠지면 개발 서버에서만 그 줄을
+  // 못 채운다 — 브라우저 쪽은 뱅크를 다 굽는다
+  'TEXT_BANK_STATUS_CONDITION_NAMES',
   // 배틀 안 가방·파티 화면의 글 (PARITY §2.26). 배틀 안에서 아래 화면으로
   // 뜨는 두 화면인데 **뱅크가 따로**다 (`battle_bag.c` · `battle_party.c`가
   // 각자 `MessageLoader_Init`으로 연다) — 가방 49줄과 파티 96줄.

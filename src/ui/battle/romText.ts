@@ -48,6 +48,14 @@ export const MOVE_BANK = 0
 export const STAT_BANK = 551
 
 /**
+ * `TEXT_BANK_STATUS_CONDITION_NAMES` — 상태 이름 (us 219).
+ *
+ * 멘탈허브 줄(`pokemonCuredItsStatusUsingItsItem`)이 상태 이름을 빈칸으로 받는다.
+ * 헤롱헤롱이 6번(`MSGCOND_INFATUATION`)이다
+ */
+export const STATUS_BANK = 219
+
+/**
  * 기술 번호 → 그 줄의 자리.
  *
  * 자리는 `번호 × 3`이고 그 다음 둘이 야생·상대 줄이다. 우리는 자리 표시를
@@ -66,7 +74,7 @@ export function moveUsedLine(move: number): number {
  * `romText.test.ts`가 키마다 그 이름을 다시 적어 번호와 맞대 본다.
  *
  * ⚠️ **여기 없는 효과는 조용하다.** 롬에 줄이 없는 것(점착·선제공격손톱·
- * 틀깨기·날씨부정·하늘의은총 특성 계통)은 지어내지 않고 비운다 — 그 목록은
+ * 날씨부정·하늘의은총 특성 계통)은 지어내지 않고 비운다 — 그 목록은
  * PARITY §2.24가 센다.
  */
 export const MSG = {
@@ -178,6 +186,16 @@ export const MSG = {
   /** 프레셔 */ isExertingItsAbility: 1238,
   /** 슬로스타트가 걸렸다 */ cantGetItGoingBecauseOfItsAbility: 1112,
   /** 슬로스타트가 풀렸다 */ finallyGotItsActTogether: 1115,
+
+  // ── 나올 때 특성이 스스로 알린 것 (`-ability` · `BattleSystem_TriggerEffectOnSwitch`) ──
+  /** 틀깨기 — 「{이름}은 / {특성}다!」 (`subscript_mold_breaker`) */ pokemonWasAbility: 1087,
+  /** 위험예지 — 「{특성} 때문에 / {이름}은 몸을 떨었다!」. **특성 칸이 먼저**다 (`TAG_ABILITY_NICKNAME`) */
+  pokemonsAbilityMadeItShudder: 1106,
+  /**
+   * 예지몽 특성 — 「{이름}은 {특성}로 / {기술}을 간파했다!」 (`subscript_forewarn`).
+   * ⚠️ 야생 줄은 디컴프 이름이 `PokemonsForewarnAlertedItToMove_Wild`로 다르지만 자리는 바로 다음이다
+   */
+  pokemonsAbilityAlertedItToMove: 1109,
 
   // ── 걸림과 풀림 · 진영 (`-sidestart`·`-sideend`) ──────────────────────────
   //
@@ -479,6 +497,13 @@ export const MSG = {
   /** 맹독구슬 (`subscript_badly_poison`) */ pokemonWasBadlyPoisonedByTheItem: 1168,
   /** 화염구슬 (`subscript_burn`) */ pokemonGotABurnFromTheItem: 1171,
   /** 파워풀허브 */ pokemonBecameFullyChargedDueToItsItem: 1251,
+  /** 애슈열매 — 「{이름}은 {도구}로 / 행동이 빨라졌다!」 (`subscript_check_quick_claw`) */
+  pokemonsItemLetItMoveFirst: 1254,
+  /**
+   * 멘탈허브 — 「{이름}은 {도구}로 / {상태}상태가 나았다!」 (`subscript_held_item_heal_infatuation`).
+   * 상태 이름은 `STATUS_BANK`에서 읽는다
+   */
+  pokemonCuredItsStatusUsingItsItem: 893,
 } as const
 
 type MessageKey = keyof typeof MSG
