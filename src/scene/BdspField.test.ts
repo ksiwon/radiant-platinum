@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { DoubleSide, Group, Mesh, MeshStandardMaterial, PlaneGeometry, Texture } from 'three'
 import { MeshStandardNodeMaterial } from 'three/webgpu'
 import {
-  boxDistance, FOLIAGE_NORMAL, foliageMaterial, HELD, heldFields, holdField, inTurn, isFoliage, isLightShaft, liveFoliage, liveWater,
+  boxDistance, FOLIAGE_NORMAL, foliageMaterial, HELD, heldFields, holdField, isFoliage, isLightShaft, liveFoliage, liveWater,
   nearestFirst, pickFields, reachFor, takeField, WATER_LOOKS, WATER_METALNESS, WATER_ROUGHNESS, waterLookOf, waterMaterial,
 } from './BdspField'
 import { DAY } from './fx/sky'
@@ -48,7 +48,7 @@ describe('지역을 세우는 거리', () => {
   })
 })
 
-describe('지역을 세우는 차례', () => {
+describe('지역을 붙이는 차례', () => {
   it('가까운 지역부터 선다 — 상자 안이면 0칸이다', () => {
     const fields = [
       { name: 'area004', box: [384, 672, 584, 872] as const },
@@ -59,26 +59,6 @@ describe('지역을 세우는 차례', () => {
     expect(nearestFirst(fields, ['area004', 'area007', 'area008'], 646, 813)).toEqual(['area007', 'area004', 'area008'])
   })
 
-  it('한 번에 하나씩 푼다 — 앞 것이 끝나야 다음이 시작한다', async () => {
-    const log: string[] = []
-    let open = 0
-    const job = (n: string) => async () => {
-      open++
-      log.push(`${n}:${String(open)}`)
-      await new Promise((done) => { setTimeout(done, 5) })
-      open--
-      return n
-    }
-    const got = await Promise.all([inTurn(job('a')), inTurn(job('b')), inTurn(job('c'))])
-    expect(got).toEqual(['a', 'b', 'c'])
-    expect(log).toEqual(['a:1', 'b:1', 'c:1'])
-  })
-
-  it('앞 것이 터져도 다음 차례는 돈다', async () => {
-    const failed = inTurn(() => Promise.reject(new Error('x')))
-    await expect(failed).rejects.toThrow('x')
-    await expect(inTurn(() => Promise.resolve(7))).resolves.toBe(7)
-  })
 })
 
 describe('뗀 지역 쥐기', () => {

@@ -88,25 +88,14 @@ export function nearestFirst(fields: readonly FieldEntry[], names: readonly stri
 }
 
 /**
- * 지역을 **하나씩** 세운다 — 앞 것이 다 서고 두 프레임을 쉰 뒤에 다음을 푼다.
+ * 지역 하나의 파이프라인을 기다리는 상한 — 넘으면 남은 것은 동기로 굽는다 (`asyncPipelines`).
  *
- * ⚠️ **한꺼번에 풀면 화면이 통째로 멎는다.** 세우는 거리가 안개 끝(`reachFor` · 낮 140칸)이 되자 213번도로에서 지역 여섯
- * (glb 약 170MB)을 한 번에 풀어 메인 스레드가 약 20초 섰다 — 1초를 재는 `requestAnimationFrame`이 5초 넘게 안 돌아왔다
- * (`.audit/probe/saveFreeze.mjs` · `pnpm saves:check` 48-route213 「화면이 안 돈다」). 풀 · 물 재질 갈기를 꺼도 같아서
- * 그쪽 탓이 아니다. 하나씩 세우면 먼 지역은 안개 속에서 나중에 선다
+ * ⚠️ 세우는 거리가 안개 끝(`reachFor` · 낮 140칸)이 되자 213번도로에서 지역 여섯을 한 번에 세우며 GPU 프로세스가 20초 넘게
+ * 멎었다 — 파이프라인 367개를 첫 프레임에 동기로 구운 탓이었다(자바스크립트는 그동안 idle · `.audit/probe/saveFreeze.mjs`).
+ * 지역마다 비동기로 굽게 한 뒤로 멎지 않는다. 하나씩 세우는 차례는 두지 않는다 — 뒤쪽 지역이 덮개 상한(12초)을 넘겨 서서
+ * story가 반쯤 선 213번도로를 쟀다
  */
-let fieldTurn: Promise<void> = Promise.resolve()
-/** 지역 하나의 파이프라인을 기다리는 상한 — 넘으면 남은 것은 동기로 굽는다 */
 const FIELD_COMPILE_CAP_MS = 8_000
-export function inTurn<T>(job: () => Promise<T>): Promise<T> {
-  const run = fieldTurn.then(job)
-  const rest = (): Promise<void> => new Promise((done) => {
-    if (typeof requestAnimationFrame !== 'function') { setTimeout(done, 0); return }
-    requestAnimationFrame(() => { requestAnimationFrame(() => { done() }) })
-  })
-  fieldTurn = run.then(rest, rest)
-  return run
-}
 
 /**
  * 지금 세울 지역 이름들 — 바깥(행렬 0)에서 플레이어 둘레에 걸리는 것. 반 초마다 다시 본다(걷는 동안 지역 경계를 넘는다)
@@ -130,7 +119,7 @@ export function useBdspFields(outdoor: boolean): { fields: readonly FieldEntry[]
       setNear((was) => {
         const want = pickFields(fields, p.x, p.z, reach, was)
         if ([...was].sort().join() === want.join()) return was
-        // 세우는 차례가 곧 이 차례다(`inTurn`) — 가까운 지역부터 선다
+        // 가까운 지역부터 붙인다 — 먼저 붙인 것이 먼저 풀린다
         return nearestFirst(fields, want, p.x, p.z)
       })
     }
@@ -425,19 +414,17 @@ function FieldArea({ name }: { name: string }) {
     else {
       const path = `models/field/${name}.glb`
       const provider = assets()
-      // 차례가 왔을 때 이미 뗐으면 풀지 않는다
-      void inTurn(async () => {
-        if (!alive) return
+      void (async () => {
         const url = await provider.objectUrl(path)
         const gltf = await loader.loadAsync(url).finally(() => { provider.releaseObjectUrl(path) })
         if (!alive) { disposeTree(gltf.scene); return }
         mine = build(gltf.scene)
         // ⚠️ **제 파이프라인은 비동기로 굽는다** (`asyncPipelines`). 덮개가 걷힌 뒤에 서는 지역이 첫 프레임에 동기로 구우면 GPU
-        // 프로세스가 수 초 멎는다 — 먼 지역이 안개 속에서 한두 프레임 늦게 보이는 편이 낫다. 다 굽힐 때까지 다음 지역도 기다린다
+        // 프로세스가 수 초 멎는다 — 먼 지역이 안개 속에서 한두 프레임 늦게 보이는 편이 낫다
         beginAsyncPipelines()
         attach(mine)
         await settleAsyncPipelines(() => true, FIELD_COMPILE_CAP_MS)
-      })
+      })()
         .catch((e: unknown) => {
           console.error(`지역 ${name}을 못 세웠다`, e)
           if (alive) setFailed(true)
