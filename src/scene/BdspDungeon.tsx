@@ -422,6 +422,9 @@ const BAND_SKIRT = 0.5
 const CAVE_CEIL_SHADE = 0.45
 /** 실내 천장 판 밝기 — 벽 그림을 어둡게 */
 const INDOOR_CEIL_SHADE = 0.6
+/** 천장이 스스로 내는 밝기 — 굴은 어둑하게, 실내는 방 천장(`CEIL_GLOW` 0.6)보다 조금 낮게 */
+const CAVE_CEIL_GLOW = 0.3
+const INDOOR_CEIL_GLOW = 0.45
 /** 쓸 재질이 없을 때 — 어두운 바위색 */
 const COVER_ROCK = 0x2a2118
 
@@ -579,7 +582,12 @@ export function dungeonCover(root: Object3D, kind: 'cave' | 'indoor'): Mesh[] {
   const cap = { pos: [] as number[], uv: [] as number[], normal: [] as number[] }
   quad(cap, [[x0, top, z0], [x1, top, z0], [x1, top, z1], [x0, top, z1]],
     [[x0 * k, z0 * k], [x1 * k, z0 * k], [x1 * k, z1 * k], [x0 * k, z1 * k]], [0, -1, 0])
-  out.push(coverMesh(cap, coverPaint(lidPaint, kind === 'cave' ? CAVE_CEIL_SHADE : INDOOR_CEIL_SHADE), '던전 천장 (1인칭)'))
+  const lidMat = coverPaint(lidPaint, kind === 'cave' ? CAVE_CEIL_SHADE : INDOOR_CEIL_SHADE)
+  // ⚠️ **천장은 제 그림을 스스로 낸다** (방 천장 `CEIL_GLOW`와 같은 까닭). 아래를 보는 판이라 위에서 오는 빛을 못 받아, 덮개를 세운
+  // 뒤에도 미혹의 동굴 1인칭 위쪽 절반이 새까만 허공으로 남았다 (`.audit/shots/review-after/places/wayward-1p-90.png`)
+  if (lidMat.map) { lidMat.emissive.set(0xffffff); lidMat.emissiveMap = lidMat.map } else lidMat.emissive.copy(lidMat.color)
+  lidMat.emissiveIntensity = kind === 'cave' ? CAVE_CEIL_GLOW : INDOOR_CEIL_GLOW
+  out.push(coverMesh(cap, lidMat, '던전 천장 (1인칭)'))
   return out
 }
 
