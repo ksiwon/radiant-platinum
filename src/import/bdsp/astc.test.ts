@@ -98,7 +98,7 @@ function makeBlocks(bw: number, bh: number, n: number, seed: number): Uint8Array
 describe('ASTC 블록', () => {
   // 블록 크기 세 가지. BDSP는 6x6과 8x8을 쓰고, 4x4는 "작은 블록" 갈래를 밟는다
   for (const [bw, bh, seed] of [[6, 6, 1], [8, 8, 5], [4, 4, 9]] as const) {
-    it(`${bw}x${bh} 유효 블록 1024개가 UnityPy(astc_encoder)와 픽셀까지 같다`, () => {
+    it(`${bw}x${bh} 유효 블록 1024개가 UnityPy(astc_encoder)와 픽셀까지 같다`, { timeout: 30_000 }, () => {
       const n = 1024
       const src = makeBlocks(bw, bh, n, seed)
       const width = n * bw

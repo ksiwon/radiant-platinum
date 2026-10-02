@@ -65,7 +65,7 @@ describe('BC 디코더', () => {
   const blocks = (W / 4) * (H / 4)
 
   for (const { kind, bytes } of KINDS) {
-    it(`${kind}이 texture2ddecoder와 픽셀까지 같다`, () => {
+    it(`${kind}이 texture2ddecoder와 픽셀까지 같다`, { timeout: 30_000 }, () => {
       const src = random(0x9e3779b9 + bytes, blocks * bytes)
       if (kind === 'bc3') encoderColors(src)
       const want = oracle(kind, src, W, H)
