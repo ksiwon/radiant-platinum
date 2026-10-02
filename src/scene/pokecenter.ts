@@ -294,13 +294,17 @@ export function arriveAt(mapId: number): void {
  */
 export function watchBlackOut(): () => void {
   let lost = false
-  return useBattleStore.subscribe((state, prev) => {
+  const stop = useBattleStore.subscribe((state, prev) => {
     if (state.outcome === 'loss' && prev.outcome !== 'loss' && state.kind !== 'factory') lost = true
     if (state.phase === 'off' && prev.phase !== 'off' && lost) {
       lost = false
       blackOut()
     }
   })
+  // ⚠️ **필드를 걷으면 도는 전멸 과제도 걷는다.** 과제는 프레임을 기다리며 비동기로 돌아서, 남겨 두면 다음에 선
+  // 필드의 스크립트 자리를 깨어난 자리 스크립트(2020 · 2021)로 가로챈다 — 시험 한 판의 전멸이 다음 판의 배틀을
+  // 막았다 (`battleReload.test`의 진 판 다음 판)
+  return () => { stop(); resetBlackOut() }
 }
 
 /**
