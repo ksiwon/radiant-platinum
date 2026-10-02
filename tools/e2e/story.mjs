@@ -616,7 +616,7 @@ async function afterBattleSettles() {
   }
 }
 async function runScripts(budgetMs = CUTSCENE_MS) {
-  const till = Date.now() + budgetMs
+  let till = Date.now() + budgetMs
   let seen = await beat()
   let changed = Date.now()
   let taps = 0
@@ -625,9 +625,18 @@ async function runScripts(budgetMs = CUTSCENE_MS) {
   while (Date.now() < till) {
     const at = await marks(page)
     if (at.scene === 'battle') {
+      const t0 = Date.now()
       fought = await pushBattle()
       taps += fought.taps
       if (fought.frozen) return { done: false, frozen: true, taps, at: fought.at, fought }
+      // ⚠️ **배틀에 쓴 시간은 컷신 몫에서 안 뺀다.** 배틀은 제 자(`BATTLE_TAPS` · 정체 계수기)가 따로 있다.
+      // 같이 세면 긴 배틀이 컷신 시간을 다 먹고, 배틀 **바로 뒤**에서 손을 놓아 멀쩡히 도는 스크립트가
+      // 「안 끝난다」로 적힌다 — 시작의 방이 그렇게 두 갈래로 떨어졌다 (실측 2026-10-02 · 둘 다 판이 200초를 넘겼다):
+      // 이긴 판은 `CheckWonBattle` 바로 뒤(포인터 149)에서, 진 판은 집 1층의 깨어난 자리 스크립트 2020 도중에서.
+      // 레벨 80 아르세우스는 회복·리프레시를 섞어 써서 A만 누르는 배틀이 300~800번 간다
+      till += Date.now() - t0
+      // 기본 판의 누름 수를 다 썼으면 여기서 멈춘다 — 배틀을 다시 밀면 `BATTLE_TAPS`가 자 노릇을 못 한다
+      if (!fought.ended) return { done: false, taps, at: fought.at, fought }
       // 배틀이 끝나면 스크립트가 이어 달린다. 지문을 새로 잡고 다시 민다
       //
       // ⚠️ **졌으면 워프 페이드 동안 대사창도 스크립트도 잠깐 빈다.** 그 순간을
