@@ -7,6 +7,7 @@ import { deepMud } from '../engine/actor/player'
 import { world as mapWorld } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import { fieldTaskRunning } from './fieldTask'
+import { blackOut, resetBlackOut } from './pokecenter'
 
 describe('필드 태스크', () => {
   afterEach(() => {
@@ -42,6 +43,13 @@ describe('필드 태스크', () => {
     deepMud.stuck = true
     expect(fieldTaskRunning()).toBe(true)
     deepMud.stuck = false
+    expect(fieldTaskRunning()).toBe(false)
+  })
+
+  it('전멸 과제가 도는 동안도 참이다 (`FieldTask_BlackOutFromBattle`)', () => {
+    blackOut()
+    expect(fieldTaskRunning()).toBe(true)
+    resetBlackOut()
     expect(fieldTaskRunning()).toBe(false)
   })
 })

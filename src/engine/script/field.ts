@@ -958,6 +958,9 @@ function readInput(): void {
   frameInput = { pressed: edges.a || edges.b, held: ab, fresh: ab && !staleHold }
 }
 
+/** 필드 태스크가 필드를 쥐고 있는가 (`FieldServices.taskUp` — 전멸 과제) */
+const taskHeld = (): boolean => fieldScripts.services.taskUp?.() === true
+
 export const scriptSystem = {
   fixedUpdate(): void {
     readInput()
@@ -966,7 +969,9 @@ export const scriptSystem = {
     // 스크립트가 도는 중인지를 문서에 적어 둔다 — 읽기 전용이고 `data-boot`과
     // 같은 자리다 (`sceneMark.ts`). 이게 없으면 **발이 묶인 것과 벽에 막힌
     // 것이 밖에서 똑같이 보인다** — 둘 다 대사도 없고 걸음도 없다
-    markScript(ctx !== null || native !== null)
+    // ⚠️ 필드 태스크(전멸)가 쥔 동안도 「묶였다」로 적는다 — 옛 스크립트가 끝나고 검은 줄이 뜨기까지의
+    // 틈에 표식이 비면, 밖에서는 「다 끝났다」로 읽고 손을 놓는다
+    markScript(ctx !== null || native !== null || taskHeld())
     // 우리 글이 도는 중이면 그것이 먼저다. 원작 스크립트와 **같이 돌지 않는다**
     if (native !== null && world !== null) { stepOurText(world); return }
     if (ctx !== null && world !== null) {
@@ -990,6 +995,11 @@ export const scriptSystem = {
      * 이 프레임에 스크립트를 걸어도 그쪽의 첫 `step`은 다음 프레임이다
      */
     tickFade()
+    // 필드 태스크가 쥔 동안은 발도 묶인다 — 검은 화면 밑에서 걸어 나가지 않는다 (`HandleFieldInput`)
+    if (taskHeld()) {
+      worldState.input.move.set(0, 0)
+      worldState.player.velocity.set(0, 0, 0)
+    }
     tryStartScripts()
   },
 }
@@ -1017,7 +1027,7 @@ export const scriptStepSystem = {
   fixedUpdate(): void {
     if (fieldScripts.ctx !== null || native !== null) return
     tryStartScripts()
-    markScript(fieldScripts.ctx !== null || native !== null)
+    markScript(fieldScripts.ctx !== null || native !== null || taskHeld())
   },
 }
 
@@ -1029,6 +1039,9 @@ function tryStartScripts(): void {
   // (`FieldServices.battleUp`이 실측을 적어 뒀다). 도는 중인 스크립트는 안 막는다:
   // 배틀을 연 것이 그 스크립트고, 끝나기를 기다리는 것도 그것이다
   if (fieldScripts.services.battleUp?.() === true) { triggerWatch.skipped.battle++; return }
+  // ⚠️ **필드 태스크가 쥐고 있으면 아무것도 안 건다** (`FieldServices.taskUp`). 전멸 과제가 그렇다 —
+  // 원작은 그동안 필드 입력을 안 받아서, 깨어난 자리의 스크립트가 도착한 맵의 `OnFrame`보다 먼저다
+  if (taskHeld()) { triggerWatch.skipped.task++; return }
   // ⚠️ **세이브 값이 붓기 전에는 아무것도 안 건다** (`varsReady`). 그전에는
   // 모든 변수가 0이라 표와 트리거가 전부 「아직 안 봤다」로 읽힌다
   if (!fieldScripts.varsReady) { triggerWatch.skipped.vars++; return }
@@ -1840,7 +1853,7 @@ export const triggerWatch = {
   /** 스크립트를 실제로 건 횟수 */
   fired: 0,
   /** 트리거를 **못 본** 까닭별 횟수 */
-  skipped: { battle: 0, vars: 0, cameo: 0, script: 0 },
+  skipped: { battle: 0, task: 0, vars: 0, cameo: 0, script: 0 },
   /** 최근에 본 칸과 그 답. 뒤에서부터 예순넷만 남는다 */
   recent: [] as { x: number; z: number; script: number | null; map: number }[],
 }
@@ -1850,7 +1863,7 @@ export function resetTriggerWatch(): void {
   triggerWatch.calls = 0
   triggerWatch.stepped = 0
   triggerWatch.fired = 0
-  triggerWatch.skipped = { battle: 0, vars: 0, cameo: 0, script: 0 }
+  triggerWatch.skipped = { battle: 0, task: 0, vars: 0, cameo: 0, script: 0 }
   triggerWatch.recent = []
 }
 

@@ -178,6 +178,17 @@ export interface FieldServices {
    */
   battleUp?: () => boolean
   /**
+   * 필드 태스크가 필드를 쥐고 있는가 — 지금은 전멸 과제(`FieldTask_BlackOutFromBattle`) 하나다.
+   *
+   * 원작은 태스크가 도는 동안 필드 입력을 통째로 안 받는다 (`field_system.c` 236줄의
+   * `FieldSystem_IsRunningTask(fieldSystem) == FALSE`). `OnFrame` 표·좌표 사건·눈 마주침·말 걸기가 전부
+   * 그 입력의 갈래라, 깨어난 자리의 스크립트(2020 · 2021)가 **먼저** 돌고 맵의 `OnFrame`은 그 뒤다.
+   *
+   * ⚠️ 이게 없으면 검은 화면 밑에서 도착한 맵의 `OnFrame`이 먼저 걸린다 — 실측(`.audit/probe/originLoss.mjs`)으로
+   * 시작의 방에서 져 집 1층에 닿자 엄마의 「라이벌은 벌써 나갔다」(스크립트 2)가 검은 줄보다 먼저 떴다
+   */
+  taskUp?: () => boolean
+  /**
    * 배틀 결과를 원작의 **비트 마스크**로 (`SCRIPT_MANAGER_BATTLE_RESULT`).
    *
    * `battleResult`는 이겼나 졌나 둘뿐인데 스크립트는 다섯 갈래로 갈린다 —

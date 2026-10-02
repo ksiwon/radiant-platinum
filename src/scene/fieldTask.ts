@@ -13,6 +13,7 @@ import { deepMud } from '../engine/actor/player'
 import { world } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import { cutInRunning } from './encounterCutIn'
+import { blackOutRunning } from './pokecenter'
 
 /**
  * 지금 필드 태스크가 도는가.
@@ -23,8 +24,10 @@ import { cutInRunning } from './encounterCutIn'
  * - `world.pending` — 워프가 걸렸다(`FieldTask_ChangeMap*`)
  * - 조우 컷인 — `FieldTask_Encounter`의 첫 두 단
  * - 깊은 진흙에 붙들림 — `FieldTask_StuckInDeepMud` (`ov5_021DFB54.c` 889줄). 빠져나오거나 배틀이 열려야 끝난다
+ * - 전멸 — `FieldTask_BlackOutFromBattle` (`unk_020528D0.c`). 깨어난 자리의 스크립트를 걸 때까지다
  */
 export function fieldTaskRunning(): boolean {
   const p = worldState.player
   return p.riding || p.flying || p.hop.active || world.pending !== null || cutInRunning() || deepMud.stuck
+    || blackOutRunning()
 }

@@ -202,7 +202,7 @@ import {
 import { canLearnTm } from '../engine/bag/fieldUse'
 import { useHatchStore } from '../state/hatchStore'
 import { avatarState, worldState } from '../state/worldState'
-import { blackOut, healParty, loadHealTables, watchBlackOut, watchPartnerHeal } from './pokecenter'
+import { blackOut, blackOutRunning, healParty, loadHealTables, watchBlackOut, watchPartnerHeal } from './pokecenter'
 import { useDoorVisualStore } from './doorVisualStore'
 import { loadPropAnimSet } from './propAnim'
 import { useBattleStore } from '../state/battleStore'
@@ -833,6 +833,11 @@ const services: FieldServices = {
   /** 배틀 화면이 떠 있는가. 떠 있는 동안은 필드가 새 스크립트를 안 시작한다 */
   battleUp(): boolean {
     return useBattleStore.getState().phase !== 'off'
+  },
+
+  /** 전멸 과제가 필드를 쥐고 있는가. 그동안은 필드가 새 스크립트를 안 시작하고 발도 묶인다 */
+  taskUp(): boolean {
+    return blackOutRunning()
   },
 
   /** 머리 위 표시. 눈이 마주친 트레이너의 느낌표가 이 길로 나온다 */
