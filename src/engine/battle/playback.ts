@@ -23,7 +23,7 @@
 // 무대의 `MoveVfx`가 틀 하나를 돌린다(`battle/vfx`). 길이는 틀과 위력이 정한다.
 import type { Stats } from '../../data/schema'
 import { captureFrames, captureTailFrames } from './captureTiming'
-import type { BattleEvent, CuredBy, LevelStep, SlotId } from './events'
+import type { Actor, BattleEvent, CuredBy, LevelStep, SlotId } from './events'
 import { rewardSteps } from './events'
 import { BODY_FADE_SECONDS, FRAME_SECONDS } from './presentationClock'
 import { moveFramesOf, statusAnimFrames } from './vfx'
@@ -254,6 +254,14 @@ interface BeatOptions {
 }
 
 /**
+ * 특성이 랭크를 바꾸겠다고 나선 뒤 그 랭크 줄 사이에 끼어도 원인이 이어지는 것 — 더블의 둘째 대상 · 안개 · 막은 특성 ·
+ * 하얀허브(먹고 되돌린다) · 대타 뒤의 자리(`-immune`)
+ */
+const ANNOUNCE_KEEPS: ReadonlySet<BattleEvent['kind']> = new Set<BattleEvent['kind']>([
+  'boost', 'fail', 'block', 'enditem', 'clearnegativeboosts', 'effectiveness',
+])
+
+/**
  * 사건 줄기 → 박자 목록.
  *
  * `text`는 사건 하나를 한 줄로 옮기는 함수다(`ui/battle/messages.ts`). 여기서
@@ -417,9 +425,26 @@ export function buildBeats(
     say(text(told), HOLD_MESSAGE)
   }
 
+  /**
+   * 방금 랭크를 바꾸겠다고 나선 특성 (`|-ability|…|Intimidate|boost`).
+   *
+   * 원작은 위협 · 다운로드 · 가속 · 불굴의마음 · 전기엔진을 따로 안 띄우고 랭크 줄 **하나**에 넣어 말한다
+   * (`subscript_update_stat_stage` — `SIDE_EFFECT_TYPE_ABILITY`면 `BtlCmd_ChangeStatStage`가 「{건 쪽}의 {특성} 때문에
+   * {받는 쪽}의 {능력}이 떨어졌다!」를 고른다). 쇼다운은 그 원인을 `-ability`에만 싣고 뒤따르는 `-unboost`는 맨줄로 낸다 —
+   * 여기서 잡아 두었다가 뒤따르는 랭크 줄에 원인(`from`)과 임자(`of`)를 붙인다. 더블의 위협은 맞은 쪽마다 한 줄이다
+   */
+  let announced: { actor: Actor; ability: number | null; abilityName: string } | null = null
+
   for (let at = 0; at < events.length; at++) {
     const e = events[at]!
+    // 위협이 대타 뒤의 자리를 건너뛰면 쇼다운은 `-immune`만 낸다 — 원작은 그 자리를 말없이 건너뛴다 (`subscript_intimidate.s`)
+    if (announced !== null && e.kind === 'effectiveness' && e.level === 'immune') { flush(); show([e], 0); continue }
+    // 특성이 막은 기술은 그 이름이 문장에 든다 — 쇼다운 줄은 기술을 안 실으므로 지금 도는 기술을 붙인다
+    if (e.kind === 'effectiveness' && e.from) { held.push({ ...e, move: view.lastMove?.move ?? null }); continue }
     if (e.kind === 'crit' || e.kind === 'effectiveness') { held.push(e); continue }
+    if (e.kind === 'ability') {
+      announced = e.boost === true ? { actor: e.actor, ability: e.ability, abilityName: e.abilityName } : null
+    } else if (announced !== null && !ANNOUNCE_KEEPS.has(e.kind)) announced = null
     if (e.kind !== 'damage') flush()
     if (e.kind === 'turn' || e.kind === 'switch' || e.kind === 'faint') inMove = false
     if (swapHeld !== null) {
@@ -555,6 +580,14 @@ export function buildBeats(
         }
         // 열매가 고친 상태이상 · 혼란 · 멘탈허브가 푼 헤롱헤롱
         if (cure !== null && (e.kind === 'curestatus' || e.kind === 'volatile')) told = { ...e, curedBy: cure }
+        // 위협 · 다운로드가 바꾼 랭크 — 바로 앞 `-ability`가 원인이다 (위 `announced`)
+        if (announced !== null && e.kind === 'boost' && !e.from) {
+          told = { ...e, from: { kind: 'ability', id: announced.ability, name: announced.abilityName }, of: announced.actor }
+        }
+        // 클리어바디 · 괴력집게가 위협을 막았다 — 원작은 막힌 쪽의 특성까지 문장에 넣는다
+        if (announced !== null && e.kind === 'fail' && e.what === 'unboost' && e.from?.kind === 'ability') {
+          told = { ...e, by: announced }
+        }
         // 랭크·상태이상은 연출이 먼저고 글이 뒤다
         plain(told)
         // 열매를 먹었다 — 뒤따르는 치료 줄이 그 열매를 부른다. 상태이상과 혼란을 **함께**

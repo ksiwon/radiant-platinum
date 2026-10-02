@@ -567,6 +567,22 @@ function itemName(item: ItemRef | null | undefined, names: BattleNames): string 
   return names.items[item.num] ?? null
 }
 
+/** 특성이 기술을 막아 낸 줄 (`-immune|…|[from] ability: …`). 빈칸은 {이름} · {특성} · {기술}이다 */
+const IMMUNE_BY_ABILITY: Readonly<Record<string, number>> = {
+  voltabsorb: MSG.pokemonsAbilityMadeMoveUseless,
+  waterabsorb: MSG.pokemonsAbilityMadeMoveUseless,
+  motordrive: MSG.pokemonsAbilityMadeMoveUseless,
+  dryskin: MSG.pokemonsAbilityMadeMoveUseless,
+  flashfire: MSG.pokemonsAbilityMadeMoveIneffective,
+  soundproof: MSG.pokemonsAbilityBlocksMove,
+}
+
+/** `[from] ability: …`의 한국어 이름. 특성이 원인이 아니면 null */
+function causeAbility(from: Cause | null | undefined, names: BattleNames): string | null {
+  if (!from || from.kind !== 'ability' || from.id === null) return null
+  return names.abilities[from.id] ?? null
+}
+
 /** `[from] item: …`의 한국어 이름. 도구가 원인이 아니면 null */
 function causeItem(from: Cause | null | undefined, names: BattleNames): string | null {
   if (!from || from.kind !== 'item' || from.id === null) return null
@@ -730,10 +746,19 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       return `${ctx.label(e.actor)}의 ${e.moveName}!`
     }
 
-    case 'effectiveness':
+    case 'effectiveness': {
+      // 특성이 막았다 — 그 특성과 막힌 기술이 문장에 든다 (`subscript_ability_restores_hp` · `subscript_absorb_and_speed_up_1_stage` ·
+      // `subscript_absorb_and_boost_fire_type_moves` · `subscript_blocked_by_soundproof`). 부유처럼 줄이 따로 없는 것은 맨줄이다
+      const blocked = e.from?.kind === 'ability' ? IMMUNE_BY_ABILITY[foldName(e.from.name)] : undefined
+      if (blocked !== undefined) {
+        const move = e.move !== null && e.move !== undefined ? names.moves[e.move] ?? null : null
+        const line = rom(ctx, blocked, ctx.label(e.actor), causeAbility(e.from, names), move)
+        if (line !== null) return line
+      }
       if (e.level === 'super') return rom(ctx, MSG.itsSuperEffective)
       if (e.level === 'resisted') return rom(ctx, MSG.itsNotVeryEffective)
       return rom(ctx, MSG.itDoesntAffectPokemon, ctx.label(e.actor))
+    }
 
     case 'crit':
       return rom(ctx, MSG.aCriticalHit)
@@ -744,8 +769,34 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       if (e.actor) return rom(ctx, MSG.pokemonAvoidedTheAttack, ctx.label(e.actor))
       return e.source ? rom(ctx, MSG.pokemonsAttackMissed, ctx.label(e.source)) : null
 
-    case 'fail':
+    case 'fail': {
+      // 특성이 랭크 하락을 막았다. 위협을 막았으면 막힌 위협까지 한 줄이다 — **막은 쪽이 먼저**다
+      if (e.what === 'unboost' && e.from?.kind === 'ability') {
+        const guard = causeAbility(e.from, names)
+        const who = e.actor ? ctx.label(e.actor) : null
+        const line = e.by
+          ? rom(ctx, MSG.pokemonsAbilitySuppressedPokemonsAbility, who, guard, ctx.label(e.by.actor),
+            e.by.ability !== null ? names.abilities[e.by.ability] ?? null : null)
+          : e.stat !== undefined
+            ? rom(ctx, MSG.pokemonsAbilityPreventsBufferStatLoss, who, guard, names.stats[STAT_SLOT[e.stat]] ?? null)
+            : rom(ctx, MSG.pokemonsAbilityPreventsStatLoss, who, guard)
+        if (line !== null) return line
+      }
       return rom(ctx, MSG.butItFailed)
+    }
+
+    case 'setboost': {
+      // 분노의경혈 — 급소 줄 뒤에 「…최고치까지 올라갔다!」 (`subscript_critical_hit.s`). 배북 — 체력을 깎고 올린다
+      // (`subscript_belly_drum.s`). 쇼다운은 둘 다 `[from]`을 붙여 `-setboost`로 낸다
+      if (e.from?.kind === 'ability') {
+        return rom(ctx, MSG.pokemonMaxedItsStatWithAbility, ctx.label(e.actor), causeAbility(e.from, names),
+          names.stats[STAT_SLOT[e.stat]] ?? null)
+      }
+      if (e.from?.kind === 'move' && foldName(e.from.name) === 'bellydrum') {
+        return rom(ctx, MSG.pokemonCutItsOwnHPAndMaximizedItsAttack, ctx.label(e.actor))
+      }
+      return null
+    }
 
     case 'faint':
       return rom(ctx, MSG.pokemonFainted, ctx.label(e.actor))
@@ -776,6 +827,16 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
           e.amount >= 2 ? MSG.theItemSharplyRaisedPokemonsStat : MSG.theItemRaisedPokemonsStat,
           ctx.label(e.actor), causeItem(e.from, names), names.stats[STAT_SLOT[e.stat]] ?? null)
       }
+      // 특성이 바꿨으면 특성이 문장에 든다 — 위협은 건 쪽과 받는 쪽이 둘 다, 스스로 올린 것은 한 단계든 두 단계든
+      // 「올라갔다」다 (`BtlCmd_ChangeStatStage`의 `SIDE_EFFECT_TYPE_ABILITY`). 칸을 못 채우면 아래 맨줄로 떨어진다
+      if (e.from?.kind === 'ability') {
+        const ability = causeAbility(e.from, names)
+        const stat = names.stats[STAT_SLOT[e.stat]] ?? null
+        const line = e.amount < 0 && e.of
+          ? rom(ctx, MSG.pokemonsAbilityCutsPokemonsStat, ctx.label(e.of), ability, ctx.label(e.actor), stat)
+          : e.amount > 0 ? rom(ctx, MSG.pokemonsAbilityRaisedItsStat, ctx.label(e.actor), ability, stat) : null
+        if (line !== null) return line
+      }
       // 원작은 한 단계와 **두 단계 위**만 가른다 — 「쭉쭉」도 「뚝」도 없다
       const big = Math.abs(e.amount) >= 2
       const at = e.amount > 0
@@ -796,17 +857,15 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
 
     case 'ability': {
       const id = foldName(e.abilityName)
-      if (ABILITY_QUIET.has(id)) return null
+      // 뒤따르는 랭크 줄이 이 특성을 부른다 (`boost`의 `from` — 박자가 옮겨 붙인다)
+      if (e.boost === true || ABILITY_QUIET.has(id)) return null
       const who = ctx.label(e.actor)
       const ko = e.ability !== null ? names.abilities[e.ability] ?? null : null
       // 프레셔·틀깨기·위험예지는 롬 문장이다. 칸을 못 채우면(이름표·뱅크가 없다) 아래로 떨어진다
       const shown = ABILITY_SHOWN[id]?.(ctx, who, ko) ?? null
       if (shown !== null) return shown
-      // ⚠️ **나머지는 우리 띄우개다.** 위협·다운로드처럼 랭크를 바꾸는 특성은 원작이 이름을
-      // 따로 안 띄우고 랭크 줄 하나에 특성을 넣어 말한다(「{건 쪽}의 {특성} 때문에 {받는 쪽}의
-      // {능력}이 떨어졌다!」 · `subscript_intimidate` → `BATTLE_SUBSCRIPT_UPDATE_STAT_STAGE`).
-      // 쇼다운은 그 원인을 `-ability`에만 싣고 뒤따르는 `-unboost`에는 안 실어서, 한 사건으로는
-      // 그 줄을 못 채운다 — 박자가 원인을 랭크 사건에 옮겨 주기 전까지는 누가 일했는지만 말한다
+      // ⚠️ **나머지는 우리 띄우개다** — 원작에 그 특성만의 줄이 없거나 아직 못 옮긴 것이다. 랭크를 바꾸는 특성은 여기 안 온다
+      // (위의 `boost`)
       return `${who}의 ${ko ?? e.abilityName}!`
     }
 
@@ -864,6 +923,11 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
         return rom(ctx,
           little ? MSG.pokemonRestoredALittleHPUsingItsItem : MSG.pokemonRestoredItsHealthUsingItsItem,
           ctx.label(e.actor), item)
+      }
+      // 특성이 채웠으면 특성을 부른다 — 축전 · 저수도, 날씨마다 차는 젖은접시 · 아이스바디도 같은 줄이다
+      if (e.from?.kind === 'ability') {
+        const line = rom(ctx, MSG.pokemonRestoredHPUsingItsAbility, ctx.label(e.actor), causeAbility(e.from, names))
+        if (line !== null) return line
       }
       return rom(ctx, MSG.pokemonRegainedHealth, ctx.label(e.actor))
     }

@@ -25,6 +25,17 @@ import { romLine } from './romLine'
 
 /** `MSG`의 키 → 디컴프가 그 줄에 붙인 이름 (`BattleStrings_Text_` 뒤) */
 const NAMED: Record<keyof typeof MSG, string> = {
+  pokemonCutItsOwnHPAndMaximizedItsAttack: "PokemonCutItsOwnHPAndMaximizedItsAttack_Ally",
+  pokemonsAbilityRaisedItsStat: "PokemonsAbilityRaisedItsStat_Ally",
+  pokemonsAbilityCutsPokemonsStat: "PokemonsAbilityCutsPokemonsStat_AllyAlly",
+  pokemonsAbilitySuppressedPokemonsAbility: "PokemonsAbilitySuppressedPokemonsAbility_AllyAlly",
+  pokemonsAbilityPreventsStatLoss: "PokemonsAbilityPreventsStatLoss_Ally",
+  pokemonsAbilityPreventsBufferStatLoss: "PokemonsAbilityPreventsBufferStatLoss",
+  pokemonMaxedItsStatWithAbility: "PokemonMaxedItsStatWithAbility_Ally",
+  pokemonRestoredHPUsingItsAbility: "PokemonRestoredHPUsingItsAbility_Ally",
+  pokemonsAbilityMadeMoveUseless: "PokemonsAbilityMadeMoveUseless_Ally",
+  pokemonsAbilityBlocksMove: "PokemonsAbilityBlocksMove_Ally",
+  pokemonsAbilityMadeMoveIneffective: "PokemonsAbilityMadeMoveIneffective_Ally",
   flewUpHigh: "PokemonFlewUpHigh_Ally",
   burrowedUnderTheGround: "PokemonBurrowedItsWayUnderTheGround_Ally",
   hidUnderwater: "PokemonHidUnderwater_Ally",

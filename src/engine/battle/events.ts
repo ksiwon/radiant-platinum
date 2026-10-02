@@ -378,9 +378,12 @@ export type BattleEvent =
    * 랭크 변화. 하락은 `amount`가 음수다 — `-boost`와 `-unboost`를 하나로 합친다.
    *
    * `from`은 치리열매처럼 도구가 올렸을 때 붙어 온다 — 원작은 그 도구를 문장에 넣는다
-   * (`subscript_held_item_raise_stat`)
+   * (`subscript_held_item_raise_stat`).
+   *
+   * 위협 · 다운로드처럼 **특성이** 바꾼 것은 쇼다운이 원인을 바로 앞 `-ability`에만 싣는다 — 박자가 그 원인을
+   * `from`으로, 특성의 임자를 `of`로 옮겨 붙인다 (`playback`의 `announced`). 원작은 그 둘을 랭크 줄 하나에 넣는다
    */
-  | { kind: 'boost'; actor: Actor; stat: BoostStat; amount: number; from?: Cause | null }
+  | { kind: 'boost'; actor: Actor; stat: BoostStat; amount: number; from?: Cause | null; of?: Actor | null }
   /**
    * 랭크를 **그 값으로 못 박는다** (`-setboost`). 배북이 공격을 +6으로 만든다.
    *
@@ -388,7 +391,11 @@ export type BattleEvent =
    * 한동안 이 줄을 통째로 버렸고, 그래서 배북을 쓴 뒤에도 화면과 AI가
    * **랭크 0**을 보고 있었다
    */
-  | { kind: 'setboost'; actor: Actor; stat: BoostStat; amount: number }
+  | {
+    kind: 'setboost'; actor: Actor; stat: BoostStat; amount: number
+    /** 분노의경혈이 급소에 맞고 공격을 +6으로 못 박으면 그 특성이 온다 (`[from] ability: Anger Point`) */
+    from?: Cause | null
+  }
   /**
    * 랭크를 통째로 되돌린다 (`-clearallboost`). 흑안개다.
    *
@@ -397,7 +404,15 @@ export type BattleEvent =
   | { kind: 'clearboosts' }
   /** 상대의 랭크를 그대로 베낀다 (`-copyboost`). 심리전이다 */
   | { kind: 'copyboosts'; actor: Actor; from: Actor }
-  | { kind: 'effectiveness'; actor: Actor; level: Effectiveness }
+  | {
+    kind: 'effectiveness'; actor: Actor; level: Effectiveness
+    /**
+     * 특성이 막아 낸 것 (`|-immune|…|[from] ability: Volt Absorb`) — 원작은 「{이름}의 {특성} 때문에 {기술}은 효과가 없었다」처럼
+     * 특성과 **막힌 기술**을 문장에 넣는다. 기술은 박자가 그때의 뷰에서 붙인다 (`playback`)
+     */
+    from?: Cause | null
+    move?: number | null
+  }
   | { kind: 'crit'; actor: Actor }
   /** 빗나감. `actor`는 **대상**이다 (`|-miss|공격자|대상`의 두 번째) */
   /**
@@ -407,10 +422,28 @@ export type BattleEvent =
    * 않았다!」, 모르면 「그러나 {쓴 쪽}의 공격은 빗나갔다!」다
    */
   | { kind: 'miss'; actor: Actor | null; source: Actor | null }
-  | { kind: 'fail'; actor: Actor | null }
+  | {
+    kind: 'fail'; actor: Actor | null
+    /**
+     * 무엇이 막혔나 — 클리어바디 · 괴력집게가 위협을 막으면 `unboost`다 (`|-fail|…|unboost|[from] ability: …`).
+     * `from`은 막은 쪽의 특성, `by`는 막힌 특성을 건 쪽이다 — 박자가 바로 앞 `-ability`에서 붙인다
+     */
+    what?: string | null
+    from?: Cause | null
+    /** 괴력집게 · 날카로운눈처럼 **한 능력만** 지키는 특성이면 그 능력 */
+    stat?: BoostStat
+    by?: { actor: Actor; ability: number | null; abilityName: string } | null
+  }
   /** 못 움직였다. 도발·사슬묶기처럼 **못 쓴 기술**이 붙어 오는 까닭도 있다 */
   | { kind: 'cant'; actor: Actor; reason: string; move: number | null; moveName: string }
-  | { kind: 'ability'; actor: Actor; ability: number | null; abilityName: string }
+  | {
+    kind: 'ability'; actor: Actor; ability: number | null; abilityName: string
+    /**
+     * 뒤따르는 랭크 줄의 원인이라는 표시 (`|-ability|…|Intimidate|boost`). 원작은 이 특성을 따로 안 띄우고 그 랭크 줄에
+     * 넣어 말한다(`subscript_update_stat_stage` · `SIDE_EFFECT_TYPE_ABILITY`) — 글은 비우고 박자가 원인을 옮긴다
+     */
+    boost?: boolean
+  }
   /**
    * 날씨가 바뀌었다. `weather`가 null이면 그친 것이다.
    *

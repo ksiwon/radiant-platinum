@@ -270,6 +270,30 @@ export const MSG = {
   /** 떨어졌다 */ pokemonsStatFell: 762,
   /** 크게 떨어졌다 */ pokemonsStatHarshlyFell: 765,
   /** 흑안개 */ allStatChangesWereEliminated: 817,
+  /** 배북 — 「{이름}은 체력을 깎아서 / 공격을 최대로 올렸다!」 (`subscript_belly_drum`) */
+  pokemonCutItsOwnHPAndMaximizedItsAttack: 449,
+
+  // 특성이 바꾼 랭크 — 원작은 특성을 따로 안 띄우고 이 줄 하나에 넣는다 (`BtlCmd_ChangeStatStage`의 `SIDE_EFFECT_TYPE_ABILITY`)
+  /** 다운로드 · 가속 · 불굴의마음 · 전기엔진 — 「{이름}은 {특성} 때문에 / {능력}이 올라갔다!」 */
+  pokemonsAbilityRaisedItsStat: 622,
+  /** 위협 — 「{건 쪽}의 {특성} / 때문에 {받는 쪽}의 {능력}이 / 떨어졌다!」 */
+  pokemonsAbilityCutsPokemonsStat: 662,
+  /** 클리어바디 · 하얀연기가 위협을 막았다 — **막은 쪽이 먼저**다 (`SetupNicknameAbilityNicknameAbilityMsg`) */
+  pokemonsAbilitySuppressedPokemonsAbility: 727,
+  /** 클리어바디 · 하얀연기가 기술의 하락을 막았다 */
+  pokemonsAbilityPreventsStatLoss: 669,
+  /** 괴력집게 · 날카로운눈이 한 능력의 하락을 막았다 */
+  pokemonsAbilityPreventsBufferStatLoss: 704,
+  /** 축전 · 저수 · 젖은접시 · 아이스바디 · 건조피부 · 포이즌힐 — 「{이름}은 / {특성}으로 인해 회복했다!」 */
+  pokemonRestoredHPUsingItsAbility: 635,
+  /** 축전 · 저수 · 전기엔진이 다 찬 채로 받았다 — 「{이름}의 {특성} / 때문에 {기술}은 효과가 없었다」 */
+  pokemonsAbilityMadeMoveUseless: 638,
+  /** 방음 — 「{이름}의 {특성}은 / {기술}을 막았다!」 */
+  pokemonsAbilityBlocksMove: 689,
+  /** 타오르는불꽃이 이미 켜진 채로 받았다 */
+  pokemonsAbilityMadeMoveIneffective: 714,
+  /** 분노의경혈 — 급소에 맞은 뒤 「{이름}은 {특성} 때문에 / {능력}이 / 최고치까지 올라갔다!」 (`subscript_critical_hit`) */
+  pokemonMaxedItsStatWithAbility: 1093,
 
   // 날씨. 시작·머무름·그침이 다 따로다
   /** 비 */ itStartedToRain: 799,

@@ -39,6 +39,32 @@ describe('프로토콜 표기', () => {
   })
 })
 
+describe('특성이 바꾼 랭크의 원인', () => {
+  // 쇼다운은 원인을 앞줄에만 싣는다 — 파서는 그 표시와 막은 특성을 버리지 않는다 (PARITY §2.29)
+  it('`-ability`의 넷째 칸 boost를 싣는다', () => {
+    const [e] = parseLines(['|-ability|p1a: Gyarados|Intimidate|boost'])
+    expect(e).toMatchObject({ kind: 'ability', abilityName: 'Intimidate', boost: true })
+    const [plain] = parseLines(['|-ability|p1a: Dusknoir|Pressure'])
+    expect(plain).not.toHaveProperty('boost')
+  })
+
+  it('특성이 막은 하락은 무엇으로 · 어느 능력을 막았는지 싣는다', () => {
+    const [clear] = parseLines(['|-fail|p2a: Metagross|unboost|[from] ability: Clear Body|[of] p2a: Metagross'])
+    expect(clear).toMatchObject({ kind: 'fail', what: 'unboost', from: { kind: 'ability', name: 'Clear Body' } })
+    expect(clear).not.toHaveProperty('stat')
+    const [cutter] = parseLines(['|-fail|p2a: Kingler|unboost|Attack|[from] ability: Hyper Cutter|[of] p2a: Kingler'])
+    expect(cutter).toMatchObject({ kind: 'fail', what: 'unboost', stat: 'atk' })
+    // 그냥 실패는 예전 그대로다
+    const [bare] = parseLines(['|-fail|p1a: Turtwig'])
+    expect(bare).toEqual({ kind: 'fail', actor: expect.anything() })
+  })
+
+  it('`-setboost`의 원인을 싣는다 — 분노의경혈 · 배북', () => {
+    const [anger] = parseLines(['|-setboost|p1a: Tauros|atk|6|[from] ability: Anger Point'])
+    expect(anger).toMatchObject({ kind: 'setboost', amount: 6, from: { kind: 'ability', name: 'Anger Point' } })
+  })
+})
+
 describe('지속 효과 접기', () => {
   // 트레이너 AI가 이 세 갈래를 본다 (PLAN §7.7). 하나라도 안 쌓이면 AI는
   // 리플렉터가 깔린 줄 모르고 깨트리다를 안 쓴다 — 배틀은 멀쩡히 돌아간다

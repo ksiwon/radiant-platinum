@@ -252,14 +252,21 @@ withBank('배틀 문구', () => {
     expect(say({ kind: 'ability', actor: FOE, ability: 13, abilityName: 'Cloud Nine' })).toBeNull()
   })
 
-  it('랭크를 바꾸는 특성은 아직 누가 일했는지만 말한다', () => {
-    // ⚠️ 원작은 이름을 따로 안 띄우고 랭크 줄에 특성을 넣는다(「…의 위협 때문에 …의 공격이
-    // 떨어졌다!」). 쇼다운의 `-unboost`가 원인을 안 들고 와서 한 사건으로는 못 채운다
-    expect(say({ kind: 'ability', actor: FOE, ability: 22, abilityName: 'Intimidate' }))
-      .toBe('야생 팬텀의 위협!')
-    // 이름표에 없으면 원문으로 떨어진다
-    expect(say({ kind: 'ability', actor: FOE, ability: null, abilityName: 'Download' }))
-      .toBe('야생 팬텀의 Download!')
+  it('랭크를 바꾸는 특성은 따로 안 띄운다 — 뒤따르는 랭크 줄이 특성을 부른다', () => {
+    // 원작은 이름을 따로 안 띄우고 랭크 줄에 특성을 넣는다(「…의 위협 때문에 …의 공격이 떨어졌다!」 —
+    // 이어진 꼴은 `abilityStatBeats.test.ts`)
+    expect(say({ kind: 'ability', actor: FOE, ability: 22, abilityName: 'Intimidate', boost: true })).toBeNull()
+    // 그 표시가 없는 특성은 우리 띄우개다. 이름표에 없으면 원문으로 떨어진다
+    expect(say({ kind: 'ability', actor: FOE, ability: null, abilityName: 'Truant' }))
+      .toBe('야생 팬텀의 Truant!')
+  })
+
+  it('배북은 체력을 깎고 공격을 최대로 올렸다고 말한다', () => {
+    const line = say({ kind: 'setboost', actor: FOE, stat: 'atk', amount: 6, from: { kind: 'move', id: 187, name: 'Belly Drum' } })
+    expect(line).not.toBeNull()
+    expect(line).toContain('야생 팬텀')
+    // 원인이 없는 못 박기는 말이 없다
+    expect(say({ kind: 'setboost', actor: FOE, stat: 'atk', amount: 6 })).toBeNull()
   })
 
   it('문장이 없는 이벤트는 null이다', () => {

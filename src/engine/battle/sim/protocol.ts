@@ -45,6 +45,11 @@ function itemRef(raw: string): ItemRef {
  * 번호까지 여기서 푼다. 위층은 sim을 모르므로 `Leech Seed`를 한국어 이름으로
  * 바꿀 방법이 없다 — 문구도 연출도 번호로 골라야 한다
  */
+/** `-fail|…|unboost|<능력>`의 능력 이름 → 랭크 칸 (`abilities.gen`의 괴력집게 · 날카로운눈) */
+const FAIL_STAT: Readonly<Record<string, BoostStat>> = {
+  attack: 'atk', defense: 'def', accuracy: 'accuracy',
+}
+
 function from(kw: Record<string, unknown>): Cause | null {
   const v = kw['from']
   if (typeof v !== 'string' || !v) return null
@@ -284,7 +289,10 @@ export function parseLine(line: string): BattleEvent | null {
       if (!Number.isFinite(n)) break
       // ⚠️ **-setboost는 절대값이다.** 더하면 거짓이 되므로 갈래를 따로 낸다 —
       // 한동안 `other`로 흘려 버렸고, 배북을 쓴 뒤 화면과 AI가 랭크 0을 봤다
-      if (cmd === '-setboost') return { kind: 'setboost', actor, stat, amount: n }
+      if (cmd === '-setboost') {
+        const cause = from(kw)
+        return cause !== null ? { kind: 'setboost', actor, stat, amount: n, from: cause } : { kind: 'setboost', actor, stat, amount: n }
+      }
       const amount = cmd === '-boost' ? n : -n
       // 치리열매처럼 **도구가** 올린 것은 원인이 붙어 온다 — 원작 줄이 그 도구를 부른다
       const cause = from(kw)
@@ -309,6 +317,9 @@ export function parseLine(line: string): BattleEvent | null {
     case '-immune': {
       const actor = need(0)
       if (!actor) break
+      // 축전 · 저수 · 전기엔진 · 타오르는불꽃 · 방음은 막은 특성을 싣는다
+      const cause = cmd === '-immune' ? from(kw) : null
+      if (cause !== null && cause.kind === 'ability') return { kind: 'effectiveness', actor, level: EFFECTIVENESS[cmd]!, from: cause }
       return { kind: 'effectiveness', actor, level: EFFECTIVENESS[cmd]! }
     }
 
@@ -322,8 +333,19 @@ export function parseLine(line: string): BattleEvent | null {
     // `|-miss|SOURCE|TARGET` — 겨눈 자리는 없을 수도 있다
     case '-miss':
       return { kind: 'miss', actor: who(1), source: who(0) }
-    case '-fail':
+    // `|-fail|POKEMON|unboost|[from] ability: Clear Body|[of] POKEMON` — 위협을 특성이 막은 줄은 무엇이 · 무엇으로 막혔는지를 싣는다
+    case '-fail': {
+      const what = rest[1] ?? null
+      const cause = from(kw)
+      if (what === 'unboost' && cause !== null) {
+        // 괴력집게 · 날카로운눈은 지킨 능력 하나를 싣는다(`Attack` · `accuracy`) — 원작이 그 능력을 문장에 넣는다
+        const stat = FAIL_STAT[(rest[2] ?? '').toLowerCase()]
+        return stat !== undefined
+          ? { kind: 'fail', actor: who(0), what, from: cause, stat }
+          : { kind: 'fail', actor: who(0), what, from: cause }
+      }
       return { kind: 'fail', actor: who(0) }
+    }
 
     // `|cant|POKEMON|REASON|MOVE` — 넷째 자리는 **못 쓴 기술**이다.
     // 도발·사슬묶기·봉인은 원작이 그 이름을 문장에 넣는다
@@ -344,6 +366,8 @@ export function parseLine(line: string): BattleEvent | null {
       const actor = need(0)
       if (!actor) break
       const abilityName = rest[1] ?? ''
+      // 넷째 칸 `boost`는 뒤따르는 랭크 줄이 이 특성 때문이라는 뜻이다 (위협 · 다운로드 · 가속 · 불굴의마음 · 전기엔진)
+      if (rest[2] === 'boost') return { kind: 'ability', actor, ability: romAbility(abilityName), abilityName, boost: true }
       return { kind: 'ability', actor, ability: romAbility(abilityName), abilityName }
     }
 
