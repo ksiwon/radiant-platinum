@@ -174,6 +174,27 @@ describe('협조하지 않는 스레드', () => {
   })
 })
 
+describe('저 혼자 죽는 스레드', () => {
+  // 메모리가 모자라거나 잡지 못한 예외로 스레드가 죽으면 대답이 영영 안 온다 — 기다리는 쪽이 실패로 깨야 한다
+  it('죽었다는 소식에 기다리던 변환이 실패로 끝나고, 그 뒤로는 끊겼다고 말한다', async () => {
+    const { port1, port2 } = new MessageChannel()
+    port1.start()
+    let crash: (detail: string) => void = () => {}
+    const client = attachImportClient(
+      port1 as unknown as Parameters<typeof attachImportClient>[0],
+      () => { port1.close(); port2.close() },
+      undefined,
+      (crashed) => { crash = crashed },
+    )
+    const running = client.convert('moves')
+    crash('out of memory')
+    await expect(running).rejects.toMatchObject({ name: 'Terminated', message: expect.stringContaining('out of memory') as unknown })
+    expect(client.dead).toBe(true)
+    await expect(client.validate(new Blob([new Uint8Array(4)]))).rejects.toThrow(/다시 골라/)
+    client.close()
+  })
+})
+
 describe('Worker 기동 배선', () => {
   // ⚠️ 여기서 소스를 읽는 것은 **경로가 조용히 썩는 것**을 막으려는 것이다.
   // `importWorker.ts`의 이름을 바꾸면 vite가 청크를 못 만들고, 그 실패는

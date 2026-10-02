@@ -63,7 +63,19 @@ const HARD_CANCEL_MS = 2_000
 export function spawnImportWorker(): ImportClient {
   const worker = new Worker(new URL('./importWorker.ts', import.meta.url), { type: 'module' })
   const kill = (): void => { worker.terminate() }
-  return attachImportClient(worker, kill, kill)
+  return attachImportClient(worker, kill, kill, (crashed) => {
+    // ⚠️ **스레드가 저 혼자 죽는 길을 듣는다.** 잡지 못한 예외 · 청크를 못 받음 · 메모리가 모자람이면 `message`가 다시는
+    // 안 온다 — 듣지 않으면 설치가 진행 막대에서 영영 멎는다 (e2e #25가 40분을 기다리다 떨어진 판이 그 꼴이었다)
+    worker.addEventListener('error', (e) => {
+      e.preventDefault()
+      kill()
+      crashed(e.message || 'error')
+    })
+    worker.addEventListener('messageerror', () => {
+      kill()
+      crashed('messageerror')
+    })
+  })
 }
 
 /**
@@ -80,6 +92,8 @@ export function attachImportClient(
   close: () => void,
   /** 스레드를 끊는 법. 안 주면 협조적 취소만 쓴다 (`MessageChannel` 시험) */
   hardCancel?: () => void,
+  /** 스레드가 저 혼자 죽었을 때 부를 것을 받아 건다. 받은 함수를 부르면 기다리던 쪽이 실패로 깬다 */
+  onCrash?: (crashed: (detail: string) => void) => void,
 ): ImportClient {
   let nextJob: JobId = 1
   let live: JobId | null = null
@@ -129,6 +143,18 @@ export function attachImportClient(
   const stopHardTimer = (): void => {
     if (hardTimer !== null) { clearTimeout(hardTimer); hardTimer = null }
   }
+
+  onCrash?.((detail) => {
+    if (dead) return
+    dead = true
+    stopHardTimer()
+    if (waiting) {
+      waiting.settle({
+        // 사람이 읽는 글은 끊긴 스레드와 같다 (`ui/installErrors`의 `Terminated` — 새로 고치면 끝난 그룹부터 잇는다)
+        kind: 'failed', job: waiting.job, name: 'Terminated', message: `변환 스레드가 저 혼자 멈췄다 (${detail})`,
+      })
+    }
+  })
 
   async function ask<T>(
     make: (job: JobId) => ToWorker,
