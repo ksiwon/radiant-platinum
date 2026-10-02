@@ -75,7 +75,13 @@ export async function settle(page) {
 
 /** 타이틀이 열릴 때까지 */
 export async function openTitle(page, url) {
-  await page.goto(url, { waitUntil: 'load' })
+  // ⚠️ **첫 요청은 한 번 더 기다린다.** src가 많이 바뀐 뒤나 기계가 바쁠 때 vite가 모듈 그래프를 처음 변환하느라
+  // 첫 `goto`가 4분을 넘겼다(2026-10-02 · `pnpm saves` · 같은 기계의 다른 vitest와 겹쳤다). 두 번째는 변환이 끝나 있다
+  try {
+    await page.goto(url, { waitUntil: 'load' })
+  } catch {
+    await page.goto(url, { waitUntil: 'load' })
+  }
   await page.waitForFunction(() => document.body.innerText.trim().length > 0, null,
     { timeout: 60_000 })
 }
@@ -113,7 +119,7 @@ export const checkpointsOf = (page) => page.evaluate(async () => {
   const m = await import('/src/engine/dev/checkpoints.ts')
   return m.CHECKPOINTS.map((c) => ({
     id: c.id, label: c.label, map: c.map, env: c.env, try: c.try,
-    battle: c.battle ?? null, hour: c.hour ?? null, stage: m.stageOf(c),
+    battle: c.battle ?? null, hour: c.hour ?? null, stage: m.stageOf(c), saveAt: c.saveAt ?? null,
   }))
 })
 

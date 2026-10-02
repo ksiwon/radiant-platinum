@@ -142,6 +142,12 @@ export interface Checkpoint {
   runningShoes?: boolean
   battle?: DevBattle
   /**
+   * 세이브를 이 자리에서 굽는다 (`pnpm saves`). 방에 들어서는 그 프레임에 원작 스크립트가 배틀을 여는 자리는
+   * 원작에서도 저장할 틈이 없다 — 챔피언의 방은 `OnFrame_EnterRoom`이 난천 앞으로 걸어가 바로 싸운다. 그 바로 앞
+   * 자리에서 구워 두면 파일로 열고 한 걸음 가서 같은 배틀을 본다
+   */
+  saveAt?: { map: number, spot: Spot }
+  /**
    * 시각을 못 박는다 (0~23). 안 주면 지금 시각 그대로다.
    *
    * ⚠️ **밤은 따로 가 봐야 한다.** 하늘색·조명·안개가 갈리고 인카운터 표도
@@ -1520,6 +1526,9 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     spot: { kind: 'warp', index: 1 },
     ...STAGE.badge8,
     battle: { kind: 'trainer', id: 267 },
+    // 세이브는 그 앞 승강기 방(`POKEMON_LEAGUE_ELEVATOR_TO_CHAMPION_ROOM` · 184)의 들어오는 문(4,23)에서 — 승강판
+    // (4,19 좌표 사건)을 밟으면 챔피언의 방으로 올라간다 (`events_pokemon_league_elevator_to_champion_room.json`)
+    saveAt: { map: 184, spot: { kind: 'warp', index: 1 } },
   },
   {
     id: 'fight',

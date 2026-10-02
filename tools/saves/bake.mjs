@@ -101,11 +101,12 @@ for (const cp of list) {
       let inner = null
       Object.defineProperty(w.devWarp, 'pending', {
         get: () => inner,
-        set: (v) => { inner = v === null ? null : { ...v, battle: undefined } },
+        // `saveAt`이 있으면 그 자리로 갈아 끼운다 — 들어서자마자 원작이 배틀을 여는 방 (`Checkpoint.saveAt`)
+        set: (v) => { inner = v === null ? null : { ...v, battle: undefined, ...(v.saveAt ?? {}) } },
         configurable: true,
       })
     })
-    await warpTo(page, cp)
+    await warpTo(page, cp.saveAt === null ? cp : { ...cp, map: cp.saveAt.map })
     let shape = await settle(page)
     // 도착하면서 걸린 장면을 끝까지 민다 — 세이브는 도는 스크립트를 못 담는다
     const scene = await pushScripts(page)
@@ -114,7 +115,7 @@ for (const cp of list) {
     if (scene.frozen === true) why = `도착 장면이 안 끝난다 (${String(scene.taps)}번 눌렀다 · ${String(scene.at)})`
     else if (scene.battle === true) why = '배틀이 열렸다 — 굽는 동안은 안 열려야 한다'
     else if (!scene.done) why = `도착 장면을 못 끝냈다 (${String(scene.taps)}번 눌렀다)`
-    else if (at.map !== cp.map) why = `맵이 ${String(at.map)}다 (${String(cp.map)}이어야 한다)`
+    else if (at.map !== (cp.saveAt?.map ?? cp.map)) why = `맵이 ${String(at.map)}다 (${String(cp.saveAt?.map ?? cp.map)}이어야 한다)`
     else if (shape.tri === 0) why = '삼각형이 0이다 — 아무것도 안 그려졌다'
     else if (shape.slow === true) why = `화면이 안 돈다 (0.4초에 ${String(shape.frames ?? 0)}프레임)`
     else if (noise.ours.length > 0) why = `콘솔 ${String(noise.ours.length)}건: ${noise.ours[0]}`
@@ -165,8 +166,10 @@ console.log(`\n  구웠다 ${String(ok.length)} · 못 구웠다 ${String(rows.l
 // 한다), 시각은 `hourPin`이 담고, 깨어진 세계는 높이까지 담는다
 {
   const have = new Set(readdirSync(OUT).filter((n) => n.endsWith('.rpsave')))
-  const line = (r, name) => `| ${name} | ${r.label} | ${String(r.map)} | ${r.stage} | `
-    + `${r.battle === null ? '' : '⚔ 그 자리에 세우기만 한다 — 풀에 들어가거나 눈을 마주쳐야 열린다. '}`
+  const line = (r, name) => `| ${name} | ${r.label} | ${String(r.saveAt?.map ?? r.map)} | ${r.stage} | `
+    + `${r.saveAt !== null && r.saveAt !== undefined
+      ? `⚔ 한 자리 앞(맵 ${String(r.saveAt.map)})에서 구웠다 — 들어서자마자 원작이 배틀을 여는 방이라 그 안에서는 저장할 틈이 없다. 걸어 들어가면 열린다. `
+      : r.battle === null ? '' : '⚔ 그 자리에 세우기만 한다 — 풀에 들어가거나 눈을 마주쳐야 열린다. '}`
     + `${r.hour === null ? '' : `🌙 ${String(r.hour)}시로 못 박았다. `}`
     + `${r.try.join(' · ')} |`
   const listed = all
