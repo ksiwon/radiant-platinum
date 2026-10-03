@@ -99,6 +99,19 @@ const ZONE_SEAMS: Readonly<Record<string, Readonly<Record<string, { objects: rea
   area002: { R206: { objects: ['P_R_206_Ground_01', 'P_R_206_Cliff_01'], z: [703, 704] } },
 }
 
+/**
+ * **구역 안에서 물체 단위로 임자를 바꾸는 것** — `빌린다`는 버린 사본에서 통째로 세우고, `버린다`는 남긴 사본에서 뺀다.
+ *
+ * ⚠️ **206번도로의 나무열매 흙만 area002 쪽이 원작 칸이다.** 흙 메시는 뿌리에서 북쪽으로 1.1칸 뻗는데(제 좌표 z −1.10~0.11),
+ * area003 사본의 흙 넷은 z 625.9~627.1 · 689.9~691.1이라 원작 밭 칸(627 · 691)의 한 칸 북쪽에 앉는다 — 밭에 선 나무열매 판이
+ * 흙 옆 맨땅에 섰다. area002 사본은 626.9~628.1 · 690.9~692.1로 그 칸을 덮는다. 같은 구역의 문 · 관문 · 계단은 area003이 맞으므로
+ * 흙만 바꾼다 (`BerryPatchProps.test`의 114곳)
+ */
+const ZONE_SWAPS: Readonly<Record<string, Readonly<Record<string, { borrow?: RegExp, drop?: RegExp }>>>> = {
+  area002: { R206: { borrow: /SeedSoil/ } },
+  area003: { R206: { drop: /SeedSoil/ } },
+}
+
 /** 물체가 선 구역 — `Offset` 바로 밑의 뿌리 이름. `Offset`이 없으면 번들 뿌리 바로 밑이다 (area007의 `R208`) */
 function zoneOf(env: Environment, transformPid: number, memo: Map<number, string | null>): string | null {
   const had = memo.get(transformPid)
@@ -477,11 +490,15 @@ export async function exportField(
     // 남의 구역 사본은 버린다 — 이음매 한 줄만 빌린다 (위 `FOREIGN_ZONES` · `ZONE_SEAMS`)
     let seam: readonly [number, number] | undefined
     const foreign = FOREIGN_ZONES[name]
-    if (foreign) {
+    const swaps = ZONE_SWAPS[name]
+    if (foreign || swaps) {
       const zone = zoneOf(env, transformPid, zones)
-      if (zone !== null && foreign.includes(zone)) {
+      const goName = typeof go.m_Name === 'string' ? go.m_Name : ''
+      const swap = zone === null ? undefined : swaps?.[zone]
+      if (swap?.drop?.test(goName) === true) continue
+      if (zone !== null && foreign?.includes(zone) === true && swap?.borrow?.test(goName) !== true) {
         const borrow = ZONE_SEAMS[name]?.[zone]
-        if (!borrow || typeof go.m_Name !== 'string' || !borrow.objects.includes(go.m_Name)) continue
+        if (!borrow || !borrow.objects.includes(goName)) continue
         seam = borrow.z
       }
     }

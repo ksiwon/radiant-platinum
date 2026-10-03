@@ -194,7 +194,8 @@ describe.skipIf(!baked)('밭 118곳과 구운 지역 (실측)', () => {
   }).fields.filter((f) => /^area\d+$/.test(f.name))
   /** 밭 칸마다 그 칸을 상자에 담는 지역들의 조각 (`BdspField`가 세우는 지역만 — 대습지는 안 세운다) */
   const roots = fields.map((f) => {
-    const mine = places.filter((p) => f.box[0] <= p.x && p.x <= f.box[2] && f.box[1] <= p.z && p.z <= f.box[3])
+    // 상자는 놓인 자리(뿌리)로 잰 것이라 메시가 1칸쯤 삐져나온다 — 세우는 쪽은 상자에서 수십 칸 안이면 세우므로(`pickFields`) 2칸 넉넉히 본다
+    const mine = places.filter((p) => f.box[0] - 2 <= p.x && p.x <= f.box[2] + 2 && f.box[1] - 2 <= p.z && p.z <= f.box[3] + 2)
     const root = mine.length === 0 ? new Group() : fieldMeshes(resolve(FIELD, `${f.name}.glb`),
       (b) => mine.some((p) => b.min.x <= p.x + 1 && b.max.x >= p.x && b.min.z <= p.z + 1 && b.max.z >= p.z))
     return { name: f.name, root }

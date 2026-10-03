@@ -274,13 +274,14 @@ withLocal('BDSP 야외', area001)('야외 지역 — 원본 자료', () => {
     const inEterna = (t: number[][]) => t.some((p) => p[0]! > 280 && p[0]! < 340 && p[2]! > 505 && p[2]! < 580)
     // 영원시티 센터 문짝 · 땅 — 한 조각도 없다
     expect(placed.filter((p) => p.tris.some(inEterna)).length).toBe(0)
-    // 206번도로 몫(z 577~703)에 든 삼각형도 없다. 이음매(703~704)는 남는다
-    const route = placed.flatMap((p) => p.tris).filter((t) => t.every((q) => q[2]! > 600 && q[2]! < 702.9))
-    expect(route.length).toBe(0)
+    // 206번도로 몫(z 577~703)에 든 것은 나무열매 흙 넷뿐이다(`ZONE_SWAPS`). 이음매(703~704)는 남는다
+    const route = placed.filter((p) => p.tris.some((t) => t.every((q) => q[2]! > 600 && q[2]! < 702.9)))
+    expect(route.length).toBeGreaterThan(0)
+    expect(route.every((p) => /SeedSoil/.test(p.material))).toBe(true)
     const seam = placed.flatMap((p) => p.tris).filter((t) => t.every((q) => q[2]! >= 702.99 && q[2]! <= 704.01)
       && t.every((q) => q[0]! > 278 && q[0]! < 330))
     expect(seam.length).toBeGreaterThan(80)
-    // 지역 상자는 이음매 뿌리(z 577)까지 늘지 않는다 — 207번도로부터다
-    expect(stat.box[1]).toBeGreaterThanOrEqual(700)
+    // 지역 상자는 이음매 뿌리(z 577)까지 늘지 않는다 — 빌린 흙(628)부터다
+    expect(stat.box[1]).toBeGreaterThanOrEqual(620)
   }, 300_000)
 })
