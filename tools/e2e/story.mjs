@@ -1251,6 +1251,8 @@ if (ACTS.has('2')) {
     } catch (e) {
       trouble.push(String(e.message ?? e).slice(0, 200))
     }
+    // ⚠️ **콘솔은 다 남긴다.** 줄에는 첫 건만 찍히므로, 나머지는 봉투에서 읽는다
+    if (noise.length > 0) extra = { ...extra, noise: [...noise] }
     const status = trouble.length === 0 ? 'PASS' : 'FAIL'
     add('②', cp.id, cp.label, status,
       trouble.length === 0 ? detail : `${trouble.join(' | ')}${detail ? ` — ${detail}` : ''}`, extra)
