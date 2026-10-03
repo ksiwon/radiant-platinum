@@ -75,10 +75,12 @@ export async function knock(url, { timeout = 20_000, tries = 3 } = {}) {
  * ⚠️ **자리 이름에 포트를 넣지 않는다.** 넣으면 실행마다 새 자리라 매번 처음부터
  * 다시 묶는다 (실측 5분). 하네스 둘을 동시에 돌릴 때만 이름을 갈라 준다
  */
-export async function startVite(port, cache = 'node_modules/.vite-harness') {
+export async function startVite(port, cache = 'node_modules/.vite-harness', host = 'localhost') {
+  // `host`를 주면 그 주소에만 붙는다 — e2e ㉙가 dist 서버와 같은 출처(127.0.0.1:5199)의 설치본을 이어 쓴다
+  const hostArgs = host === 'localhost' ? [] : ['--host', host]
   const child = spawn(
     process.execPath,
-    [resolve(ROOT, 'node_modules/vite/bin/vite.js'), '--port', String(port), '--strictPort'],
+    [resolve(ROOT, 'node_modules/vite/bin/vite.js'), '--port', String(port), '--strictPort', ...hostArgs],
     { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, VITE_CACHE_DIR: cache } })
   // ⚠️ 출력에서 주소를 긁지 않는다 — vite가 포트에 굵게 표시하는 색 코드를 끼워
   // 넣어서 `localhost:5199`가 통째로 안 잡힌다. 포트는 우리가 정했으니 **열렸는지만**
@@ -95,7 +97,7 @@ export async function startVite(port, cache = 'node_modules/.vite-harness') {
   child.on('error', (e) => { dead = `spawn 실패: ${e.message}` })
 
   // ⚠️ 127.0.0.1이 아니라 localhost다 — 윈도우에서 vite가 ::1에만 붙는다
-  const url = `http://localhost:${String(port)}`
+  const url = `http://${host}:${String(port)}`
   const started = Date.now()
 
   /**
@@ -110,7 +112,7 @@ export async function startVite(port, cache = 'node_modules/.vite-harness') {
    * 주석이 경고하던 그 함정이다
    */
   const accepting = () => new Promise((ok) => {
-    const s = netConnect({ port, host: 'localhost' })
+    const s = netConnect({ port, host })
     const done = (v) => { s.destroy(); ok(v) }
     s.once('connect', () => { done(true) })
     s.once('error', () => { done(false) })

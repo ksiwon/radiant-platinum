@@ -230,6 +230,39 @@ async function fresh() {
   return { context, page, requests, errors, close: () => context.close() }
 }
 
+/**
+ * **설치본 프로필** — 필수 설치(50그룹 · 1.6GB)는 한 판에 **한 번만** 한다.
+ *
+ * ⚠️ 검사마다 `fresh()`로 빈 컨텍스트를 열던 때는 ⑮ · ㉕ · ㉖ · ㉙가 저마다 처음부터 깔았다 — 2026-10-03 판에서 한 번에
+ * 10~15분씩, 설치만 한 시간 가까이였다. 디스크에 남는 프로필 하나를 판 첫머리에 비우고 넷이 같이 쓴다: ⑮가 진짜로 깔고
+ * (설치 자체를 재는 것은 ⑮다), 나머지는 이미 깔려 있으면 이어 쓴다(`ensureInstalled`). 혼자 돌리면(`--only=25`) 비어 있으니 그때만 깐다.
+ * OPFS · 설치 기록은 출처별이라 dist 서버의 자리(127.0.0.1:5199)가 고정이어야 이어진다 — ㉙도 같은 자리에 개발 서버를 띄운다
+ */
+const INSTALLED_DIR = resolve(ROOT, '.audit/e2e-installed')
+rmSync(INSTALLED_DIR, { recursive: true, force: true })
+let installedCtx = null
+
+/** 설치본 프로필의 새 페이지 — `fresh()`와 같은 모양이고, 닫으면 페이지만 닫는다 */
+async function installedBox() {
+  installedCtx ??= await chromium.launchPersistentContext(INSTALLED_DIR, {
+    args: ['--enable-precise-memory-info', ...GPU], serviceWorkers: 'allow',
+  })
+  const context = installedCtx
+  const requests = []
+  const errors = []
+  const onRequest = (r) => { requests.push(r.url()) }
+  context.on('request', onRequest)
+  context.setDefaultNavigationTimeout(300_000)
+  const page = await context.newPage()
+  page.on('pageerror', (e) => errors.push(e.message.slice(0, 160)))
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text().slice(0, 160)) })
+  const close = async () => {
+    context.off('request', onRequest)
+    for (const p of context.pages()) await p.close().catch(() => {})
+  }
+  return { context, page, requests, errors, close }
+}
+
 /** 부팅 갈래. `boot()`이 `<html data-boot>`에 적어 둔다 */
 const bootTag = (page) => page.evaluate(() => document.documentElement.dataset.boot ?? null)
 
@@ -321,6 +354,22 @@ async function waitInstalled(page, id, timeout = 2_400_000) {
 }
 
 /**
+ * 설치본을 이어 쓴다 — 이미 깔려 있으면(`play:opfs`) 타이틀만 기다리고, 아니면 깐다 (`installedBox`).
+ * 돌려주는 값은 상세에 적는다 — 이어 쓴 판과 새로 깐 판을 구별할 수 있어야 한다
+ */
+async function ensureInstalled(page, id) {
+  const tag = await waitBoot(page)
+  if (tag === 'play:opfs') {
+    await atTitle(page).waitFor({ timeout: 120_000 })
+    return '⑮의 설치본을 이어 썼다'
+  }
+  await armWizard(page, BDSP, 300_000)
+  await page.getByRole('button', { name: '설치 시작' }).click()
+  const took = await waitInstalled(page, id)
+  return `새로 깔았다 (${(took / 60_000).toFixed(1)}분)`
+}
+
+/**
  * **막혔다** — 실패가 아니라 「이 판에서는 못 쟀다」다.
  *
  * ⚠️ **FAIL로 적으면 없는 결함을 쫓게 되고, PASS로 적으면 검사가 사라진다.**
@@ -329,11 +378,11 @@ async function waitInstalled(page, id, timeout = 2_400_000) {
 class Blocked extends Error {}
 const blocked = (why) => { throw new Blocked(why) }
 
-async function run(id, what, fn) {
+async function run(id, what, fn, { installed = false } = {}) {
   if (only.length > 0 && !only.some((p) => id.startsWith(p))) {
     record(id, what, 'NOT RUN', '--only로 걸렀다'); return
   }
-  const box = await fresh()
+  const box = installed ? await installedBox() : await fresh()
   try {
     const detail = await fn(box)
     record(id, what, 'PASS', detail ?? '')
@@ -406,11 +455,11 @@ async function readDownload(download) {
  * ⚠️ 개발 서버는 `public/` 전체를 준다 — **배포 수단이 아니다** (DEPLOY.md §2).
  * 여기서 재는 것은 배포 경계가 아니라 앱 동작이고, 표에 그렇게 적는다
  */
-async function withDev(fn) {
+async function withDev(fn, { port: pinned = null, host = 'localhost' } = {}) {
   // ⚠️ **자리를 못 박지 않는다.** 5197로 고정했더니 앞선 실행이 남긴 vite가
   // 그 자리를 잡고 있어서 `--strictPort`가 exit 1로 죽었고, 그 예외가
   // 하네스 전체를 끌어내렸다 — 검사 셋이 아니라 **스무 개가 통째로** 안 돌았다
-  const port = await freePort()
+  const port = pinned ?? await freePort()
   /**
    * ⚠️ **공용 `startVite`를 쓴다.** 여기에 `spawn('npx.cmd', …, { shell: true })`을
    * 따로 두고 있었는데, 그러면 `kill()`이 셸만 죽이고 **손자 vite가 남는다** —
@@ -427,7 +476,7 @@ async function withDev(fn) {
    */
   let vite = null
   try {
-    vite = await startVite(port)
+    vite = await startVite(port, undefined, host)
   } catch (e) {
     throw new DevServerDown(String(e.message ?? e))
   }
@@ -440,7 +489,7 @@ async function withDev(fn) {
    */
   const ensure = async () => {
     if (vite.child.exitCode === null) return
-    vite = await startVite(port)
+    vite = await startVite(port, undefined, host)
   }
   try {
     await fn(at, ensure)
@@ -1526,6 +1575,8 @@ await ((haveRom && haveBdsp) ? run : () => {})(
       + `두 번째 실행: 갈래 ${String(decided)}ms · 타이틀 ${String(title)}ms · `
       + `변환기 0회 · OPFS 쓰기 0회 · /data 0건 · 외부 0건 · ${NODE_SAID}`
   },
+  // 여기서 깐 설치본을 ㉕ · ㉖ · ㉙가 이어 쓴다 (`installedBox`)
+  { installed: true },
 )
 
 // ── ㉕ 진짜 설치본으로 게임을 몰아 본다 ─────────────────────────────────────
@@ -1548,10 +1599,7 @@ await ((haveRom && haveBdsp) ? run : () => {})(
   async ({ page, requests, errors }) => {
     page.setDefaultTimeout(60_000)
     await page.goto(`${origin}/`, { waitUntil: 'load' })
-    await waitBoot(page)
-    await armWizard(page, BDSP, 300_000)
-    await page.getByRole('button', { name: '설치 시작' }).click()
-    await waitInstalled(page, '25')
+    const installedHow = await ensureInstalled(page, '25')
     const mark = requests.length
 
     // ── 새 게임 ──
@@ -1721,10 +1769,12 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     const SAVE_ROW = 2
     for (let i = 0; i < SAVE_ROW; i++) { await page.keyboard.press('ArrowDown') }
     await page.keyboard.press('Space')
-    // 리포트 화면은 `주인공 · 배지 · 도감 · 플레이 시간` 네 칸짜리 `dl`이 임자다
+    // 리포트 화면은 `주인공 · 배지 · (도감) · 플레이 시간` 칸의 `dl`이 임자다. ⚠️ **도감 칸은 도감을 받은 뒤에만 선다**
+    // (`SaveInfoWindow` · `SaveInfo.tsx`) — 새 게임 첫 리포트는 세 칸이다. 넷으로 못 박았던 판이 cb558d0 뒤로 떨어졌다
     await where(page, () => {
       const dl = [...document.querySelectorAll('dl')].pop()
-      return dl !== undefined && dl.querySelectorAll('dd').length === 4
+      const n = dl?.querySelectorAll('dd').length ?? 0
+      return n === 3 || n === 4
     }, '리포트 화면이 안 뜬다', 30_000)
     // "쓸까요?"에 예. 커서가 예에 서 있으므로 그대로 확인이다
     await page.keyboard.press('Space')
@@ -1833,10 +1883,11 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     await page.keyboard.press('Enter')
     await where(page, () => location.pathname === '/intro', '키만으로는 새 게임에 못 들어간다')
 
-    return `새 게임 → 오버월드(${zone.slice(0, 12)}) → 걷기 4방향 → 리포트 → `
+    return `${installedHow} · 새 게임 → 오버월드(${zone.slice(0, 12)}) → 걷기 4방향 → 리포트 → `
       + `.rpsave ${(bytes.length / 1024).toFixed(1)}kB 왕복 · 게임 중 요청 0건 · 콘솔 오류 0건 · `
       + '키만으로 시작 → 확인 → /intro'
   },
+  { installed: true },
 )
 
 // ── ㉖ 이야기를 끝까지 몬다 — 배틀 둘과 상점 ────────────────────────────────
@@ -1891,10 +1942,7 @@ await ((haveRom && haveBdsp && haveRoute) ? run : () => {})(
     await page.addInitScript(LOAD_SPY)
     const loadSpy = startLoadSpy(page)
     await page.goto(`${origin}/`, { waitUntil: 'load' })
-    await waitBoot(page)
-    await armWizard(page, BDSP, 300_000)
-    await page.getByRole('button', { name: '설치 시작' }).click()
-    await waitInstalled(page, '26')
+    const installedHow = await ensureInstalled(page, '26')
     const mark = requests.length
 
     await page.getByRole('button', { name: '시작', exact: true }).click()
@@ -1950,10 +1998,11 @@ await ((haveRom && haveBdsp && haveRoute) ? run : () => {})(
     // 판정을 뒤집으면 안 된다
     distLoad = await loadSpy.stop().catch(() => null)
     const fps = distLoad?.fps ?? null
-    return `${say} · 게임 중 요청 0건 · 콘솔 오류 0건`
+    return `${installedHow} · ${say} · 게임 중 요청 0건 · 콘솔 오류 0건`
       + (fps === null ? ' · 프레임 표본 없다'
         : ` · 프레임 중앙값 ${String(fps.p50)} · p10 ${String(fps.p10)} (표본 ${String(fps.n)}초)`)
   },
+  { installed: true },
 )
 
 // ⑯ 실제 호스트의 CSP 응답 헤더.
@@ -2008,6 +2057,24 @@ if (!(haveRom && haveBdsp)) {
   record('29', '설치본으로 확인 지점과 화면을 연다 (개발 서버 + OPFS)', 'NOT RUN',
     ROM === null ? '이 기계에 Platinum 롬이 없다' : '이 기계에 BDSP 덤프가 없다')
 } else {
+  /**
+   * ⚠️ **⑮의 설치본을 이어 쓴다** (`installedBox`). 설치본은 출처별이라 dist 서버를 닫고 **같은 자리**(127.0.0.1:5199)에
+   * 개발 서버를 띄운다. 그 전에 dist의 서비스 워커와 캐시만 지운다 — 남겨 두면 같은 출처의 개발 페이지를 가로채 dist 앱 셸을
+   * 내준다. OPFS와 설치 기록은 그대로 둔다
+   */
+  const distPort = Number(new URL(origin).port)
+  if (only.length === 0 || only.some((p) => '29'.startsWith(p))) {
+    const box = await installedBox()
+    try {
+      await box.page.goto(`${origin}/`, { waitUntil: 'load' })
+      await box.page.evaluate(async () => {
+        for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister()
+        for (const k of await caches.keys()) await caches.delete(k)
+      })
+    } catch { /* 깔린 것이 없으면 지울 것도 없다 — ㉙가 새로 깐다 */ }
+    await box.close()
+  }
+  await server.close()
   try {
     await withDev(async (dev, ensure) => {
       await run('29', '설치본으로 확인 지점과 화면을 연다 (개발 서버 + OPFS)',
@@ -2042,12 +2109,14 @@ if (!(haveRom && haveBdsp)) {
           await warmDev(page.context(), `${dev}/?assets=opfs`)
           await page.goto(`${dev}/?assets=opfs`, { waitUntil: 'load' })
           const boot0 = await waitBoot(page)
-          assert(boot0.startsWith('install:'),
-            `개발 서버인데 설치 화면이 아니다: ${boot0} — \`?assets=opfs\`가 안 먹었다`)
-
-          await armWizard(page, BDSP, 300_000)
-          await page.getByRole('button', { name: '설치 시작' }).click()
-          await waitInstalled(page, '29')
+          // ⑮의 설치본이 있으면 곧바로 `play:opfs`다. 없으면(혼자 돌린 판) 설치 화면이어야 하고, 그때만 깐다
+          if (boot0 !== 'play:opfs') {
+            assert(boot0.startsWith('install:'),
+              `개발 서버인데 설치 화면이 아니다: ${boot0} — \`?assets=opfs\`가 안 먹었다`)
+            await armWizard(page, BDSP, 300_000)
+            await page.getByRole('button', { name: '설치 시작' }).click()
+            await waitInstalled(page, '29')
+          }
           const boot1 = await page.evaluate(() => document.documentElement.dataset.boot)
           assert(boot1 === 'play:opfs', `설치본으로 안 떴다: ${String(boot1)}`)
 
@@ -2252,8 +2321,8 @@ if (!(haveRom && haveBdsp)) {
           return `${seen.join(' · ')} · ${screens.join(' · ')}`
             + ` · 화면 넷(fly·berryTag·factory·credits)은 열어서 안 터지는 것까지만 봤다`
             + ` — 내용은 **자료로** 갈랐다: ${said} · 콘솔 오류 0건`
-        })
-    })
+        }, { installed: true })
+    }, { port: distPort, host: '127.0.0.1' })
   } catch (e) {
     if (!results.some((r) => r.id === '29')) {
       record('29', '설치본으로 확인 지점과 화면을 연다 (개발 서버 + OPFS)', 'NOT RUN',
@@ -2263,7 +2332,8 @@ if (!(haveRom && haveBdsp)) {
 }
 
 await browser.close()
-server.close()
+await installedCtx?.close()
+await server.close()
 
 // ── 결과 ─────────────────────────────────────────────────────────────────────
 const pad = (s, n) => s + ' '.repeat(Math.max(0, n - [...s].reduce((a, c) => a + (c.charCodeAt(0) > 0x1100 ? 2 : 1), 0)))

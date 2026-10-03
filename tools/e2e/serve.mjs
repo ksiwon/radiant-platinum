@@ -48,7 +48,9 @@ export function serveDist(dist, port = 5199) {
   })
   return new Promise((done) => {
     server.listen(port, '127.0.0.1', () => {
-      done({ url: `http://127.0.0.1:${String(port)}`, close: () => { server.close() } })
+      // 닫으면 붙어 있던 연결도 끊는다 — ㉙가 같은 자리에 개발 서버를 다시 띄운다 (`run.mjs`의 `installedBox`)
+      const close = () => new Promise((ok) => { server.closeAllConnections?.(); server.close(() => { ok() }) })
+      done({ url: `http://127.0.0.1:${String(port)}`, close })
     })
   })
 }
