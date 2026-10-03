@@ -1003,7 +1003,7 @@ export function PartyScreen() {
         ? '↑↓←→ 누구에게 · Z 쓴다 · X 그만둔다'
         : held !== null
           ? '↑↓←→ 옮기기 · Z 놓기 · X 되돌리기'
-          : '↑↓←→ 고르기 · Z 갈래 · X 닫기')
+          : '↑↓←→ 고르기 · Z 메뉴 · X 닫기')
 
   return (
     <MenuScreen

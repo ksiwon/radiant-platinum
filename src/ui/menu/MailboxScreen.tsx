@@ -71,7 +71,9 @@ type Open =
   | { kind: 'pick'; purpose: 'give' | 'write' }
 
 /** 바닥 안내. 메뉴가 떠 있으면 그 단계의 키만 적는다 */
-export function mailboxFoot(open: Open['kind'] | null): string {
+export function mailboxFoot(open: Open['kind'] | null, empty = false): string {
+  // 빈 메일박스에서는 고를 것도 결정할 것도 없다
+  if (empty) return 'X 닫기'
   if (open === null) return '↑↓ 고르기 · Z 결정 · X 닫기'
   return '↑↓ 고르기 · Z 결정 · X 그만둔다'
 }
@@ -323,9 +325,10 @@ export function MailboxScreen() {
     <MenuScreen
       title={say[MAILBOX_TEXT.title] ?? '메일박스'}
       note={`${String(filled.length)} / ${String(mailbox.length)}`}
-      foot={mailboxFoot(open?.kind ?? null)}
+      foot={mailboxFoot(open?.kind ?? null, filled.length === 0 && shownNotice.length === 0)}
     >
-      {/* 갈래 창이 이 칸의 오른쪽 아래 구석에 붙는다 */}
+      {/* 비었으면 본문 전체가 그 한 줄이다. 갈래 창은 칸의 오른쪽 아래 구석에 붙는다 */}
+      {filled.length === 0 && shownNotice.length === 0 ? <div className={css.emptyFill}>메일이 없다</div> : (
       <div className={bagCss.anchorStage}>
         <ul className={css.list}>
           {filled.map((e, i) => (
@@ -334,7 +337,6 @@ export function MailboxScreen() {
               <span className={css.count}>{paperName(e.mail.type)}</span>
             </li>
           ))}
-          {filled.length === 0 && <li className={css.rowDim}>메일이 없다</li>}
         </ul>
         <div className={css.detail}>
           {here && <div className={css.detailText}>{preview(here.mail.lines)}</div>}
@@ -359,6 +361,7 @@ export function MailboxScreen() {
           </div>
         )}
       </div>
+      )}
     </MenuScreen>
   )
 }

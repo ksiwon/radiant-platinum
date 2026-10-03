@@ -68,7 +68,10 @@ export const cardOn = style({
 })
 
 /** 못 내보내는 칸 — 쓰러졌거나 이미 나와 있다 */
-export const cardOut = style({ opacity: 0.46 })
+/**
+ * ⚠️ **투명하게 흐리지 않는다** — 카드 뒤로 상대 이름줄 · 체력판이 비쳐 겹쳐 보였다. 바탕은 불투명한 채 색만 죽인다
+ */
+export const cardOut = style({ filter: 'grayscale(0.6) brightness(0.72)' })
 
 /** 지금 나와 있는 칸. 흐리게 두되 나와 있다는 표시는 남긴다 */
 export const cardHere = style({

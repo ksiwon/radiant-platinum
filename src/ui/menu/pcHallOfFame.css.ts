@@ -78,6 +78,8 @@ export const female = style({ color: vars.state.female })
 export const empty = style({
   display: 'grid',
   placeItems: 'center',
+  // 남은 높이를 다 채운다 — 안 채우면 안내줄과 「X 닫기」가 창 한가운데 붙고 아래 절반이 빈다
+  flex: '1 1 auto',
   minHeight: 160,
   color: vars.ink.faint,
 })

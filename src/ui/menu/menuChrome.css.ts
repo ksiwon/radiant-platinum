@@ -377,6 +377,18 @@ export const hint = style({
   paddingBottom: GAP.tight,
 })
 
+/**
+ * 화면 하나가 통째로 비었을 때 — 본문 칸을 다 차지하고 가운데에 읽히는 크기로 한 줄. 목록 칸 구석에 흐린 한 줄만 두면 나머지가
+ * 백지라 덜 만든 화면처럼 보였다(메일박스)
+ */
+export const emptyFill = style({
+  flex: '1 1 auto',
+  display: 'grid',
+  placeItems: 'center',
+  fontSize: TEXT.base,
+  color: vars.ink.dim,
+})
+
 /** 목록이 비었을 때 */
 export const empty = style({
   padding: `${GAP.base}px ${GAP.tight}px`,

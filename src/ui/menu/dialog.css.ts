@@ -32,9 +32,15 @@ export const info = style({
   fontSize: TEXT.list,
 })
 
+/** 요약창 맨 위 지명 — 원작은 이름표 없이 창 왼쪽 위에 한 줄로 찍는다 (`SAVE_INFO_LABEL_MAP_NAME`) */
+export const infoPlace = style({
+  gridColumn: '1 / -1',
+  fontWeight: 700,
+})
+
 // vanilla-extract는 style 안에서 `& dt` 같은 자식 선택자를 못 받는다.
 // globalStyle로 따로 건다
-globalStyle(`${info} dt`, { color: vars.ink.dim })
+globalStyle(`${info} dt:not(${infoPlace})`, { color: vars.ink.dim })
 globalStyle(`${info} dd`, {
   margin: 0,
   textAlign: 'right',

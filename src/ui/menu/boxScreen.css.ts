@@ -147,8 +147,8 @@ export const pagerArrow = style({
 
 /** 몇 마리 들어 있는가 */
 export const pagerCount = style({
+  // 글꼴은 둘레와 같다 — 숫자 폭만 고르게 (고정폭 글꼴을 쓰면 이 줄만 코드처럼 보였다)
   fontVariantNumeric: 'tabular-nums',
-  fontFamily: vars.font.mono,
 })
 
 /** 오른쪽 칸 — 파티 여섯과 고른 한 마리의 자세한 것 */
