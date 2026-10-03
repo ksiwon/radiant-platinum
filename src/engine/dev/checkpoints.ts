@@ -1227,7 +1227,9 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
       '물 위 인카운터 표를 본다',
       '호숫가를 한 바퀴 돈다',
     ],
-    map: 311,
+    // ⚠️ 311은 첫머리 사건 판(`MAP_HEADER_LAKE_VERITY_LOW_WATER` — 물이 빠진 호수 · 들어서면 태홍 장면이 돈다)이다.
+    // 배지 다섯 뒤의 호수는 312다 (`map_headers.txt` 줄 번호 − 1)
+    map: 312,
     spot: { kind: 'grass' },
     ...STAGE.badge5,
   },
