@@ -43,19 +43,19 @@ const MAIN = [
   { cue: 'B5-B6', take: 'B5-switch', cut: [0.1, 1.9], fade: 0.3, trans: 'wiperight' }, // 컷 안에서 3인칭 → 1인칭
   { cue: 'B7', card: 'white', seconds: 0.4, fade: 0.2 },
   { cue: 'C1', take: 'C1-wild', cut: [0.6, 1.5], fade: 0.1 },
-  { cue: 'C2', take: 'C1-wild', cut: [3.6, 1.2], fade: 0.1 },
+  { cue: 'C2', take: 'C1-wild', cut: [2.8, 1.2], fade: 0.1 },
   { cue: 'C3', take: 'C3-move', cut: [4.3, 0.7] },
   { cue: 'C4', take: 'C4-night', cut: [0.9, 0.8] },
   { cue: 'C5', take: 'C5-cave', cut: [3.2, 0.9] },
   { cue: 'C6', take: 'C6-catch', cut: [1.3, 0.6] },
   { cue: 'C7', take: 'C6-catch', cut: [1.9, 1.2], fade: 0.15 },
   { cue: 'C8', take: 'C6-catch', cut: [3.1, 2.1], fade: 0.2 },
-  { cue: 'C9', take: 'C9-rival', cut: [1.3, 1.1] },
-  { cue: 'C10', take: 'C9-rival', cut: [3.0, 1.3] },
-  { cue: 'C11', take: 'C9-rival', cut: [5.2, 1.3], fade: 0.2 },
+  { cue: 'C9', take: 'C9-rival', cut: [0.1, 1.1] },
+  { cue: 'C10', take: 'C9-rival', cut: [1.1, 1.3] },
+  { cue: 'C11', take: 'C9-rival', cut: [2.6, 1.3], fade: 0.2 },
   { cue: 'D1', take: 'D1-lake', cut: [0.3, 1.3], fade: 0.15 },
   { cue: 'D2', take: 'D2-windworks', cut: [0.5, 0.8] },
-  { cue: 'D3', take: 'D3-flowers', cut: [0.3, 1.0] },
+  { cue: 'D3', take: 'D3-flowers', cut: [1.4, 1.0] },
   { cue: 'D4', take: 'D4-snow', cut: [0.3, 0.9] },
   { cue: 'D5', take: 'D5-first', cut: [0.4, 1.9] }, // 0.8초에 V
   { cue: 'D6', take: 'D6-night', cut: [0.3, 1.4] },
@@ -66,11 +66,11 @@ const MAIN = [
   { cue: 'D11', take: 'D11-champion', cut: [3.4, 2.4], fade: 0.15 },
   { cue: 'E1a', take: 'E1-a', cut: [0.9, 0.75] },
   { cue: 'E1b', take: 'E1-b', cut: [0.9, 0.9] },
-  { cue: 'E1c', take: 'E1-c', cut: [0.8, 1.0] },
+  { cue: 'E1c', take: 'E1-c', cut: [1.8, 1.0] },
   { cue: 'E1d', take: 'E1-d', cut: [0.9, 0.8] },
   { cue: 'E1e', take: 'E1-e', cut: [3.2, 1.0] },
   { cue: 'E1f', take: 'E1-a', cut: [3.4, 0.43] },
-  { cue: 'E1g', take: 'E1-c', cut: [2.2, 0.43] },
+  { cue: 'E1g', take: 'E1-c', cut: [2.4, 0.43] },
   { cue: 'E1h', take: 'E1-e', cut: [3.5, 0.44], fade: 0.2 },
   { cue: 'E2', take: 'E2-spear', cut: [0.6, 2.1], warp: 'out', fade: 0.4 },
   { cue: 'E3a', take: 'E3-distortion', cut: [0.6, 2.4], warp: 'in', fade: 0.3 }, // 1.8초에 V — 1인칭 → 3인칭
@@ -83,40 +83,36 @@ const MAIN = [
 
 /** 쇼츠 — 문서 「쇼츠 · 릴스」. 세로로 다시 찍은 장면을 쓴다 */
 const SHORTS = [
-  { cue: 'A1', card: 'disclaimer', fade: 0.3 },
-  { cue: 'A2-A4', card: 'tunnel', seconds: 8.3 },
+  { cue: 'A1', card: 'disclaimer', seconds: 2.4, fade: 0.3 },
+  { cue: 'A2-A4', card: 'tunnel', seconds: 6.8 },
   { cue: 'A5', card: 'sink' },
-  { cue: 'A6', card: 'tagline' },
+  { cue: 'A6', card: 'tagline', seconds: 3.6 },
   { cue: 'A7', card: 'white', fade: 0.25 },
   { cue: 'B1', take: 'B1-room', cut: [0.3, 2.6], fade: 0.25 },
   { cue: 'B2', take: 'B2-twinleaf', cut: [0.3, 1.6], fade: 0.25 },
   { cue: 'B5-B6', take: 'B5-switch', cut: [0.1, 1.9], fade: 0.3, trans: 'wipeup' },
   { cue: 'B7', card: 'white', seconds: 0.4, fade: 0.2 },
-  { cue: 'C1', take: 'C1-wild', cut: [0.6, 1.5], fade: 0.1 },
-  { cue: 'C2', take: 'C1-wild', cut: [3.6, 1.2], fade: 0.1 },
-  { cue: 'C3', take: 'C3-move', cut: [4.3, 0.7] },
-  { cue: 'C4', take: 'C4-night', cut: [0.9, 0.8] },
-  { cue: 'C5', take: 'C5-cave', cut: [3.2, 0.9] },
-  { cue: 'C6', take: 'C6-catch', cut: [1.3, 0.6] },
-  { cue: 'C7', take: 'C6-catch', cut: [1.9, 1.2], fade: 0.15 },
-  { cue: 'C8', take: 'C6-catch', cut: [3.1, 2.1], fade: 0.2 },
-  { cue: 'C10', take: 'C9-rival', cut: [3.0, 1.3] },
-  { cue: 'C11', take: 'C9-rival', cut: [5.2, 1.3], fade: 0.2 },
+  { cue: 'C1', take: 'C1-wild', cut: [0.6, 1.5], crop: 0.5, fade: 0.1 },
+  { cue: 'C2', take: 'C1-wild', cut: [2.8, 1.2], crop: 0.33, fade: 0.1 },
+  { cue: 'C3', take: 'C3-move', cut: [4.3, 0.7], crop: 0.47 },
+  { cue: 'C6', take: 'C6-catch', cut: [1.3, 0.6], crop: 0.5 },
+  { cue: 'C7', take: 'C6-catch', cut: [1.9, 1.2], crop: 0.5, fade: 0.15 },
+  { cue: 'C10', take: 'C9-rival', cut: [1.1, 1.3], crop: 0.58 },
   { cue: 'D5', take: 'D5-first', cut: [0.4, 2.2] },
   { cue: 'D6', take: 'D6-night', cut: [0.3, 1.2] },
   { cue: 'D8', take: 'D8-lakeside', cut: [0.3, 1.2] },
-  { cue: 'D9', take: 'D9-trainer', cut: [0.6, 1.1] },
-  { cue: 'D10', take: 'D9-trainer', cut: [1.6, 1.5] },
-  { cue: 'D11', take: 'D11-champion', cut: [3.6, 2.0], fade: 0.15 },
-  { cue: 'E1a', take: 'E1-a', cut: [0.9, 0.75] },
-  { cue: 'E1c', take: 'E1-c', cut: [0.8, 0.8] },
-  { cue: 'E1e', take: 'E1-e', cut: [3.2, 0.8], fade: 0.2 },
+  { cue: 'D9', take: 'D9-trainer', cut: [0.6, 1.1], crop: 0.33 },
+  { cue: 'D10', take: 'D9-trainer', cut: [1.6, 1.5], crop: 0.45 },
+  { cue: 'D11', take: 'D11-champion', cut: [3.6, 2.0], crop: 0.62, fade: 0.15 },
+  { cue: 'E1a', take: 'E1-a', cut: [0.9, 0.75], crop: 0.45 },
+  { cue: 'E1c', take: 'E1-c', cut: [1.8, 0.8], crop: 0.45 },
+  { cue: 'E1e', take: 'E1-e', cut: [3.2, 0.8], crop: 0.42, fade: 0.2 },
   { cue: 'E2', take: 'E2-spear', cut: [0.6, 1.6], warp: 'out', fade: 0.4 },
   { cue: 'E3a', take: 'E3-distortion', cut: [0.6, 2.4], warp: 'in', fade: 0.3 },
-  { cue: 'E3b', take: 'E3-giratina', cut: [2.5, 1.6], fade: 0.15 },
+  { cue: 'E3b', take: 'E3-giratina', cut: [2.5, 1.6], crop: 0.55, fade: 0.15 },
   { cue: 'E4', card: 'white', seconds: 0.5, fade: 0.3 },
   { cue: 'F1', card: 'wordmark', seconds: 2.5, fade: 0.2 },
-  { cue: 'F2', card: 'rom', seconds: 4.5, fade: 0.2 },
+  { cue: 'F2', card: 'rom', seconds: 4.2, fade: 0.2 },
   { cue: 'F3', card: 'promo', seconds: 3.5 },
 ]
 
@@ -135,7 +131,9 @@ function warpFilter(kind, len) {
 
 /** 장면 하나 → 30fps mp4 (길이 = 큐 길이 + 겹침) */
 function takeClip(e, file) {
-  const dir = resolve(TAKE, e.take)
+  // `crop` — 세로판에서 가로로 찍은 장면을 잘라 쓴다(값은 자를 창의 가운데 · 가로 폭의 비율). 배틀 카메라는 세로 화면에 맞춰
+  // 서지 않아(노트북 이상만 본다) 세로로 찍으면 내 포켓몬이 화면 밖으로 잘린다
+  const dir = resolve(e.crop === undefined ? TAKE : resolve(ROOT, '.audit/reels/take/16x9'), e.take)
   const { frames } = JSON.parse(readFileSync(resolve(dir, 'frames.json'), 'utf8'))
   if (frames.length < 2) throw new Error(`${e.take}: 프레임이 ${String(frames.length)}장`)
   const lines = ['ffconcat version 1.0']
@@ -149,7 +147,13 @@ function takeClip(e, file) {
   writeFileSync(list, lines.join('\n'))
   const [from, cue] = e.cut
   const len = cue + overlap(e)
-  const vf = [`fps=${FPS}`, `trim=start=${from}:duration=${len}`, 'setpts=PTS-STARTPTS', `scale=${W}:${H}:flags=lanczos`]
+  const vf = [`fps=${FPS}`, `trim=start=${from}:duration=${len}`, 'setpts=PTS-STARTPTS']
+  if (e.crop !== undefined) {
+    const cw = Math.round((1080 * 9) / 16)
+    const x = Math.round(Math.min(1920 - cw, Math.max(0, e.crop * 1920 - cw / 2)))
+    vf.push(`crop=${String(cw)}:1080:${String(x)}:0`)
+  }
+  vf.push(`scale=${W}:${H}:flags=lanczos`)
   if (e.warp) vf.push(...warpFilter(e.warp, len))
   vf.push('format=yuv420p')
   run('ffmpeg', ['-y', '-v', 'error', '-safe', '0', '-f', 'concat', '-i', list, '-vf', vf.join(','), ...enc, file])
@@ -190,7 +194,7 @@ async function main() {
     for (const e of EDIT) {
       const file = resolve(WORK, `${e.cue}.mp4`)
       if (e.take) {
-        if (!existsSync(resolve(TAKE, e.take, 'frames.json'))) { console.log(`  ${e.cue.padEnd(6)} ${e.take} 안 찍었다 — 건너뛴다`); missing++; continue }
+        if (!existsSync(resolve(e.crop === undefined ? TAKE : resolve(ROOT, '.audit/reels/take/16x9'), e.take, 'frames.json'))) { console.log(`  ${e.cue.padEnd(6)} ${e.take} 안 찍었다 — 건너뛴다`); missing++; continue }
         if (!cardsOnly || !existsSync(file)) takeClip(e, file)
       } else await cardClip(page, e, file)
       clips.push({ file, cue: e.cue, fade: overlap(e), trans: e.trans ?? 'fade', seconds: duration(file) })

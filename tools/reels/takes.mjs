@@ -1,6 +1,7 @@
 // 트레일러의 장면들 — `docs/orders/REELS_20261003.md`의 큐 번호 그대로다
 //
 // `cp`는 확인 지점(`src/engine/dev/checkpoints.ts`), `steps`는 찍기 전에 세우는 것, `seconds`는 찍는 길이다.
+// ⚠️ 야외는 `hour`를 꼭 준다 — 안 주면 실제 시계를 따라가 새벽에 찍은 장면이 밤이 된다(창기둥이 그랬다).
 // 찍는 동안: `hold`(키를 누른 채 — 걷기), `move`(카메라 움직임 — `dolly` · `yaw`), `recKeys`(그 시각에 누를 키).
 // 큐의 길이보다 넉넉히 찍고 묶을 때 자른다 (`assemble.mjs`의 `cut`). 자리는 `--still`로 한 장씩 찍어 맞춘다
 
@@ -69,7 +70,8 @@ export const TAKES = [
       { do: 'click', selector: '[data-pilot="pocket-2"]', after: 900 }],
     settle: 300, seconds: 10, recKeys: [{ at: 0.2, key: 'z' }],
   },
-  { id: 'C9-rival', what: '라이벌전 — 등장 · 클로즈업 · 내보내기', cp: 'rival', steps: [], settle: 0, seconds: 9 },
+  // 확인 지점 `rival`은 뛰어드는 동안 배틀이 시작돼 등장이 찍힐 때도 안 찍힐 때도 있었다 — 풀숲에 서서 같은 편성(247)을 부른다
+  { id: 'C9-rival', what: '라이벌전 — 등장 · 내보내기', cp: 'grass', steps: [{ do: 'hour', hour: 15 }, { do: 'trainer', id: 247, after: 100 }], settle: 0, seconds: 9 },
 
   // ── D. 여정 몽타주 ──
   {
@@ -104,7 +106,7 @@ export const TAKES = [
     seconds: 2.5, move: { type: 'yaw', seconds: 2.5, from: 100, to: 190, pitch: 3 },
   },
   {
-    id: 'D7-forest', what: '영원의 숲 길 — 3인칭 부감', cp: 'forest', steps: [], seconds: 2.5,
+    id: 'D7-forest', what: '영원의 숲 길 — 3인칭 부감', cp: 'forest', steps: [{ do: 'hour', hour: 13 }], seconds: 2.5,
     move: { type: 'dolly', rel: true, from: { eye: [-8, 14, 10], gaze: [0, 0, -2] }, to: { eye: [-2, 14, 6], gaze: [2, 0, -6] } },
   },
   {
@@ -129,7 +131,7 @@ export const TAKES = [
 
   // ── E. 동상 · 반전 ──
   {
-    id: 'E2-spear', what: '창기둥 — 높은 곳에서 천천히 밀기', cp: 'spear', steps: [{ do: 'hideText' }], seconds: 3,
+    id: 'E2-spear', what: '창기둥 — 높은 곳에서 천천히 밀기', cp: 'spear', steps: [{ do: 'hour', hour: 14 }, { do: 'hideText' }], seconds: 3,
     move: { type: 'dolly', rel: true, from: { eye: [0, 26, 26], gaze: [0, 0, -6] }, to: { eye: [0, 18, 15], gaze: [0, 0, -8] } },
   },
   {

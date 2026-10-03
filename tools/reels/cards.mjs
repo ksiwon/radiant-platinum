@@ -69,7 +69,7 @@ gr.addColorStop(0,'rgba(220,235,255,'+k+')');gr.addColorStop(1,'rgba(120,170,255
   if (kind === 'tunnel') {
     // 칸 길이 — 앞 넷 0.8 · 가운데 0.45 · 뒤 여섯 0.3 · 플래티넘 0.9, 합을 A2 길이로 맞춘다
     const raw = LINEUP.map((_, i) => (i === PLATINUM ? 0.9 : i < 4 ? 0.8 : i >= LINEUP.length - 6 ? 0.3 : 0.45))
-    const A2 = short ? 6.0 : 11.0
+    const A2 = short ? 4.5 : 11.0
     const sum = raw.reduce((a, b) => a + b, 0)
     const slots = raw.map((d) => (d * A2) / sum)
     return `${head}<canvas id="cv" width="${W}" height="${H}"></canvas>
@@ -95,8 +95,10 @@ const hue=p.c<0.8?'150,195,255':'235,245,255';g.strokeStyle='rgba('+hue+','+al.t
 g.beginPath();g.moveTo(W/2+Math.cos(p.a)*r1,H/2+Math.sin(p.a)*r1);g.lineTo(W/2+Math.cos(p.a)*r0,H/2+Math.sin(p.a)*r0);g.stroke()}
 g.globalCompositeOperation='source-over'}
 function show(i,k,dir,extra){// k: 칸 안의 진행 0~1, dir: 1 앞으로 · -1 감기
-const [n,y]=L[i];const big=n.length>14?0.62:n.length>9?0.8:1;const fs=(PORTRAIT?96:136)*U*big;
-tt.textContent=n;yy.textContent=String(y);tt.style.fontSize=fs+'px';yy.style.fontSize=(PORTRAIT?44:52)*U+'px';
+const [n,y]=L[i];const fs=(PORTRAIT?124:136)*U;
+tt.textContent=n;yy.textContent=String(y);tt.style.fontSize=fs+'px';
+// 긴 제목은 화면 폭에 맞춰 줄인다 — 글자 수로 단계를 나누면 세로 화면에서 「브릴리언트 다이아몬드·샤이닝 펄」이 손톱만 해졌다
+const ww=tt.scrollWidth,room=W*(PORTRAIT?0.9:0.8);if(ww>room)tt.style.fontSize=(fs*room/ww)+'px';yy.style.fontSize=(PORTRAIT?44:52)*U+'px';
 let sc,al;if(dir>0){const a=easeOut(k/0.35),b=ease((k-0.8)/0.2);sc=0.25+0.75*a+2.2*b;al=a*(1-b)}else{sc=1.6-0.6*easeOut(k);al=1-Math.abs(k-0.5)*1.6}
 sc*=1+(extra||0)*0.06;box.style.transform='scale('+sc.toFixed(4)+')';box.style.opacity=clamp(al).toFixed(3);
 const gl=(i===P?1:0.35)+(extra||0)*2;box.style.filter='drop-shadow(0 0 '+(10*gl*U)+'px rgba(140,190,255,0.9)) drop-shadow(0 0 '+(36*gl*U)+'px rgba(90,140,255,'+(0.4+0.3*(extra||0))+'))'}
@@ -147,7 +149,7 @@ const x=(t-0.9)/1.1;sw.style.left=(-40+170*clamp(x))+'%';sw.style.opacity=(x>0&&
     return `${head}<div class="c" id="box" style="padding:0 ${portrait ? 70 : 240}px">
 <div style="font-size:${(portrait ? 58 : 60) * u}px;font-weight:700;color:#eef3ff">팬 프로젝트 · 브라우저에서 바로 플레이</div>
 <div style="font-size:${(portrait ? 54 : 50) * u}px;font-weight:600;color:#9cc4ff;margin-top:${34 * u}px;letter-spacing:${2 * u}px">radiant.siwon.it.kr</div>
-<div style="font-size:${(portrait ? 30 : 26) * u}px;font-weight:400;color:#8b93a3;margin-top:${(portrait ? 110 : 90) * u}px;line-height:1.7;max-width:${portrait ? 900 : 1300}px">
+<div style="font-size:${(portrait ? 34 : 26) * u}px;font-weight:400;color:#8b93a3;margin-top:${(portrait ? 110 : 90) * u}px;line-height:1.7;max-width:${portrait ? 900 : 1300}px">
 플레이하려면 본인이 가진 포켓몬스터 플래티넘의 원본 롬과<br>브릴리언트 다이아몬드·샤이닝 펄의 원본 게임 데이터가 필요합니다.<br>어느 것도 제공하지 않습니다.</div></div>
 <script>${common}const b=document.getElementById('box');window.draw=(t)=>{b.style.opacity=(ease(t/0.6)*(1-ease((t-6.5)/0.5))).toFixed(3)}</script>`
   }
