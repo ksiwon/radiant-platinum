@@ -17,6 +17,7 @@
 // 스윙 축이 내린 각만큼 함께 돌아가 앞뒤가 아니라 좌우로 흔들린다.
 import { Object3D, Quaternion, Vector3 } from 'three'
 import { BDSP_TO_WORLD } from '../model/normalize'
+import { armDropBiasOf } from './armDrop'
 import { BIKE, bikeLean, pedalPoint } from './bike'
 import { hopGait, idleBreath, phaseRate, sampleGait } from './gait'
 
@@ -92,6 +93,14 @@ export interface Rig {
   limbs: Limbs
   phase: number
   elapsed: number
+  /**
+   * 이 몸의 팔 내림 보정(rad) — `gait`의 `armDrop`에 더한다.
+   *
+   * `armDrop`은 주인공 몸(`pc0002_00`)의 몸통 폭에서 잰 값이다. 바인드 팔은 몸마다 똑같이 수평이고 내린 뒤의 상완도 똑같이
+   * 연직에서 19~20°인데(번들 91벌 실측), **몸통이 넓은 몸**(갤럭시단 조무래기 · 정장 · 두꺼운 옷)은 그 각에서 팔이 옆구리에서
+   * 떠서 A자로 섰다. 몸마다 팔꿈치가 옆구리에 닿기 직전인 내림이 다르다 — 그 차를 여기 둔다 (`npcArmDrop`)
+   */
+  armDropBias: number
 }
 
 const worldRot = new Quaternion()
@@ -139,8 +148,10 @@ function makeJoint(node: Object3D, frameInv: Quaternion): Joint {
  * ⚠️ **어느 방향을 보고 있든 같은 리그가 나와야 한다.** 그래서 각도와 길이를
  * 전부 `bobTarget`의 부모(그 사람의 틀) 기준으로 잰다 — 주인공은 모델을 갈아
  * 끼울 때 이미 걷던 방향으로 돌아 있고, 그때 만든 리그가 곧 그 사람의 자세다.
+ *
+ * `model`은 그 몸의 번들 이름이나 경로다 — 몸통이 넓은 몸은 팔을 더 내린다 (`armDrop`의 `ARM_DROP_BIAS`)
  */
-export function createRig(root: Object3D, bobTarget: Object3D): Rig | null {
+export function createRig(root: Object3D, bobTarget: Object3D, model?: string): Rig | null {
   const found = new Map<string, Object3D>()
   // 틀부터 조상까지 먼저 갱신한다 — 뼈의 월드 회전이 이 사슬 위에 얹힌다
   const frame = bobTarget.parent ?? bobTarget
@@ -196,7 +207,7 @@ export function createRig(root: Object3D, bobTarget: Object3D): Rig | null {
   return {
     joints, hinge, bobTarget, limbs,
     bobBase: bobTarget.position.y, bobBaseZ: bobTarget.position.z,
-    phase: 0, elapsed: 0,
+    phase: 0, elapsed: 0, armDropBias: armDropBiasOf(model),
   }
 }
 
@@ -487,12 +498,13 @@ export function updateLocomotion(
   const swingL = FORWARD * (g.armL + g.armBias)
   const swingR = FORWARD * (g.armR + g.armBias)
   const arm = 1 - SHOULDER_SHARE
+  const drop = g.armDrop + rig.armDropBias
   apply(j.LShoulder, 'LShoulder',
-    swingL * SHOULDER_SHARE, -g.armDrop * SHOULDER_SHARE)
+    swingL * SHOULDER_SHARE, -drop * SHOULDER_SHARE)
   apply(j.RShoulder, 'RShoulder',
-    swingR * SHOULDER_SHARE, g.armDrop * SHOULDER_SHARE)
-  apply(j.LArm, 'LArm', swingL * arm, -g.armDrop * arm)
-  apply(j.RArm, 'RArm', swingR * arm, g.armDrop * arm)
+    swingR * SHOULDER_SHARE, drop * SHOULDER_SHARE)
+  apply(j.LArm, 'LArm', swingL * arm, -drop * arm)
+  apply(j.RArm, 'RArm', swingR * arm, drop * arm)
   // 팔꿈치는 팔이 다 내려온 뒤의 자세에서 몸 앞으로 굽어야 한다 (applyElbow 주석 참고)
   applyElbow(rig, 'LForeArm', 'LArm', g.forearmL)
   applyElbow(rig, 'RForeArm', 'RArm', g.forearmR)

@@ -262,16 +262,17 @@ function CeremonyPlayer({ gender }: { gender: 'boy' | 'girl' }) {
   const group = useRef<Group>(null)
   const wrapper = useRef<Group>(null)
   // 받는 것은 오프닝과 같다. 안 오면 플레이어만 없는 채로 포켓몬 장면은 계속 돈다
-  const model = usePersonModel(playerModelPath(gender))
+  const path = playerModelPath(gender)
+  const model = usePersonModel(path)
   /** 서 있는 자세 — 안 돌리면 바인드 자세(T)로 선다. 오프닝과 같은 절차형이다 (`IntroStage`) */
   const rig = useRef<Rig | null>(null)
 
   useLayoutEffect(() => {
     if (!wrapper.current || !model) return
     normalizeModel(wrapper.current, model, PLAYER_HEIGHT)
-    rig.current = createRig(model, wrapper.current)
+    rig.current = createRig(model, wrapper.current, path)
     return () => { rig.current = null }
-  }, [model])
+  }, [model, path])
 
   useFrame((_, delta) => {
     if (rig.current) updateLocomotion(rig.current, delta, 0, WALK_SPEED, RUN_SPEED)

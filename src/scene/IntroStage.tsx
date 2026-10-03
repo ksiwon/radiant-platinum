@@ -128,7 +128,7 @@ function Person({
     }
     // 리그는 정규화 **이후**에 만든다 — 본의 월드 회전에서 축을 뽑기 때문에
     // 래퍼 변환이 확정된 뒤라야 축이 맞는다 (`PlayerModel`과 같은 순서)
-    rig.current = createRig(model, wrapper.current)
+    rig.current = createRig(model, wrapper.current, path)
     return () => { rig.current = null }
   }, [model, path])
 

@@ -112,7 +112,7 @@ export function PlayerModel() {
     // 리그는 정규화 **이후**에 만든다. 본의 월드 회전에서 로컬 축을 뽑기 때문에
     // 래퍼 변환이 확정된 뒤라야 축이 맞는다.
     // bob은 본이 아니라 래퍼에 건다 — 스킨 바인드를 건드리지 않는다
-    const rig = createRig(gltf.scene, normRef.current)
+    const rig = createRig(gltf.scene, normRef.current, modelPath)
     sceneRefs.playerRig = rig
     if (import.meta.env.DEV && !rig) {
       console.warn('[model] 보행 리그를 만들지 못했다 — 필요한 본이 없다. 바인드 포즈로 둔다')

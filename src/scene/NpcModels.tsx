@@ -551,7 +551,7 @@ function build(
     else normalizeModel(inner, body, height)
     // 리그는 정규화 **이후**에 만든다 — 본의 월드 회전에서 로컬 축을 뽑기 때문에
     // 래퍼 변환이 확정된 뒤라야 축이 맞는다 (`PlayerModel`과 같은 순서)
-    rigs.push(createRig(body, inner))
+    rigs.push(createRig(body, inner, bundle))
     // ⚠️ **틀은 `inner`가 아니라 `outer`다.** `inner`는 키를 맞추느라 배율이
     // 걸려 있어서, 그 안에서 재면 한 바퀴 거리가 몸 크기만큼 어긋난다
     bodies.push({ body, frame: outer, rest: captureRest(body) })
