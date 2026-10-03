@@ -138,48 +138,30 @@ function Weather({ weather }: { weather: string | null }) {
 
 function StatusAura({ mon, slot, position }: { mon: ViewMon; slot: SlotId; position: [number, number] }) {
   const hostRef = useRef<Group>(null)
-  const rootRef = useRef<Group>(null)
-  const ringRef = useRef<Mesh>(null)
   const color = statusAuraColor(mon.status)
   const confused = mon.volatiles.has('confusion')
   const seeded = mon.volatiles.has('leechseed')
   const substitute = mon.volatiles.has('substitute')
 
-  useFrame(({ clock }) => {
+  useFrame(() => {
     // 몸은 볼이 열릴 때까지 안 나온다 (`stageRefs.ballOpen`) — 몸에 붙는 것도 같이 기다린다.
     // 안 그러면 등판할 때 볼이 날아오기 전에 반짝이부터 보였다
     if (hostRef.current) hostRef.current.visible = battleClock.now() >= (ballOpen[slot] ?? 0)
-    const time = clock.elapsedTime
-    if (rootRef.current) rootRef.current.rotation.y = time * 1.6
-    if (ringRef.current) {
-      ringRef.current.position.y = 1.15 + Math.sin(time * 2.4) * 0.14
-      ringRef.current.rotation.z = time * 1.8
-    }
   })
 
   return (
     <group ref={hostRef} position={[position[0], 0, position[1]]}>
-      {color && (
-        <group ref={rootRef}>
-          <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]}>
-            <torusGeometry args={[0.72, 0.045, 7, 28]} />
-            <meshBasicMaterial color={color} transparent opacity={0.72} toneMapped={false} />
+      {/*
+        ⚠️ **상태이상에 몸을 도는 고리 · 마름모를 안 띄운다** (I-p09-0). 원작은 상태를 HP 칸의 표식으로만 내내 보이고, 몸에는
+        피해 틱 때 잠깐 연출이 날 뿐이다. 몸 크기와 상관없는 고정 크기 토러스가 등의 나무를 뚫고, 옆에서 보면 상대 쪽까지 뻗은
+        주황 원판으로 읽혔다
+      */}
+      {color && mon.status === 'frz' && (
+        <group>
+          <mesh position={[0, 0.75, 0]} scale={[0.72, 1.05, 0.72]}>
+            <icosahedronGeometry args={[1, 1]} />
+            <meshStandardMaterial color="#b9f4ff" transparent opacity={0.26} roughness={0.08} />
           </mesh>
-          {Array.from({ length: 6 }, (_, index) => {
-            const angle = index / 6 * Math.PI * 2
-            return (
-              <mesh key={index} position={[Math.cos(angle) * 0.62, 0.35 + (index % 3) * 0.28, Math.sin(angle) * 0.62]}>
-                <octahedronGeometry args={[0.1, 0]} />
-                <meshBasicMaterial color={color} transparent opacity={0.68} toneMapped={false} />
-              </mesh>
-            )
-          })}
-          {mon.status === 'frz' && (
-            <mesh position={[0, 0.75, 0]} scale={[0.72, 1.05, 0.72]}>
-              <icosahedronGeometry args={[1, 1]} />
-              <meshStandardMaterial color="#b9f4ff" transparent opacity={0.26} roughness={0.08} />
-            </mesh>
-          )}
         </group>
       )}
       {confused && (
