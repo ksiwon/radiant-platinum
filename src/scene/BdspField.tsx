@@ -14,7 +14,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { AdditiveBlending, Mesh, MeshStandardMaterial, Vector3, type Group, type Material, type Object3D } from 'three'
+import {
+  AdditiveBlending, Box3, CircleGeometry, Fog, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3,
+  type Group, type Material, type Object3D,
+} from 'three'
 import { MeshStandardNodeMaterial, type Node } from 'three/webgpu'
 import {
   cameraPosition, color, cos, dot, float, mix, normalize, positionWorld, pow, saturate, time,
@@ -23,7 +26,7 @@ import {
 import { assets } from '../data/providers/assetProvider'
 import { worldState } from '../state/worldState'
 import { firstPersonView } from '../engine/actor/camera'
-import { fieldFade, type FieldFade } from './fieldFade'
+import { fieldFade, isGround, type FieldFade } from './fieldFade'
 import { bdspLights, type BdspLights } from './bdspLights'
 import { disposeTree } from './disposeTree'
 import { useBdspMark } from './bdspReady'
@@ -346,6 +349,8 @@ interface Built {
   scene: Group
   fade: FieldFade
   lights: BdspLights
+  /** 가장 낮은 땅 (`lowestGround`) — 안개 바닥이 쓴다 */
+  low: number | null
 }
 
 /** 뗀 지역을 이만큼(벌) 쥐고 있는다 — 집 한 채 드나드는 사이 둘레 지역(대개 1~2벌)이 남는다 */
@@ -398,7 +403,7 @@ function build(scene: Group): Built {
   // ⚠️ **흐림이 먼저다.** `fieldFade`가 건물 재질을 복제해 갈아 끼우므로, 빛을 먼저 펴면 발광을 맞추는 쪽이 버려진 재질을 쥔다
   const fade = fieldFade(scene)
   const lights = bdspLights(scene)
-  return { scene, fade, lights }
+  return { scene, fade, lights, low: lowestGround(scene) }
 }
 
 function FieldArea({ name }: { name: string }) {
@@ -434,6 +439,7 @@ function FieldArea({ name }: { name: string }) {
     const attach = (b: Built): void => {
       b.lights.update(worldState.time.gameHour)
       release = [holdBdspDoors(b.scene), holdBdspSigns(b.scene)]
+      if (b.low !== null) standingGround.set(name, b.low)
       setBuilt(b)
     }
     // 쥐어 둔 벌은 이미 구워 그렸던 것이다
@@ -465,13 +471,85 @@ function FieldArea({ name }: { name: string }) {
     return () => {
       alive = false
       for (const r of release) r()
+      standingGround.delete(name)
       if (mine) holdField(name, mine)
     }
   }, [name])
   return built ? <primitive object={built.scene} /> : null
 }
 
+// ── 안개 바닥 ────────────────────────────────────────────────────────────────────────────────────────────
+//
+// ⚠️ **땅이 끝나는 금이 하늘에 칼로 자른 듯 선다** (연고시티 북쪽 1인칭 · 3인칭 화면 위 끝). 그 칸은 원작 행렬의 구멍이라 원작에도
+// 없고 BDSP 지역도 풀밭 11칸으로 끝난다 — 산 · 숲은 롬 · BDSP 어디에도 근거가 없어 그리지 않는다(HANDOFF_20261003 §3-2).
+// 거슬리는 것은 빈 것이 아니라 잘린 금이다. 그래서 주인공을 따라오는 넓은 바닥을 **선 지역의 가장 낮은 땅보다 조금 아래**에 깔고
+// 그때의 안개 빛으로 칠한다. 진짜 땅이 있는 곳은 그 위에 서서 안 보이고, 땅이 끝나는 곳에서만 땅이 안개 속으로 이어지는 것처럼
+// 읽힌다 — 새로 그린 사물은 0이다. 원작 행렬의 다른 구멍과 절벽 아래 허공도 같이 덮는다.
+//
+// 높이를 주인공 발밑에서 재지 않는 까닭 — 언덕 위에서 내려다보면 아랫마을이 바닥 밑으로 묻힌다. 지역마다 땅 재질(`isGround`)의
+// 가장 낮은 높이를 세울 때 한 번 재 두고, 지금 선 지역 중 가장 낮은 것을 쓴다
+
+/** 바닥을 가장 낮은 땅보다 이만큼 내린다 (칸) — 먼 곳에서도 깊이가 안 싸운다 */
+export const FOG_FLOOR_DROP = 0.3
+/** 바닥의 반지름 (칸) — 안개 끝(낮 130칸)을 넉넉히 넘는다 */
+const FOG_FLOOR_RADIUS = 600
+
+/** 지금 붙은 지역의 가장 낮은 땅 높이 — 지역 이름 → y */
+const standingGround = new Map<string, number>()
+
+/** 지금 선 지역들 중 가장 낮은 땅 — 붙은 것이 없으면 `null` */
+export function fogFloorY(lows: Iterable<number> = standingGround.values()): number | null {
+  let low = Infinity
+  for (const y of lows) low = Math.min(low, y)
+  return Number.isFinite(low) ? low - FOG_FLOOR_DROP : null
+}
+
+/** `root` 아래 땅 재질 메시의 월드 최저 높이 — 없으면 `null` */
+export function lowestGround(root: Object3D): number | null {
+  root.updateMatrixWorld(true)
+  const box = new Box3()
+  root.traverse((o) => {
+    if (!(o instanceof Mesh)) return
+    const mats = (Array.isArray(o.material) ? o.material : [o.material]) as Material[]
+    if (isGround(mats)) box.expandByObject(o)
+  })
+  return box.isEmpty() ? null : box.min.y
+}
+
+function FogFloor() {
+  const scene = useThree((s) => s.scene)
+  const [mesh] = useState(() => {
+    const m = new Mesh(
+      new CircleGeometry(FOG_FLOOR_RADIUS, 64).rotateX(-Math.PI / 2),
+      new MeshBasicMaterial({ fog: true }),
+    )
+    m.name = 'fogFloor'
+    m.castShadow = false
+    m.receiveShadow = false
+    m.frustumCulled = false
+    m.visible = false
+    return m
+  })
+  useEffect(() => () => {
+    mesh.geometry.dispose()
+    ;(mesh.material as Material).dispose()
+  }, [mesh])
+  useFrame(() => {
+    const y = fogFloorY()
+    mesh.visible = y !== null
+    if (y === null) return
+    const fog = scene.fog
+    if (fog instanceof Fog) (mesh.material as MeshBasicMaterial).color.copy(fog.color)
+    const p = worldState.player.position
+    mesh.position.set(p.x, y, p.z)
+  })
+  return <primitive object={mesh} />
+}
+
 /** 걷는 동안 지역이 바뀌면 그 자리에서 갈아 끼운다 — 목록이 곧 세울 것이다 (`useBdspFields`) */
 export function BdspField({ near }: { near: readonly string[] }) {
-  return <>{near.map((n) => <FieldArea key={n} name={n} />)}</>
+  return <>
+    {near.map((n) => <FieldArea key={n} name={n} />)}
+    {near.length > 0 && <FogFloor />}
+  </>
 }

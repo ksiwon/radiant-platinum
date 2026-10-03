@@ -1,9 +1,10 @@
 // BDSP 지역 (`BdspField`) — 세우는 거리 · 쥐었다 다시 붙이기 · 물 · 풀 · 빛 줄기
 import { closeSync, existsSync, openSync, readdirSync, readSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
-import { DoubleSide, Group, Mesh, MeshStandardMaterial, PlaneGeometry, Texture, Vector3 } from 'three'
+import { BoxGeometry, DoubleSide, Group, Mesh, MeshStandardMaterial, PlaneGeometry, Texture, Vector3 } from 'three'
 import { MeshStandardNodeMaterial } from 'three/webgpu'
 import {
+  FOG_FLOOR_DROP, fogFloorY, lowestGround,
   boxDistance, FOLIAGE_NORMAL, foliageMaterial, HELD, heldFields, holdField, isFoliage, isLightShaft, liveFoliage, liveWater, WATER_SINK,
   nearestFirst, pickFields, reachFor, takeField, WATER_LOOKS, WATER_METALNESS, WATER_ROUGHNESS, waterLookOf, waterMaterial,
 } from './BdspField'
@@ -66,6 +67,7 @@ describe('뗀 지역 쥐기', () => {
     scene: Object.assign(new Group(), { name: tag }),
     fade: {} as FieldFade,
     lights: {} as BdspLights,
+    low: null,
   })
   afterEach(() => { for (const n of heldFields()) takeField(n) })
 
@@ -86,6 +88,32 @@ describe('뗀 지역 쥐기', () => {
     holdField('area001', b, () => {})
     expect(takeField('area001')).toBe(b)
     expect(takeField('area001')).toBeNull()
+  })
+})
+
+describe('안개 바닥 (HANDOFF_20261003 §3-2)', () => {
+  const slab = (name: string, y: number): Mesh => {
+    const m = new Mesh(new BoxGeometry(10, 1, 10), new MeshStandardMaterial({ name }))
+    m.position.y = y
+    return m
+  }
+
+  it('땅 재질의 가장 낮은 높이를 잰다 — 집 · 나무는 안 센다', () => {
+    const root = new Group()
+    root.add(slab('M_C_001_Ground_01_01', 5), slab('M_C_001_Cliff_01_01', 2), slab('M_T_001_House_01', -20))
+    // 절벽 판(가운데 2 · 두께 1)의 밑이 1.5다. 땅 밑 깊은 곳의 집은 땅이 아니다
+    expect(lowestGround(root)).toBeCloseTo(1.5, 6)
+  })
+
+  it('땅이 없으면 모른다', () => {
+    const root = new Group()
+    root.add(slab('M_T_001_House_01', 0))
+    expect(lowestGround(root)).toBeNull()
+  })
+
+  it('선 지역 중 가장 낮은 땅보다 조금 아래에 깐다 — 주인공 발밑이 아니다', () => {
+    expect(fogFloorY([12, 3.5, 40])).toBeCloseTo(3.5 - FOG_FLOOR_DROP, 6)
+    expect(fogFloorY([])).toBeNull()
   })
 })
 
