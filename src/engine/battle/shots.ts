@@ -63,6 +63,16 @@ export const CAMERA: { readonly position: Vec3; readonly look: Vec3 } = {
 }
 
 /**
+ * 내 첫 볼이 열린 뒤 겨누는 높이(m) — `CAMERA.look`의 y를 이것으로 낮춘다 (`BattleStage.useBattleCamera`).
+ *
+ * ⚠️ **등장 장면과 명령 고르는 동안의 구도가 다르다** (I-p02-7 · I-p04-7). 0.4로 겨누면 실내 무대(거리 배율 `cameraFit` 0.88)에서
+ * 내 것의 발이 화면 세로 93.4%에 서서 대사창(85.6%부터)이 몸 아래 절반을 덮었고, 풀밭(배율 1)도 85.8%로 대사창 끝에 걸렸다.
+ * 0.1이면 0.88에서 81.7% · 1에서 76.2%다. 그런데 0.1로 내내 겨누면 등장 장면에 선 주인공(깊이 0.8 · 키 1.65m)의 머리가 화면
+ * 위로 잘린다 — 둘은 한 화면에 같이 안 나오므로 볼이 열린 뒤에 내린다. 원작 값이 아니다(DS 카메라는 안 움직인다)
+ */
+export const FIGHT_LOOK_Y = 0.1
+
+/**
  * 카메라가 무대 한가운데에서 떨어진 **수평** 거리(m).
  *
  * `battle/arena`의 `cameraFit`이 좁은 무대에서 얼마나 당길지를 이 값으로 잰다
@@ -136,10 +146,10 @@ export function viewDepth(point: Vec3): number {
  *
  * `fit`은 `BattleStage.useBattleCamera`가 거는 거리 배율이다 — 카메라가 보는 점(`CAMERA.look`)
  * 쪽으로 그만큼 다가가거나 물러난다(실내 무대 0.88 · 더블 ×1.35). `aspect`는 화면의 가로÷세로.
- * 카메라 뒤에 있으면 깊이가 0 이하라 둘 다 무한대로 준다 — 「화면 안」이 아니다
+ * 카메라 뒤에 있으면 깊이가 0 이하라 둘 다 무한대로 준다 — 「화면 안」이 아니다. `ly`는 겨누는 높이다(볼이 열린 뒤 `FIGHT_LOOK_Y`)
  */
-export function battleNdc(point: Vec3, aspect: number, fit = 1): [number, number] {
-  const [lx, ly, lz] = CAMERA.look
+export function battleNdc(point: Vec3, aspect: number, fit = 1, ly = CAMERA.look[1]): [number, number] {
+  const [lx, , lz] = CAMERA.look
   const eye: Vec3 = [
     lx + (CAMERA.position[0] - lx) * fit,
     ly + (CAMERA.position[1] - ly) * fit,

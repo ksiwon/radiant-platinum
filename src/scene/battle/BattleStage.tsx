@@ -50,7 +50,7 @@ import { spriteKey } from '../../engine/pokemon/form'
 import { MoveVfx } from './MoveVfx'
 import { BattleAtmosphere } from './BattleAtmosphere'
 import { MOVE_FRAMES, moveFramesOf } from '../../engine/battle/vfx'
-import { CAMERA, PAIR_DIR, pairOffset, SLOT } from '../../engine/battle/shots'
+import { CAMERA, FIGHT_LOOK_Y, PAIR_DIR, pairOffset, SLOT } from '../../engine/battle/shots'
 import { useOptionsStore } from '../../state/optionsStore'
 import {
   BACK_DIR,
@@ -954,9 +954,18 @@ export function BattleStage() {
 function useBattleCamera(fit: number): void {
   /** 지금 카메라가 선 거리 배율. 첫 프레임에는 목표 그대로 선다 */
   const shownFit = useRef<number | null>(null)
+  /** 지금 겨누는 높이. 내 첫 볼이 열리면 `FIGHT_LOOK_Y`로 내려간다 */
+  const shownAim = useRef<number | null>(null)
   const time = useRef(new ClockReader())
   useFrame(() => {
     const dt = time.current.read(battleClock.now())
+    // ⚠️ **등장 장면은 트레이너를, 그 뒤는 대사창 위의 내 몸을 담는다** (`FIGHT_LOOK_Y`). 볼이 열리기 전으로 돌아가면(다음 배틀)
+    // 곧바로 올린다 — 등장 장면 첫 프레임부터 트레이너 머리가 들어 있어야 한다
+    const opensAt = ballOpen.p1a
+    const wantAim = opensAt !== undefined && battleClock.now() >= opensAt ? FIGHT_LOOK_Y : CAMERA.look[1]
+    const wasAim = shownAim.current
+    const aim = wasAim === null || wantAim >= wasAim ? wantAim : wantAim + (wasAim - wantAim) * Math.exp(-dt / CAMERA_EASE)
+    shownAim.current = aim
     // ⚠️ **물러나는 것은 곧바로, 다가가는 것은 천천히.** 큰 몸이 서는데 늦게 물러나면 머리가
     // 화면 위로 잘린다. 다가가는 쪽은 교체 순간 카메라가 튀지 않게 감쇠로 민다
     const was = shownFit.current
@@ -971,7 +980,8 @@ function useBattleCamera(fit: number): void {
     // ⚠️ **좁은 무대에서는 카메라를 당긴다.** 자리는 풀밭(반지름 12m) 기준으로
     // 적혀 있는데 실내 무대는 12×18m짜리 방이라, 그대로 두면 카메라가 벽 밖
     // 천장 위에 선다. 바라보는 자리는 그대로 두고 거리만 줄인다
-    const [lx, ly, lz] = CAMERA.look
+    const [lx, , lz] = CAMERA.look
+    const ly = aim
     battleStage.position
       .set(
         lx + (CAMERA.position[0] - lx) * at + quake,

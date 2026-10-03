@@ -3,7 +3,10 @@
 // 카메라가 한 자리에 서므로 여기서 잴 것은 **그 한 자리가 무대를 제대로
 // 담는가**와, 더블에서 짝을 벌리는 두 방향이 그 시선에서 뽑혔는가다.
 import { describe, it, expect } from 'vitest'
-import { BATTLE_FOV, CAMERA, PAIR_DEPTH, PAIR_DIR, SHOT_REACH, SLOT, type Side, type Vec3 } from './shots'
+import {
+  BATTLE_FOV, battleNdc, CAMERA, FIGHT_LOOK_Y, PAIR_DEPTH, PAIR_DIR, SHOT_REACH, SLOT, type Side, type Vec3,
+} from './shots'
+import { ARENA, cameraFit } from './arena'
 
 const SIDES: Side[] = ['p1', 'p2']
 
@@ -59,6 +62,35 @@ describe('카메라', () => {
       // 실측 — 내 쪽 깊이 3.75·옆 1.05(0.279) · 상대 7.62·1.05(0.137).
       // 가로 한계가 0.402다
       expect(lateral / depth, side).toBeLessThan(half)
+    }
+  })
+})
+
+describe('볼이 열린 뒤의 구도 (I-p02-7 · I-p04-7)', () => {
+  /** 대사창의 위 끝 — 1280×800에서 y 685 (NDC) */
+  const DIALOG_TOP = 1 - 2 * (685 / 800)
+  /** 몸 없이 무대만으로 정해지는 거리 배율들 — 실내 0.88부터 */
+  const FITS = [...new Set(ARENA.map((a) => cameraFit(a, 0)))]
+
+  it('내 것의 발이 대사창 위에 선다 — 제일 다가선 실내 무대에서도', () => {
+    expect(Math.min(...FITS)).toBeLessThan(0.9)
+    for (const fit of FITS) {
+      for (const aspect of [1.5, 1.6, 16 / 9]) {
+        const [, feet] = battleNdc([SLOT.p1.x, 0, SLOT.p1.z], aspect, fit, FIGHT_LOOK_Y)
+        expect(feet, `fit ${fit}`).toBeGreaterThan(DIALOG_TOP + 0.05)
+      }
+    }
+  })
+
+  it('예전 겨눔(0.4)이면 실내에서 발이 대사창 밑이었다 — 이 시험이 뜻이 있는 자리', () => {
+    const [, feet] = battleNdc([SLOT.p1.x, 0, SLOT.p1.z], 1.6, Math.min(...FITS), CAMERA.look[1])
+    expect(feet).toBeLessThan(DIALOG_TOP)
+  })
+
+  it('상대의 1.2m 머리끝은 화면 안이다', () => {
+    for (const fit of FITS) {
+      const [, head] = battleNdc([SLOT.p2.x, 1.2, SLOT.p2.z], 1.6, fit, FIGHT_LOOK_Y)
+      expect(head, `fit ${fit}`).toBeLessThan(0.9)
     }
   })
 })
