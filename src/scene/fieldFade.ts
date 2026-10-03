@@ -63,6 +63,20 @@ export function isGround(materials: readonly Material[]): boolean {
   return materials.length > 0 && materials.every((m) => GROUND.test(m.name))
 }
 const GROUND = /_(Ground|Cliff|Floor|Ceil|Wall|ComWall|RockTop|Pond|Stair|OutStair|DungeonStair|SnowCover|Curb|Water|Sea|Mural|RootShadow)/
+
+/**
+ * 건물인가 — 같은 메시가 한 지역에 두 번 넘게 서면 인스턴스로 구워지므로(`import/bdsp/field.ts`) 나무와 같은 길로 온다.
+ * 건물은 다가가도 안 줄인다 — 연고시티 관문 넷(`M_C_001_BarrierGate_01` · area004에 사본 여덟)이 문간에서 땅으로 꺼졌다.
+ * 흐림은 인스턴스마다 못 걸므로 그대로 둔다(가리는 쪽이 꺼지는 쪽보다 낫다).
+ *
+ * 이름의 근거 — 지역 13벌의 인스턴스 노드 643개를 재질 이름으로 모아 건물 · 붙박이만 골랐다(2026-10-03). 한 재질이라도 걸리면 건물이다
+ * (관문은 `BarrierGate`와 창 `WindowOuter`가 한 메시다)
+ */
+export function isBuilding(materials: readonly Material[]): boolean {
+  return materials.some((m) => BUILDING.test(m.name))
+}
+const BUILDING =
+  /_(House|LogHouse|Apart|Shop|FShop|Warehouse|Station|PokeCen|Gate|BarrierGate|Build|GingaBuild|HakutaiBuild|Container|Windmill|WindowOuter|Fence|Fountain|Statue|Ship|Pier|RailPillar|Roadpillar)/
 /** 목표에 이만큼 다가가면 붙인다 — 끝없이 반의반으로 다가가며 매 프레임 행렬을 고쳐 쓰지 않게 */
 const SNAP = 0.002
 
@@ -223,8 +237,8 @@ export function fieldFade(root: Object3D): FieldFade {
   root.traverse((o) => {
     if (o instanceof InstancedMesh) {
       const own = (Array.isArray(o.material) ? o.material : [o.material]) as Material[]
-      // 문짝 · 계단처럼 밟는 것은 나무가 아니다 — 줄면 그 자리가 뚫린다
-      if (own.some(isDoorLeaf) || isGround(own)) return
+      // 문짝 · 계단처럼 밟는 것은 나무가 아니다 — 줄면 그 자리가 뚫린다. 사본으로 선 건물도 나무가 아니다 (`isBuilding`)
+      if (own.some(isDoorLeaf) || isGround(own) || isBuilding(own)) return
       const g = o.geometry
       g.computeBoundingSphere()
       g.computeBoundingBox()

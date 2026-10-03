@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, MeshStandardMaterial, PlaneGeometry, Vector3,
 } from 'three'
-import { easeStep, fieldFade, GHOST, isGround } from './fieldFade'
+import { easeStep, fieldFade, GHOST, isBuilding, isGround } from './fieldFade'
 import { EASE } from './PropFade'
 
 /** 3인칭 카메라 — 주인공 뒤 8칸 · 위 4칸 */
@@ -250,6 +250,19 @@ describe('BDSP 흐림 — 나무', () => {
       for (let i = 0; i < 30; i++) fade.step(FRAME)
       expect(scaleOf(mesh), name).toBe(1)
     }
+  })
+
+  it('사본으로 선 건물은 나무가 아니다 — 안 줄인다 (연고시티 관문)', () => {
+    for (const names of [['M_C_001_BarrierGate_01'], ['M_C_001_BarrierGate_01', 'M_C_001_WindowOuter_01'], ['M_T_007_House_01']]) {
+      const { root, mesh } = tree()
+      mesh.material = names.map((name) => new MeshStandardMaterial({ name }))
+      const fade = fieldFade(root)
+      fade.aim(EYE, AIM, true)
+      for (let i = 0; i < 30; i++) fade.step(FRAME)
+      expect(scaleOf(mesh), names.join()).toBe(1)
+    }
+    expect(isBuilding([new MeshStandardMaterial({ name: 'M_C_001_Tree_05' })])).toBe(false)
+    expect(isBuilding([new MeshStandardMaterial({ name: 'M_C_001_Rock_01' })])).toBe(false)
   })
 
   it('문짝은 나무가 아니다 — 안 줄인다', () => {
