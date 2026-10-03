@@ -15,7 +15,7 @@ import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
   NPC_BUNDLE, NPC_MODEL_ALIAS, NPC_MODEL_BUNDLE, NPC_RECOLOR, SPRITE_CLASS_ALIAS, baseBundle,
-  bundlesByTag, buildOf, classOfSprite, clipFilterFor,
+  bodyGfx, bundlesByTag, buildOf, classOfSprite, clipFilterFor,
   modelFor, modelTagFor, nearestFirst, normalize, trainerModelBundle, type NpcModelTable,
 } from './npcModels'
 import { MASK_CHANNEL_PROPS } from '../../import/bdsp/albedo'
@@ -488,5 +488,17 @@ describe('모델 칸을 줄 차례', () => {
     const got = nearestFirst([hidden, at(0, 2, 'shown')], { x: 0, z: 0 },
       { ...opts, accept: (x) => x !== hidden })
     expect(got.map((c) => c.actor.name)).toEqual(['shown'])
+  })
+})
+
+describe('같은 그림의 두 사람 — 지팡이 노인', () => {
+  it('트레이너가 아닌 엑스퍼트 남은 노인 몸이다 (키우미집 할아버지)', () => {
+    expect(bodyGfx({ gfx: 17, info: { trainerType: 0 } })).toBe(164)
+  })
+  it('트레이너로 선 엑스퍼트 남은 베테랑 그대로다', () => {
+    expect(bodyGfx({ gfx: 17, info: { trainerType: 1 } })).toBe(17)
+  })
+  it('다른 그림은 그대로다', () => {
+    expect(bodyGfx({ gfx: 18, info: { trainerType: 0 } })).toBe(18)
   })
 })

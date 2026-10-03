@@ -29,7 +29,7 @@ import {
   GaitPlayer, captureRest, measureCycle, pickFieldIdleClip, pickGaitClips, recordClip, retargetClip,
   type GaitClips, type GaitSet, type RestPose,
 } from '../engine/actor/clipGait'
-import { NPC_BUNDLE, nearestFirst } from '../engine/actor/npcModels'
+import { bodyGfx, NPC_BUNDLE, nearestFirst } from '../engine/actor/npcModels'
 import { RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { DIR_STEP } from '../engine/script/movement'
 import { BDSP_TO_WORLD, normalizeModel } from '../engine/model/normalize'
@@ -364,7 +364,7 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
     for (const { actor, far } of order) {
       if (n >= MAX && crowd >= GROUP_MAX) break
       const many = GROUP_BODIES[actor.gfx]
-      const bundle = many?.tag ?? table[String(actor.gfx)]
+      const bundle = many?.tag ?? table[String(bodyGfx(actor))]
       if (bundle === undefined) continue
       const offsets = many?.offsets ?? ALONE
       // 통은 **선 몸 수까지 갈라** 잡는다 — 넷짜리 칸에 혼자를 앉히면 셋이 남는다

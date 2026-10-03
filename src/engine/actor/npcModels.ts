@@ -591,3 +591,19 @@ export function nearestFirst<A extends { x: number, z: number }>(
   }
   return [...first, ...rest.sort((a, b) => a.d - b.d)]
 }
+
+/** `OBJ_EVENT_GFX_EXPERT_M` · `OBJ_EVENT_GFX_OLD_MAN` (`generated/object_events_gfx.txt` 줄 번호 − 1) */
+const GFX_EXPERT_M = 17
+const GFX_OLD_MAN = 164
+
+/**
+ * 몸을 고를 그림 번호.
+ *
+ * ⚠️ **같은 그림이 두 사람이다.** `EXPERT_M`(롬 이름표 `oldman1` · 지팡이 노인)으로 선 트레이너 여덟이 전부 베테랑이라 그 그림은
+ * 베테랑 몸(`npcModels`의 ② 갈래)으로 구워진다. 그런데 같은 그림으로 선 **트레이너가 아닌** 사람이 스물여섯이다 — 키우미집
+ * 할아버지 · 영원시티 허브 가게 · 축복시티 노인 … (`trainer_type` `NONE`). 그 사람들이 젊은 무사풍 베테랑으로 섰다. 트레이너가
+ * 아니면 BDSP의 노인(`OLD_MAN`의 몸)으로 세운다
+ */
+export function bodyGfx(actor: { gfx: number, info: { trainerType: number } }): number {
+  return actor.gfx === GFX_EXPERT_M && actor.info.trainerType === 0 ? GFX_OLD_MAN : actor.gfx
+}
