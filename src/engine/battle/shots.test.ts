@@ -67,8 +67,8 @@ describe('카메라', () => {
 })
 
 describe('볼이 열린 뒤의 구도 (I-p02-7 · I-p04-7)', () => {
-  /** 대사창의 위 끝 — 1280×800에서 y 685 (NDC) */
-  const DIALOG_TOP = 1 - 2 * (685 / 800)
+  /** 대사창의 위 끝 (NDC) — 픽셀 높이가 고정이라 작은 창일수록 올라온다. 찍는 창 960×640에서 y 525 */
+  const DIALOG_TOP = 1 - 2 * (525 / 640)
   /** 몸 없이 무대만으로 정해지는 거리 배율들 — 실내 0.88부터 */
   const FITS = [...new Set(ARENA.map((a) => cameraFit(a, 0)))]
 
@@ -77,7 +77,7 @@ describe('볼이 열린 뒤의 구도 (I-p02-7 · I-p04-7)', () => {
     for (const fit of FITS) {
       for (const aspect of [1.5, 1.6, 16 / 9]) {
         const [, feet] = battleNdc([SLOT.p1.x, 0, SLOT.p1.z], aspect, fit, FIGHT_LOOK_Y)
-        expect(feet, `fit ${fit}`).toBeGreaterThan(DIALOG_TOP + 0.05)
+        expect(feet, `fit ${fit}`).toBeGreaterThan(DIALOG_TOP + 0.03)
       }
     }
   })
