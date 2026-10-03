@@ -109,6 +109,9 @@ export function safariTurn({
       turn: 0, level: 0, types: [0, 0], caughtBefore: false, inWater: false, darkness: false,
     }, rng)
     next = { ...state, balls }
+    // ⚠️ **던지기 전에 「…사파리볼을 1개 사용했다!」가 먼저다** (`subscript_throw_safari_ball` — `PlayerUsedOneItem` 뒤에
+    // `ThrowPokeball`). 빠지면 볼이 바닥에서 흔들리는 동안 글창에 「튀어나왔다!」가 남는다(I-p11-11). 볼 번호가 곧 도구 번호다
+    events.push({ kind: 'bagItem', key: 'p1', item: Ball.SAFARI })
     events.push({ kind: 'ball', actor, ball: Ball.SAFARI, shakes: got.shakes, caught: got.caught })
     if (got.caught) return { state: next, events, outcome: 'caught' }
     // 놓쳤는데 볼도 떨어졌다. 안내 방송이 그 자리에서 판을 닫는다

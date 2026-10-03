@@ -47,7 +47,9 @@ describe('사파리볼', () => {
     const got = safariTurn({ state: state(), command: 'ball', foe: easy, actor, rng: () => 0.999 })
     expect(got.outcome).toBe('caught')
     expect(got.state.balls).toBe(29)
+    // 「…사파리볼을 1개 사용했다!」가 볼보다 먼저다 (`subscript_throw_safari_ball` · I-p11-11)
     expect(got.events).toEqual([
+      { kind: 'bagItem', key: 'p1', item: Ball.SAFARI },
       { kind: 'ball', actor, ball: Ball.SAFARI, shakes: 4, caught: true },
     ])
   })
