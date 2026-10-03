@@ -264,6 +264,28 @@ class Batch {
 
 // ── 재질 손보기 ───────────────────────────────────────────────────────────────
 
+/**
+ * 바닥 데칼을 바닥 위로 띄우는 높이(월드 단위 · 5mm).
+ *
+ * ⚠️ **깊이 밀기만으로는 못 이긴다.** `polygonOffset` −2/−2를 걸어도 센터 마크 · 출구 매트 · 상점 매트가 바닥과 한 줄씩 번갈아
+ * 그려졌다(가로 줄무늬 — 포켓몬센터 3인칭 한가운데). 데칼과 바닥은 꼭짓점이 달라 같은 높이여도 깊이 값이 몇 단계씩 갈린다.
+ * 그래서 몸을 띄운다 — 3인칭 거리(10칸)에서 깊이 결은 0.06mm, 1인칭 near 0.05에서 발밑까지도 0.1mm 안이라 5mm면 늘 이기고,
+ * 눈높이 1.38에서 5mm 틈은 안 보인다. 깊이 밀기는 그대로 둔다(스치는 각의 덤이다)
+ */
+export const DECAL_LIFT = 0.005
+
+const parentScale = new Vector3()
+/** 데칼 메시를 월드 위쪽으로 `DECAL_LIFT`만큼 띄운다 — 부모 배율을 되돌려 월드 높이로 맞춘다 */
+export function liftDecal(o: Object3D): void {
+  // 한 번만 — 다시 손보는 일이 있어도 쌓이지 않게
+  if (o.userData.decalLift === true) return
+  o.userData.decalLift = true
+  if (o.parent) o.parent.getWorldScale(parentScale)
+  else parentScale.set(1, 1, 1)
+  o.position.y += DECAL_LIFT / (parentScale.y || 1)
+  o.updateMatrix()
+}
+
 /** 메시가 납작한가 (바닥에 붙은 데칼) — `RO_080_Mat_01`처럼 이름만 `Mat`인 세운 판은 거른다 */
 function flat(o: Mesh): boolean {
   const box = new Box3().setFromObject(o)
@@ -275,8 +297,7 @@ function flat(o: Mesh): boolean {
  *
  * · 빛 줄기 — 더하는 빛 · 깊이 안 씀 · `LIGHT_SHAFT`
  * · 바닥 데칼 — 바닥과 높이가 같아 깊이를 다툰다(센터 마크 · 깔개, 상점 출구 매트, GTS 워프 판 — `t02pc0101` · `t02fs0101`
- *   실측 y 0.000). `polygonOffset`으로 앞에 세운다 — WebGPU 백엔드도 `depthBias`로 옮긴다
- *   (`three/src/renderers/webgpu/utils/WebGPUPipelineUtils.js`, 삼각형 목록일 때)
+ *   실측 y 0.000). 몸을 5mm 띄운다(`DECAL_LIFT`) — `polygonOffset`만으로는 줄무늬가 남았다
  * · 연기 — 그림 밝기를 농도로 쓰는 옅은 안개
  * · 천장 — 제 그림을 스스로 낸다(`CEIL_GLOW`). 천장 재질은 이름이 `_Ceil_`이라 바닥 · 벽과 나눠 쓰지 않는다
  */
@@ -318,6 +339,7 @@ function dressMaterials(root: Object3D): { shafts: Mesh[], ceilings: Mesh[] } {
         m.polygonOffsetUnits = -2
         m.needsUpdate = true
       }
+      liftDecal(o)
       o.castShadow = false; o.renderOrder = 1
     }
     if (mats.some(isCeiling)) {

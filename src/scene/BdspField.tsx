@@ -288,6 +288,26 @@ export function waterMaterial(was: Material, look: WaterLook): MeshStandardNodeM
 }
 
 /**
+ * 수면을 내리는 깊이(월드 단위 · 2cm).
+ *
+ * ⚠️ **부두 땅과 수면이 같은 높이다.** 해변시티 부두(C08)는 흙 바닥과 바다 판이 한 평면에 겹쳐 갈색 · 파란 가로 줄무늬가
+ * 번갈아 졌고, 밤에는 바다가 이겨 선원이 물 위에 선 것처럼 보였다. 물 판은 땅 밑으로 이어 깔려 있으므로 조금 내려도 물가에 틈이
+ * 안 생긴다 — 안개 끝(130칸)에서도 깊이 결이 1cm라 2cm면 땅이 늘 이긴다
+ */
+export const WATER_SINK = 0.02
+
+const sinkScale = new Vector3()
+/** 물 메시를 월드 아래로 `WATER_SINK`만큼 — 한 번만 */
+function sinkWater(o: Object3D): void {
+  if (o.userData.waterSink === true) return
+  o.userData.waterSink = true
+  if (o.parent) o.parent.getWorldScale(sinkScale)
+  else sinkScale.set(1, 1, 1)
+  o.position.y -= WATER_SINK / (sinkScale.y || 1)
+  o.updateMatrix()
+}
+
+/**
  * `root` 아래 물 재질을 갈아 끼운다. 같은 재질을 나눠 쓰는 메시는 새 재질도 나눠 쓴다. 버린 재질은 놓는다.
  * 갈아 끼운 수를 돌려준다.
  *
@@ -312,6 +332,7 @@ export function liveWater(root: Object3D): number {
     o.material = Array.isArray(o.material) ? next : next[0]!
     o.castShadow = false
     o.receiveShadow = false
+    sinkWater(o)
   })
   for (const old of swapped.keys()) old.dispose()
   return swapped.size

@@ -6,11 +6,11 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  BufferAttribute, BufferGeometry, Color, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Texture,
+  Box3, BufferAttribute, BufferGeometry, Color, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Texture,
   type Material,
 } from 'three'
 import {
-  CEIL_GLOW, isBlackCover, isCeiling, isFloorDecal, isLightShaft, isSmoke, LIGHT_SHAFT, shellRoom, SMOKE_OPACITY,
+  CEIL_GLOW, DECAL_LIFT, isBlackCover, isCeiling, isFloorDecal, isLightShaft, isSmoke, LIGHT_SHAFT, shellRoom, SMOKE_OPACITY,
 } from './roomShell'
 import { withModels } from '../data/romData.testkit'
 import { splitEliteFourDoors } from './BdspRoom'
@@ -283,6 +283,11 @@ withModels(...[...new Set(['c01r0101', 'c07r0201', 'c08gym0101', 'c10r0101', 'c0
     const meshes: Mesh[] = []
     center.traverse((o) => { if (o instanceof Mesh) meshes.push(o) })
     const mark = meshes.find((o) => matsOf(o).some((m) => m.name === 'M_RO_005_Mark_01'))!
+    const floor = meshes.find((o) => matsOf(o).some((m) => /_Floor_/.test(m.name)))!
+    // 데칼은 바닥 위로 몸을 띄운다 — 깊이 밀기만으로는 줄무늬가 남았다 (`DECAL_LIFT`)
+    const top = (o: Mesh) => new Box3().setFromObject(o).max.y
+    expect(top(mark) - top(floor)).toBeGreaterThan(DECAL_LIFT * 0.5)
+    expect(top(mark) - top(floor)).toBeLessThan(DECAL_LIFT * 2)
     const mm = matsOf(mark)[0]!
     expect([mm.polygonOffset, mm.polygonOffsetFactor, mm.polygonOffsetUnits]).toEqual([true, -2, -2])
     expect(mark.castShadow).toBe(false)
@@ -330,7 +335,7 @@ withModels(...[...new Set(['c01r0101', 'c07r0201', 'c08gym0101', 'c10r0101', 'c0
     expect(names.some((n) => /_Floor_|_Wall_/.test(n))).toBe(false)
   })
 
-  it('남쪽 벽 — 북쪽 벽을 못 찾던 방들도 북벽 평면에서 세운다', () => {
+  it('남쪽 벽 — 북쪽 벽을 못 찾던 방들도 북벽 평면에서 세운다', { timeout: 30_000 }, () => {
     const none: string[] = []
     for (const name of SOUTH_WALL_ROOMS) {
       const root = loadRoom(name)

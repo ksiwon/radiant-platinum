@@ -1,10 +1,10 @@
 // BDSP 지역 (`BdspField`) — 세우는 거리 · 쥐었다 다시 붙이기 · 물 · 풀 · 빛 줄기
 import { closeSync, existsSync, openSync, readdirSync, readSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
-import { DoubleSide, Group, Mesh, MeshStandardMaterial, PlaneGeometry, Texture } from 'three'
+import { DoubleSide, Group, Mesh, MeshStandardMaterial, PlaneGeometry, Texture, Vector3 } from 'three'
 import { MeshStandardNodeMaterial } from 'three/webgpu'
 import {
-  boxDistance, FOLIAGE_NORMAL, foliageMaterial, HELD, heldFields, holdField, isFoliage, isLightShaft, liveFoliage, liveWater,
+  boxDistance, FOLIAGE_NORMAL, foliageMaterial, HELD, heldFields, holdField, isFoliage, isLightShaft, liveFoliage, liveWater, WATER_SINK,
   nearestFirst, pickFields, reachFor, takeField, WATER_LOOKS, WATER_METALNESS, WATER_ROUGHNESS, waterLookOf, waterMaterial,
 } from './BdspField'
 import { DAY } from './fx/sky'
@@ -144,6 +144,20 @@ describe('BDSP 물', () => {
     expect(sea.receiveShadow).toBe(false)
     expect(ground.castShadow).toBe(true)
     expect(ground.receiveShadow).toBe(true)
+  })
+
+  it('⚠️ 수면을 땅 밑으로 조금 내린다 — 같은 높이의 부두 땅과 깊이를 다투지 않게 (해변시티)', () => {
+    const root = new Group()
+    root.scale.setScalar(2)
+    const sea = new Mesh(new PlaneGeometry(), new MeshStandardMaterial({ name: 'M_C_001_SeaWater_03' }))
+    const ground = new Mesh(new PlaneGeometry(), new MeshStandardMaterial({ name: 'M_C_001_Ground_01_01' }))
+    root.add(sea, ground)
+    liveWater(root)
+    liveWater(root)
+    root.updateMatrixWorld(true)
+    const y = (o: Mesh) => o.getWorldPosition(new Vector3()).y
+    // 월드에서 2cm — 부모 배율을 되돌리고, 두 번 불러도 한 번만 내린다
+    expect(y(ground) - y(sea)).toBeCloseTo(WATER_SINK, 9)
   })
 })
 

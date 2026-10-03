@@ -27,6 +27,7 @@ import type { MatrixMeta } from '../engine/map/grid'
 import { mapById, world } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import { hideDevices, roomFor } from './BdspRoom'
+import { liftDecal } from './roomShell'
 import { bdspLights, type BdspLights } from './bdspLights'
 import { disposeTree } from './disposeTree'
 import { fieldFade, type FieldFade } from './fieldFade'
@@ -151,6 +152,8 @@ export function dressDungeon(root: Object3D): Mesh[] {
         m.polygonOffsetFactor = -1
         m.polygonOffsetUnits = -1
       }
+      // 깊이 밀기만으로는 줄무늬가 남는다 — 방과 같이 몸을 띄운다 (`roomShell`의 `DECAL_LIFT`)
+      liftDecal(o)
       o.castShadow = false
       o.receiveShadow = false
       o.renderOrder = 1
