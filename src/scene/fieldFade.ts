@@ -91,7 +91,7 @@ interface Instances {
   moving: Set<number>
 }
 
-interface Rest { transparent: boolean, opacity: number, depthWrite: boolean }
+interface Rest { transparent: boolean, opacity: number, depthWrite: boolean, alphaTest: number }
 
 interface Solid {
   mesh: Mesh
@@ -198,6 +198,10 @@ function applyFade(mat: Material, cur: number): void {
   const rest = mat.userData.rest as Rest
   const solid = cur >= 1
   mat.opacity = Math.min(rest.opacity, cur)
+  // ⚠️ **오려 낸 재질은 문턱도 같이 낮춘다.** BDSP 재질은 거의 다 `MASK`(문턱 0.5)라 불투명도만 0.25로 내리면 모든 화소가 문턱
+  // 밑으로 떨어져 버려진다 — 흐려야 할 관문이 통째로 사라지고 실내 바닥만 떴다(들판시티 서쪽 관문). 문턱에 같은 몫을 곱하면
+  // 오린 모양은 그대로 둔 채 옅어진다
+  if (rest.alphaTest > 0) mat.alphaTest = rest.alphaTest * Math.min(1, cur)
   const transparent = !solid || rest.transparent
   const depthWrite = solid ? rest.depthWrite : false
   if (mat.transparent !== transparent || mat.depthWrite !== depthWrite) {
@@ -265,7 +269,9 @@ export function fieldFade(root: Object3D): FieldFade {
       const mats = own.map((x: Material) => {
         const c = x.clone()
         // ⚠️ **원래 값으로 되돌린다.** 1 · 켬으로 되돌리면 원래 반투명한 유리가 흐림을 한 번 겪은 뒤 불투명하게 굳는다
-        c.userData.rest = { transparent: x.transparent, opacity: x.opacity, depthWrite: x.depthWrite } satisfies Rest
+        c.userData.rest = {
+          transparent: x.transparent, opacity: x.opacity, depthWrite: x.depthWrite, alphaTest: x.alphaTest,
+        } satisfies Rest
         return c
       })
       o.material = Array.isArray(o.material) ? mats : mats[0]!

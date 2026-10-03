@@ -35,6 +35,22 @@ describe('BDSP 흐림 — 건물', () => {
     expect(mat().opacity).toBe(GHOST)
   })
 
+  it('⚠️ 오려 낸 재질(MASK)은 문턱도 같은 몫으로 낮춘다 — 안 낮추면 흐림 대신 통째로 사라진다', () => {
+    // 들판시티 서쪽 관문(`M_C_001_BarrierGate_01` · 문턱 0.5)이 불투명도 0.25에서 화소를 다 버려 실내 바닥만 떴다
+    const { root, mesh, mat } = house()
+    ;(mesh.material as MeshStandardMaterial).alphaTest = 0.5
+    const fade = fieldFade(root)
+    fade.aim(EYE, AIM, true)
+    for (let i = 0; i < 120; i++) fade.step(FRAME)
+    expect(mat().opacity).toBe(GHOST)
+    expect(mat().alphaTest).toBeCloseTo(0.5 * GHOST, 9)
+    // 그림 알파 1인 화소는 남는다: 1 × 0.25 > 0.125
+    expect(1 * mat().opacity).toBeGreaterThan(mat().alphaTest)
+    fade.aim(new Vector3(30, 9, 30), AIM, true)
+    for (let i = 0; i < 240; i++) fade.step(FRAME)
+    expect(mat().alphaTest).toBe(0.5)
+  })
+
   it('흐려지기 시작하면 그림자부터 떼고, 다 돌아와야 되돌린다', () => {
     const { root, mesh } = house()
     const fade = fieldFade(root)

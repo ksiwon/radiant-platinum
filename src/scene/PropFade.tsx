@@ -111,6 +111,8 @@ interface Base {
   opacity: number
   transparent: boolean
   depthWrite: boolean
+  /** 오려 낸 재질의 문턱 — 흐린 만큼 같이 낮춘다. 안 낮추면 문턱 밑으로 떨어진 화소가 버려져 흐림 대신 통째로 사라진다 */
+  alphaTest: number
 }
 
 const probe = new Vector3()
@@ -176,7 +178,7 @@ export function PropFade({ geometry, materials, children }: Props) {
 
   // 손대기 전의 값. 흐려질 때는 여기에 곱하고, 돌아올 때는 여기로 돌아온다
   const base = useMemo((): Base[] => materials.map((m) => ({
-    opacity: m.opacity, transparent: m.transparent, depthWrite: m.depthWrite,
+    opacity: m.opacity, transparent: m.transparent, depthWrite: m.depthWrite, alphaTest: m.alphaTest,
   })), [materials])
 
   // 흐려진 채로 언마운트되면 그 재질을 물려받은 다음 소품이 흐리게 시작한다
@@ -186,6 +188,7 @@ export function PropFade({ geometry, materials, children }: Props) {
       if (!b) return
       m.transparent = b.transparent
       m.opacity = b.opacity
+      m.alphaTest = b.alphaTest
       m.depthWrite = b.depthWrite
       markSeeThrough(m, !b.depthWrite)
     })
@@ -214,6 +217,7 @@ export function PropFade({ geometry, materials, children }: Props) {
       if (!b) return
       // **곱한다.** 롬이 정한 반투명(집 밑 그림자 9/31 등) 위에 흐림을 얹는다
       m.opacity = b.opacity * next
+      if (b.alphaTest > 0) m.alphaTest = b.alphaTest * next
       // 원래 반투명이던 것은 되돌아와도 반투명이다
       const blend = b.transparent || !solid
       // ⚠️ **흐려지는 동안 깊이를 안 쓰므로 윤곽이 집을 투과한다.** 87%짜리
