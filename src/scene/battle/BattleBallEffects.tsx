@@ -5,6 +5,9 @@ import { SLOTS, type SlotId } from '../../engine/battle/events'
 import { battleClock } from '../../engine/battle/presentationClock'
 import type { BattleView } from '../../engine/battle/view'
 import { ballOpen, clearBallOpen } from './stageRefs'
+import { BdspEffect } from './fx/BdspEffect'
+import { ballPrefabs } from './fx/moveSeq'
+import { slotAnchor } from './fx/seqAnchors'
 import { useBattleStore } from '../../state/battleStore'
 import { Ball } from '../../engine/battle/meta/capture'
 import {
@@ -122,6 +125,86 @@ function Flash({ innerRef, color }: { innerRef: React.RefObject<Group | null>; c
   )
 }
 
+/**
+ * BDSP 볼 이펙트 한 조각 — 볼 시퀀스(`ee101` 던지기 · `ee105` 성공 · `ee106~109` 튀어나옴 ·
+ * 등장 `ee4xx`)가 세우는 프리팹을 **우리 박자**(`captureTiming`) 위에 얹는다 (BATTLE_FX §4).
+ *
+ * 크기는 시퀀스의 `ParticleScale`이다 — 볼이 열리는 빛(`eb###_ballout`)은 2 → 2.5(15프레임),
+ * 빨아들이는 빛(`ee101_02_poke_flash`) 0.4 · 볼 궤적 0.6 · 나머지 1
+ */
+interface BallPiece {
+  prefab: string
+  /** 연출 시작에서 몇 초 뒤에 서는가 */
+  at: number
+  /** 이만큼 뒤에 뿜기를 멈춘다 (초) */
+  stop: number
+  pos: () => readonly [number, number, number]
+  scale: (age: number) => number
+}
+
+function BallPieces({ shot, pieces }: { shot: BallShot; pieces: readonly BallPiece[] }) {
+  return (
+    <>
+      {pieces.map((p) => (
+        <BdspEffect
+          key={`${p.prefab}@${p.at}`}
+          name={p.prefab}
+          seed={shot.id}
+          clock={() => nowSeconds() - shot.started - p.at}
+          stopAt={p.stop}
+          pose={() => {
+            const age = Math.max(0, nowSeconds() - shot.started - p.at)
+            const k = p.scale(age)
+            return { pos: p.pos(), quat: [0, 0, 0, 1], scale: [k, k, k] }
+          }}
+        />
+      ))}
+    </>
+  )
+}
+
+/** 볼이 열리는 빛의 크기 — 2에서 15프레임(30fps)에 걸쳐 2.5로 (`ee106` 등) */
+const balloutScale = (age: number): number => 2 + 0.5 * Math.min(1, age / 0.5)
+
+/** 이 볼 연출이 세울 BDSP 조각들. 이펙트 묶음이 없으면 빈 목록 — 그때는 예전 빛이 선다 */
+function useBallPieces(
+  shot: BallShot, spot: [number, number], ballAt: () => readonly [number, number, number],
+): readonly BallPiece[] | null {
+  const [names, setNames] = useState<{ capture: string; ballout: string } | null | undefined>(undefined)
+  useEffect(() => {
+    let alive = true
+    void ballPrefabs(shot.ball).then((n) => { if (alive) setNames(n) })
+    return () => { alive = false }
+  }, [shot.ball])
+  return useMemo(() => {
+    if (names === undefined) return []
+    if (names === null) return null
+    const center = (): readonly [number, number, number] => slotAnchor(shot.slot, 15, spot).pos
+    if (shot.kind === 'send') {
+      const open = (shot.replacement ? SEND_RECALL_TIME : 0) + SEND_THROW_TIME
+      return [{ prefab: names.ballout, at: open, stop: 0.6, pos: center, scale: balloutScale }]
+    }
+    const resolve = captureResolveAt(shot.shakes)
+    const ground = (): readonly [number, number, number] => [spot[0], 0.34, spot[1]]
+    const list: BallPiece[] = [
+      // 볼이 몸에 닿아 열린다 — 빛줄기 · 볼별 빨아들임 · 몸 빛
+      { prefab: 'ee101_03_ball_open', at: CAPTURE_THROW_TIME, stop: 0.9, pos: ballAt, scale: () => 1 },
+      { prefab: names.capture, at: CAPTURE_THROW_TIME, stop: 0.9, pos: center, scale: () => 1 },
+      { prefab: 'ee101_02_poke_flash', at: CAPTURE_THROW_TIME + 0.2, stop: 0.7, pos: center, scale: () => 0.4 },
+      // 닫힌다
+      { prefab: 'ee101_04_ball_close', at: CAPTURE_SEAL_TIME, stop: 0.35, pos: ground, scale: () => 1 },
+    ]
+    if (shot.caught) {
+      list.push({ prefab: 'ee105_01_sucsess', at: resolve, stop: 1.2, pos: ground, scale: () => 1 })
+    } else {
+      list.push({ prefab: 'ee106_01_error', at: resolve, stop: 1.9, pos: center, scale: () => 1 })
+      list.push({ prefab: names.ballout, at: resolve + 0.07, stop: 0.6, pos: center, scale: balloutScale })
+    }
+    return list
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 한 연출 안에서 자리는 안 바뀐다
+  }, [names, shot])
+}
+
 function ShotVisual({
   shot,
   spotAt,
@@ -138,6 +221,10 @@ function ShotVisual({
   // 제 포켓몬 맞은편에 선 사람이 트레이너가 포켓몬과 싸우는 것으로 읽혔다)
   const source = trainerThrowOrigin(shot.kind === 'capture' ? 'p1a' : shot.slot)
   const resultAt = captureResolveAt(shot.shakes)
+  const ballPos = useRef<[number, number, number]>([x, 1.2, z])
+  const pieces = useBallPieces(shot, [x, z], () => ballPos.current)
+  /** BDSP 조각이 서면 예전 빛(돔 · 구슬)은 물러난다 — 같은 자리에 두 벌이 겹친다 */
+  const bdsp = pieces !== null
 
   useFrame(() => {
     const elapsed = nowSeconds() - shot.started
@@ -148,6 +235,7 @@ function ShotVisual({
 
     b.visible = elapsed >= 0 && elapsed <= shotDuration(shot)
     burst.visible = false
+    ballPos.current = [b.position.x, b.position.y, b.position.z]
     if (beam) beam.visible = false
 
     if (shot.kind === 'send') {
@@ -210,7 +298,11 @@ function ShotVisual({
       <group ref={ball}>
         <BallModel ball={shot.ball} />
       </group>
-      <Flash innerRef={flash} color={flashColor} />
+      {/* BDSP 조각이 서면 예전 빛은 그룹째 숨긴다(`useFrame`이 켜도 부모가 꺼져 있다) */}
+      <group visible={!bdsp}>
+        <Flash innerRef={flash} color={flashColor} />
+      </group>
+      {pieces && pieces.length > 0 && <BallPieces shot={shot} pieces={pieces} />}
       {shot.replacement && (
         <group ref={recall} position={[x, 1.1, z]} visible={false}>
           <mesh>

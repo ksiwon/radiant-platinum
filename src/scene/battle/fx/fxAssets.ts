@@ -42,11 +42,6 @@ export function loadFxPrefab(name: string): Promise<FxPrefab> {
   return got
 }
 
-/** 이펙트 이름 목록 (`index.json`의 볼·기술 표에서 모은다) — 시험대가 쓴다 */
-export async function loadFxIndex(): Promise<unknown> {
-  return readJson(assets(), 'data/fx/index.json')
-}
-
 function wrapOf(w: string | undefined): Wrapping {
   if (w === 'clamp') return ClampToEdgeWrapping
   // 「한 번 거울」은 three에 없다 — 거울로 대신한다 (0~1 밖을 쓰는 재질이 드물다)

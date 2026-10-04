@@ -4027,6 +4027,44 @@ AssetAssistant/
 돌린다** — 없는 관절보다 안 움직이는 관절이 낫고, 그 칸을 가리키는 정점은
 어차피 가중치가 안 실린다.
 
+### 3.4.1 BDSP 배틀 이펙트 — `data/fx/`
+
+굽는 쪽은 `import/bdsp/fx.ts` 하나다(설치판 · 개발판 같은 코드). `Effects/effect/prefab/battle`의
+프리팹 2,034벌 중 시퀀스가 부르는 것과 볼 이펙트를 굽는다.
+
+```text
+data/fx/index.json          balls[볼 번호] = {capture, ballout} · moves[기술 번호].seq · intro · capture
+data/fx/prefab/<이름>.json   Shuriken 프리팹 나무 (노드 · ParticleSystem · Renderer · 재질 · MaterialController · 힘장)
+data/fx/tex/<이름>.png       그림 (256px 이하) · tex/index.json에 감김(clamp/repeat/mirror)과 sRGB 여부
+data/fx/seq/<이름>.json      연출 시퀀스 — 묶음(GrpNo · GroupOption)마다 [start, end, 명령, 값]
+```
+
+**좌표는 유니티(왼손) 그대로 굽고** 실행 쪽이 X를 뒤집는다. 메시는 유니티 정점 · 유니티 삼각형
+차례로 들어 있다.
+
+**실행 쪽**
+- `engine/battle/fx/` — 파티클 시스템 CPU 시뮬레이션(1/60초 고정 걸음 · 결정적 난수), 렌더러 모드별
+  인스턴스 축(`instances`), 재질 명세(`material`), 시퀀스(`sequence`)
+- `scene/battle/fx/` — `BdspEffect`(프리팹 하나) · `BdspSequence`(시퀀스 하나) · TSL 재질 하나
+  (`fxMaterial` — `FxSystem/Particle`의 키워드를 그래프를 짤 때 고른다) · 시험대 `/fxlab`(개발 서버만)
+
+**시퀀스 값의 뜻** (`engine/battle/fx/sequence` 머리말에 근거)
+- 30fps 프레임. 길이 있는 명령은 start 때의 값에서 end 때의 목표로 옮긴다(`move` 0 직선)
+- 거리는 cm — `TrainerMove pos=50/0/580`이 BDSP 트레이너 자리 (±0.5, 0, ±5.8) m다
+- `trg` 0 쓴 쪽 · 1 맞는 쪽. `isRot`이면 오프셋이 그 몸 방향 기준, `isRot` 없이 `isFlip`이면 상대 쪽 몸
+  기준으로 적혀 있어 내 쪽 몸이면 반 바퀴 돈다(몸통박치기 `ofs=0/0/50`)
+- `node`는 몸 로케이터 번호. 번호 → 이름 표가 롬에 없어 쓰임새로 짝지었다(`scene/battle/fx/seqAnchors`):
+  0 `Origin` · 2 `EffMouth01` · 5 `EffFront01` · 6 `EffOverHead01` · 15 `EffCenter01`. BDSP 포켓몬 glb가
+  로케이터를 노드로 들고 있다
+- `GroupOption` `(1, 홀수)` 내 쪽이 쓸 때 · `(1, 짝수)` 상대가 쓸 때. 다른 옵션 묶음(트레이너 · 등장 · 더블)은 안 튼다
+- `isBallEffect` · `isCapture` 입자(`eb004_*` 자리표시)는 그 볼의 `eb###_ballout` · `_capture`로 갈아 끼운다
+- 동작 번호: 16 피격 · 30~42 공격 · 0 대기 · 12·13 울음
+
+**옮기지 않은 것** — 카메라 이동(`CameraMoveRelativePoke` — 배틀 카메라는 한 자리에 선다, 흔들림만 탄다),
+카메라에 붙는 판(`*_cam*` 19벌), 이펙트 모델(`ModelCreate` — 그 모델에 붙는 입자는 쓴 쪽 발밑에 선다),
+몸 감추기(BDSP가 카메라를 당길 때 가리는 몸을 지우는 것 — 맞는 쪽은 늘 안 따르고, 쓴 쪽은 DS 대본이 `vanish`인 기술(공중날기 · 구멍파기)만 따른다), 스텐실 · 후처리 · 소리 · 게이지 · 글.
+셰이더는 부드러운 입자 · 화면 왜곡 · 프레넬 · 스피어 맵 · 줄무늬 · 디졸브 외 컴바이너를 기본 그림으로 그린다.
+
 ### 3.5 산출물과 물리 저장
 
 현재 개발 파일의 대표 논리 계약:

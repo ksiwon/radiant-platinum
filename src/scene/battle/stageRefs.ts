@@ -4,7 +4,7 @@
 // 카메라를 옮기면 그 뒤에 도는 EngineDriver가 오버월드 값으로 도로 덮어쓴다 —
 // R3F는 priority 오름차순으로 콜백을 돌리고 EngineDriver가 1이기 때문이다.
 // 그래서 "지금 카메라를 누가 갖는가"를 여기 두고 EngineDriver가 물어본다.
-import { Vector3 } from 'three'
+import { Vector3, type Object3D } from 'three'
 import { BATTLE_FOV } from '../../engine/battle/shots'
 
 export const battleStage = {
@@ -153,4 +153,49 @@ export const ballOpen: Record<string, number> = {}
 /** 배틀이 끝나면 놓는다 — 안 지우면 다음 배틀 첫 몸이 옛 시각을 기다린다 */
 export function clearBallOpen(): void {
   for (const key of Object.keys(ballOpen)) delete ballOpen[key]
+}
+
+/**
+ * 자리마다 **선 몸의 뿌리**와 그 몸을 옮기는 그룹 (BATTLE_FX §4).
+ *
+ * BDSP 연출 시퀀스가 몸의 로케이터(`EffMouth01` · `EffCenter01` …)에 이펙트를 붙인다.
+ * 로케이터는 BDSP 모델에 노드로 들어 있어서(`models/pokemon/*.glb`) 몸을 쥔 `Slot`이 여기
+ * 적고 시퀀스가 읽는다. 도트로 선 자리는 `root`가 `null`이다
+ */
+export const slotRig: Record<string, { root: Object3D | null; body: Object3D | null; yaw: number }> = {}
+
+/**
+ * 지금 도는 BDSP 시퀀스가 무대에 거는 것 (`scene/battle/fx/BdspSequence`).
+ *
+ * ⚠️ **`running`이면 DS 대본 몫(`moveImpact` · 돌진 · 움찔)을 안 건다.** 둘이 같이 돌면
+ * 몸이 두 번 나간다. 시퀀스가 끝나면 비운다
+ */
+export const seqStage: {
+  running: boolean
+  /** 지금 시퀀스 프레임 (30fps) */
+  frame: number
+  body: Record<string, SeqBodyPose | null>
+  /** 화면 흔들림 진폭 (m) */
+  shake: number
+  /** 배경 물들임 (0~1 색 · 진하기) */
+  back: { color: [number, number, number]; alpha: number } | null
+} = { running: false, frame: 0, body: {}, shake: 0, back: null }
+
+/** 시퀀스가 몸 하나에 거는 값 (`engine/battle/fx/sequence`의 `BodyPose`) */
+interface SeqBodyPose {
+  offset: [number, number, number]
+  scale: [number, number, number]
+  visible: boolean
+  glow: { color: [number, number, number]; power: number } | null
+  turn: number
+  shake: [number, number, number]
+  motion: { name: 'attack' | 'damage' | 'wait' | 'cry'; at: number } | null
+}
+
+export function clearSeqStage(): void {
+  seqStage.running = false
+  seqStage.frame = 0
+  seqStage.body = {}
+  seqStage.shake = 0
+  seqStage.back = null
 }

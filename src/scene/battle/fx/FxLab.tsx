@@ -10,6 +10,7 @@
 //   &scale=0.6   이펙트 크기 (시퀀스의 `ParticleScale`)
 //   &y=0.5       세우는 높이(m) · &zoom=2 카메라를 두 배 당긴다 · &seed=7
 //   &dbg=c0      재질 한 칸만 불투명하게 (c0 c1 a0 combo comboa alpha prim uv)
+//   &ry=180      Y로 돌려 세운다(도)
 //   &only=glow   경로에 이 글자가 든 렌더러만 그린다 (하나씩 떼어 볼 때)
 //
 // 자동화 손잡이: `window.__fxlab = { play(name), seek(t), resume(), state() }`.
@@ -46,7 +47,7 @@ declare global {
   interface Window { __fxlab?: LabApi }
 }
 
-function readQuery(): { names: string[]; loop: boolean; t: number | null; scale: number; y: number; zoom: number; seed: number; only: string | undefined } {
+function readQuery(): { names: string[]; loop: boolean; t: number | null; scale: number; y: number; zoom: number; seed: number; only: string | undefined; ry: number } {
   const q = new URLSearchParams(window.location.search)
   const num = (k: string, d: number): number => {
     const v = Number(q.get(k))
@@ -61,6 +62,7 @@ function readQuery(): { names: string[]; loop: boolean; t: number | null; scale:
     zoom: Math.max(0.1, num('zoom', 1)),
     seed: num('seed', 1),
     only: q.get('only') ?? undefined,
+    ry: num('ry', 0),
   }
 }
 
@@ -132,6 +134,7 @@ export function FxLab() {
             only={query.only}
             position={[(i - (lab.names.length - 1) / 2) * spread, query.y, 0]}
             scale={query.scale}
+            rotation={[0, (query.ry * Math.PI) / 180, 0]}
             clock={() => time.current}
             onStep={(e) => { effects.current.set(i, e) }}
           />

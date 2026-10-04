@@ -38,7 +38,7 @@ import { useBattleStore } from '../../state/battleStore'
 import type { ViewMon } from '../../engine/battle/view'
 import { SLOTS, type SlotId } from '../../engine/battle/events'
 import {
-  ballOpen, battleStage, impactHits, moveImpact, slotBody, STAGE_ORIGIN,
+  ballOpen, battleStage, impactHits, moveImpact, seqStage, slotBody, slotRig, STAGE_ORIGIN,
 } from './stageRefs'
 import { BattleBallEffects, SEND_RECALL_TIME } from './BattleBallEffects'
 import { BattleWorldLabels } from './BattleWorldLabels'
@@ -176,6 +176,46 @@ const MON_TALL = 1.2
  * `mine`이면 **뒷모습**이다 — 원작 문법 그대로 내 포켓몬은 등을 보이고 상대는
  * 앞을 본다. 그림이 따로 있으므로 여기서 뒤집지 않는다
  */
+/**
+ * 시퀀스가 시킨 동작을 아직 트는가 (초). BDSP는 동작 하나가 끝나면 대기로 돌아간다 —
+ * 클립 길이를 재지 않고 동작마다 한 값으로 둔다(공격 클립이 0.8~1.3초다)
+ */
+const SEQ_MOTION_SECONDS = { attack: 1.1, damage: 0.7, cry: 1.3, wait: Infinity } as const
+
+function seqMotionLive(m: { name: keyof typeof SEQ_MOTION_SECONDS; at: number }): boolean {
+  return (seqStage.frame - m.at) / 30 < SEQ_MOTION_SECONDS[m.name]
+}
+
+/** 시퀀스의 몸 빛 (`PokemonShaderCol`)을 재질 발광으로 건다 — 처음 걸 때 재질을 떼어 낸다 */
+const glowing = new WeakMap<object, boolean>()
+function glow(model: MonBody | null, g: { color: [number, number, number]; power: number } | null): void {
+  if (!model) return
+  const on = g !== null && g.power > 0.001
+  if (!on && !glowing.get(model.root)) return
+  glowing.set(model.root, on)
+  model.root.traverse((o) => {
+    const mesh = o as Mesh
+    if (!mesh.isMesh) return
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    const next = mats.map((m) => {
+      const std = m as MeshStandardMaterial
+      if (!std.emissive) return m
+      // 같은 종 두 마리가 재질을 나눠 쓴다 — 한 마리만 빛나게 처음에 떼어 낸다
+      const own = std.userData.fxOwn === model.root ? std : std.clone()
+      own.userData.fxOwn = model.root
+      if (on) {
+        own.emissive.setRGB(g.color[0], g.color[1], g.color[2])
+        own.emissiveIntensity = g.power
+      } else {
+        own.emissive.setRGB(0, 0, 0)
+        own.emissiveIntensity = 1
+      }
+      return own
+    })
+    mesh.material = Array.isArray(mesh.material) ? next : next[0]!
+  })
+}
+
 function Slot({
   mon,
   form,
@@ -344,6 +384,8 @@ function Slot({
    * 대기로 이어야 하는데, 상태로 두면 배틀 내내 React가 다시 그린다
    */
   const motion = useRef<MotionName>('enter')
+  /** 시퀀스가 마지막으로 시킨 동작 (`이름@프레임`) — 같은 동작을 다시 시킬 때 갈라 본다 */
+  const motionCue = useRef<string | null>(null)
   /**
    * 지금 **지는 중**인가. 등판과 퇴장이 같은 `shown` 값을 쓰므로 방향을 따로 든다.
    *
@@ -542,17 +584,30 @@ function Slot({
       hidden = moveImpact.vanish && slot === moveImpact.attacker
     }
 
-    g.visible = t > 0.01 && caughtScale > 0.01 && !blink && !hidden
+    // ── BDSP 시퀀스가 이 몸에 거는 것 (`stageRefs.seqStage` · BATTLE_FX §4) ──
+    //
+    // ⚠️ **시퀀스가 돌면 DS 몫(돌진 · 움찔 · 대본 떨림)을 끈다.** 둘이 같이 돌면 몸이 두 번
+    // 나간다 — 나가고 돌아오는 것도, 맞고 흔들리는 것도 시퀀스가 프레임마다 정한다
+    const seq = seqStage.running ? seqStage.body[slot] ?? null : null
+    if (seqStage.running) {
+      lunge.current = 0
+      flinch.current = 0
+    }
+    const seqHide = seq !== null && !seq.visible
+
+    g.visible = t > 0.01 && caughtScale > 0.01 && !blink && !hidden && !seqHide
     if (squashX !== 1 || squashY !== 1) {
       g.scale.set(g.scale.x * squashX, g.scale.y * squashY, g.scale.z * squashX)
     }
+    if (seq) g.scale.set(g.scale.x * seq.scale[0], g.scale.y * seq.scale[1], g.scale.z * seq.scale[2])
 
-    g.position.x = (other.x - spot.x) * reach + shake + castShake
+    g.position.x = (other.x - spot.x) * reach + shake + castShake + (seq ? seq.offset[0] + seq.shake[0] : 0)
     // ⚠️ **발이 땅에 닿아야 한다.** 예전엔 여기에 `spot.scale * 0.72`를 더해
     // 놓아서 포켓몬이 제 발판에서 1m 가까이 떠 있었다. `spriteFit`이 이미
     // 판을 맞춰 놓는다 — 칠해진 그림의 아래끝이 이 그룹의 원점이다
-    g.position.z = (other.z - spot.z) * reach
-    g.position.y = GROUND + bob * t - (1 - t) * 0.5
+    g.position.z = (other.z - spot.z) * reach + (seq ? seq.offset[2] + seq.shake[2] : 0)
+    g.position.y = GROUND + bob * t - (1 - t) * 0.5 + (seq ? seq.offset[1] + seq.shake[1] : 0)
+    glow(model, seq?.glow ?? null)
 
     // 어디를 보는가.
     //
@@ -561,11 +616,17 @@ function Slot({
     // ⚠️ **도트는 카메라를 본다.** 한 장이라 안 돌리면 옆에서 종잇장이 보인다.
     // Y축으로만 돈다 — 위아래로도 돌리면 발이 지면에서 뜬다
     g.rotation.y = model
-      ? Math.atan2(other.x - spot.x, other.z - spot.z)
+      ? Math.atan2(other.x - spot.x, other.z - spot.z) + (seq?.turn ?? 0)
       : Math.atan2(
           battleStage.position.x - STAGE_ORIGIN.x - spot.x,
           battleStage.position.z - STAGE_ORIGIN.z - spot.z,
         )
+    // 시퀀스가 로케이터(`EffMouth01` …)를 읽는다 — 몸이 보는 쪽은 모델 기준이다
+    slotRig[slot] = {
+      root: model?.root ?? null,
+      body: g,
+      yaw: Math.atan2(other.x - spot.x, other.z - spot.z) + (seq?.turn ?? 0),
+    }
 
     // 동작을 넘긴다. 때리고 맞는 것이 우선이고 그 타이머가 다 되면 대기로 돈다
     const now: MotionName =
@@ -574,7 +635,11 @@ function Slot({
         ? motion.current
         : t < 0.99
         ? 'enter'
-        : flinch.current > 0
+        : seq?.motion && seqMotionLive(seq.motion)
+          ? seq.motion.name === 'attack'
+            ? special.current ? 'special' : 'physical'
+            : seq.motion.name === 'cry' ? 'cry' : seq.motion.name
+          : flinch.current > 0
           ? 'damage'
           : lunge.current > 0
             ? special.current
@@ -582,8 +647,11 @@ function Slot({
               : 'physical'
             : 'wait'
     if (model) {
-      if (now !== motion.current) {
+      // 시퀀스가 같은 동작을 다시 시키면(연속 공격) 처음부터 다시 튼다
+      const cue = seq?.motion ? `${seq.motion.name}@${seq.motion.at}` : null
+      if (now !== motion.current || (cue !== null && cue !== motionCue.current && now !== 'wait')) {
         motion.current = now
+        motionCue.current = cue
         play(model, now)
       }
       model.mixer.update(delta)
@@ -724,9 +792,30 @@ function Arena({ look, file, onUp }: { look: TimeLook; file: string; onUp: (up: 
         // 덮어쓰면 바다가 흙색으로 물든다
         const base = (o.userData.tone ??= o.material.color.clone()) as Color
         o.material.color.copy(base).multiply(tint)
+        o.userData.lit = o.material.color.clone()
       }
     })
   }, [scene, look])
+  // BDSP 시퀀스의 배경 물들임 (`EffSpBackColSet`). **무대만** 물든다 — 몸과 이펙트는 그대로라
+  // 어두워진 땅 위에 기술이 선다. 끄면 위에서 맞춘 색으로 돌아간다
+  const backWas = useRef<string>('')
+  useFrame(() => {
+    const b = seqStage.running ? seqStage.back : null
+    const key = b ? `${b.color.join(',')}:${b.alpha.toFixed(3)}` : ''
+    if (key === backWas.current) return
+    backWas.current = key
+    scene.traverse((o) => {
+      if (!(o instanceof Mesh) || !(o.material instanceof MeshStandardMaterial)) return
+      const lit = o.userData.lit as Color | undefined
+      if (!lit) return
+      if (!b) { o.material.color.copy(lit); return }
+      o.material.color.setRGB(
+        lit.r * (1 - b.alpha) + b.color[0] * b.alpha,
+        lit.g * (1 - b.alpha) + b.color[1] * b.alpha,
+        lit.b * (1 - b.alpha) + b.color[2] * b.alpha,
+      )
+    })
+  })
   return <primitive object={scene} />
 }
 
@@ -970,9 +1059,11 @@ function useBattleCamera(fit: number): void {
     // ⚠️ 대본이 배경을 흔들라고 적은 기술만 흔든다 (`Func_ShakeBg`, 30개).
     // 지진·땅가르기가 그것이고, 번개는 안 흔든다 — 위력이 아니라 대본이
     // 정한다. 연출이 끝나면 `t`가 1이라 0이 곱해진다
-    const quake = moveImpact.t < 1 && moveImpact.camera > 0
+    const quake = (moveImpact.t < 1 && moveImpact.camera > 0
       ? Math.sin(battleClock.now() * 1000 / 11) * moveImpact.camera * (1 - moveImpact.t)
-      : 0
+      : 0)
+      // BDSP 시퀀스의 `CameraShake` — 세기는 시퀀스가 낸다 (`engine/battle/fx/sequence`의 `shakeAt`)
+      + (seqStage.running ? Math.sin(battleClock.now() * 1000 / 23) * seqStage.shake : 0)
     // ⚠️ **좁은 무대에서는 카메라를 당긴다.** 자리는 풀밭(반지름 12m) 기준으로
     // 적혀 있는데 실내 무대는 12×18m짜리 방이라, 그대로 두면 카메라가 벽 밖
     // 천장 위에 선다. 바라보는 자리는 그대로 두고 거리만 줄인다

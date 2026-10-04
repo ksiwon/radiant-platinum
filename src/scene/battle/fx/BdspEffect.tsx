@@ -17,7 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import {
   BufferAttribute, DataTexture, DynamicDrawUsage, InstancedInterleavedBuffer, InterleavedBufferAttribute,
-  InstancedBufferGeometry, Quaternion, Euler, RGBAFormat, type Mesh, type PerspectiveCamera, type Texture,
+  InstancedBufferGeometry, Matrix4, Quaternion, Euler, RGBAFormat, type Group, type Mesh, type PerspectiveCamera, type Texture,
 } from 'three'
 import type { MeshBasicNodeMaterial } from 'three/webgpu'
 import { battleClock, ClockReader } from '../../../engine/battle/presentationClock'
@@ -50,6 +50,13 @@ interface BdspEffectProps {
   clock?: () => number
   /** 이 문자열이 경로에 든 렌더러만 그린다 (시험대 `&only=`) */
   only?: string
+  /**
+   * 프레임마다 자리를 받는다 (우리 무대 좌표 · 사원수 xyzw). 주면 `position`·`rotation`·`scale`
+   * 대신 이것을 쓴다 — BDSP 시퀀스가 입자를 몸에 붙여 옮길 때다
+   */
+  pose?: () => { pos: readonly [number, number, number]; quat: readonly [number, number, number, number]; scale: readonly [number, number, number] } | null
+  /** 이 시각(이펙트 시계 초)에 뿜기를 멈춘다 (`ParticleStop`) — 살아 있는 입자는 끝까지 산다 */
+  stopAt?: number
   /** 걸음마다 부른다 — 시험대가 상태를 적는다 */
   onStep?: (effect: FxEffect) => void
   onDone?: () => void
@@ -228,6 +235,8 @@ function buildRigs(effect: FxEffect, maps: ReadonlyMap<string, Texture>): Rig[] 
   return rigs
 }
 
+const toLocal = new Matrix4()
+
 const camScratch = {
   pos: [0, 0, 0] as [number, number, number],
   right: [1, 0, 0] as [number, number, number],
@@ -237,7 +246,7 @@ const camScratch = {
 }
 
 export function BdspEffect({
-  name, position, rotation, scale, seed = 1, loop = false, clock, only, onStep, onDone,
+  name, position, rotation, scale, seed = 1, loop = false, clock, only, pose, stopAt, onStep, onDone,
 }: BdspEffectProps) {
   const [ready, setReady] = useState<{ effect: FxEffect; rigs: Rig[] } | null>(null)
 
@@ -271,6 +280,8 @@ export function BdspEffect({
 
   const reader = useRef(new ClockReader())
   const ended = useRef(false)
+  const stopped = useRef(false)
+  const holder = useRef<Group>(null)
   const meshes = useRef<(Mesh | null)[]>([])
 
   useEffect(() => {
@@ -284,6 +295,7 @@ export function BdspEffect({
     ready.effect.play()
     reader.current.reset()
     ended.current = false
+    stopped.current = false
     return () => { for (const r of ready.rigs) r.geometry.dispose() }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 새 이펙트일 때만 처음부터
   }, [ready])
@@ -291,10 +303,21 @@ export function BdspEffect({
   useFrame((state) => {
     if (!ready) return
     const { effect, rigs } = ready
+    const p = pose?.()
+    if (p) {
+      // 우리 좌표 → 유니티 (S·P·S) — 위 `placement`와 같은 셈
+      effect.place([-p.pos[0], p.pos[1], p.pos[2]], [p.quat[0], -p.quat[1], -p.quat[2], p.quat[3]], p.scale)
+    }
     if (clock) {
       const want = Math.max(0, clock())
       // 뒤로 가면 처음부터 다시 — 걸음이 결정적이라 같은 자리에 다시 선다
-      if (want + 1e-6 < effect.time) effect.play()
+      if (want + 1e-6 < effect.time) { effect.play(); stopped.current = false }
+      // 멈춤은 **그 걸음에** 건다 — 한 번에 여러 걸음을 가도 같은 입자가 나오게
+      if (stopAt !== undefined && !stopped.current && want >= stopAt) {
+        effect.advanceTo(stopAt)
+        effect.stop()
+        stopped.current = true
+      }
       effect.advanceTo(want)
     } else {
       effect.advance(Math.min(reader.current.read(battleClock.now()), MAX_CATCH_UP))
@@ -302,7 +325,15 @@ export function BdspEffect({
     onStep?.(effect)
 
     const cam = state.camera
-    const e = cam.matrixWorld.elements
+    // ⚠️ **카메라를 이펙트 그룹의 좌표로 옮긴다.** 인스턴스 값은 그룹 안 좌표인데, 배틀 무대는
+    // `STAGE_ORIGIN`(0, −500, 0)에 선다 — 월드 카메라를 그대로 쓰면 깊이가 음수가 되어 크기
+    // 상한(`maxParticleSize`)이 판을 0으로 줄였다(실측: 몸통박치기 입자 34개가 살아 있는데 안 보였다)
+    const root = holder.current
+    if (root) {
+      root.updateWorldMatrix(true, false)
+      toLocal.copy(root.matrixWorld).invert().multiply(cam.matrixWorld)
+    } else toLocal.copy(cam.matrixWorld)
+    const e = toLocal.elements
     camScratch.pos[0] = e[12]!; camScratch.pos[1] = e[13]!; camScratch.pos[2] = e[14]!
     camScratch.right[0] = e[0]!; camScratch.right[1] = e[1]!; camScratch.right[2] = e[2]!
     camScratch.up[0] = e[4]!; camScratch.up[1] = e[5]!; camScratch.up[2] = e[6]!
@@ -336,7 +367,7 @@ export function BdspEffect({
 
   if (!ready) return null
   return (
-    <group>
+    <group ref={holder}>
       {/* 인스턴스가 어디까지 가는지 경계 상자로는 모른다 — 자르지 않는다 */}
       {ready.rigs.map((r, i) => (only && !r.slot.path.includes(only) ? null : (
         <mesh

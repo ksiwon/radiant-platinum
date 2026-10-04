@@ -42,6 +42,9 @@ import { moveAnimFrames } from '../../engine/battle/moveLength'
 import { preloadSplPack, splFileFor, splPackReader, SPL_WAZA } from './splPack'
 import { splMetre, type Vec3 } from './splPlace'
 import type { SplCue } from './splDraw'
+import { BdspSequence } from './fx/BdspSequence'
+import { moveSeqPlan, preloadMoveSeqs } from './fx/moveSeq'
+import { planFrames, type SeqPlan } from '../../engine/battle/fx/sequence'
 
 /** 60fps 기준 프레임을 초로 */
 const secs = (frames: number): number => frames / 60
@@ -90,6 +93,11 @@ interface Shot {
    * 서는 시간**(`anim.frames`)이고 그것이 곧 그 태스크들의 길이다
    */
   bodyFrames: number
+  /**
+   * BDSP 연출 시퀀스 (BATTLE_FX §4). 있으면 **DS 입자 · 도형 · 무대 몫을 다 끄고** 이것만 돈다 —
+   * 몸의 나감 · 맞음도 시퀀스가 시킨다(`stageRefs.seqStage`)
+   */
+  seq: SeqPlan | null
 }
 
 /**
@@ -523,13 +531,34 @@ export function MoveVfx({
   // 박자(`playback`)와 무대(`BattleStage`)에 「이 기술은 몇 프레임인가」를 꽂는다.
   // ⚠️ **엔진이 218KB짜리 대본 표를 직접 못 집는다** — 그것을 든 곳이 여기뿐이라
   // 여기서 꽂고, 배틀을 나갈 때 되돌린다 (`vfx`의 `setMoveFrames`)
+  //
+  // ⚠️ **BDSP 시퀀스가 있는 기술은 그 시퀀스가 길이를 낸다** — 맞는 쪽 체력이 깎이는 프레임
+  // (`GaugeDamage`)까지다. 박자는 거기서 다음 사건(체력 깎임)으로 가고, 시퀀스의 꼬리(입자가
+  // 사그라지는 것 · 몸이 돌아오는 것)는 그 위에서 마저 돈다 — BDSP도 게이지가 연출 도중에 준다.
+  // 시퀀스는 30fps라 두 배 한다
+  const [seqReady, setSeqReady] = useState(0)
+  // ⚠️ **명부를 구독한다.** 무대가 서는 순간에는 명부가 아직 빌 수 있다 — 그때 한 번만 받으면
+  // 아무것도 안 받고 판 내내 DS로 간다(실측: 몸통박치기가 DS 돌진으로 나갔다)
+  const roster = useBattleStore((s) => s.roster)
+  useEffect(() => {
+    let alive = true
+    const moves = new Set<number>()
+    for (const r of Object.values(roster)) for (const m of r.moves ?? []) moves.add(m)
+    if (moves.size === 0) return undefined
+    void preloadMoveSeqs(moves).then(() => { if (alive) setSeqReady((n) => n + 1) })
+    return () => { alive = false }
+  }, [roster])
   useEffect(() => {
     if (anims === null) return undefined
-    setMoveFrames((move) => moveAnimFrames(anims[move ?? -1] ?? null, wazaFile))
+    setMoveFrames((move) => {
+      const plan = moveSeqPlan(move, true)
+      if (plan) return 2 * (plan.hit ?? planFrames(plan))
+      return moveAnimFrames(anims[move ?? -1] ?? null, wazaFile)
+    })
     return () => {
       setMoveFrames(null)
     }
-  }, [anims])
+  }, [anims, seqReady])
 
   const cast = view?.lastMove ?? null
   useEffect(() => {
@@ -545,7 +574,11 @@ export function MoveVfx({
     const kind = archetypeFor(move)
     const at = cast.to ?? (cast.by.startsWith('p1') ? 'p2a' : 'p1a')
     const anim = anims?.[cast.move ?? 0] ?? null
+    const seq = moveSeqPlan(cast.move, cast.by.startsWith('p1'))
+    // 판 도중 배운 기술처럼 미리 못 받은 것은 이번엔 DS로 가고 다음부터 BDSP다
+    if (seq === null && cast.move !== null) void preloadMoveSeqs([cast.move])
     setShot({
+      seq,
       kind,
       by: cast.by,
       at,
@@ -582,16 +615,30 @@ export function MoveVfx({
         (`BtlCmd_PlayBattleAnimation`의 `BattleSystem_AreAnimationsOn`)
       */}
       <StatusVfx spotAt={spotAt} />
-      {shot && <MoveShot shot={shot} setShot={setShot} />}
+      {shot && <MoveShot shot={shot} setShot={setShot} spotAt={spotAt} />}
     </>
   )
 }
 
 /** 기술 한 번 — 도형과 원작 입자 */
-function MoveShot({ shot, setShot }: {
+function MoveShot({ shot, setShot, spotAt }: {
   shot: Shot
   setShot: (next: (now: Shot | null) => Shot | null) => void
+  spotAt: (slot: SlotId) => [number, number]
 }) {
+  if (shot.seq) {
+    return (
+      <BdspSequence
+        key={shot.seed}
+        plan={shot.seq}
+        roles={[shot.by, shot.at]}
+        spotAt={spotAt as (slot: string) => [number, number]}
+        startedAt={shot.startedAt}
+        vanish={shot.signature.vanish}
+        onDone={() => { setShot((now) => (now === null || now.seed === shot.seed ? null : now)) }}
+      />
+    )
+  }
   return (
     <>
       <Shape

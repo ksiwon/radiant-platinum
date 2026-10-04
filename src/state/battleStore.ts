@@ -227,6 +227,11 @@ export interface RosterEntry {
    */
   gender?: Gender
   shiny?: boolean
+  /**
+   * 든 기술 번호. 무대가 판이 열리면 **그 기술들의 BDSP 연출 시퀀스를 미리 받는다**
+   * (`scene/battle/fx/moveSeq`) — 박자가 기술 길이를 묻는 그 순간에 받고 있으면 늦다
+   */
+  moves?: number[]
 }
 
 interface WildStart {
@@ -2094,9 +2099,10 @@ type Waiting = '규칙기' | '게임 자료' | '파티' | '심판'
  */
 function bodyEntry(
   mon: PokemonInstance, species: Species,
-): Pick<RosterEntry, 'species' | 'form' | 'level' | 'ball' | 'gender' | 'shiny'> {
+): Pick<RosterEntry, 'species' | 'form' | 'level' | 'ball' | 'gender' | 'shiny' | 'moves'> {
   return {
     species: mon.species,
+    moves: mon.moves.map((s) => s.move).filter((m) => m > 0),
     form: mon.form,
     level: mon.level,
     ...(mon.ball > 0 ? { ball: mon.ball } : {}),
