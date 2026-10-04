@@ -4,6 +4,7 @@
 // 화면에서만 티가 나고 어떤 계산도 안 틀리므로, 순서 자체를 못박아 둔다.
 import { describe, expect, it } from 'vitest'
 import type { Actor, BattleEvent } from './events'
+import { recallSeconds, sendOutSettledAt } from './captureTiming'
 import { buildBeats, drainFrames } from './playback'
 import { parseLines } from './sim/protocol'
 import { MOVE_FRAMES, statusAnimFrames } from './vfx'
@@ -236,8 +237,9 @@ describe('박자 순서', () => {
   it('몸이 먼저 서고 글이 그 뒤다 — 사용자 결정 (원작은 `PrintSendOutMessage` 다음에 공을 던진다)', () => {
     const beats = buildBeats([enter(p1, 20)], say)
     expect(beats.map((b) => (b.text ?? b.events[0]?.kind))).toEqual(['switch', '가라! party-0!'])
-    // 여는 등판은 원작 `WaitTime 96`을 그대로 쉰다 — 공 · 미끄러짐이 다 끝난 뒤에 글이 뜬다
-    expect(beats[0]!.hold).toBe(96)
+    // 원작 `WaitTime 96`과 무대의 내보내기(`ee400` — 볼이 날아와 열리고 몸이 떨어져 착지한다, 2.0초) 중 긴 쪽을 쉰다 —
+    // 몸이 다 선 뒤에 글이 뜬다
+    expect(beats[0]!.hold).toBe(Math.max(96, Math.ceil(sendOutSettledAt() * 60)))
     expect(beats[0]!.presentation).toBe(true)
   })
 
@@ -250,7 +252,7 @@ describe('박자 순서', () => {
     // 트레이너전의 여는 등판은 `WaitTime 112`
     const tr = buildBeats([enter(p2, 20)], say, { foeOnStage: false })
     expect(tr[0]!.events[0]?.kind).toBe('switch')
-    expect(tr[0]!.hold).toBe(112)
+    expect(tr[0]!.hold).toBe(Math.max(112, Math.ceil(sendOutSettledAt() * 60)))
     expect(tr[1]!.text).toBe('가라! foe-0!')
   })
 
@@ -264,11 +266,12 @@ describe('박자 순서', () => {
     expect(pilot.some((b) => b.press === true)).toBe(false)
   })
 
-  it('판 도중 교체는 72프레임이다 — 여는 등판보다 짧다', () => {
-    const beats = buildBeats([enter(p2, 20), enter(p1, 20), swap(p1, 405, 'Luxray')], say,
+  it('판 도중 교체는 앞 마리를 거두고(`ee610`) 나서 내보낸다 — 원작 72프레임보다 무대 연출이 길다', () => {
+    const beats = buildBeats([enter(p2, 20), enter(p1, 20), swap({ ...p1, name: 'party-1' }, 405, 'Luxray')], say,
       { foeOnStage: true })
     const outs = beats.filter((b) => b.events.some((e) => e.kind === 'switch'))
-    expect(outs.map((b) => b.hold)).toEqual([122, 96, 72])
+    const send = Math.ceil(sendOutSettledAt() * 60)
+    expect(outs.map((b) => b.hold)).toEqual([122, Math.max(96, send), Math.max(72, Math.ceil((recallSeconds() + sendOutSettledAt()) * 60))])
   })
 
   it('빈 줄로 갈린 글은 창이 갈리고, 줄바꿈 하나는 한 창에 남는다', () => {
