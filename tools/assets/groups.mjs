@@ -286,6 +286,12 @@ export const GROUPS = [
     match: under('models/room/'),
   },
   {
+    // 나무열매 나무 — BDSP `gimmick/kino001~064` + 싹 (docs/DATA.md §2.17.8)
+    name: 'berryPlant',
+    make: 'pnpm extract:berryPlants',
+    match: under('models/berry/'),
+  },
+  {
     // 바깥 — BDSP 야외 지역 13벌 + 대습지. 굽는 쪽은 설치기와 같은 타입스크립트다 (docs/DATA.md §2.17.6)
     name: 'field',
     make: 'pnpm extract:fields',

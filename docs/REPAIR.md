@@ -5493,6 +5493,8 @@ src/state/multiBattle.test.ts`.
 
 ## 123. 짝으로 선 트레이너의 자리가 **지어낸 값**이었다 — 원작은 제 포켓몬 자리에 선다
 
+⚠️ **지금 배틀 무대에는 사람이 서지 않는다** (사용자 결정 2026-10-04 — 제 포켓몬 맞은편에 선 사람이 트레이너가 포켓몬과 싸우는 것으로 읽혔다). 아래는 원작이 트레이너를 어디에 세우는지의 근거 기록이고, 우리는 이 자리를 안 쓴다 — 볼은 화면 밖(`battleBallMotion.trainerThrowOrigin`)에서 온다.
+
 `PAIRED_TRAINER_GAP`(우리 쪽 0.8m · 상대 1.3m)은 몸이 안 겹치게만 잡은 값이었다. 원작을 찾아보니 **트레이너만의 더블 좌표가
 없다.** 트레이너 그림은 `gEncounterCoords[side]`(`battle_anim/ov12_022380BC.c` 16)에서 나와 `gBattlerEncounterX[side][0]`(25)로
 미끄러지는데(`battle_display.c` 525~538), `side`는 2vs2이거나 태그 배틀의 상대 쪽이면 **전투원 자리**(`battlerType`)이고 그 밖에는
@@ -5506,18 +5508,18 @@ src/state/multiBattle.test.ts`.
 
 그래서 원작 화면에서 짝으로 선 트레이너는 늘 **제 포켓몬과 같은 화면 x**다. 누가 짝으로 서는지도 같은 갈래가 정한다: 태그 더블(나
 혼자)의 우리 쪽은 싱글 줄 하나, 편이 있으면 우리 둘, 상대가 둘이면 상대 둘, 한 사람의 더블은 싱글 줄 하나(`battle_script.c`
-737~750). `BattleTrainers`가 그렇게 `paired`를 준다.
+737~750).
 
 **옮기는 법** — 우리 싱글 자리는 DS 픽셀이 아니라 BDSP의 미터 값이라(`shots.SLOT` · `BattleDefaultPlacementData`) DS 픽셀을
 미터로 바꾸는 한 상수가 없다. 카메라를 거쳐 견준다: 트레이너를 제 발판과 **같은 화면 x**가 되게 시선 좌우(`PAIR_DIR`)로 민다.
 같은 화면 x는 카메라 깊이에 비례하므로 발판의 벌어짐(`shots.pairOffset`)에 **트레이너 깊이 ÷ 발판 깊이**를 곱한다
-(`shots.viewDepth` · `battleBallMotion.trainerStandAt`). 상대 쪽이 대략 1.2배, 우리 쪽이 0.58배다.
+(`shots.viewDepth`). 상대 쪽이 대략 1.2배, 우리 쪽이 0.58배다.
 
 ⚠️ **발판의 벌어짐 자체는 여전히 찍어 보고 고른 값이다**(`PAIR` — 우리 0.45·0.02 · 상대 0.85·1.35). BDSP 덤프에는 더블 표가
 따로 있다(`battle_masterdatas`의 규칙 1 — 발판 (±2.2, 0, ±2.2), 트레이너 x ±1.0) — 그 표는 **제 더블 카메라**((4, 3.3, 7.2) · 화각 31)와
 짝이고, 우리 싱글 카메라로 보면 발판이 화면 밖이다. 그 카메라를 들일지는 화면을 보고 정할 일이라 여기서 안 바꿨다.
 
-**재는 법** — `npx vitest run src/scene/battle/battleBallMotion.test.ts` (네 자리 모두 트레이너와 발판의 화면 x 벌어짐이 같다).
+
 
 ## 124. 깨어진 세계의 사건이 주인공을 **칸 끝에 비껴 선 채** 싣고 가 내려놓았다
 

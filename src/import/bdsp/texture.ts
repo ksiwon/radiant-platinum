@@ -299,6 +299,38 @@ function pass(
 }
 
 /**
+ * 알파를 곱한 채로 줄인다 — PIL의 RGBA `resize`가 하는 일이다 (`Image.resize`: RGBA는 `RGBa`로 바꿔 줄이고 되돌린다).
+ *
+ * ⚠️ **투명한 가장자리 색이 갈린다.** 곱하지 않고 줄이면 알파 0 칸의 색이 이웃 불투명 칸으로 번져 잎 · 꽃잎 둘레에 후광이
+ * 서고, PIL은 그 칸의 색을 (0,0,0)으로 만든다. 노드 쪽 `bdsp_bake_albedo.py`가 `Image.LANCZOS`로 RGBA를 줄이므로
+ * 나무열매 그림(`BakeOptions.premultiplied`)은 이쪽으로 줄여 바이트를 맞춘다. `rgba2rgbA` · `rgbA2rgba` (Pillow `Convert.c`)와 같은 정수식이다
+ */
+export function resizePremultiplied(
+  src: Uint8Array, width: number, height: number, toWidth: number, toHeight: number,
+): Uint8Array<ArrayBuffer> {
+  if (toWidth === width && toHeight === height) return src.slice()
+  const n = width * height
+  const mul = new Uint8Array(n * 4)
+  for (let i = 0; i < n; i++) {
+    const a = src[i * 4 + 3]!
+    for (let c = 0; c < 3; c++) {
+      // MULDIV255: (v * a + 128) 에 (그 값 >> 8)을 더해 >> 8
+      const t = src[i * 4 + c]! * a + 128
+      mul[i * 4 + c] = ((t >> 8) + t) >> 8
+    }
+    mul[i * 4 + 3] = a
+  }
+  const small = resize(mul, width, height, toWidth, toHeight)
+  for (let i = 0; i < toWidth * toHeight; i++) {
+    const a = small[i * 4 + 3]!
+    // 알파 0 · 255는 그대로 둔다 (Pillow `rgbA2rgba`)
+    if (a === 255 || a === 0) continue
+    for (let c = 0; c < 3; c++) small[i * 4 + c] = Math.min(255, Math.trunc((255 * small[i * 4 + c]!) / a))
+  }
+  return small
+}
+
+/**
  * Lanczos-3 축소.
  *
  * ⚠️ **평균이나 최근접으로 줄이면 안 된다.** 인물 텍스처는 도트가 아니라 그림

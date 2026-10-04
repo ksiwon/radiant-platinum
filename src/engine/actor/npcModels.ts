@@ -421,7 +421,8 @@ export function buildOf(bundle: string): 'battle' | 'field' {
  * 등신 몸(`tr*`·`pc*`)에서 실을 클립.
  *
  * 몸 하나에 여덟이 오는데 배틀에서 이어 붙일 자리가 있는 것은 넷이다 —
- * 등장 · **쉬기** · 지시 · 패배 (`scene/battle/BattleTrainers`).
+ * 등장 · **쉬기** · 지시 · 패배 (`scene/battle/battleTrainerVisual`의 `TRAINER_CLIP`). 배틀 무대에는
+ * 지금 사람이 서지 않아 (사용자 결정 2026-10-04) 이 클립을 부르는 화면이 없다.
  *
  * ⚠️ **`wait_b`가 없으면 트레이너가 굳는다.** 한동안 셋만 실었는데, 등장
  * 클립이 끝나면 돌아갈 자리가 없어 **마지막 자세 그대로 멈춰 있었다** —

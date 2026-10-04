@@ -53,6 +53,61 @@ const bytes = (path: string): Uint8Array => new Uint8Array(readFileSync(path))
 
 const suite = withLocal('BDSP AssetAssistant', AA, arena('g001'), person('battle', 'tr0002_00'))
 
+const berryBundle = (name: string): string | null => {
+  const dir = bdspDir('environments')
+  return dir ? join(dir, 'gimmick', name) : null
+}
+const BERRY_BAKED = join(__dirname, '../../../public/models/berry')
+
+withLocal('BDSP AssetAssistant', berryBundle('kino001'))('나무열매 나무', () => {
+  it('kino001이 묶음마다 노드로 나뉜다 — 이름순 Hana · Mi · Miki', async () => {
+    const env = openEnvironment([bytes(berryBundle('kino001')!)])
+    const { glb, stat } = await exportArena(env, encodePng, { name: 'kino001', maxSize: 256, groups: true, premultiplied: true, plant: true })
+    expect(stat.problems).toEqual([])
+    const json = new TextDecoder().decode(glb.subarray(20, 20 + new DataView(glb.buffer, glb.byteOffset).getUint32(12, true)))
+    const gltf = JSON.parse(json) as { nodes: { name: string }[] }
+    expect(gltf.nodes.map((n) => n.name)).toEqual(['Hana', 'Mi', 'Miki'])
+  }, 60_000)
+
+  // 노드 쪽 `bdspArena.py --berries`와 같아야 한다 (두 굽는 쪽이 갈리지 않게). PNG를 압축하는 쪽이 달라 파일 바이트는 갈리므로
+  // **구조 · 정점 바이트 · 그림 픽셀**을 견준다. 산출물이 없으면 건너뛴다
+  it.runIf(existsSync(join(BERRY_BAKED, 'kino001.glb')))('개발 산출물과 같다 — kino001 · kino002 · kinoseeding (정점 색 COLOR_0 · 꽃 마스크 굽기 포함)', async () => {
+    interface Parsed { gltf: Record<string, unknown> & { bufferViews: { byteOffset: number, byteLength: number, target?: number }[], images: { bufferView: number }[] }, bin: Uint8Array }
+    const parse = (g: Uint8Array): Parsed => {
+      const dv = new DataView(g.buffer, g.byteOffset, g.byteLength)
+      const n = dv.getUint32(12, true)
+      const gltf = JSON.parse(new TextDecoder().decode(g.subarray(20, 20 + n))) as Parsed['gltf']
+      const m = dv.getUint32(20 + n, true)
+      return { gltf, bin: g.subarray(28 + n, 28 + n + m) }
+    }
+    for (const name of ['kino001', 'kino002', 'kinoseeding']) {
+      const env = openEnvironment([bytes(berryBundle(name)!)])
+      const mine = parse((await exportArena(env, encodePng, { name, maxSize: 256, groups: true, premultiplied: true, plant: true })).glb)
+      const want = parse(new Uint8Array(readFileSync(join(BERRY_BAKED, `${name}.glb`))))
+      for (const k of ['scenes', 'nodes', 'meshes', 'materials', 'textures', 'samplers', 'accessors']) {
+        expect(mine.gltf[k], `${name} ${k}`).toEqual(want.gltf[k])
+      }
+      // 잎의 정점 색 — 열매 나무마다 있고 싹에는 없다
+      expect(JSON.stringify(mine.gltf.meshes).includes('COLOR_0'), `${name} COLOR_0`).toBe(name !== 'kinoseeding')
+      const pick = (p: Parsed, i: number): Uint8Array => {
+        const v = p.gltf.bufferViews[i]!
+        return p.bin.subarray(v.byteOffset, v.byteOffset + v.byteLength)
+      }
+      expect(mine.gltf.bufferViews.length).toBe(want.gltf.bufferViews.length)
+      mine.gltf.bufferViews.forEach((v, i) => {
+        if (v.target !== undefined) expect(Buffer.from(pick(mine, i)).equals(Buffer.from(pick(want, i))), `${name} 정점 ${i}`).toBe(true)
+      })
+      expect(mine.gltf.images.length).toBe(want.gltf.images.length)
+      for (const [i, im] of mine.gltf.images.entries()) {
+        const x = await decodePng(pick(mine, im.bufferView))
+        const y = await decodePng(pick(want, want.gltf.images[i]!.bufferView))
+        expect([x.width, x.height], `${name} 그림 ${i}`).toEqual([y.width, y.height])
+        expect(Buffer.from(x.pixels).equals(Buffer.from(y.pixels)), `${name} 그림 ${i} 픽셀`).toBe(true)
+      }
+    }
+  }, 60_000)
+})
+
 suite('무대', () => {
   it('g001을 개발 추출기와 같은 수로 굽는다', async () => {
     const env = openEnvironment([bytes(arena('g001')!)])

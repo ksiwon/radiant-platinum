@@ -69,6 +69,22 @@ def hex_color(text: str) -> dict:
     return {"r": r, "g": g, "b": b, "a": 1.0}
 
 
+def plant_kind(keywords: str, main_pid: int, layer_pid: int) -> str:
+    """나무열매 재질의 색 입히는 길 (`bake(…, plant=True)` · `bdspArena.py --berries`) — 재질이 적어 둔 셰이더 키워드로 가른다.
+
+    `blend`  `_CASCADE_BLENDUV0` — 잎. 그림은 한 장이고 `_Color` ↔ `_LayerColor`를 **정점 알파**로 섞는다 (정점 색 `COLOR_0`)
+    `mask`   `_LayerTex`가 `_MainTex`와 **다른 그림**(`T_K_001_Nutflower_01_M` — 거의 검은 마스크) — 꽃. 마스크가 `_Color` · `_LayerColor`를 섞는다
+    `plain`  나머지 — 줄기 · 열매. `_Color`를 재질 색(`baseColorFactor`)으로 곱한다
+
+    ⚠️ **브라우저 변환기와 같아야 한다** (`src/import/bdsp/albedo.ts`의 `plantKind`)
+    """
+    if "_CASCADE_BLENDUV0" in keywords.split():
+        return "blend"
+    if main_pid and layer_pid and main_pid != layer_pid:
+        return "mask"
+    return "plain"
+
+
 def prop_pairs(entries):
     for e in entries:
         k, v = e if isinstance(e, (list, tuple)) else (e["first"], e["second"])
@@ -424,7 +440,8 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
          max_size: int | None = None,
          main_props: tuple[str, ...] = ("_MainTex",),
          recolor: dict | None = None,
-         additive_water: bool = False) -> dict[str, dict]:
+         additive_water: bool = False,
+         plant: bool = False) -> dict[str, dict]:
     """번들의 머티리얼을 평범한 albedo PNG로 굽는다.
 
     돌려주는 것은 **머티리얼 이름 → 그 그림을 어떻게 읽어야 하는가**다:
@@ -444,6 +461,9 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
     음영이 그대로 살아 있는 채로 부위 색만 바뀐다. 플래티넘에만 있어서 BDSP에
     몸이 없는 사람을 다른 몸으로 세울 때 쓴다 (`engine/actor/npcModels`의
     `NPC_RECOLOR` — 굽는 쪽 둘이 그 표 하나를 같이 본다).
+
+    `plant`는 나무열매 나무다 — `mask` 재질(꽃, `plant_kind`)은 `밑그림 × lerp(_Color, _LayerColor, 마스크 R)`로 굽는다.
+    마스크가 128짜리라 밑그림 크기로 **최근접**으로 늘린다 (`_MaskTex`와 같다)
 
     `main_props`는 알베도를 찾을 자리다. 인물·무대는 `_MainTex`지만 포켓몬
     셰이더는 `_Col0Tex`에 색을 싣는다 — 이름만 다르고 하는 일은 같다
@@ -568,6 +588,13 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
         coverage = np.clip(mask.sum(axis=2, keepdims=True), 0.0, 1.0)
         tint = tint + (1.0 - coverage)
 
+        if plant and "_LayerTex" in slots and plant_kind(
+                str(d.get("m_ShaderKeywords") or ""), slots[found].path_id, slots["_LayerTex"].path_id) == "mask":
+            mm = slots["_LayerTex"].read().image.convert("RGB")
+            if mm.size != (w, h):
+                mm = mm.resize((w, h), Image.NEAREST)
+            m = np.asarray(mm, dtype=np.float32)[..., 0:1] / np.float32(255)
+            tint = layer("_Color") * (np.float32(1) - m) + layer("_LayerColor") * m
         out_lin = rgb_lin * tint
         # 불투명하다고 적힌 재질은 알파를 통째로 채운다. 남겨 두면 KTX2로
         # 옮길 때나 다른 곳에서 다시 오려 낼 빌미가 된다

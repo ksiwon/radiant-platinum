@@ -96,7 +96,7 @@ describe('배틀 무대 고르기', () => {
     // 굴·실내는 BDSP도 `s006`(하늘 없음)을 얹는다
     expect(hasSky(ARENA[0]!)).toBe(true)
     expect(hasSky(ARENA[9]!)).toBe(false)
-    expect(ARENA.filter(hasSky)).toHaveLength(7)
+    expect(ARENA.filter(hasSky)).toHaveLength(6)
   })
 })
 

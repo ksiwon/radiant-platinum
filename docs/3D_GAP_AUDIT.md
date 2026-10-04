@@ -72,7 +72,7 @@ BDSP에 몸이 아예 없는 핸섬·플루토였고, 남의 몸의 레이어 �
 | 3D 사람 | 1,895 | 112종 | `NpcModels` |
 | **판때기** | **1,118** | **13종** | `NpcSprites` — 아래 |
 | 3D 소품 (롬 모델) | 247 | 10종 | `ObjectProps` (간판·눈덩이·책·사천왕 방문·로토무 방 벽) |
-| 3D 나무열매 밭 | 118 | 1종 | `BerryPatchProps` — 그림 파일이 아예 없는 번호다 |
+| 3D 나무열매 밭 | 118 | 열매 64종 + 싹 | `BerryPatchProps` — 흙은 `fldeff.narc` 17번 모델, 자란 것은 BDSP `kino001~064` · `kinoseeding` 입체다 (`Miki` · `Hana` · `Mi` 노드를 성장 단계에 맞게 켠다 · DATA.md §2.17.8) |
 | 3D 포켓몬 | 115 | 29종 | `NpcMonModels` |
 | 자리표시자 | 62 | 7종 | `OBJ_EVENT_GFX_VAR_*`(101~116) — 변수가 정하고 대개 주인공이라 이미 모델이다 |
 

@@ -2213,7 +2213,7 @@ mmodel.narc 파일 번호
 
 | 남는 것 | 배치 | 어떻게 정해지나 |
 |---|---|---|
-| 열매밭 `BERRY_SOIL` | 118 | 흙은 판때기가 아니라 **`fldeff.narc` 17번 모델**이다. 그 위에 서는 것은 자란 정도에 따라 `BerryPatchGraphics`가 고른다 (같은 표의 열매 192줄) |
+| 열매밭 `BERRY_SOIL` | 118 | 흙은 판때기가 아니라 **`fldeff.narc` 17번 모델**이다. 그 위에 서는 것은 자란 정도에 따라 `BerryPatchGraphics`가 고른다 (같은 표의 열매 192줄). 우리는 자란 것을 판때기 대신 BDSP 나무 입체로 세운다 (§2.17.8) |
 | 간판·우편함·책 7종 | 219 | 3D 프롭이다. `Unk_ov5_021FB51C`가 간판을 Z로 −2 내려 세운다 |
 | `VAR_0`…`VAR_F` | 62 | **실행 중에 변수에서 읽는다** (아래) |
 | 눈덩이·문·벽 | 28 | 저마다 전용 렌더러 |
@@ -2299,7 +2299,8 @@ SOUTH=1, WEST=2, EAST=3`과 그대로 맞는다.
 싹·자람·꽃·열매는 자란 정도에 따라 코드가 고른다. 그림 번호도 열거형이 아니라
 산술이다 — 싹이 4096이고 그 뒤로 열매마다 셋씩이다
 (`constants/berry_tree_obj_event_gfx.h`). 표를 만들 때 이 둘을 다 넘기면 밭이
-**아무것도 안 자란 것처럼** 보인다 (PARITY §4.6).
+**아무것도 안 자란 것처럼** 보인다 (PARITY §4.6). 이 193벌은 **화면에 그리지 않는다** —
+`BerryPatchProps`가 같은 단계 판정(`berryPlantFor`)으로 BDSP 나무 입체를 세운다 (§2.17.8).
 
 인스턴싱을 안 쓴다 — 사람마다 텍스처가 다르고 장도 따로 논다. 한 맵에 서 있는
 사람이 많아야 수십이라 판때기를 따로 세우는 편이 싸다.
@@ -2791,6 +2792,41 @@ area004의 `R208`과 같다).
 | 방 굽기 (한 메시 · 그림 glb마다) | 856MB |
 | 인스턴싱 · 그림 glb마다 | 464MB |
 | 인스턴싱 · 그림 공유 | 156MB |
+
+#### 2.17.8 나무열매 나무는 BDSP 입체다
+
+`Environments/gimmick/kino001`~`kino064`가 열매마다 한 벌이고 `kinoseeding`이 싹이다 — 설치 그룹 `berryPlants`
+(`import/bdsp/convert.ts`의 `convertBerryPlants` · 개발 추출기는 `pnpm extract:berryPlants` = `bdspArena.py --berries`).
+산출물은 `models/berry/{kino001..kino064,kinoseeding}.glb` 65벌 + `index.json`, 모두 **18.9MB**(한 벌 189~396KB — 그림 256으로 줄임 ·
+싹은 52KB)다. 열매 번호는 BDSP `KinomiData`의 `TagNo`(1~65 · `ItemNo` 149 = Cheri부터)와 같은 차례라 우리 열매 번호(1~64)가 그대로
+`kino` + 세 자리 번호다. 65번은 BDSP가 더한 열매라 짝이 없어 안 굽는다.
+
+**한 벌이 세 묶음이다** — `Miki`(줄기 · 잎 = 자람) · `Hana`(줄기 · 잎 · 꽃 = 꽃) · `Mi`(줄기 · 잎 · 열매 = 열림). 무대 변환기(`exportArena`)를 `groups`로 돌려
+뿌리 바로 아래 자식마다 glTF 노드를 따로 둔다(노드는 이름순 `Hana` · `Mi` · `Miki`). 싹(`kinoseeding`)은 메시 하나(`P_K_001_Seeding_01`)다.
+단계 ↔ 노드: 싹 = `kinoseeding` 통째로 · 자람 = `Miki` · 꽃 = `Hana` · 열림 = `Mi` · 빈 흙과 심은 직후 = 없음
+(`scene/BerryPatchProps`의 `berryPlantFor` · `showStage`). 흙(`fldeff.narc` 17번)은 그대로 선다. `kinowet` · `kinomori`(젖은 흙 · 돋운 흙)는 안 굽는다 — 흙이 이미 선다.
+
+**크기는 모델 그대로다** — BDSP 1단위가 한 칸이다(지역 glb도 곱 없이 놓는다). 한 벌의 높이 1.3~1.4(정점 y 0.1~1.4), 밑동은 밭 칸 한가운데 땅 위에 둔다.
+재질은 glb의 표준 재질이라 장면의 빛(밤 · 동굴)을 그대로 받는다.
+
+**색은 재질이 입힌다** — 줄기 · 잎 · 꽃 그림(`T_K_001_Nutstem_01_C` · `Nutleaf_01_C` · `Nutflower_01_C`)은 회색 밑그림이라 `_Color` · `_LayerColor`를 안 곱하면
+**하얗다**(열매 `Nuts_01`만 그림이 이미 색이고 `_Color`가 흰색이다). 재질이 적어 둔 셰이더 키워드로 세 길을 가른다(`plant_kind` · `plantKind`) — 색은 감마로 적혀
+있어 선형으로 내려서 쓴다(`tint_of` · `layer()`와 같은 자리):
+
+| 키워드 | 재질 | 색 |
+|---|---|---|
+| `_CASCADE_BLENDUV0` | 잎 `Nutleaf_xx` | 그림은 한 장(`_LayerTex` = `_MainTex`, 64벌 66재질 전부 같다). 정점 색 `COLOR_0` = lerp(`_Color`, `_LayerColor`, **정점 알파**)(알파 1), `baseColorFactor`는 안 단다 |
+| `_LayerTex`가 `_MainTex`와 다른 그림 | 꽃 `Nutflower_xx` | `_LayerTex`(`T_K_001_Nutflower_01_M` 128 · 거의 검은 마스크)의 R이 섞는다 — 그림 = 밑그림 × lerp(`_Color`, `_LayerColor`, 마스크 R)로 **구워 넣는다** (마스크는 밑그림 크기로 최근접) |
+| 그 밖 | 줄기 `Nutstem_xx` · 열매 `Nuts_01` | `baseColorFactor` = `_Color`(선형 · 알파 1) |
+
+잎의 섞는 방향은 실측으로 골랐다 — 잎 메시 181장에서 정점 알파는 잎자루(메시 원점)에서 멀수록 **낮고**(상관 −0.32 · 78%의 메시가 음) 재질 66개 중 56개에서 `_LayerColor`가 `_Color`보다
+어둡다. 안쪽이 어두운 것이 그림이므로 알파 1 = `_LayerColor`다. 줄기 메시의 정점 색(RGB가 정점마다 다르다)은 안 싣는다. 이 계산은 `bdspArena.py --berries`와 브라우저(`arena.ts` ·
+`albedo.ts`의 `plant`)가 같은 단계로 한다(float32로 한 단계씩 · 재질 색은 float32로 눌러 싣는다). 설치 그룹 `berryPlants` 형식 2.
+
+⚠️ **굽는 쪽 둘이 같아야 한다.** 노드(`bdspArena.py`)와 브라우저(`arena.ts`)가 노드 구성 · 정점 바이트 · 그림 픽셀까지 같다
+(`convert.test.ts`의 「나무열매 나무」 — PNG 압축기가 달라 파일 바이트는 갈리고, 위 셋이 같다. 재질 색 · `COLOR_0`도 같다). 그림은 알파 있는 RGBA를 256으로 줄이는데 PIL은 **알파를 곱해서**
+줄이고 우리 `resize`는 안 곱했다 — 알파 0 칸의 색과 가장자리가 갈려 첫 벌의 그림 넷 중 셋이 달랐다. 그래서 나무열매만 `resizePremultiplied`(`texture.ts`)로 줄인다
+(`BakeOptions.premultiplied`). 방 · 무대 · 사람은 안 건드렸다 — 그쪽의 같은 차이는 따로 잰다.
 
 #### 2.17.4 trfgra — 트레이너 그림은 **네 번째 칸**이 통짜다
 

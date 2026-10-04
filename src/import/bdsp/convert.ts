@@ -18,6 +18,7 @@ import {
   type BdspSource, type ConvertContext, type GroupSpec, type Produced,
 } from '../platinum/convertTypes'
 import { EVERY_ARENA } from '../../engine/battle/arena'
+import { berryPlantNames } from '../../engine/world/berryPlants'
 import {
   HERO_FIELD_CLIPS, NPC_BUNDLE, NPC_RECOLOR, baseBundle, buildOf, clipFilterFor, fieldClipDonor,
   modelFor,
@@ -48,6 +49,10 @@ const FIELDS = 'Environments/fields'
  * 설치본이 수백 MB 는다
  */
 const ROOM_TEXTURE = 512
+/** 나무열매 나무 (docs/orders/BATTLE_FX_20261004.md §2 · `scene/BerryPatchProps`) */
+const GIMMICK = 'Environments/gimmick'
+/** 나무 그림 긴 변의 상한 — 노드 쪽 `bdspArena.py`의 `BERRY_TEXTURE`와 같아야 한다 */
+const BERRY_TEXTURE = 256
 const MASTERDATAS = 'Dpr/masterdatas'
 /** 자전거. 오버월드에서 타는 물건이라 인물과 같은 자리에서 굽는다 */
 // ⚠️ **`ob1003_00`이 아니다** — 원작이 주인공을 태우는 자전거는 이쪽이다
@@ -868,6 +873,41 @@ async function convertArenas(ctx: ConvertContext): Promise<Produced> {
   return out
 }
 
+// ── berry plants ─────────────────────────────────────────────────────────────
+//
+// **나무열매 나무를 BDSP 입체로** (docs/orders/BATTLE_FX_20261004.md §2). 열매마다 한 벌(`kino001`~`kino064`)과 싹(`kinoseeding`)이다.
+// 무대와 같은 꼴(정적 메시 + 재질)이라 무대 변환기로 굽되, 뿌리 아래 자식(`Miki` · `Hana` · `Mi`)마다 노드를 따로 둔다 —
+// 실행 쪽이 성장 단계에 맞는 노드만 켠다. 노드 쪽 `bdspArena.py --berries`와 같은 목록이다
+
+async function convertBerryPlants(ctx: ConvertContext): Promise<Produced> {
+  const src = requireBdsp(ctx)
+  const at = await index(src)
+  const out: Produced = new Map()
+  const names = berryPlantNames()
+  const made: string[] = []
+  const missing: string[] = []
+  let done = 0
+  for (const name of names) {
+    check(ctx)
+    const path = lookup(at, `${GIMMICK}/${name}`)
+    const env = path ? await environmentOf(src, [path]) : null
+    if (!env) missing.push(name)
+    else {
+      try {
+        const { glb } = await exportArena(env, encodePng, { name, maxSize: BERRY_TEXTURE, groups: true, premultiplied: true, plant: true })
+        put(ctx, out, `models/berry/${name}.glb`, glb)
+        made.push(name)
+      } catch { missing.push(name) }
+    }
+    done++
+    ctx.onProgress?.(done, names.length)
+    await breathe(ctx)
+  }
+  requireAll('나무열매 나무', names.length, missing)
+  put(ctx, out, 'models/berry/index.json', json({ berries: made.sort() }))
+  return out
+}
+
 // ── rooms ────────────────────────────────────────────────────────────────────
 //
 // **실내를 BDSP 방으로** (docs/orders/VISUAL_20260929.md §5). 방 번들은 무대와 같은 꼴(정적 메시 + 재질)이라 무대 변환기로 굽는다.
@@ -1147,6 +1187,12 @@ export const BDSP_GROUPS: readonly GroupSpec[] = [
     outputs: ['models/arena/{무대}.glb', 'models/arena/index.json'],
     converter: 1,
     convert: convertArenas,
+  },
+  {
+    name: 'berryPlants',
+    outputs: ['models/berry/{kino번호}.glb', 'models/berry/kinoseeding.glb', 'models/berry/index.json'],
+    converter: 1,
+    convert: convertBerryPlants,
   },
   {
     name: 'rooms',

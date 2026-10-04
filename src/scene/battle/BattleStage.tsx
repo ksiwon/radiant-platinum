@@ -32,6 +32,7 @@ import { mapById, world } from '../../engine/map/world'
 import { arenaFor, cameraFit, hasSky } from '../../engine/battle/arena'
 import { BODY_FADE_SECONDS, ClockReader, battleClock } from '../../engine/battle/presentationClock'
 import { EncounterBurst } from './EncounterBurst'
+import { DistortionArena } from './DistortionArena'
 import { loadMotionTiming, loadMoves, loadSpecies } from '../../data/gameData'
 import { useBattleStore } from '../../state/battleStore'
 import type { ViewMon } from '../../engine/battle/view'
@@ -40,7 +41,6 @@ import {
   ballOpen, battleStage, impactHits, moveImpact, slotBody, STAGE_ORIGIN,
 } from './stageRefs'
 import { BattleBallEffects, SEND_RECALL_TIME } from './BattleBallEffects'
-import { BattleTrainers } from './BattleTrainers'
 import { BattleWorldLabels } from './BattleWorldLabels'
 import { captureBodyScale, recallsBody } from './battleBallMotion'
 import { bodyColor } from './bodyColor'
@@ -861,9 +861,13 @@ export function BattleStage() {
       {/*
         무대. 받는 동안은 평평한 땅이 대신 선다 — 배틀은 곧바로 열려야 한다
       */}
-      <Suspense fallback={<Flat look={timeLook} />}>
-        <Arena look={timeLook} file={arena.file} onUp={arenaUp} />
-      </Suspense>
+      {arena.distortion ? (
+        <DistortionArena onUp={arenaUp} />
+      ) : (
+        <Suspense fallback={<Flat look={timeLook} />}>
+          <Arena look={timeLook} file={arena.file} onUp={arenaUp} />
+        </Suspense>
+      )}
       <BattleAtmosphere
         view={view}
         spotAt={(id) => {
@@ -878,7 +882,6 @@ export function BattleStage() {
           return [p.x, p.z]
         }}
       />
-      <BattleTrainers />
 
       {/*
         네 자리를 늘 세운다 (PARITY §2.2). 싱글에서는 `b` 둘이 빈 발판이라
@@ -954,18 +957,11 @@ export function BattleStage() {
 function useBattleCamera(fit: number): void {
   /** 지금 카메라가 선 거리 배율. 첫 프레임에는 목표 그대로 선다 */
   const shownFit = useRef<number | null>(null)
-  /** 지금 겨누는 높이. 내 첫 볼이 열리면 `FIGHT_LOOK_Y`로 내려간다 */
-  const shownAim = useRef<number | null>(null)
   const time = useRef(new ClockReader())
   useFrame(() => {
     const dt = time.current.read(battleClock.now())
-    // ⚠️ **등장 장면은 트레이너를, 그 뒤는 대사창 위의 내 몸을 담는다** (`FIGHT_LOOK_Y`). 볼이 열리기 전으로 돌아가면(다음 배틀)
-    // 곧바로 올린다 — 등장 장면 첫 프레임부터 트레이너 머리가 들어 있어야 한다
-    const opensAt = ballOpen.p1a
-    const wantAim = opensAt !== undefined && battleClock.now() >= opensAt ? FIGHT_LOOK_Y : CAMERA.look[1]
-    const wasAim = shownAim.current
-    const aim = wasAim === null || wantAim >= wasAim ? wantAim : wantAim + (wasAim - wantAim) * Math.exp(-dt / CAMERA_EASE)
-    shownAim.current = aim
+    // 등장 장면부터 대사창 위의 내 몸을 담는다 (`FIGHT_LOOK_Y`). 배틀에 사람이 서지 않아 머리가 잘릴 일이 없다
+    const aim = FIGHT_LOOK_Y
     // ⚠️ **물러나는 것은 곧바로, 다가가는 것은 천천히.** 큰 몸이 서는데 늦게 물러나면 머리가
     // 화면 위로 잘린다. 다가가는 쪽은 교체 순간 카메라가 튀지 않게 감쇠로 민다
     const was = shownFit.current

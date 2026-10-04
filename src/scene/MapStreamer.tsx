@@ -1440,7 +1440,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       {/* 흔들리는 풀 무더기 (PARITY §6.5). 레이더를 켠 동안만 선다 */}
       <RadarPatches grid={grid} />
       {/* 나무열매 밭 — 흙 위에 자란 것이 선다 (PARITY §4.6) */}
-      <BerryPatchProps grid={grid} layer={layer} />
+      <BerryPatchProps grid={grid} layer={layer} bdspSoil={bdspDraws} />
       <DoorAnimations grid={grid} bdsp={bdspDraws} />
       <DistortionProps mapId={mapId} />
       {/*

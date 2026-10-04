@@ -56,6 +56,11 @@ export interface Arena {
    * 실제로 기본 샷이 9.95m라 방 세 곳에서 밖으로 나갔다
    */
   radius: number
+  /**
+   * glb 대신 깨어진 세계의 조각으로 세우는 무대 (`scene/battle/DistortionArena`).
+   * `file`은 그 조각이 없는 옛 설치본에서만 선다
+   */
+  distortion?: true
 }
 
 /** "하늘 없음"을 뜻하는 BDSP 하늘 번들 */
@@ -156,9 +161,10 @@ export const ARENA: readonly Arena[] = [
   { file: 'g042.glb', caption: 'ポケモンリーグ（VSシロナ）', sky: 's006', radius: 16 },
   // 17 DISTORTION_WORLD — 깨어진 세계 12맵.
   // ⚠️ **BDSP엔 이게 없다.** 깨어진 세계는 플래티넘에만 있는 곳이라 리메이크가
-  // 만들지 않았다. 기라티나가 나오는 자리로 제일 가까운 `槍の柱2`를 빌려 쓴다 —
-  // 원작을 옮긴 것이 아니라 **우리가 고른 것**이다
-  { file: 'g069.glb', caption: '槍の柱2', sky: 's069', radius: 20 },
+  // 만들지 않았다. 그 세계의 바닥 · 떠 있는 발판 · 소용돌이 하늘로 무대를 세운다
+  // (`DistortionArena`). 창기둥(`槍の柱2`)은 그 조각이 없는 옛 설치본에서만 선다 —
+  // 기라티나와 싸우는 자리가 돌기둥 신전이면 안 된다 (사용자 2026-10-04)
+  { file: 'g069.glb', caption: '破れた世界', sky: 's006', radius: 20, distortion: true },
 ]
 
 /** 표에 없는 번호가 오면 서는 무대. 원작도 배경 번호가 넘치면 풀밭으로 떨어진다 */

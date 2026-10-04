@@ -68,7 +68,7 @@ ROM에는 실제 입체 모델, 한쪽에서만 보도록 생략된 모델, 기�
 | `roomWalls` | 바닥 끝의 빈 벽 높이를 메우고 가까운 벽 UV를 빌림 | 실제 문/방 경계 구간을 우선 적용하고 기존 추론은 폴백으로 유지 |
 | `Water` | 원래 물 그림 위 투명면, 2개 CPU 파동, 합 진폭 0.087, 오프셋 0.045 | 바탕과 교차 가능한 조건. 해안·층·수면 소유권부터 고침 |
 | `MapStreamer` | 사람/포켓몬/볼 모델, 원본 소품, 나머지 NpcSprites 병행 | ‘모델 목록에 없음’으로 평면 개수를 세지 않음 |
-| `BerryPatchProps` | 흙 모델 + 성장 단계 식물 평면 | 성장 상태를 유지하면서 식물 부분만 교체 |
+| `BerryPatchProps` | 흙 모델 + 성장 단계별 BDSP 나무 모델(`models/berry/kinoNNN.glb`의 `Miki` · `Hana` · `Mi` 노드, 싹은 `kinoseeding`) | 성장 상태 · `BDSP_COVERED`를 유지한다. 식물 평면은 없다 |
 | `EngineDriver` | first 모드에서 플레이어 전체 숨김 | 도구/탈것이 같이 숨는지 검수하고 필요한 표시만 분리 |
 | `PropFade`, `Foliage:nearScale` | 실제 first 모드에서 가림/축소 억제 | 눈높이 카메라만 흉내 낸 기존 도구와 결과가 다를 수 있음 |
 | `terrainMark:terrainReady` | 최신 요청 커밋·프레임·복원·카메라 정착 판정이 이미 있음 | 새 준비 타이머를 만들지 말고 이 API와 교체 자산 상태를 조합 |
@@ -357,7 +357,7 @@ LOD: 근경은 3D crown, 중경은 ring/분기 수를 줄인 동일 실루엣 �
 - 풀: `grassSpots`의 encounter behavior를 위치 정본으로 유지한다. 2~3개 잎 군집 variant, 타일 중심 고정 대신 deterministic jitter. 단순히 TUFTS를 크게 올리지 않는다.
 - 근경 풀은 현재 잎 메시를 곡선 2~3구간으로 개선할 수 있다. 잎-only 카드 사용 시 base를 땅에 고정하고 위쪽만 움직인다. 상호작용 영역 밖 장식풀과 encounter 풀을 혼동하지 않는다.
 - 꽃: 원본 바닥 꽃 패턴을 그대로 둔다면 위에 꽃을 4개씩 추가하는 현재 밀도를 낮춘다. 바닥의 꽃 픽셀 위치와 겹치는 검수 앵커를 사용한다. 해당 바닥 영역을 덜 꽃무늬인 재료로 바꿀 수 있을 때만 전체 입체 꽃밭으로 확장한다.
-- 열매: 흙 모델 유지. 싹/성장/개화/결실에 대응하는 공용 plant 구조를 만들고 품종별 열매/꽃 색과 원본 상호작용 상태를 연결한다. 새 geometry가 준비되기 전 기존 sprite를 유지한다.
+- 열매: 흙은 `fldeff.narc` 17번 모델이고 자란 것은 BDSP의 품종별 입체(`Environments/gimmick/kino001~064`)다. 싹 = `kinoseeding`, 자람 = `Miki`, 꽃 = `Hana`, 열매 = `Mi` 노드이며 빈 흙과 심은 직후는 흙만 선다. 상호작용 상태(심기 · 물주기 · 수확)는 원본 밭 객체가 그대로 정한다 (DATA.md §2.17.8).
 - 변장: 눈·모래는 ground decal/낮은 둔덕, 바위·풀은 해당 계열의 상태용 모델을 사용한다. 등장 애니메이션에서 더미와 NPC의 visibility가 한 프레임도 중복되거나 비지 않게 한다.
 
 ## 7. 건물·실내·지면 보완
@@ -668,7 +668,7 @@ await page.waitForFunction(async () => {
 | FP-04 | 01 | 공간 P0: 문 막힘/잘못된 벽/지면·건물 틈의 verified patch | shell, roomWalls, floorPatch, ChunkModels | 실제 통행·워프 보존, 구멍/잘못된 막힘 해결 |
 | FP-05 | 01,02 | 나무 계열+원본 잎 swatch+배치+LOD | Foliage, treeSites, visual geometry | 줄기/수관 접합, 도로·건물 비침범, 변형/로드 순서 안정 |
 | FP-06 | 01,04 | 수면 높이/층/해안, 작은 변위, 풀·꽃 중복 조정 | Water, Grass, Flowers, floorPatch | 수면 교차/청크 seam 없음, 식생 역할 유지 |
-| FP-07 | 01 | 잔여 이벤트 물건·열매·변장·도구 visibility | MapStreamer, NpcSprites, BerryPatchProps, DisguisePlates, FieldActionEffects | 상태별 원본/신규 전환, actor ID/상호작용 보존 |
+| FP-07 | 01 | 잔여 이벤트 물건·열매(BDSP 품종별 입체로 섬 — `BerryPatchProps`)·변장·도구 visibility | MapStreamer, NpcSprites, BerryPatchProps, DisguisePlates, FieldActionEffects | 상태별 원본/신규 전환, actor ID/상호작용 보존 |
 | FP-08 | 02~07 | 전체 자산/배치 확장, 양 백엔드/야간·날씨/성능/회귀 | 위 변경 전체 | §13 최종 gate와 예외 목록 충족 |
 
 FP-04는 기준선에서 P0가 발견되는 즉시 FP-02/03/05보다 먼저 처리한다. FP-02~05의 일부 시제품이 성공했다고 전체 개선을 완료로 보고하지 않는다.

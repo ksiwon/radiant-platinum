@@ -34,7 +34,7 @@ import numpy as np
 import UnityPy
 from UnityPy.helpers import MeshHelper
 
-from bdsp_bake_albedo import bake, prop_pairs, srgb_to_linear_scalar
+from bdsp_bake_albedo import bake, plant_kind, prop_pairs, srgb_to_linear_scalar
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tools.raw.sources import require_dir
@@ -165,6 +165,15 @@ def tint_of(floats: dict, colors: dict, layer: bool, see: bool) -> list[float] |
     return [clamp(c[0] * k), clamp(c[1] * k), clamp(c[2] * k), 0 if k == 0 else clamp(c[3])]
 
 
+def plant_colors(colors: dict) -> tuple[np.ndarray, np.ndarray]:
+    """나무열매 재질의 `_Color` · `_LayerColor` — 선형 float32. 색은 감마로 적혀 있다 (`tint_of`와 같은 자리). 브라우저 변환기 `arena.ts`의 `plantColors`와 같다"""
+    def rgb(key: str) -> np.ndarray:
+        c = colors.get(key) or {}
+        return np.array([srgb_to_linear_scalar(c.get(k, 1.0)) for k in ("r", "g", "b")], dtype=np.float32)
+
+    return rgb("_Color"), rgb("_LayerColor")
+
+
 def flipbook_cell(columns: float, rows: float, start: float) -> dict | None:
     """플립북 그림의 **첫 칸** — `KHR_texture_transform`의 배율 · 오프셋 (glTF UV, 위가 0). `arena.ts`의 `flipbookCell`과 같다.
 
@@ -180,7 +189,17 @@ def flipbook_cell(columns: float, rows: float, start: float) -> dict | None:
     return {"offset": [col / columns, (rows - 1 - from_bottom) / rows], "scale": [1 / columns, 1 / rows]}
 
 
-def export(bundle: Path, out: Path, far: float | None, max_size: int | None = None) -> dict:
+def top_group(transform) -> str:
+    """뿌리 바로 아래 자식의 이름 — 나무열매 `kinoNNN`의 `Miki`(줄기) · `Hana`(꽃) · `Mi`(열매)"""
+    chain = []
+    t = transform
+    while t is not None:
+        chain.append(t.m_GameObject.read().m_Name)
+        t = t.m_Father.read() if t.m_Father.path_id else None
+    return chain[-2] if len(chain) >= 2 else chain[-1]
+
+
+def export(bundle: Path, out: Path, far: float | None, max_size: int | None = None, groups: bool = False) -> dict:
     env = UnityPy.load(str(bundle))
     filters = [o.read() for o in env.objects if o.type.name == "MeshFilter"]
     if not filters:
@@ -200,6 +219,8 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
     kinds = {}
     #: 재질마다 수 · 색 · 물린 그림 칸 (`arena.ts`의 `looks`)
     looks: dict[str, tuple[dict, dict, set]] = {}
+    #: 나무열매(`groups`)만 — 재질마다 색 입히는 길 (`plant_kind`)
+    plant_of: dict[str, str] = {}
     for obj in env.objects:
         if obj.type.name != "Material":
             continue
@@ -211,6 +232,14 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         slots = {k for k, v in prop_pairs(props.get("m_TexEnvs", []))
                  if isinstance(v, dict) and v.get("m_Texture", {}).get("m_PathID", 0) != 0}
         looks[name] = (dict(prop_pairs(props.get("m_Floats", []))), dict(prop_pairs(props.get("m_Colors", []))), slots)
+        if groups:
+            te = dict(prop_pairs(props.get("m_TexEnvs", [])))
+
+            def pid_of(key: str) -> int:
+                v = te.get(key)
+                return v.get("m_Texture", {}).get("m_PathID", 0) if isinstance(v, dict) else 0
+
+            plant_of[name] = plant_kind(str(d.get("m_ShaderKeywords") or ""), pid_of("_MainTex"), pid_of("_LayerTex"))
 
     def alpha_of(name: str) -> dict:
         kind = kinds.get(name, "Opaque")
@@ -243,7 +272,7 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
     samplers: list[dict] = []
     # ⚠️ **재질이 적어 둔 UV 배율을 먹여야 한다.** 무대 바닥이 배율 (11, 11)로
     # 되풀이하는 그림이다 — 안 먹이면 타일 121장이 한 장으로 늘어난다
-    spec = bake(bundle, albedo, None, max_size, additive_water=True)
+    spec = bake(bundle, albedo, None, max_size, additive_water=True, plant=groups)
     baked = [(png.name[: -len("_albedo.png")], png, spec) for png in albedo.glob("*_albedo.png")]
     baked = [b for b in baked if b[0] not in layered]
     if layered:
@@ -253,6 +282,8 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
     # ⚠️ **재질 이름순이다** — 브라우저 변환기와 같은 차례라야 프리미티브 차례가 같다. 파일 이름(`…_albedo.png`)으로 세우면
     # `ComWall_09`와 `ComWall_09_01`의 차례가 뒤집힌다
     st_of = {}
+    #: 재질 슬롯 → (`_Color`, `_LayerColor`) — `blend` 재질의 정점 색 `COLOR_0`이 이 둘을 정점 알파로 섞는다
+    blend_of: dict[int, tuple[np.ndarray, np.ndarray]] = {}
     transformed = False
     for name, png, sp in sorted(baked, key=lambda b: b[0]):
         images.append({
@@ -274,6 +305,17 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         if cell:
             tex["extensions"] = {"KHR_texture_transform": cell}
         pbr = {"baseColorTexture": tex}
+        # ⚠️ **나무열매는 재질 색이 곧 색이다.** 줄기 · 잎 · 꽃 그림은 회색 마스크라 안 곱하면 **하얗다** (`plant_kind`).
+        #   plain  `_Color`를 `baseColorFactor`로 · mask  꽃은 그림에 구워 넣었다 · blend  잎은 정점 색 `COLOR_0`이 낸다
+        if groups:
+            kind = plant_of.get(name, "plain")
+            if kind == "plain":
+                c0, _ = plant_colors(colors)
+                tint = [float(np.float32(x)) for x in c0] + [1.0]
+            else:
+                tint = None
+            if kind == "blend":
+                blend_of[len(materials)] = plant_colors(colors)
         if tint:
             pbr["baseColorFactor"] = tint
         pbr["metallicFactor"] = 0.0
@@ -330,7 +372,8 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
 
     cache: dict = {}
     # 재질별로 모은다 — 메시 158개를 그대로 두면 드로우콜이 158개다
-    parts: dict[int, list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]] = {}
+    # `groups`면 뿌리 바로 아래 자식마다 노드를 따로 둔다 — 실행 쪽이 성장 단계에 맞는 것만 켠다
+    parts: dict[tuple[str, int], list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]]] = {}
     dropped = 0
     kept = 0
     for mf in filters:
@@ -372,6 +415,8 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         length = np.linalg.norm(normals, axis=1, keepdims=True)
         normals = np.where(length > 1e-9, normals / np.maximum(length, 1e-9), [0.0, 1.0, 0.0])
         uv_raw = lanes(handler.m_UV0, n, 2, [0.0, 0.0]).astype(np.float32)
+        # 정점 색의 알파 — 잎(`blend`)이 `_Color` ↔ `_LayerColor`를 이 값으로 섞는다. 8비트라 255로 나눈다. 없으면 흰 정점 색(알파 1)이다
+        vertex_alpha = (lanes(handler.m_Colors, n, 4, [255.0] * 4)[:, 3] / 255.0).astype(np.float32)
         # X 뒤집기 (머리말)
         verts[:, 0] *= -1
         normals[:, 0] *= -1
@@ -395,20 +440,31 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
             # Unity는 UV 원점이 왼쪽 아래, glTF는 왼쪽 위다
             uv = np.stack([uv_raw[:, 0] * sx + ox,
                            1.0 - (uv_raw[:, 1] * sy + oy)], axis=1).astype(np.float32)
-            parts.setdefault(slot, []).append((
-                verts.astype(np.float32), normals.astype(np.float32), uv, tri,
+            # 잎 — `COLOR_0` = lerp(_Color, _LayerColor, 정점 알파) (선형 · 알파 1). ⚠️ 알파 높은 곳(줄기 쪽)이 더 어두운 `_LayerColor`다
+            # (잎 181장에서 알파는 잎자루에서 멀수록 낮다 — 78%) · 순서는 float32로 한 단계씩 (`arena.ts`와 바이트가 같게)
+            col = None
+            if slot in blend_of:
+                base, top = blend_of[slot]
+                one = np.float32(1)
+                rgb = base[None, :] * (one - vertex_alpha)[:, None] + top[None, :] * vertex_alpha[:, None]
+                col = np.concatenate([rgb, np.ones((n, 1), np.float32)], axis=1).astype(np.float32)
+            parts.setdefault((top_group(transform) if groups else bundle.name, slot), []).append((
+                verts.astype(np.float32), normals.astype(np.float32), uv, tri, col,
             ))
 
-    primitives = []
+    meshes: dict[str, list[dict]] = {}
     total_v = total_t = 0
-    for slot, chunks in sorted(parts.items()):
-        pos, nrm, tex, idx = [], [], [], []
+    for (group, slot), chunks in sorted(parts.items()):
+        primitives = meshes.setdefault(group, [])
+        pos, nrm, tex, idx, cols = [], [], [], [], []
         base = 0
-        for v, nn, u, t in chunks:
+        for v, nn, u, t, cc in chunks:
             pos.append(v)
             nrm.append(nn)
             tex.append(u)
             idx.append(t + base)
+            if cc is not None:
+                cols.append(cc)
             base += v.shape[0]
         pos = np.concatenate(pos)
         nrm = np.concatenate(nrm)
@@ -431,6 +487,8 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
             ),
             "mode": 4,
         }
+        if cols:
+            prim["attributes"]["COLOR_0"] = buf.add(np.concatenate(cols), "VEC4", FLOAT, ARRAY)
         if slot >= 0:
             prim["material"] = slot
         primitives.append(prim)
@@ -438,9 +496,9 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
     gltf = {
         "asset": {"version": "2.0", "generator": "radiant-platinum bdspArena"},
         "scene": 0,
-        "scenes": [{"nodes": [0]}],
-        "nodes": [{"name": bundle.name, "mesh": 0}],
-        "meshes": [{"name": bundle.name, "primitives": primitives}],
+        "scenes": [{"nodes": list(range(len(meshes)))}],
+        "nodes": [{"name": g, "mesh": i} for i, g in enumerate(meshes)],
+        "meshes": [{"name": g, "primitives": p} for g, p in meshes.items()],
         "materials": materials,
         "textures": textures,
         "images": images,
@@ -463,7 +521,7 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         "정점": int(total_v),
         "삼각형": int(total_t),
         "재질": len(materials),
-        "드로우콜": len(primitives),
+        "드로우콜": sum(len(p) for p in meshes.values()),
         "가로": round(float(every[:, 0].max() - every[:, 0].min()), 2),
         "높이": round(float(every[:, 1].max() - every[:, 1].min()), 2),
         "세로": round(float(every[:, 2].max() - every[:, 2].min()), 2),
@@ -497,6 +555,15 @@ ROOM_TEXTURE = 512
 #: **던전(`d##`)은 안 굽는다** — 동굴 · 탄광 · 숲은 기하가 무겁다(138벌 856MB · 한 벌에 삼각형 39만 개). 원작도 입체인 자리라
 #: 야외와 함께 기하를 줄이는 길(양자화)을 갖춘 뒤에 다룬다. 건물 안 117벌은 146MB다
 DUNGEON = "d"
+#: 나무열매 나무 (docs/orders/BATTLE_FX_20261004.md §2). `kino001`~`kino064`가 열매(`berries.json` 번호 1~64)마다 한 벌이고
+#: `kinoseeding`이 싹이다. 065는 BDSP가 더한 열매라 우리 열매 표에 짝이 없다. 한 벌은 `Miki`(줄기 · 잎) · `Hana`(꽃) · `Mi`(열매)
+#: 세 묶음이라 묶음마다 노드를 따로 둔다 — 실행 쪽(`scene/BerryPatchProps`)이 성장 단계에 맞는 것만 켠다
+GIMMICK = require_dir("bdsp.environments") / "gimmick"
+BERRY_OUT = ROOT / "public/models/berry"
+BERRY_COUNT = 64
+BERRY_SEEDING = "kinoseeding"
+#: 나무 그림 긴 변의 상한. 나무는 한 칸 안에 서는 작은 물건이라 256이면 텍셀이 남는다 — 브라우저 변환기(`convert.ts`)의 `BERRY_TEXTURE`와 같아야 한다
+BERRY_TEXTURE = 256
 
 
 def wanted() -> list[str]:
@@ -539,6 +606,25 @@ def bake_rooms(names: list[str]) -> int:
     return 0
 
 
+def berry_names() -> list[str]:
+    return [f"kino{i:03d}" for i in range(1, BERRY_COUNT + 1)] + [BERRY_SEEDING]
+
+
+def bake_berries() -> int:
+    names = berry_names()
+    print(f"나무열매 {len(names)}벌")
+    total = 0
+    for name in names:
+        stat = export(GIMMICK / name, BERRY_OUT / f"{name}.glb", None, BERRY_TEXTURE, groups=True)
+        total += stat["바이트"]
+        print(f"  {name}  삼각형 {stat['삼각형']:>5,} · 재질 {stat['재질']:>2} · {stat['바이트'] / 1e3:.0f}KB")
+    # 목차는 **구운 것 전부**다 — 브라우저 설치기와 같은 바이트로(빈칸 없이)
+    made = sorted(p.stem for p in BERRY_OUT.glob("*.glb"))
+    (BERRY_OUT / "index.json").write_text(json.dumps({"berries": made}, separators=(",", ":")), encoding="utf-8")
+    print(f"모두 {total / 1e6:.1f}MB · 목차 {len(made)}벌")
+    return 0
+
+
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
@@ -548,9 +634,14 @@ def main() -> int:
                     help=f"{TABLE.name}에 실린 무대를 전부 굽는다")
     ap.add_argument("--rooms", nargs="*", default=None,
                     help="실내 방을 굽는다. 이름을 안 주면 전부")
+    ap.add_argument("--berries", action="store_true",
+                    help="나무열매 나무(kino001~064 + 싹)를 묶음별 노드로 굽는다")
     ap.add_argument("--far", type=float, default=None,
                     help="무대 한가운데에서 이보다 먼 메시는 버린다 (m)")
     args = ap.parse_args()
+
+    if args.berries:
+        return bake_berries()
 
     if args.rooms is not None:
         return bake_rooms(args.rooms)

@@ -9,7 +9,7 @@
 //
 // ⚠️ **좌표계는 X 뒤집기다.** `model.ts`와 같은 이유다(그쪽 머리말). 손잡이가
 // 뒤집히므로 삼각형 감기 순서도 함께 뒤집는다.
-import { bakeAlbedo } from './albedo'
+import { bakeAlbedo, plantKind } from './albedo'
 import {
   ARRAY_BUFFER, ELEMENT_BUFFER, FLOAT, GlbBuffer, UINT, USHORT,
   verifyGlb, writeGlb, type Gltf,
@@ -136,6 +136,8 @@ interface Looks {
   materialName: Map<number, string>
   /** `KHR_texture_transform`을 쓴 재질이 있는가 — 있으면 glTF `extensionsUsed`에 적어야 로더가 읽는다 */
   transformed: boolean
+  /** 나무열매 잎(`blend`) 재질 슬롯 → [`_Color`, `_LayerColor`] (선형) — 정점 색 `COLOR_0`이 이 둘을 정점 알파로 섞는다 */
+  blend: Map<number, [number[], number[]]>
 }
 
 /**
@@ -168,10 +170,14 @@ export type ImageShare = (rgba: Uint8Array, width: number, height: number) => Pr
 interface LookOptions {
   /** 텍스처 긴 변 상한. null이면 원본 */
   maxSize?: number | null
+  /** 알파를 곱해서 줄인다 (`BakeOptions.premultiplied`) */
+  premultiplied?: boolean
   /** 빛 재질(더하기 · 발광)을 싣는가 — 위 머리말 */
   lights?: boolean
   /** 그림을 공용 자리에 둔다 (`ImageShare`). 없으면 glb 안에 싣는다 */
   share?: ImageShare
+  /** 나무열매 나무 — 재질 색을 입힌다 (`plantKind`). 노드 쪽 `bdspArena.py`의 `groups`와 같다 */
+  plant?: boolean
 }
 
 /** 감마 값 → 선형. 재질에 박힌 색은 감마다 (`albedo.ts`의 레이어 색과 같은 자리) */
@@ -207,6 +213,15 @@ function tintOf(
   const k = look.floats.has('_ColorIntensity') ? num(look.floats.get('_ColorIntensity')) : 1
   const clamp = (x: number): number => Math.min(1, Math.max(0, x))
   return [clamp(c[0] * k), clamp(c[1] * k), clamp(c[2] * k), k === 0 && !add ? 0 : clamp(c[3])]
+}
+
+/** 나무열매 재질의 `_Color` · `_LayerColor` — 선형. 색은 감마로 적혀 있다 (`tintOf`와 같은 자리). 노드 쪽 `bdspArena.py`의 `plant_colors`와 같다. 없으면 흰색 */
+function plantColors(look: { colors: Map<string, UnityValue> } | undefined): [number[], number[]] {
+  const rgb = (key: string): number[] => {
+    const c = look?.colors.get(key) as Props | undefined
+    return [toLinear(num(c?.r, 1)), toLinear(num(c?.g, 1)), toLinear(num(c?.b, 1))].map(Math.fround)
+  }
+  return [rgb('_Color'), rgb('_LayerColor')]
 }
 
 /**
@@ -246,6 +261,7 @@ export async function bakeLooks(
 ): Promise<Looks> {
   const maxSize = options.maxSize ?? null
   const lights = options.lights ?? false
+  const plant = options.plant ?? false
   /** 그림 한 장을 glTF 그림으로 — 공용 자리가 있으면 거기 두고 주소만, 없으면 glb 안에 싣는다 */
   const image = async (px: Uint8Array, w: number, h: number, name: string): Promise<Record<string, unknown>> => {
     if (options.share) return { uri: await options.share(px, w, h), name }
@@ -265,6 +281,8 @@ export async function bakeLooks(
   const additive = new Set<string>()
   /** 재질마다 색 · 수 · 물린 그림 칸 */
   const looks = new Map<string, { floats: Map<string, UnityValue>, colors: Map<string, UnityValue>, slots: Set<string> }>()
+  /** 나무열매만 — 재질마다 색 입히는 길 */
+  const plantOf = new Map<string, 'blend' | 'mask' | 'plain'>()
   for (const e of env.ofType('Material')) {
     const v = env.readEntry(e) as Props | null
     if (!v) continue
@@ -276,6 +294,11 @@ export async function bakeLooks(
       if (num(((raw as Props).m_Texture as Props | undefined)?.m_PathID) !== 0) slots.add(k)
     }
     looks.set(mat, { floats, colors: pairs(saved.m_Colors), slots })
+    if (plant) {
+      const te = pairs(saved.m_TexEnvs)
+      const pidOf = (k: string): number => num(((te.get(k) as Props | undefined)?.m_Texture as Props | undefined)?.m_PathID)
+      plantOf.set(mat, plantKind(String(v.m_ShaderKeywords ?? ''), pidOf('_MainTex'), pidOf('_LayerTex')))
+    }
     if (num(floats.get('_SrcBlend')) === ADD_SRC && num(floats.get('_DstBlend')) === ADD_DST) additive.add(mat)
   }
   /**
@@ -323,6 +346,7 @@ export async function bakeLooks(
   const samplers: { wrapS: number, wrapT: number }[] = []
   const slotOf = new Map<string, number>()
   const uvOf = new Map<string, [number, number, number, number]>()
+  const blend = new Map<number, [number[], number[]]>()
 
   // 알베도는 번들 통째로 한 번만 굽는다 (albedo.ts 머리말).
   //
@@ -331,8 +355,9 @@ export async function bakeLooks(
   // (`sorted(albedo.glob(...))`) parity를 바로 잴 수 있다
   //
   // ⚠️ 더하는 물(`additiveWater`)은 빛 재질을 안 싣는 쪽만 보통 섞기로 옮겨 굽는다 — 싣는 쪽은 더하기를 그대로 싣는다
-  const main = bakeAlbedo(env, { maxSize, additiveWater: !lights }).filter((m) => !layered.has(m.name))
-  const layer = layered.size === 0 ? [] : bakeAlbedo(env, { maxSize, mainProps: ['_LayerTex'] }).filter((m) => layered.has(m.name))
+  const premultiplied = options.premultiplied ?? false
+  const main = bakeAlbedo(env, { maxSize, premultiplied, additiveWater: !lights, plant }).filter((m) => !layered.has(m.name))
+  const layer = layered.size === 0 ? [] : bakeAlbedo(env, { maxSize, premultiplied, mainProps: ['_LayerTex'] }).filter((m) => layered.has(m.name))
   const baked = [...main, ...layer]
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   let transformed = false
@@ -346,9 +371,18 @@ export async function bakeLooks(
     const lay = layered.has(m.name)
     const add = additive.has(m.name)
     const see = renderType.get(m.name) === 'Transparent'
-    const tint = lights
+    let tint = lights
       ? tintOf(look, lay, add, see)
       : tinted(lay, add, see) ? tintOf(look, lay, false, see) : null
+    // ⚠️ **나무열매는 재질 색이 곧 색이다.** 줄기 · 잎 · 꽃 그림은 회색 마스크라 안 곱하면 **하얗다**.
+    //   plain  `_Color`를 `baseColorFactor`로 · mask  꽃은 그림에 구워 넣었다 · blend  잎은 정점 색 `COLOR_0`이 낸다
+    // float32로 눌러 싣는다 — 노드 쪽과 JSON이 같게(`pow`가 끝자리에서 갈려도 float32에서 만난다)
+    if (plant) {
+      const kind = plantOf.get(m.name) ?? 'plain'
+      const [c0, c1] = plantColors(look)
+      tint = kind === 'plain' ? [Math.fround(c0[0]!), Math.fround(c0[1]!), Math.fround(c0[2]!), 1] : null
+      if (kind === 'blend') blend.set(materials.length, [c0, c1])
+    }
     // 플립북은 첫 칸만 (`flipbookCell`) — 층 그림 재질에는 칸이 없다
     const cell = lay || !look ? null
       : flipbookCell(num(look.floats.get('_PatternH'), 1), num(look.floats.get('_PatternV'), 1), num(look.floats.get('_StartFrameIndex')))
@@ -429,7 +463,7 @@ export async function bakeLooks(
     slotOf.set(mat, materials.length - 1)
   }
 
-  return { images, textures, materials, samplers, slotOf, uvOf, materialName, transformed }
+  return { images, textures, materials, samplers, slotOf, uvOf, materialName, transformed, blend }
 }
 
 // ── 내보내기 ─────────────────────────────────────────────────────────────────
@@ -447,6 +481,15 @@ interface ArenaOptions {
   maxSize?: number | null
   /** glTF 노드·메시에 적을 이름. 개발 추출기는 번들 이름을 적는다 */
   name?: string
+  /**
+   * 뿌리 바로 아래 자식마다 노드를 따로 둔다 — 나무열매 `kinoNNN`의 `Miki`(줄기) · `Hana`(꽃) · `Mi`(열매).
+   * 노드 쪽 `bdspArena.py`의 `groups`와 같다. 노드는 이름순이다
+   */
+  groups?: boolean
+  /** 알파를 곱해서 줄인다 — 나무열매가 쓴다 (`BakeOptions.premultiplied`) */
+  premultiplied?: boolean
+  /** 나무열매 나무 — 재질 색을 입힌다 (`bakeLooks`의 `plant`). 잎은 정점 색 `COLOR_0`을 싣는다 */
+  plant?: boolean
 }
 
 interface ArenaStat {
@@ -468,6 +511,8 @@ interface Part {
   normals: Float32Array
   uvs: Float32Array
   indices: Uint32Array
+  /** 정점 색 `COLOR_0` (RGBA · 선형) — 나무열매 잎만 */
+  colors?: Float32Array
 }
 
 /** 정점당 `want`개 값으로 편다. 없거나 개수가 안 맞으면 `fallback`으로 채운다 */
@@ -486,6 +531,22 @@ export function lanes(
   return out
 }
 
+/** 뿌리 바로 아래 자식의 이름 — 노드 쪽 `top_group`과 같다. 뿌리 자신이면 뿌리 이름 */
+function topGroup(env: Environment, transformPid: number): string {
+  const chain: string[] = []
+  let pid = transformPid
+  const seen = new Set<number>()
+  while (pid !== 0 && !seen.has(pid)) {
+    seen.add(pid)
+    const t = env.read(pid) as Props | null
+    if (!t) break
+    const go = env.read(num((t.m_GameObject as Props | undefined)?.m_PathID)) as Props | null
+    chain.push(typeof go?.m_Name === 'string' ? go.m_Name : '')
+    pid = num((t.m_Father as Props | undefined)?.m_PathID)
+  }
+  return chain.length >= 2 ? chain[chain.length - 2]! : (chain[0] ?? '')
+}
+
 export async function exportArena(
   env: Environment,
   encodePng: (rgba: Uint8Array, width: number, height: number) => Promise<Uint8Array>,
@@ -498,12 +559,12 @@ export async function exportArena(
 
   // 재질 이름 → RenderType. 짐작하지 않고 번들이 적어 둔 것을 읽는다
   const buf = new GlbBuffer()
-  const { images, textures, materials, samplers, slotOf, uvOf, materialName, transformed } =
-    await bakeLooks(env, encodePng, buf, { maxSize: options.maxSize ?? null })
+  const { images, textures, materials, samplers, slotOf, uvOf, materialName, transformed, blend } =
+    await bakeLooks(env, encodePng, buf, { maxSize: options.maxSize ?? null, premultiplied: options.premultiplied ?? false, plant: options.plant ?? false })
 
   const cache = new Map<number, Mat4>()
-  /** 재질 슬롯 → 그 재질로 그리는 조각들 */
-  const parts = new Map<number, Part[]>()
+  /** 묶음 이름 → (재질 슬롯 → 그 재질로 그리는 조각들). `groups`가 아니면 묶음은 `name` 하나다 */
+  const parts = new Map<string, Map<number, Part[]>>()
   let kept = 0
   let dropped = 0
   let lowX = Infinity; let highX = -Infinity
@@ -549,6 +610,7 @@ export async function exportArena(
     if (slots.length === 0 || transformPid === 0) continue
 
     const world = worldOf(env, transformPid, cache)
+    const group = options.groups ? topGroup(env, transformPid) : name
     const n = mesh.vertexCount
     const rawPos = mesh.attributes.get(CHANNEL.position)
     if (!rawPos) continue
@@ -590,6 +652,8 @@ export async function exportArena(
     }
     const rawUv = lanes(mesh.attributes.get(CHANNEL.uv0), mesh.dimensions.get(CHANNEL.uv0),
       n, 2, [0, 0])
+    // 정점 색의 알파 — 잎(`blend`)이 `_Color` ↔ `_LayerColor`를 이 값으로 섞는다. 8비트라 0..1로 읽힌다. 없으면 흰 정점 색(알파 1)이다
+    const rawColor = lanes(mesh.attributes.get(CHANNEL.color), mesh.dimensions.get(CHANNEL.color), n, 4, [1, 1, 1, 1])
 
     const wide = num(meshValue.m_IndexFormat) === 1
     for (let s = 0; s < mesh.subMeshes.length; s++) {
@@ -616,10 +680,26 @@ export async function exportArena(
         indices[i + 1] = tri[i + 1]!
         indices[i + 2] = tri[i]!
       }
-      const list = parts.get(slot)
-      const part: Part = { positions: verts, normals, uvs, indices }
+      let bySlot = parts.get(group)
+      if (!bySlot) parts.set(group, bySlot = new Map())
+      const list = bySlot.get(slot)
+      // 잎 — `COLOR_0` = lerp(_Color, _LayerColor, 정점 알파) (선형 · 알파 1). ⚠️ 알파 높은 곳(줄기 쪽)이 더 어두운 `_LayerColor`다
+      // (잎 181장에서 알파는 잎자루에서 멀수록 낮다 — 78%) · float32로 한 단계씩 — 노드 쪽 `bdspArena.py`와 바이트가 같게
+      const pair = blend.get(slot)
+      let colors: Float32Array | undefined
+      if (pair) {
+        const [base, top] = pair
+        colors = new Float32Array(n * 4)
+        for (let i = 0; i < n; i++) {
+          const a = rawColor[i * 4 + 3]!
+          const k = Math.fround(1 - a)
+          for (let c = 0; c < 3; c++) colors[i * 4 + c] = Math.fround(Math.fround(base[c]! * k) + Math.fround(top[c]! * a))
+          colors[i * 4 + 3] = 1
+        }
+      }
+      const part: Part = { positions: verts, normals, uvs, indices, ...(colors ? { colors } : {}) }
       if (list) list.push(part)
-      else parts.set(slot, [part])
+      else bySlot.set(slot, [part])
     }
 
     for (let i = 0; i < n; i++) {
@@ -635,52 +715,62 @@ export async function exportArena(
 
   if (parts.size === 0) throw new ArenaError('그릴 메시가 하나도 없다')
 
-  const primitives: Record<string, unknown>[] = []
+  const meshes: { name: string, primitives: Record<string, unknown>[] }[] = []
+  let draws = 0
   let totalV = 0
   let totalT = 0
-  for (const slot of [...parts.keys()].sort((a, b) => a - b)) {
-    const chunks = parts.get(slot)!
-    const count = chunks.reduce((a, c) => a + c.positions.length / 3, 0)
-    const idxCount = chunks.reduce((a, c) => a + c.indices.length, 0)
-    const pos = new Float32Array(count * 3)
-    const nrm = new Float32Array(count * 3)
-    const tex = new Float32Array(count * 2)
-    const idx = new Uint32Array(idxCount)
-    let base = 0
-    let atI = 0
-    for (const c of chunks) {
-      pos.set(c.positions, base * 3)
-      nrm.set(c.normals, base * 3)
-      tex.set(c.uvs, base * 2)
-      for (let i = 0; i < c.indices.length; i++) idx[atI + i] = c.indices[i]! + base
-      atI += c.indices.length
-      base += c.positions.length / 3
+  for (const group of [...parts.keys()].sort()) {
+    const primitives: Record<string, unknown>[] = []
+    meshes.push({ name: group, primitives })
+    const bySlot = parts.get(group)!
+    for (const slot of [...bySlot.keys()].sort((a, b) => a - b)) {
+      const chunks = bySlot.get(slot)!
+      const count = chunks.reduce((a, c) => a + c.positions.length / 3, 0)
+      const idxCount = chunks.reduce((a, c) => a + c.indices.length, 0)
+      const pos = new Float32Array(count * 3)
+      const nrm = new Float32Array(count * 3)
+      const tex = new Float32Array(count * 2)
+      const idx = new Uint32Array(idxCount)
+      const col = chunks.every((c) => c.colors) ? new Float32Array(count * 4) : null
+      let base = 0
+      let atI = 0
+      for (const c of chunks) {
+        if (col && c.colors) col.set(c.colors, base * 4)
+        pos.set(c.positions, base * 3)
+        nrm.set(c.normals, base * 3)
+        tex.set(c.uvs, base * 2)
+        for (let i = 0; i < c.indices.length; i++) idx[atI + i] = c.indices[i]! + base
+        atI += c.indices.length
+        base += c.positions.length / 3
+      }
+      totalV += count
+      totalT += idxCount / 3
+      const prim: Record<string, unknown> = {
+        attributes: {
+          POSITION: buf.add(pos, 'VEC3', FLOAT, ARRAY_BUFFER, true),
+          NORMAL: buf.add(nrm, 'VEC3', FLOAT, ARRAY_BUFFER),
+          TEXCOORD_0: buf.add(tex, 'VEC2', FLOAT, ARRAY_BUFFER),
+        },
+        // 색인은 정점이 65,536개 안쪽이면 16비트로 넣는다 — 무대 하나에서 0.8MB가
+        // 빠진다. glTF는 둘 다 허용한다
+        indices: count <= 65536
+          ? buf.add(Uint16Array.from(idx), 'SCALAR', USHORT, ELEMENT_BUFFER)
+          : buf.add(idx, 'SCALAR', UINT, ELEMENT_BUFFER),
+        mode: 4,
+      }
+      if (col) (prim.attributes as Record<string, number>).COLOR_0 = buf.add(col, 'VEC4', FLOAT, ARRAY_BUFFER)
+      if (slot >= 0) prim.material = slot
+      primitives.push(prim)
+      draws++
     }
-    totalV += count
-    totalT += idxCount / 3
-    const prim: Record<string, unknown> = {
-      attributes: {
-        POSITION: buf.add(pos, 'VEC3', FLOAT, ARRAY_BUFFER, true),
-        NORMAL: buf.add(nrm, 'VEC3', FLOAT, ARRAY_BUFFER),
-        TEXCOORD_0: buf.add(tex, 'VEC2', FLOAT, ARRAY_BUFFER),
-      },
-      // 색인은 정점이 65,536개 안쪽이면 16비트로 넣는다 — 무대 하나에서 0.8MB가
-      // 빠진다. glTF는 둘 다 허용한다
-      indices: count <= 65536
-        ? buf.add(Uint16Array.from(idx), 'SCALAR', USHORT, ELEMENT_BUFFER)
-        : buf.add(idx, 'SCALAR', UINT, ELEMENT_BUFFER),
-      mode: 4,
-    }
-    if (slot >= 0) prim.material = slot
-    primitives.push(prim)
   }
 
   const gltf: Gltf & { extensionsUsed?: string[] } = {
     asset: { version: '2.0', generator: 'radiant-platinum bdsp arena' },
     scene: 0,
-    scenes: [{ nodes: [0] }],
-    nodes: [{ name, mesh: 0 }],
-    meshes: [{ name, primitives }],
+    scenes: [{ nodes: meshes.map((_, i) => i) }],
+    nodes: meshes.map((m, i) => ({ name: m.name, mesh: i })),
+    meshes,
     materials,
     textures,
     images,
@@ -702,7 +792,7 @@ export async function exportArena(
       vertices: totalV,
       triangles: totalT,
       materials: materials.length,
-      draws: primitives.length,
+      draws,
       width: Number((highX - lowX).toFixed(2)),
       height: Number((highY - lowY).toFixed(2)),
       depth: Number((highZ - lowZ).toFixed(2)),

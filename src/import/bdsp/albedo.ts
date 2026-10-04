@@ -11,7 +11,7 @@
 // ⚠️ **개발 추출기(`tools/extract/bdsp_bake_albedo.py`)와 같은 식이어야 한다.**
 // 여기가 갈리면 개발판과 공개판의 사람 색이 달라지고, 그 차이는 "왠지 칙칙하다"
 // 로만 보여서 아무도 버그로 신고하지 않는다.
-import { readTexture, resize, type Texture } from './texture'
+import { readTexture, resize, resizePremultiplied, type Texture } from './texture'
 import type { Environment } from './environment'
 import type { UnityValue } from './typetree'
 
@@ -257,6 +257,8 @@ export interface BakeOptions {
   colorIndex?: number | null
   /** 긴 변 상한. 오버월드 NPC를 줄이는 자리다 */
   maxSize?: number | null
+  /** 알파를 곱해서 줄인다 (`resizePremultiplied`) — 노드 쪽이 RGBA를 PIL로 줄이는 것과 바이트를 맞춘다. 나무열매가 쓴다 */
+  premultiplied?: boolean
   /** 밑그림을 찾을 프로퍼티. 인물·무대는 `_MainTex`, 포켓몬은 `_Col0Tex` */
   mainProps?: readonly string[]
   /**
@@ -273,6 +275,11 @@ export interface BakeOptions {
    * 노드 쪽 `bdsp_bake_albedo.py`의 `additive_water`와 같은 식이다
    */
   additiveWater?: boolean
+  /**
+   * 나무열매 나무 — `mask` 재질(꽃, `plantKind`)은 `밑그림 × lerp(_Color, _LayerColor, 마스크 R)`로 굽는다. 노드 쪽 `bake(…, plant=True)`와 같다.
+   * 마스크가 128짜리라 밑그림 크기로 **최근접**으로 늘린다 (`_MaskTex`와 같다)
+   */
+  plant?: boolean
 }
 
 /**
@@ -290,6 +297,19 @@ export interface BakeOptions {
 const ADDITIVE_WATER = /Water/
 const ADD_SRC = 5
 const ADD_DST = 1
+
+/**
+ * 나무열매 재질의 색 입히는 길 (`BakeOptions.plant` · 노드 쪽 `bdsp_bake_albedo.py`의 `plant_kind`) — 재질이 적어 둔 셰이더 키워드로 가른다.
+ *
+ *   blend  `_CASCADE_BLENDUV0` — 잎. 그림은 한 장이고 `_Color` ↔ `_LayerColor`를 **정점 알파**로 섞는다 (정점 색 `COLOR_0`)
+ *   mask   `_LayerTex`가 `_MainTex`와 **다른 그림**(`T_K_001_Nutflower_01_M` — 거의 검은 마스크) — 꽃. 마스크가 두 색을 섞는다
+ *   plain  나머지 — 줄기 · 열매. `_Color`를 재질 색(`baseColorFactor`)으로 곱한다
+ */
+export function plantKind(keywords: string, mainPid: number, layerPid: number): 'blend' | 'mask' | 'plain' {
+  if (keywords.split(' ').includes('_CASCADE_BLENDUV0')) return 'blend'
+  if (mainPid !== 0 && layerPid !== 0 && mainPid !== layerPid) return 'mask'
+  return 'plain'
+}
 
 /** `#rrggbb` → 셰이더 색. **감마 값 그대로** 넣는다 — 읽을 때 선형으로 돈다 */
 function hexColor(text: string): { r: number, g: number, b: number, a: number } {
@@ -529,6 +549,7 @@ function carvedShells(env: Environment, mainProps: readonly string[]): Set<strin
 export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMaterial[] {
   const mainProps = options.mainProps ?? ['_MainTex']
   const maxSize = options.maxSize ?? null
+  const shrink = options.premultiplied ? resizePremultiplied : resize
   const overrides = colorOverrides(env, options.colorIndex ?? null)
   const carved = carvedShells(env, mainProps)
 
@@ -666,6 +687,12 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
       return [srgbToLinear(c.r ?? 1), srgbToLinear(c.g ?? 1), srgbToLinear(c.b ?? 1)]
     }
     const layers = MASK_CHANNEL_PROPS.map(layerColor)
+    // 나무열매 꽃 — 마스크 R이 `_Color` ↔ `_LayerColor`를 섞는다
+    const plantMask = options.plant === true && slots.has('_LayerTex')
+      && plantKind(String(v.m_ShaderKeywords ?? ''), slots.get(found)!, slots.get('_LayerTex')!) === 'mask'
+      ? textureAt.get(slots.get('_LayerTex')!)!() : null
+    const plantBase = layerColor('_Color')
+    const plantTop = layerColor('_LayerColor')
 
     // 더하는 물 (`ADDITIVE_WATER`) — 그 재질의 `_Color`(감마 → 선형) · 세기 · 알파. 노드 쪽과 같은 차례로 곱한다
     const water = options.additiveWater === true && ADDITIVE_WATER.test(name)
@@ -695,6 +722,16 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
             tb = f32(tb + f32(w * layers[c]![2]))
             coverage = f32(coverage + w)
           }
+        }
+        if (plantMask) {
+          const mx = Math.min(plantMask.width - 1, Math.floor((x * plantMask.width) / width))
+          const my = Math.min(plantMask.height - 1, Math.floor((y * plantMask.height) / height))
+          const w = f32(plantMask.pixels[(my * plantMask.width + mx) * 4]! / 255)
+          const k = f32(1 - w)
+          tr = f32(f32(plantBase[0] * k) + f32(plantTop[0] * w))
+          tg = f32(f32(plantBase[1] * k) + f32(plantTop[1] * w))
+          tb = f32(f32(plantBase[2] * k) + f32(plantTop[2] * w))
+          coverage = 1
         }
         // 어느 채널에도 안 속한(검정) 자리는 틴트 없이 밑그림 그대로 둔다
         const rest = f32(1 - Math.min(1, coverage))
@@ -733,7 +770,7 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
       const k = maxSize / Math.max(width, height)
       finalW = Math.max(1, Math.round(width * k))
       finalH = Math.max(1, Math.round(height * k))
-      pixels = resize(outPixels, width, height, finalW, finalH)
+      pixels = shrink(outPixels, width, height, finalW, finalH)
     }
     out.push({ name, look, width: finalW, height: finalH, pixels })
   }

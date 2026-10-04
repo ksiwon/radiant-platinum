@@ -1,6 +1,6 @@
-// 나무열매 판때기 — 1인칭에서 옅게 · BDSP 형상에 덮인 밭은 안 그린다 (I-p02-4 · I-p18-3)
+// 나무열매 나무 — 단계에 맞는 BDSP 모델 · BDSP 형상에 덮인 밭은 안 그린다 (I-p18-3)
 //
-// 잡는 것 셋: ① 1인칭 알파가 거리로 곧게 줄고, 마주 선 밭(0.88칸)에서 0이 아니다 ② 덮인 칸은 그 지역이 **서서 그려질 때만**
+// 잡는 것 셋: ① 성장 단계가 모델 묶음에 맞게 이어진다 ② 덮인 칸은 그 지역이 **서서 그려질 때만**
 // 빠진다 ③ 실측 — 밭 118곳에 BDSP 지역 glb를 위에서 쏘아 보면 114곳은 BDSP 흙이 원작 땅 높이에 있고, 흙이 없는 넷이 덮인
 // 칸 표와 같다(리조트 별장 터)
 import { existsSync, readFileSync, openSync, readSync, closeSync } from 'node:fs'
@@ -9,25 +9,39 @@ import { describe, expect, it } from 'vitest'
 import {
   Box3, BufferAttribute, BufferGeometry, DoubleSide, Group, Matrix4, Mesh, MeshBasicMaterial, Quaternion, Raycaster, Vector3,
 } from 'three'
-import { BDSP_COVERED, bdspCovers, nearPlateAlpha } from './BerryPatchProps'
+import { BDSP_COVERED, bdspCovers, berryPlantFor, showStage } from './BerryPatchProps'
+import { BERRY_STAGE } from '../engine/world/berryPatches'
 import { MapGrid, type MatrixMeta } from '../engine/map/grid'
 import { heightField, type HeightData } from '../engine/map/height'
 
-describe('1인칭 판 알파 (`nearPlateAlpha`)', () => {
-  it('1.5칸 밖은 그대로, 0.5칸 안은 0, 그 사이는 곧게', () => {
-    expect(nearPlateAlpha(0, 1.5)).toBe(1)
-    expect(nearPlateAlpha(3, 4)).toBe(1)
-    expect(nearPlateAlpha(0.3, 0)).toBe(0)
-    expect(nearPlateAlpha(0, 0)).toBe(0)
-    expect(nearPlateAlpha(0, 1)).toBeCloseTo(0.5)
-    // 땅 위 곧은 거리다 — 방향을 안 탄다
-    expect(nearPlateAlpha(0.6, 0.8)).toBeCloseTo(nearPlateAlpha(0, -1))
+describe('성장 단계 ↔ 나무 모델 (`berryPlantFor`)', () => {
+  it('싹은 열매와 상관없이 `kinoseeding` 한 벌 통째로다', () => {
+    expect(berryPlantFor(1, BERRY_STAGE.sprouted)).toEqual({ file: 'kinoseeding', node: null })
+    expect(berryPlantFor(64, BERRY_STAGE.sprouted)).toEqual({ file: 'kinoseeding', node: null })
   })
 
-  it('마주 선 밭(눈이 0.12칸 앞이라 0.88칸)은 옅지만 남는다', () => {
-    const a = nearPlateAlpha(0, 0.88)
-    expect(a).toBeGreaterThan(0.3)
-    expect(a).toBeLessThan(0.5)
+  it('자람 · 꽃 · 열림은 그 열매 모델의 `Miki` · `Hana` · `Mi`다', () => {
+    expect(berryPlantFor(1, BERRY_STAGE.growing)).toEqual({ file: 'kino001', node: 'Miki' })
+    expect(berryPlantFor(10, BERRY_STAGE.blooming)).toEqual({ file: 'kino010', node: 'Hana' })
+    expect(berryPlantFor(64, BERRY_STAGE.fruit)).toEqual({ file: 'kino064', node: 'Mi' })
+  })
+
+  it('빈 흙 · 심은 직후 · 표 밖 열매는 아무것도 안 선다', () => {
+    expect(berryPlantFor(0, BERRY_STAGE.fruit)).toBeNull()
+    expect(berryPlantFor(5, BERRY_STAGE.none)).toBeNull()
+    expect(berryPlantFor(5, BERRY_STAGE.planted)).toBeNull()
+    expect(berryPlantFor(65, BERRY_STAGE.fruit)).toBeNull()
+  })
+})
+
+describe('묶음 켜기 (`showStage`)', () => {
+  it('고른 노드만 켜고 나머지는 숨긴다. null이면 다 켠다', () => {
+    const root = new Group()
+    for (const name of ['Hana', 'Mi', 'Miki']) { const g = new Group(); g.name = name; root.add(g) }
+    showStage(root, 'Mi')
+    expect(root.children.map((c) => c.visible)).toEqual([false, true, false])
+    showStage(root, null)
+    expect(root.children.every((c) => c.visible)).toBe(true)
   })
 })
 

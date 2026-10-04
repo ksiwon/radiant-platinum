@@ -327,6 +327,16 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * (`.audit/probe/whiteMaterials.mjs`)
    */
   chunks: 8,
+  /**
+   * 2 — **재질 색을 입힌다.** 줄기 · 잎 · 꽃 그림은 회색 마스크라 `_Color` · `_LayerColor`를 안 곱하면 **하얗다**. 줄기 · 열매는
+   * `_Color`를 `baseColorFactor`로, 잎(`_CASCADE_BLENDUV0`)은 `_Color` ↔ `_LayerColor`를 정점 알파로 섞은 정점 색 `COLOR_0`으로,
+   * 꽃(`_LayerTex`가 따로 있는 것)은 마스크로 섞은 색을 그림에 구워 넣는다. 이미 깐 사람은 이 그룹만 다시 굽는다
+   *
+   * 1 — **나무열매 나무가 BDSP 입체로 선다** (`models/berry/kino001~064.glb` · `kinoseeding.glb` · `index.json`, 65벌 18.5MB —
+   * `import/bdsp/convert.ts`의 `convertBerryPlants` · 노드 쪽 `bdspArena.py --berries`). 한 벌이 `Miki`(줄기 · 잎) · `Hana`(꽃) ·
+   * `Mi`(열매) 노드로 나뉜다. ⚠️ **필수 그룹이라**(`required.ts`) 이미 깐 사람은 이 그룹만 새로 굽는다 — 없으면 밭에 흙만 선다
+   */
+  berryPlants: 2,
 }
 
 export function groupFormat(name: string): number {

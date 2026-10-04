@@ -71,6 +71,9 @@ export const REQUIRED_BDSP_GROUPS = [
   'rooms',
   'fields',
   'dungeons',
+  // 나무열매 나무 — BDSP 입체다 (DATA.md §2.17.8). 없으면 밭에 흙만 서고 자란 것이 안 보인다.
+  // ⚠️ **여기 있어야 이미 깐 사람도 받는다** — 위 `rooms`와 같은 까닭이다
+  'berryPlants',
 ] as const
 
 export const REQUIRED_GROUPS: readonly string[] = [
