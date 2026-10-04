@@ -2763,7 +2763,7 @@ BDSP 땅이 칸 안에서 매끄럽게 기우는 몫). 충돌 · 높이 · 워�
 
 **꺼 둔 물체는 안 세운다 — 예외만 세운다.** 지역 13벌의 메시 물체 중 `GameObject.m_IsActive`가 false인 것은 145개, 꺼 둔 `MeshRenderer`(`m_Enabled`)는 0개다
 (typetree가 `bool`을 JS 불리언으로 풀어 `num`으로 읽으면 늘 기본값이 나왔고, 굽기는 한동안 이 145개를 다 세웠다). `field.ts`의 `flag`가 불리언을 읽는다.
-145개의 내역: 가짜 실내 `P_C_001_RoomInner*` 140 · 연못 물 `Plane_Water (1)`(area001 `T01`) 1 · 물 판 `P_R_205b_Water_01`(area003) 1 · 눈 덮개
+145개의 내역: 가짜 실내 `P_C_001_RoomInner*` 141 · 연못 물 `Plane_Water (1)`(area001 `T01`) 1 · 물 판 `P_R_205b_Water_01`(area003) 1 · 눈 덮개
 `P_T_013_SnowCover_10`(area009) 2. 번들 안 스크립트(`FieldEventDoorEntity` · `EffectActivator` · `EmissionColorChanger` …)는 이 물체를 하나도
 참조하지 않는다 — 켜는 쪽은 번들 밖 코드라 **증거는 원작 땅 자료**다. 물 둘은 원작 DS 물 칸(`isWater`)이 박스를 덮는다(떡잎마을 100칸 중 40 ·
 205b 304칸 중 190) — 같은 번들의 다른 `Plane_Water`는 켜져 있다. 그래서 `ACTIVE_IN_PLAY` 예외로 세운다. 눈 덮개 둘은 같은 `OutStair_01` 아래 켜진
