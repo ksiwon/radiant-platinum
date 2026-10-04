@@ -105,6 +105,8 @@ export interface SeqPlan {
   body: [BodyTrack, BodyTrack]
   /** 화면 흔들림 */
   shakes: SeqCommand[]
+  /** 카메라 명령 (`CameraMoveRelativePoke` · `CameraMovePosition` · `CameraTwist` · `CameraReset*`) */
+  camera: SeqCommand[]
   /** 배경 물들임 (`EffSpBackColSet` · `EffSpBackColFlg`) */
   back: SeqCommand[]
   /** 맞는 쪽 체력이 깎이는 프레임 (`GaugeDamage`). 없으면 `null` */
@@ -157,6 +159,7 @@ export function planSequence(seq: SeqData, opts: { ball?: number; attackerMine?:
     particles: [],
     body: [{ commands: [] }, { commands: [] }],
     shakes: [],
+    camera: [],
     back: [],
     hit: null,
     frames: 0,
@@ -201,6 +204,7 @@ export function planSequence(seq: SeqData, opts: { ball?: number; attackerMine?:
         continue
       }
       if (n === 'CameraShake') { plan.shakes.push(c); continue }
+      if (CAMERA_CMDS.has(n)) { plan.camera.push(c); continue }
       if (n === 'EffSpBackColSet' || n === 'EffSpBackColFlg') { plan.back.push(c); continue }
       // ⚠️ **맞는 쪽 감추기는 안 따른다.** BDSP가 카메라를 쓴 쪽 얼굴 앞으로 당길 때 가리는 몸을
       // 지우는 것이다(째려보기 `ew043`이 0~54프레임 내내 맞는 쪽을 감춘다). 우리 카메라는 안
@@ -220,9 +224,14 @@ export function planSequence(seq: SeqData, opts: { ball?: number; attackerMine?:
     }
   })
   for (const t of plan.body) t.commands.sort((a, b) => a.start - b.start)
+  plan.camera.sort((a, b) => a.start - b.start)
   plan.back.sort((a, b) => a.start - b.start)
   return plan
 }
+
+const CAMERA_CMDS = new Set([
+  'CameraMoveRelativePoke', 'CameraMovePosition', 'CameraTwist', 'CameraReset', 'CameraResetFieldAll',
+])
 
 const PARTICLE_CMDS = new Set([
   'ParticleMoveRelativePoke', 'ParticleMovePosition', 'ParticleFollowPoke', 'ParticleScale',
@@ -575,4 +584,108 @@ export function backAt(plan: SeqPlan, f: number): { color: V3; alpha: number } |
 /** 연출이 다 서는 프레임 (30fps) — 맨 끝 명령의 끝 */
 export function planFrames(plan: SeqPlan): number {
   return Math.max(1, plan.frames)
+}
+
+// ─── 카메라 ──────────────────────────────────────────────
+
+/** 카메라 한 벌 — 무대 좌표 · 세로 화각(도) · 굴림(라디안) */
+export interface SeqCamera {
+  pos: V3
+  target: V3
+  fov: number
+  roll: number
+}
+
+/**
+ * 시퀀스 카메라의 그 프레임 값. 카메라 명령이 하나도 안 선 동안은 `null`이다(우리 기본 카메라가 선다).
+ *
+ * - `CameraMoveRelativePoke` — 자리 = `poke` 몸의 `node` 로케이터 + `pos`(cm), 보는 곳 = 같은 점 + `trg`.
+ *   `isRot`이면 그 몸이 보는 쪽 기준이고 `isFlip`이면 상대 쪽 몸일 때 가로를 뒤집는다(같은 화면 쪽에 서게).
+ *   `isScale`이면 오프셋을 몸 크기로 늘린다(`scale(role)`). `rate`%만큼만 간다. `enableElemPos/Trg`로 축을 고른다.
+ *   `fov`가 0이면 화각을 그대로 둔다
+ * - `CameraMovePosition` — `relative` 1이면 지금 자리 · 보는 곳에 더하고, 0이면 BDSP 월드 자리(cm)다
+ * - `CameraTwist` — 굴림(도). `relative`면 더한다
+ * - `CameraReset` · `CameraResetFieldAll` — 기본 카메라로 돌아간다
+ *
+ * @param base 우리 기본 카메라 (돌아갈 자리 · 처음 자리)
+ */
+export function cameraAt(
+  plan: SeqPlan, f: number, ctx: SeqContext & { scale(role: Role): number }, base: SeqCamera,
+): SeqCamera | null {
+  return foldCamera(plan.camera, plan.camera.length, f, ctx, base)
+}
+
+function foldCamera(
+  cmds: readonly SeqCommand[], limit: number, g: number,
+  ctx: SeqContext & { scale(role: Role): number }, base: SeqCamera,
+): SeqCamera | null {
+  let cam: SeqCamera | null = null
+  for (let i = 0; i < limit; i++) {
+    const c = cmds[i]!
+    if (g < c.start) continue
+    const from = cam ?? base
+    const target = cameraTarget(c, from, ctx, base)
+    if (target === null) continue
+    const reset = c.name === 'CameraReset' || c.name === 'CameraResetFieldAll'
+    if (c.end > c.start && g < c.end) {
+      const was = foldCamera(cmds, i, c.start, ctx, base) ?? base
+      const t = progress(c, g)
+      cam = {
+        pos: lerp3(was.pos, target.pos, t),
+        target: lerp3(was.target, target.target, t),
+        fov: was.fov + (target.fov - was.fov) * t,
+        roll: was.roll + (target.roll - was.roll) * t,
+      }
+    } else cam = reset ? null : target
+  }
+  return cam
+}
+
+function cameraTarget(
+  c: SeqCommand, from: SeqCamera, ctx: SeqContext & { scale(role: Role): number }, base: SeqCamera,
+): SeqCamera | null {
+  const v = c.values
+  const fovOf = (): number => (num(v.fov) > 0 ? num(v.fov) : from.fov)
+  switch (c.name) {
+    case 'CameraReset':
+    case 'CameraResetFieldAll':
+      return base
+    case 'CameraTwist': {
+      const tw = num(v.twist) * Math.PI / 180 * (num(v.isFlip) === 1 && !ctx.mine(0) ? -1 : 1)
+      return { ...from, roll: num(v.relative) === 1 ? from.roll + tw : tw }
+    }
+    case 'CameraMovePosition': {
+      const p = vec(v.pos), t = vec(v.trg)
+      if (num(v.relative) === 1) {
+        return { pos: add(from.pos, offsetOf(p, null)), target: add(from.target, offsetOf(t, null)), fov: fovOf(), roll: from.roll }
+      }
+      return { pos: offsetOf(p, null), target: offsetOf(t, null), fov: fovOf(), roll: from.roll }
+    }
+    case 'CameraMoveRelativePoke': {
+      const role: Role = num(v.poke) === 1 ? 1 : 0
+      const a = ctx.anchor(role, num(v.node))
+      if (!a) return null
+      const k = num(v.isScale) === 1 ? ctx.scale(role) : 1
+      // `isFlip`은 **상대 쪽 몸일 때** 가로를 뒤집는다. 내 쪽 몸은 −Z를 보고 서므로 몸 기준 오른쪽(+x)이
+      // 곧 기본 카메라 쪽이다 — 시퀀스가 그쪽을 기준으로 적혀 있고, 상대 몸(+Z를 본다)에서는 뒤집어야 같은
+      // 화면 쪽에 선다(실측: 안 뒤집으니 리프스톰 카메라가 토대부기 반대편 몸 속에 섰다)
+      const flip = num(v.isFlip) === 1 && !ctx.mine(role) ? -1 : 1
+      const yaw = num(v.isRot) === 1 ? a.yaw : null
+      const local = (x: V3): V3 => offsetOf([x[0] * k * flip, x[1] * k, x[2] * k], yaw)
+      const rate = num(v.rate, 0, 100) / 100
+      const pick = (mask: readonly string[] | undefined, cur: V3, want: V3): V3 => [
+        num(mask, 0, 1) === 1 ? cur[0] + (want[0] - cur[0]) * rate : cur[0],
+        num(mask, 1, 1) === 1 ? cur[1] + (want[1] - cur[1]) * rate : cur[1],
+        num(mask, 2, 1) === 1 ? cur[2] + (want[2] - cur[2]) * rate : cur[2],
+      ]
+      return {
+        pos: pick(v.enableElemPos, from.pos, add(a.pos, local(vec(v.pos)))),
+        target: pick(v.enableElemTrg, from.target, add(a.pos, local(vec(v.trg)))),
+        fov: fovOf(),
+        roll: from.roll,
+      }
+    }
+    default:
+      return null
+  }
 }

@@ -60,7 +60,7 @@ export const LeadAbility = {
   NO_GUARD: 99,
 } as const
 
-/** 맵 헤더의 날씨 번호 (`constants/overworld_weather.h`). 숨기 특성이 이걸 본다 */
+/** 지금 걸린 날씨 번호 (`constants/overworld_weather.h`). 숨기 특성이 이걸 본다 */
 export const OverworldWeather = {
   SNOWING: 5,
   HEAVY_SNOW: 6,
@@ -114,7 +114,10 @@ export function pushesLevel(lead: Lead): boolean {
 /** 조우 판정을 둘러싼 필드 상태 */
 export interface FieldMods {
   lead: Lead
-  /** 맵 날씨 (`MapHeader.weather`). 모래숨기·눈숨기가 본다 */
+  /**
+   * 지금 걸린 날씨 (`overworldWeather.value` — 헤더 32~36을 오늘 날짜로 푼 값).
+   * 모래숨기·눈숨기가 본다
+   */
   weather: number
   /** 불어 둔 피리 */
   flute: number

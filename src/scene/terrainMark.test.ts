@@ -19,10 +19,13 @@ describe('BDSP 열쇠 (`bdspWanted` · `bdspShowing`)', () => {
     expect(bdspWanted(null, null, [])).toEqual([])
   })
 
-  it('이름만 정해졌을 때는 원작 그림을 숨기지 않는다 — 하나라도 서야 숨긴다', () => {
+  it('이름만 정해졌을 때는 원작 그림을 숨기지 않는다 — 발밑(맨 앞) 지역이 서야 숨긴다', () => {
     const keys = bdspWanted(null, null, ['area002', 'area003'])
     expect(bdspShowing(keys)).toBe(false)
+    // 둘레 지역만 섰다 — 숨기면 발밑이 하늘로 빈다
     markBdspReady('area003')
+    expect(bdspShowing(keys)).toBe(false)
+    markBdspReady('area002')
     expect(bdspShowing(keys)).toBe(true)
   })
 

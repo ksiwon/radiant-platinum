@@ -145,15 +145,18 @@ export function bdspWanted(room: string | null, dungeon: string | null, fields: 
 }
 
 /**
- * **BDSP가 지금 그림을 쥐는가** — 원하는 열쇠 중 하나라도 실제로 서서 그려졌을 때만 참이다. 참이면 원작 지형을 숨긴다
- * (`ChunkModels`의 `dsHidden`).
+ * **BDSP가 지금 그림을 쥐는가** — **맨 앞 열쇠**가 실제로 서서 그려졌을 때만 참이다. 참이면 원작 지형을 숨긴다
+ * (`ChunkModels`의 `dsHidden`). 맨 앞이 방 · 던전이고 야외면 플레이어에 가장 가까운 지역이다(`nearestFirst`).
+ *
+ * ⚠️ **아무 지역 하나로 숨기면 발밑이 빈다.** 둘레의 작은 지역이 먼저 서자 꽃향기마을 첫 2.4초가 하늘과 사람뿐이었다
+ * (트레일러 B4) — 발밑 큰 지역은 아직 받는 중이었다.
  *
  * ⚠️ **이름이 정해진 것만으로 숨기면 허공이 보인다.** 예전에는 둘레 지역 이름 목록이 서자마자 원작 땅을 숨겼는데, 지역 glb는
  * 받고 풀어서 늦게 온다 — 영원의 숲에서 205번도로로 나선 첫 화면이 하늘과 사람뿐이었다(story `20-forest`).
  * 실패한 열쇠는 안 선 것으로 센다 — 그때는 원작 그림이 그대로 남는다
  */
 export function bdspShowing(keys: readonly string[]): boolean {
-  return keys.some((k) => bdspReady(k))
+  return keys.length > 0 && bdspReady(keys[0]!)
 }
 
 /** 카메라가 「닿았다」고 볼 잔여 거리 (월드 단위 = 타일) */

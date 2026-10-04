@@ -340,6 +340,50 @@ export async function bakeLooks(
     return textures.length - 1
   }
 
+  /**
+   * **마스크로 두 색을 섞는 그림 없는 재질** — 바탕(`_MainTex`)도 층(`_LayerTex`)도 없이 `_BlendTex`만 물렸다.
+   * 충호 방(g038) 바닥 `M_B_038_Floor_24`가 그렇다 — `_CASCADE_BLENDUV0`라 첫 UV로 `_BlendTex`를 읽어 R만큼
+   * `_Color` × `_ColorIntensity`(0.75 × 1.7 — 가운데 빛)에서 `_LayerColor` × `_LayerColorIntensity`(남청)로 넘어간다.
+   * `_Color`만 실으면 25 m 판이 통째로 하얗게 탄다. 섞은 색을 그림 한 장으로 굽는다 — `bdspArena.py`의 `cascade_mix`와 같다
+   */
+  const cascadeMix = async (v: Props, colors: Map<string, UnityValue>, floats: Map<string, UnityValue>):
+    Promise<{ px: Uint8Array, w: number, h: number } | null> => {
+    // 둘째 UV로 읽는 것(`_BlendUVIndex` 1 — g009 · g010 바다)과 거울 반사 물(`_ENVIRONMENTMAPENABLE_MIRRORMAP` — g011)은
+    // 둘째 UV를 안 싣고 반사도 안 옮기니 손대지 않는다
+    const words = String(v.m_ShaderKeywords ?? '')
+    if (!words.includes('_CASCADE_BLENDUV0') || words.includes('MIRRORMAP') || num(floats.get('_BlendUVIndex')) !== 0) return null
+    const te = pairs(((v.m_SavedProperties ?? {}) as Props).m_TexEnvs)
+    const pidOf = (k: string): number => num(((te.get(k) as Props | undefined)?.m_Texture as Props | undefined)?.m_PathID)
+    if (pidOf('_BlendTex') === 0 || pidOf('_MainTex') !== 0 || pidOf('_LayerTex') !== 0) return null
+    const at = textureAt.get(pidOf('_BlendTex'))
+    if (!at) return null
+    at.read ??= readTexture(env.read(pidOf('_BlendTex')) as Props, at.entry.bundle)
+    let [w, h, px] = [at.read.width, at.read.height, at.read.pixels]
+    if (maxSize !== null && Math.max(w, h) > maxSize) {
+      const k = maxSize / Math.max(w, h)
+      const tw = Math.max(1, Math.round(w * k)); const th = Math.max(1, Math.round(h * k))
+      px = resize(px, w, h, tw, th); w = tw; h = th
+    }
+    const lin = (key: string, gain: string): number[] => {
+      const c = (colors.get(key) ?? {}) as Props
+      const k = floats.has(gain) ? num(floats.get(gain)) : 1
+      return [toLinear(num(c.r, 1)) * k, toLinear(num(c.g, 1)) * k, toLinear(num(c.b, 1)) * k]
+    }
+    const a = lin('_Color', '_ColorIntensity')
+    const b = lin('_LayerColor', '_LayerColorIntensity')
+    const toSrgb = (x: number): number => (x <= 0.0031308 ? x * 12.92 : 1.055 * x ** (1 / 2.4) - 0.055)
+    const out = new Uint8Array(w * h * 4)
+    for (let i = 0; i < w * h; i++) {
+      const r = px[i * 4]! / 255
+      for (let c = 0; c < 3; c++) {
+        const m = Math.min(1, Math.max(0, a[c]! * (1 - r) + b[c]! * r))
+        out[i * 4 + c] = Math.round(toSrgb(m) * 255)
+      }
+      out[i * 4 + 3] = 255
+    }
+    return { px: out, w, h }
+  }
+
   const images: Record<string, unknown>[] = []
   const textures: Record<string, unknown>[] = []
   const materials: Record<string, unknown>[] = []
@@ -430,6 +474,16 @@ export async function bakeLooks(
       },
       ...alphaOf(renderType.get(mat) ?? 'Opaque'),
       doubleSided: true,
+    }
+    const mixed = await cascadeMix(v, colors, floats)
+    if (mixed !== null) {
+      images.push(await image(mixed.px, mixed.w, mixed.h, mat))
+      let sampler = samplers.findIndex((s) => s.wrapS === 10497 && s.wrapT === 10497)
+      if (sampler < 0) { samplers.push({ wrapS: 10497, wrapT: 10497 }); sampler = samplers.length - 1 }
+      textures.push({ source: images.length - 1, sampler })
+      const pbr = plain.pbrMetallicRoughness as Record<string, unknown>
+      pbr.baseColorTexture = { index: textures.length - 1 }
+      pbr.baseColorFactor = [1, 1, 1, 1]
     }
     // 스스로 빛나는 것. 세기까지는 안 옮긴다 — glTF의 `emissiveFactor`는 0~1이라
     // 4배를 실을 수 없다

@@ -2330,6 +2330,8 @@ async function open(
         chatterChance(chatterActivation(decodeChatotCry(useSaveStore.getState().chatotCry))),
         chatterChance(0),
       ],
+      // 자연의힘·비밀의힘·위장이 땅을 본다 (`dex/mechanics`)
+      terrain: battleTerrain,
       ...(items ? { items } : {}),
       ...(twoSided ? { doubles: true } : {}),
       ...(foe2 ? { foe2 } : {}),

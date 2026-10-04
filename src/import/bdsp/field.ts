@@ -46,6 +46,48 @@ interface FieldStat {
   problems: string[]
 }
 
+
+/**
+ * `unity default resources`의 Plane(PathID 10209). 번들에 없어 `env.read`가 null이다 — 연못·늪의 물이 모두 이 평면이다
+ * (떡잎마을 `Plane_Water (1)` · 201·203·204·205·212·213·214·225·227·228·229번 도로 · 축복·연고·늪 등 36자리).
+ * Unity 모양 그대로: 10×10, 11×11 정점, 법선 +Y, UV = 격자/10
+ */
+const UNITY_PLANE = 10209
+/** 기본 평면 중 물만 세운다 — 그림자·그라데이션 판(`EntShadow` · `Grad` · `PlaneGrass`)은 따로 볼 일이다 */
+const BUILTIN_PLANE_MATERIAL = /Water/
+
+function unityPlane(): MeshData {
+  const n = 11
+  const pos = new Float32Array(n * n * 3)
+  const nor = new Float32Array(n * n * 3)
+  const uv = new Float32Array(n * n * 2)
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const v = j * n + i
+      pos[v * 3] = 5 - i; pos[v * 3 + 2] = 5 - j
+      nor[v * 3 + 1] = 1
+      uv[v * 2] = i / 10; uv[v * 2 + 1] = j / 10
+    }
+  }
+  const indices = new Uint32Array(10 * 10 * 6)
+  let k = 0
+  for (let j = 0; j < 10; j++) {
+    for (let i = 0; i < 10; i++) {
+      const a = j * n + i, b = a + 1, c = a + n, d = c + 1
+      indices.set([a, c, b, b, c, d], k); k += 6
+    }
+  }
+  return {
+    name: 'Plane', vertexCount: n * n,
+    attributes: new Map([[CHANNEL.position, pos], [CHANNEL.normal, nor], [CHANNEL.uv0, uv]]),
+    intAttributes: new Map(),
+    dimensions: new Map([[CHANNEL.position, 3], [CHANNEL.normal, 3], [CHANNEL.uv0, 2]]),
+    indices,
+    subMeshes: [{ firstByte: 0, indexCount: indices.length, topology: 0, baseVertex: 0, firstVertex: 0, vertexCount: n * n }],
+    bindPose: new Float32Array(0), boneNameHashes: new Uint32Array(0),
+  }
+}
+
 interface Group {
   meshPid: number
   mesh: MeshData
@@ -453,8 +495,15 @@ export async function exportField(
   for (const filter of filters) {
     const mf = env.readEntry(filter) as Props | null
     if (!mf) continue
-    const meshPid = num((mf.m_Mesh as Props | undefined)?.m_PathID)
+    const meshRef = mf.m_Mesh as Props | undefined
+    // `unity default resources`의 기본 메시는 번들에 없다 — 물 평면만 같은 모양을 지어 세운다 (위 `UNITY_PLANE`)
+    const builtin = num(meshRef?.m_FileID) !== 0
+    const meshPid = builtin ? -num(meshRef?.m_PathID) : num(meshRef?.m_PathID)
     let got = meshCache.get(meshPid)
+    if (got === undefined && builtin) {
+      got = meshPid === -UNITY_PLANE ? { mesh: unityPlane(), wide: false } : null
+      meshCache.set(meshPid, got)
+    }
     if (got === undefined) {
       const meshValue = env.read(meshPid) as Props | null
       const holder = env.bundleOf(meshPid)
@@ -469,7 +518,10 @@ export async function exportField(
     const goPid = num((mf.m_GameObject as Props | undefined)?.m_PathID)
     const go = env.read(goPid) as Props | null
     if (!go) continue
-    // ⚠️ **꺼 둔 물체는 안 세운다** (`m_IsActive 0`) — 원작 프리팹이 꺼 둔 것은 게임에서 안 보이는 것이다
+    // ⚠️ **꺼 둔 물체는 안 세운다** (`m_IsActive 0`) — 원작 프리팹이 꺼 둔 것은 게임에서 안 보이는 것이다.
+    // 단 typetree가 `bool`을 JS 불리언으로 풀어(`typetree.ts`) `num`이 늘 1을 돌려 이 줄은 지금 아무것도 거르지 않는다
+    // (꺼 둔 144개가 선다 — 대개 `RoomInner_*`). 고치면 가짜 실내 바닥과 떡잎마을 연못 물(프리팹에서 꺼져 있으나
+    // DS 칸은 물 0x0010)이 함께 바뀌니 따로 다룬다
     if (num(go.m_IsActive, 1) === 0) continue
     let transformPid = 0
     let slots: number[] = []
@@ -487,6 +539,7 @@ export async function exportField(
       }
     }
     if (!enabled || slots.length === 0 || transformPid === 0) continue
+    if (builtin && !slots.every((m) => BUILTIN_PLANE_MATERIAL.test(materialName.get(m) ?? ''))) continue
     // 남의 구역 사본은 버린다 — 이음매 한 줄만 빌린다 (위 `FOREIGN_ZONES` · `ZONE_SEAMS`)
     let seam: readonly [number, number] | undefined
     const foreign = FOREIGN_ZONES[name]

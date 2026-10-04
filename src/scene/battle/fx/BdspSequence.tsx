@@ -7,14 +7,14 @@
 //
 // ⚠️ **몸에 거는 것은 `seqStage.running`이 켜진 동안만 무대가 읽는다.** 끝나면 비운다 —
 // 안 비우면 다음 턴까지 몸이 상대 앞에 서 있다.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { battleClock } from '../../../engine/battle/presentationClock'
 import {
-  backAt, bodyAt, particleAt, planFrames, shakeAt, SEQ_FPS,
-  type Role, type SeqContext, type SeqPlan,
+  backAt, bodyAt, cameraAt, particleAt, planFrames, shakeAt, SEQ_FPS,
+  type Role, type SeqCamera, type SeqContext, type SeqPlan,
 } from '../../../engine/battle/fx/sequence'
-import { clearSeqStage, seqStage } from '../stageRefs'
+import { clearSeqStage, seqStage, tallOf } from '../stageRefs'
 import { BdspEffect } from './BdspEffect'
 import { slotAnchor } from './seqAnchors'
 
@@ -55,6 +55,12 @@ export function BdspSequence({
       return a
     },
   })
+  // 카메라는 무대(`BattleStage`의 `useBattleCamera`)가 제 기본 카메라를 넘겨 부른다 — 그 프레임 시각으로 다시 접는다
+  const cameraFn = useMemo(() => (base: SeqCamera): SeqCamera | null => {
+    const f = (battleClock.now() - startedAt) * SEQ_FPS
+    return cameraAt(plan, f, { ...ctx.current, scale: (role: Role) => bodyScale(roles[role]!) }, base)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 한 시퀀스 안에서 안 바뀐다
+  }, [plan, startedAt])
   const [gone, setGone] = useState<ReadonlySet<string>>(new Set())
   const ended = useRef(false)
   /** 칸마다 살아 있는 입자 수 (진단) */
@@ -92,6 +98,7 @@ export function BdspSequence({
         seqStage.body[roles[role]!] = pose
       }
       seqStage.shake = shakeAt(plan, f)
+      seqStage.camera = cameraFn
       seqStage.back = backAt(plan, f)
     } else if (seqStage.running) {
       // 명령이 다 끝났다 — 몸 · 화면은 놓고 입자만 사그라지게 둔다
@@ -124,6 +131,14 @@ export function BdspSequence({
       ))}
     </group>
   )
+}
+
+/**
+ * `isScale` 카메라 오프셋의 배율 — 그 자리에 선 몸의 키를 1m 기준으로. BDSP가 무엇으로 늘리는지는
+ * 못 찾았다(우리 짐작) — 큰 몸 앞에서 카메라가 몸 속에 서지 않게 하는 것이 목적이다
+ */
+function bodyScale(slot: string): number {
+  return Math.min(3, Math.max(0.6, tallOf(slot)))
 }
 
 function hash(s: string): number {

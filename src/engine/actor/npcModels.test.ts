@@ -385,11 +385,16 @@ maybe('눈으로 고른 짝 — 실제 자료', () => {
 })
 
 describe('다시 칠하기', () => {
-  it('키가 `번들-꼬리` 꼴이고 꼬리를 떼면 진짜 번들이다', () => {
+  it('키가 `번들` 또는 `번들-꼬리` 꼴이고 꼬리를 떼면 진짜 번들이다', () => {
     for (const key of Object.keys(NPC_RECOLOR)) {
-      expect(key, key).toMatch(/^(fc|tr|pc)\d{4}_\d{2}-[a-z]+$/)
+      expect(key, key).toMatch(/^(fc|tr|pc)\d{4}_\d{2}(-[a-z]+)?$/)
       expect(baseBundle(key), key).toBe(key.split('-')[0])
     }
+  })
+
+  it('주인공 둘은 PT 색으로 같은 번들을 갈아 끼운다', () => {
+    expect(NPC_RECOLOR).toHaveProperty(NPC_BUNDLE.hero)
+    expect(NPC_RECOLOR).toHaveProperty(NPC_BUNDLE.heroine)
   })
 
   it('꼬리 없는 이름은 그대로 돌려준다', () => {
@@ -401,6 +406,16 @@ describe('다시 칠하기', () => {
     for (const [key, spec] of Object.entries(NPC_RECOLOR)) {
       for (const mat of spec.drop ?? []) expect(mat, key).toMatch(/^[a-zA-Z][a-zA-Z0-9]*$/)
     }
+  })
+
+  it('`재질@조각` 키는 이름만 적고, 물감이 비어도 된다 (원래 색)', () => {
+    for (const [key, spec] of Object.entries(NPC_RECOLOR)) {
+      for (const mat of Object.keys(spec.paint).filter((m) => m.includes('@'))) {
+        expect(mat, key).toMatch(/^[a-zA-Z][a-zA-Z0-9]*@[a-zA-Z0-9]+$/)
+      }
+    }
+    // 빛나: 장화 껍데기만 원래 색 (치마 f76b4a · 장화 c66b9c)
+    expect(NPC_RECOLOR[NPC_BUNDLE.heroine]!.paint['wear@shoes1']).toEqual({})
   })
 
   it('색이 `#rrggbb`고 근거가 붙어 있다', () => {
@@ -419,7 +434,9 @@ describe('다시 칠하기', () => {
   // 같은 이름으로 구우면 그 사람까지 핸섬 색이 된다
   it('원래 번들을 그대로 쓰는 사람이 있으면 이름이 안 겹친다', () => {
     const plain = new Set(Object.values(NPC_MODEL_BUNDLE).map(baseBundle))
-    for (const key of Object.keys(NPC_RECOLOR)) {
+    // 주인공 둘은 예외다 — 꼬리 없이 제자리에서 갈아 끼우고, 그 몸을 다른 사람이 안 쓴다
+    const heroes: string[] = [NPC_BUNDLE.hero, NPC_BUNDLE.heroine]
+    for (const key of Object.keys(NPC_RECOLOR).filter((k) => !heroes.includes(k))) {
       expect(key, key).not.toBe(baseBundle(key))
       expect(plain.has(baseBundle(key)) ? key : 'ok').not.toBe(baseBundle(key))
     }

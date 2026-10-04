@@ -192,7 +192,7 @@ import { activateRoamer } from './roamers'
 import { computeStats } from '../engine/pokemon/stats'
 import {
   changeForm, GIRATINA_ORIGIN, giratinaForm as giratinaFormOf, ITEM_GRISEOUS_ORB,
-  SHAYMIN_LAND, SPECIES_GIRATINA, SPECIES_ROTOM, SPECIES_SHAYMIN, type FormTables,
+  landShayminForDeposit, SHAYMIN_LAND, SPECIES_GIRATINA, SPECIES_ROTOM, SPECIES_SHAYMIN, type FormTables,
 } from '../engine/pokemon/form'
 import { addTrophyMon, swarmMap, trophySpecies } from '../engine/world/daily'
 import {
@@ -1577,7 +1577,8 @@ const services: FieldServices = {
       const at = emptySlot(save.daycare)
       if (!mon || at < 0) return
       const slots = [...save.daycare.slots]
-      slots[at] = { mon, steps: 0, levelIn: mon.level }
+      // 맡기면 랜드로 돌아간다 (daycare.c의 BoxPokemon_SetShayminForm)
+      slots[at] = { mon: landShayminForDeposit(mon), steps: 0, levelIn: mon.level }
       useSaveStore.setState({
         party: save.party.filter((_, i) => i !== partySlot),
         daycare: { ...save.daycare, slots },

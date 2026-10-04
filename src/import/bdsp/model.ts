@@ -9,7 +9,7 @@
 // `facing = atan2(vx, vz)`라 **+Z가 정면**이어야 하고, 그래서 Z 뒤집기 + Y축
 // 180° 회전을 합친 것과 같은 X 뒤집기를 쓴다. 손잡이가 뒤집히므로 삼각형 감기
 // 순서도 함께 뒤집는다 — 안 뒤집으면 얼굴 안쪽이 보인다.
-import { bakeAlbedo, type BakeOptions } from './albedo'
+import { bakeAlbedo, scopedMaterial, type BakeOptions } from './albedo'
 import {
   ARRAY_BUFFER, ELEMENT_BUFFER, FLOAT, GlbBuffer, UINT, USHORT,
   outwardRatio, verifyGlb, writeGlb, type Gltf,
@@ -803,6 +803,8 @@ export async function exportModel(
       // 그렇다. 여기서 안 걸러 내면 안 그릴 조각의 인덱스가 버퍼에 들어가고
       // 삼각형 수·법선 통계도 같이 어긋난다 (`bdspGlb.py`가 같은 자리에서 같이 한다)
       if (options.drop?.includes(name)) return
+      // `재질@조각` 키가 이 조각을 가리키면 그 사본 재질을 쓴다 (`NPC_RECOLOR` 머리말)
+      const matKey = scopedMaterial(name, meshName, options.recolor)
       // 시작 위치가 **인덱스 번호가 아니라 바이트 오프셋**이다
       const stride = num(meshValue.m_IndexFormat) === 1 ? 4 : 2
       const first = Math.floor(sub.firstByte / stride)
@@ -816,7 +818,7 @@ export async function exportModel(
       triangleTotal += Math.floor(sub.indexCount / 3)
       outwardSum += outwardRatio(verts, tri)
       outwardCount++
-      const st = lookOf.get(name)?.uv ?? [1, 1, 0, 0]
+      const st = lookOf.get(matKey)?.uv ?? [1, 1, 0, 0]
       const prim: Record<string, unknown> = {
         attributes: {
           POSITION: aPos, NORMAL: aNrm, TEXCOORD_0: uvAccessor(st),
@@ -830,7 +832,7 @@ export async function exportModel(
       // 붙는다. 색이 있는 것은 알베도가 구워 주고, 여기 남는 것은 스텐실로
       // 깎아 내는 `*Mask` 조각뿐이라 안 그리는 것이 맞다. 노드 추출기가 같은
       // 자리에서 같은 일을 한다 (`bdspGlb.py`의 `noMaterial` — 54종 233조각)
-      const mat = materialOf.get(name)
+      const mat = materialOf.get(matKey)
       if (mat === undefined) { noMaterial.push(name || meshName); return }
       prim.material = mat
       primitives.push(prim)

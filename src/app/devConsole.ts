@@ -28,7 +28,7 @@ import { useFactoryStore } from '../state/factoryStore'
 import { ChallengeType } from '../engine/frontier/factory'
 import { factorySlot } from '../engine/frontier/records'
 import { activateRoamer } from '../scene/roamers'
-import { pinCutIn } from '../scene/encounterCutIn'
+import { cutInThenBattle, cutInThenTrainerBattle, pinCutIn } from '../scene/encounterCutIn'
 import { ROAMER_LEVEL, ROAMER_SPECIES } from '../engine/world/roamer'
 import { computeStats } from '../engine/pokemon/stats'
 import { LocationEvent } from '../engine/world/journal'
@@ -221,6 +221,13 @@ export function installDevConsole(): void {
     },
     /** 트레이너전을 연다. 번호는 `pt.find()`로 찾는다 */
     trainer: (id: number) => useBattleStore.getState().startTrainer(id),
+    /** 필드처럼 조우 컷인을 돌린 뒤 야생전을 연다 — 컷인 번호가 종족 · 레벨로 갈린다(전설은 전용 컷인) */
+    encounterWild: (species: number, level = 10) =>
+      cutInThenBattle({ trainer: false, foeLevel: level, foeSpecies: species }, () => {
+        void useBattleStore.getState().startWild({ species, level, form: 0 })
+      }),
+    /** 필드처럼 조우 컷인을 돌린 뒤 트레이너전을 연다 (`fieldServices.startTrainerBattle`과 같은 길) */
+    encounter: (id: number) => cutInThenTrainerBattle(id, () => { void useBattleStore.getState().startTrainer(id) }),
     /**
      * 조우 컷인을 그 프레임에 세워 둔다 (`scene/encounterCutIn`).
      *

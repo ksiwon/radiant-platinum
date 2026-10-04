@@ -304,6 +304,14 @@ interface Recolor {
  * ⚠️ **원래 번들은 그대로 남는다.** `fc2033_01`은 게임디렉터(그림 242)가 쓰고
  * 있어서, 다시 칠한 것을 같은 이름으로 구우면 그 사람까지 바뀐다. 그래서 꼬리
  * 붙은 이름으로 따로 굽는다 — `baseBundle`이 원본 자리를 되돌려 준다
+ *
+ * ⚠️ **같은 재질을 여러 껍데기가 나눠 쓴다.** 주인공의 `wear`는 몸(치마 포함)과 장화
+ * (`shoes1Skin`)가 같이 쓰는데, 플래티넘은 치마만 바꾸고 장화는 DP 분홍 그대로다.
+ * 그래서 키를 **`재질@조각`**으로 적을 수 있다 — 메시 이름에 `조각`이 든 껍데기의 그
+ * 재질에만 쓰는 **사본**(이름도 `재질@조각`, 그림도 따로 굽는다)이고, 맨 `재질` 키는
+ * 나머지 껍데기에 쓴다. 사본은 맨 키의 물감을 안 받는다: 원래 색에 **제 물감만**
+ * 얹으므로 `{}`는 「원래 색」이다. 굽는 쪽 둘이 같이 본다
+ * (`bdspGlb.py`의 `scoped_material` · `albedo.ts`의 `scopedMaterial`)
  */
 export const NPC_RECOLOR: Readonly<Record<string, Recolor>> = {
   // 핸섬 — 국제경찰. **무릎까지 오는 코트를 입은 남자**가 BDSP에 갬블러와
@@ -333,6 +341,38 @@ export const NPC_RECOLOR: Readonly<Record<string, Recolor>> = {
     // (#594628)으로 주면 화면에서 흙빛이 된다. 원작 일러스트가 낙타색인 것으로
     // 밝은 쪽(#846b42)이 기준색인 것을 확인했다
     why: '롬 그림 213 앞모습에서 잰 부위 색 — 코트는 밝은 톤',
+  },
+  // 주인공 둘 — BDSP 몸은 **DP 의상**이고 플래티넘은 색을 바꿨다 (루카스: 모자 진홍 ·
+  // 겉옷 군청 · 스카프 은백, 빛나: 스카프 주황빨강 · 금 장식 은백). 이 둘은 꼬리 없이
+  // **같은 이름으로 갈아 끼운다** — 주인공 말고는 이 몸을 안 쓰고, 필드·오프닝·전당·
+  // 배틀이 `NPC_BUNDLE.hero`·`heroine` 한 곳을 본다. 목표는 `player_{m,f}.png` ↔
+  // `dp_player_{m,f}.png`를 윤곽이 같은 프레임에서 맞대어 잰 선형 평균이다
+  // (docs/DATA.md 「여섯째 길」에 부위별 표). 흰색에 붙는 값은 음영 평균보다 목표가
+  // 밝아 레이어 색이 1에서 막힌 것이다
+  // 루카스 — 붉은 층 → 모자 진홍(#d25b6b), Skin → 겉옷(#3f4a62), Secondary → 스카프 은백(#d8d8e8)
+  pc0001_00: {
+    paint: {
+      hat: { _PrimaryColor: '#ff788b' },       // → #c55b6b
+      wear: { _PrimaryColor: '#ff788b', _SkinColor: '#4e5c78', _SecondaryColor: '#ffffff' }, // → #c55b6b · #3f4a62 · #c2c2c2
+      shoes: { _PrimaryColor: '#ff7588', _SkinColor: '#4e5c78', _SecondaryColor: '#ffffff' }, // → #cb5b6b · #3f4a62 · #c2c2c2
+      metal: { _PrimaryColor: '#ff788b', _SkinColor: '#4e5c78', _SecondaryColor: '#ffffff' }, // → #c55b6b · #3f4a62 · #c2c2c2
+    },
+    why: '롬 그림 PT 루카스 ↔ DP 루카스를 맞대어 잰 부위 색 — 모자 진홍 · 겉옷 군청 · 스카프 은백',
+  },
+  // 빛나 — Primary(분홍 치마) → 주황빨강(#ec675c), Secondary(붉은 스카프) · 금 장식 → 은백.
+  // 장화는 PT 그림에서도 분홍이라(치마 f76b4a · 장화 c66b9c 그대로) 장화 색을 건드리지 않는다:
+  // `shoes`의 Primary는 그대로 두고, `wear`는 장화 껍데기(`shoes1Skin`)만 원래 색으로 되돌린다
+  pc0002_00: {
+    paint: {
+      wear: { _PrimaryColor: '#ff7e70', _SecondaryColor: '#ffffff' },   // → #d3675c · #bfbfbf
+      'wear@shoes1': {},                                                 // 장화 분홍 — 원래 색
+      shoes: { _SecondaryColor: '#ffffff' },                            // → #bfbfbf
+      metal: { _PrimaryColor: '#ff7e70', _SecondaryColor: '#ffffff' },  // → #d3675c · #bfbfbf
+      hat: { _PrimaryColor: '#ffeeff' },     // → #d3c5d3 금 → 은백
+      acce: { _SkinColor: '#fffeff' },       // → #c6c5c6
+      bag: { _SkinColor: '#ffffff' },        // → #c2c2c2
+    },
+    why: '롬 그림 PT 빛나 ↔ DP 빛나를 맞대어 잰 부위 색 — 치마 주황빨강 · 스카프와 장식 은백 · 장화 분홍 그대로',
   },
   // 플루토 — 갤럭시단 간부. 흰 가운에 안경 쓴 노인이라 연구원 몸에서 뜬다.
   // `hair`는 마스크가 100% Primary라 한 값으로 통째로 바뀐다

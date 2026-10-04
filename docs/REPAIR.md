@@ -3406,7 +3406,6 @@ Destroyed texture [Texture "chunk-slice 32x32"] used in a submit.
 | `engine/battle/spl/texture.splTexture` | `spl-particle 32x32` |
 | `scene/npcTexture` | `npc 7` (그림 번호) |
 | `scene/ChunkModels` 소품 띠 | `prop-band` |
-| `scene/battle/BattleWorldLabels` | `damage-popup` |
 | `scene/DisguisePlates` · `scene/EmoteMarks` | `disguise-sheet` · `emote-sheet` |
 | `scene/Foliage` · `scene/fx/sky` · `scene/InteractionPrompt` | `foliage-noise` · `sky-gradient` · `blob-shadow` · `interaction-prompt` |
 
@@ -3436,8 +3435,7 @@ Destroyed texture [Texture "chunk-slice 32x32"] used in a submit.
   훑지 않는다 — 씬을 통째로 훑는 일이라 안 떨어지는 것이 하나라도 있으면
   그 값이 프레임마다 든다
 - 같은 줄을 쓰는 자리: `chunkMesh.dropMaterial`(맵·소품) · `AnimatedProp`의
-  갈아 끼울 그림 · `SplParticles`의 입자 그림(1,765장 중 780장이 32×32다) ·
-  `BattleWorldLabels`의 대미지 숫자
+  갈아 끼울 그림 · `SplParticles`의 입자 그림(1,765장 중 780장이 32×32다)
 - **설치본을 갈아 끼울 때 놓는 셋은 그냥 안 버린다** — `npcTexture` ·
   `DisguisePlates` · `EmoteMarks`. 한 판에 한 번뿐이라 옆의
   `battle/monSprite` · `monModel`처럼 `clear()`만 한다. 값은 옛 그림이 GC까지

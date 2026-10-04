@@ -12,7 +12,7 @@
 // 여기가 갈리면 개발판과 공개판의 사람 색이 달라지고, 그 차이는 "왠지 칙칙하다"
 // 로만 보여서 아무도 버그로 신고하지 않는다.
 import { readTexture, resize, resizePremultiplied, type Texture } from './texture'
-import type { Environment } from './environment'
+import type { Entry, Environment } from './environment'
 import type { UnityValue } from './typetree'
 
 export class AlbedoError extends Error {
@@ -311,6 +311,21 @@ export function plantKind(keywords: string, mainPid: number, layerPid: number): 
   return 'plain'
 }
 
+/**
+ * `재질@조각` 키 중 이 조각(메시 이름에 `조각`이 들었다)에 맞는 것의 이름. 없으면 재질 이름 그대로.
+ * 노드 쪽 `bdspGlb.py`의 `scoped_material`과 같은 규칙이다 — 키는 사전순으로 먼저 맞는 것
+ */
+export function scopedMaterial(
+  material: string, meshName: string, recolor: BakeOptions['recolor'],
+): string {
+  for (const key of Object.keys(recolor ?? {}).sort()) {
+    const at = key.indexOf('@')
+    if (at < 0) continue
+    if (key.slice(0, at) === material && meshName.includes(key.slice(at + 1))) return key
+  }
+  return material
+}
+
 /** `#rrggbb` → 셰이더 색. **감마 값 그대로** 넣는다 — 읽을 때 선형으로 돈다 */
 function hexColor(text: string): { r: number, g: number, b: number, a: number } {
   const t = text.replace('#', '')
@@ -564,11 +579,20 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
   }
 
   const out: BakedMaterial[] = []
+  // 재질 하나가 **여러 그림**이 될 수 있다 — `recolor`의 `재질@조각` 키가 그 메시 조각에만 쓸 사본을
+  // 따로 굽는다. 사본은 원래 색에 **제 물감만** 얹는다(맨 키의 물감은 안 받는다). 노드 쪽 `bake`의 `jobs`와 같다
+  const jobs: { e: Entry, v: Props, name: string, key: string }[] = []
   for (const e of env.ofType('Material')) {
     const v = env.readEntry(e) as Props | null
     if (!v) continue
-    const o = e.object
     const name = (v.m_Name as string | undefined) ?? '?'
+    jobs.push({ e, v, name, key: name })
+    for (const key of Object.keys(options.recolor ?? {})) {
+      if (key.startsWith(`${name}@`)) jobs.push({ e, v, name, key })
+    }
+  }
+  for (const { e, v, name, key } of jobs) {
+    const o = e.object
     const saved = (v.m_SavedProperties ?? {}) as Props
 
     const colors = pairs(saved.m_Colors)
@@ -578,7 +602,7 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
       }
     }
     // 우리가 적어 둔 색이 제일 세다 — 사람이 정한 것이라 원본을 이긴다
-    for (const [prop, hex] of Object.entries(options.recolor?.[name] ?? {})) {
+    for (const [prop, hex] of Object.entries(options.recolor?.[key] ?? {})) {
       colors.set(prop, hexColor(hex) as unknown as UnityValue)
     }
     const floats = pairs(saved.m_Floats)
@@ -600,7 +624,7 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
       // 껍데기는 통째로 빼고(`carvedShells`), 색이 재질에 적힌 불꽃·연기는 굽고
       // (`effectAlbedo`), 색도 없는 `FireMask*`는 지어내지 않고 건너뛴다
       if (carved.has(name)) continue
-      const effect = effectAlbedo(name, colors, slots, uvs, textureAt, maxSize)
+      const effect = effectAlbedo(key, colors, slots, uvs, textureAt, maxSize)
       if (effect) out.push(effect)
       continue
     }
@@ -772,7 +796,7 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
       finalH = Math.max(1, Math.round(height * k))
       pixels = shrink(outPixels, width, height, finalW, finalH)
     }
-    out.push({ name, look, width: finalW, height: finalH, pixels })
+    out.push({ name: key, look, width: finalW, height: finalH, pixels })
   }
   return out
 }

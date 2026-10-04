@@ -214,8 +214,12 @@ const area001 = AREA ? join(AREA, 'fields', 'area001') : null
 withLocal('BDSP 야외', area001)('야외 지역 — 원본 자료', () => {
   it('area001을 인스턴싱으로 굽고, 떡잎마을이 원작 좌표 안에 든다', async () => {
     const env = openEnvironment([new Uint8Array(readFileSync(area001!))])
-    const { stat } = await exportField(env, encodePng, { name: 'area001', maxSize: 64 })
+    const { glb, stat } = await exportField(env, encodePng, { name: 'area001', maxSize: 64 })
     expect(stat.problems).toEqual([])
+    // 떡잎마을 연못 물은 `unity default resources`의 Plane(10209)이다 — 번들에서 못 읽는다고 버리면 바닥 흙만 남는다
+    const water = readPlaced(glb).filter((p) => /Water_03/.test(p.material)).flatMap((p) => p.tris)
+    const pond = [...heightsAt(water, 112, 895), ...heightsAt(water, -112, 895)]
+    expect(pond.some((y) => Math.abs(y - 0.5) < 0.05), '떡잎마을 연못(112, 895)에 물이 없다').toBe(true)
     // 같은 메시의 사본(낮은 나무 2,312 · 나무 954 · 풀 무더기 1,350)은 한 벌로 — 세운 삼각형이 고유 삼각형의 다섯 배쯤이다
     expect(stat.placedTriangles).toBeGreaterThan(stat.triangles * 4)
     expect(stat.instanced).toBeGreaterThan(20)

@@ -17,8 +17,9 @@ export function fieldWeatherKind(weather: number): FieldWeatherKind {
     case 14: return 'fog'
     case 15: return 'deepFog'
     case 16: return 'dark'
-    // 32~36은 날짜 표를 가리키는 다섯 지역이다. 표를 못 읽는 프레임에도
-    // 지역의 주된 날씨가 보이게 한다: 212·213번도로는 비, 북부 셋은 눈.
+    // 32~36은 날짜 표를 가리키는 다섯 지역의 헤더 값이고, 맵에 들어설 때 오늘 날짜의
+    // 칸으로 풀린다 (`world/overworldWeather`의 `resolveHeaderWeather`). 풀리기 전 값이
+    // 들어오는 자리(시험·미리보기)에서도 지역의 주된 날씨가 보이게 한다: 212·213은 비, 북부 셋은 눈
     case 32: case 33: return 'rain'
     case 34: case 35: case 36: return 'snow'
     default: return 'clear'

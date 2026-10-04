@@ -162,8 +162,10 @@ function main() {
       const spec = NPC_RECOLOR[bundle]
       const recolor = spec?.paint
         ? ['--recolor', Object.entries(spec.paint)
-            .flatMap(([mat, props]) => Object.entries(props)
-              .map(([prop, hex]) => `${mat}:${prop}=${hex}`))
+            .flatMap(([mat, props]) => Object.keys(props).length === 0
+              // 물감 없는 `재질@조각` 키는 「원래 색」 — 이름만 넘긴다. 맨 키의 빈 물감은 할 일이 없다
+              ? (mat.includes('@') ? [mat] : [])
+              : Object.entries(props).map(([prop, hex]) => `${mat}:${prop}=${hex}`))
             .join(',')]
         : []
       const drop = spec?.drop?.length ? ['--drop', spec.drop.join(',')] : []

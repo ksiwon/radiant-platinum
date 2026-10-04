@@ -1366,7 +1366,9 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
       '아래로 내려가는 발판 자리에 서 본다',
     ],
     map: 573,
-    spot: { kind: 'open' },
+    // 이야기가 내려놓는 칸(롬 (55,40) → 1층 로컬 (34,30)). 첫 진입 장면이 여기서 충돌 검사 없이 서쪽으로
+    // 한 칸 걷는다 — 'open'으로 고른 자리에서는 그 한 칸이 허공이라 판 밖에 떠 섰다
+    spot: { kind: 'tile', x: 34, z: 30, facing: -Math.PI / 2 },
     ...STAGE.badge7,
   },
   {

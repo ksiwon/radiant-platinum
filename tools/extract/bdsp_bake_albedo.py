@@ -480,11 +480,20 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
     outdir.mkdir(parents=True, exist_ok=True)
     spec: dict[str, dict] = {}
 
+    # 재질 하나가 **여러 그림**이 될 수 있다 — `recolor`의 `재질@메시` 키(`NPC_RECOLOR` 머리말)가
+    # 그 메시 조각에만 쓸 사본을 따로 굽는다. 사본은 원래 색에 **제 물감만** 얹는다(맨 키의 물감은 안 받는다)
+    jobs = []
     for obj in env.objects:
         if obj.type.name != "Material":
             continue
         d = obj.read_typetree()
-        name = d.get("m_Name", "?")
+        base_name = d.get("m_Name", "?")
+        jobs.append((obj, d, base_name, base_name))
+        for key in (recolor or {}):
+            if key.startswith(base_name + "@"):
+                jobs.append((obj, d, base_name, key))
+
+    for obj, d, name, key in jobs:
         props = d.get("m_SavedProperties", {})
 
         colors = {k: v for k, v in prop_pairs(props.get("m_Colors", []))}
@@ -493,7 +502,7 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
             if 0 <= ch < len(VARIATION_CHANNEL_PROPS):
                 colors[VARIATION_CHANNEL_PROPS[ch]] = col
         # 우리가 적어 둔 색이 제일 세다 — 사람이 정한 것이라 원본을 이긴다
-        for prop, hexcol in (recolor or {}).get(name, {}).items():
+        for prop, hexcol in (recolor or {}).get(key, {}).items():
             colors[prop] = hex_color(hexcol)
         slots, uvs = {}, {}
         for k, v in prop_pairs(props.get("m_TexEnvs", [])):
@@ -509,7 +518,7 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
             if name in carved:
                 print(f"  {name}: 깎개가 깊이로 깎는 껍데기 — 통째로 뺌")
                 continue
-            if effect_albedo(name, colors, slots, uvs, spec, outdir, max_size):
+            if effect_albedo(key, colors, slots, uvs, spec, outdir, max_size):
                 continue
             print(f"  {name}: {'·'.join(main_props)} 없음 — 건너뜀")
             continue
@@ -533,7 +542,7 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
         # 돌리면, 지금 잘 나오고 있는 머리카락·속눈썹이 사각형으로 막힌다
         blend = nums.get("_BlendMode")
         opaque = blend == 0
-        spec[name] = {
+        spec[key] = {
             "uv": uvs[found],
             "wrap": wrap_of(main_tex),
             "alpha": "MASK" if blend is None else GLTF_ALPHA.get(int(blend), "OPAQUE"),
@@ -547,7 +556,7 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
         w, h = main.size
         col = np.asarray(main, dtype=np.float32) / 255.0
         if blend is None:
-            spec[name]["alpha"] = untagged_alpha(render_type(d), float(col[..., 3].mean()))
+            spec[key]["alpha"] = untagged_alpha(render_type(d), float(col[..., 3].mean()))
         rgb_lin = srgb_to_linear(col[..., :3])
 
         # 2층. **불투명한 재질의 알파는 불투명도가 아니라 여기를 꺼내는
@@ -617,9 +626,9 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
             # LANCZOS는 도트가 아니라 사진 계열 텍스처라 이쪽이 맞다
             img = img.resize((max(1, round(img.width * k)), max(1, round(img.height * k))),
                              Image.LANCZOS)
-        path = outdir / f"{name}_albedo.png"
+        path = outdir / f"{key}_albedo.png"
         img.save(path)
-        print(f"  {name:<12} {w}x{h} → {path.name} ({img.width}x{img.height})")
+        print(f"  {key:<12} {w}x{h} → {path.name} ({img.width}x{img.height})")
 
     return spec
 

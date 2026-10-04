@@ -11,6 +11,7 @@
 // 자리를 옮길 수가 없다 — 원작에서 박스는 옮겨 놓는 곳이지 담아 두는 곳이 아니다.
 import type { PokemonInstance } from './instance'
 import { mailTypeOfItem } from '../world/mail'
+import { landShayminForDeposit } from './form'
 
 /** 편지지인가 (`Item_IsMail`) */
 const isMailItem = (item: number): boolean => mailTypeOfItem(item) !== null
@@ -106,10 +107,15 @@ export function store(
   return { boxes: withSlot(boxes, at, mon), at }
 }
 
-/** 자리 하나를 갈아 끼운 새 박스 묶음 */
+/**
+ * 자리 하나를 갈아 끼운 새 박스 묶음.
+ *
+ * 박스에 들어가는 쉐이미는 여기서 랜드로 돌아간다 — 넣는 길이 전부 이 함수를
+ * 지난다 (`PCBoxes_TryStoreBoxMon*`의 `BoxPokemon_SetShayminForm`)
+ */
 export function withSlot(boxes: Boxes, at: BoxSpot, mon: PokemonInstance | null): Boxes {
   const next = boxes.map((box, i) => (i === at.box ? [...box] : box))
-  next[at.box]![at.slot] = mon
+  next[at.box]![at.slot] = mon ? landShayminForDeposit(mon) : null
   return next
 }
 

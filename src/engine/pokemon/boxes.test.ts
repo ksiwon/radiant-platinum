@@ -260,3 +260,25 @@ describe('기술 자리 바꾸기 (`BoxPokemon_SwapMoveSlots`)', () => {
     expect(swapMoveSlots(two, 0, 3)).toBe(two)
   })
 })
+
+describe('쉐이미는 박스에 맡기면 랜드로 돌아간다 (PCBoxes_TryStoreBoxMon*)', () => {
+  const sky = { ...mon(492), form: 1 }
+
+  it('store · withSlot · swapSlots 어느 길로 넣어도 랜드다', () => {
+    const put = store(emptyBoxes(), 0, sky)!
+    expect(put.boxes[put.at.box]![put.at.slot]!.form).toBe(0)
+    const at = { box: 2, slot: 3 }
+    expect(withSlot(emptyBoxes(), at, sky)[2]![3]!.form).toBe(0)
+    const a = { box: 0, slot: 0 }
+    const b = { box: 1, slot: 1 }
+    const swapped = swapSlots(withSlot(emptyBoxes(), a, null), a, b)
+    expect(swapped[0]![0]).toBeNull()
+  })
+
+  it('다른 종과 이미 랜드인 쉐이미는 같은 객체다', () => {
+    const land = mon(492)
+    const other = { ...mon(479), form: 2 }
+    expect(withSlot(emptyBoxes(), { box: 0, slot: 0 }, land)[0]![0]).toBe(land)
+    expect(withSlot(emptyBoxes(), { box: 0, slot: 0 }, other)[0]![0]).toBe(other)
+  })
+})

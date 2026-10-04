@@ -50,6 +50,7 @@
     "gen:trainerClasses": "node tools/extract/trainerClassModule.cjs",
     "gen:trainerBgm": "node tools/extract/trainerBgmModule.cjs",
     "gen:berryInit": "node tools/extract/berryInitModule.cjs",
+    "gen:yearlyWeather": "node tools/extract/yearlyWeatherModule.cjs",
     "gen:amity": "node tools/extract/amityModule.cjs",
     "gen:records": "node tools/extract/gameRecordsModule.cjs",
     "gen:credits": "node tools/extract/creditsModule.cjs",

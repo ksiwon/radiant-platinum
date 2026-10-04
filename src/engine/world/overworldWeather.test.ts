@@ -4,8 +4,10 @@
 // 넣을 수 있는 값이 맑음뿐이라는 것**.
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  clearOverworldWeather, enterMapWeather, OVERWORLD_WEATHER, overworldWeather, weatherOnEnter,
+  clearOverworldWeather, enterMapWeather, OVERWORLD_WEATHER, overworldWeather, resolveHeaderWeather,
+  weatherOnEnter,
 } from './overworldWeather'
+import { YEARLY_WEATHER } from './yearlyWeather'
 
 const NONE = { flash: false, defog: false }
 const BOTH = { flash: true, defog: true }
@@ -62,5 +64,58 @@ describe('지금 걸린 날씨', () => {
     // `ScrCmd_0C3`·`0C4`가 날씨를 건드리는 명령의 전부고 둘 다 CLEAR다
     overworldWeather.value = RAIN
     expect(clearOverworldWeather()).toBe(OVERWORLD_WEATHER.clear)
+  })
+})
+
+describe('연간 날씨 표 (`FieldSystem_GetWeather`)', () => {
+  const on = (header: number, year: number, month: number, day: number): number =>
+    resolveHeaderWeather(header, { year, month, day })
+
+  it('32 미만은 헤더 값 그대로다', () => {
+    expect(on(0, 2026, 1, 1)).toBe(0)
+    expect(on(14, 2026, 7, 7)).toBe(14)
+  })
+
+  it('1월 1일 — 212번도로 비 · 213번도로 맑음 · 216번도로 대설 · 아큐티·눈설 눈', () => {
+    expect([32, 33, 34, 35, 36].map((h) => on(h, 2026, 1, 1))).toEqual([2, 0, 6, 5, 5])
+  })
+
+  it('1월 6일 212번도로 남쪽은 뇌우, 12월 31일 216번도로는 눈보라', () => {
+    expect(on(32, 2026, 1, 6)).toBe(4)
+    expect(on(34, 2026, 12, 31)).toBe(7)
+  })
+
+  it('평년의 3월 1일은 윤년의 3월 1일과 같은 행이다 (2월 29일을 건너뛴다)', () => {
+    for (const h of [32, 33, 34, 35, 36]) {
+      expect(on(h, 2026, 3, 1)).toBe(on(h, 2024, 3, 1))
+      expect(on(h, 2026, 12, 31)).toBe(on(h, 2024, 12, 31))
+      expect(on(h, 2026, 2, 28)).toBe(on(h, 2024, 2, 28))
+    }
+    // 윤년의 2월 29일은 그 행이 따로 있고, 3월 1일 행과 다른 칸을 읽는다
+    expect([32, 33, 34, 35, 36].map((h) => on(h, 2024, 2, 29)))
+      .toEqual([32, 33, 34, 35, 36].map((h) => YEARLY_WEATHER[59]![h - 32]))
+  })
+
+  it('시계를 돌린 표식이 서면 1월 2일 행이다', () => {
+    expect(resolveHeaderWeather(35, { year: 2026, month: 8, day: 1 }, true)).toBe(6)
+  })
+
+  it('표는 366일이고 걸리는 값은 전부 날씨 번호다', () => {
+    expect(YEARLY_WEATHER).toHaveLength(366)
+    for (const row of YEARLY_WEATHER) for (const w of row) expect(w).toBeLessThan(32)
+  })
+
+  it('213번도로는 366일 중 맑음 344 · 흐림 12 · 비 10이다', () => {
+    const count = new Map<number, number>()
+    for (const row of YEARLY_WEATHER) count.set(row[1], (count.get(row[1]) ?? 0) + 1)
+    expect(count.get(0)).toBe(344)
+    expect(count.get(1)).toBe(12)
+    expect(count.get(2)).toBe(10)
+  })
+
+  it('맵에 들어서면 풀린 값이 걸린다 — 눈숨기가 216번도로에서 먹는 값이다', () => {
+    const w = enterMapWeather(34, { flash: false, defog: false }, { year: 2026, month: 1, day: 1 })
+    expect(w).toBe(6)
+    expect(overworldWeather.value).toBe(6)
   })
 })

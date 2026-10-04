@@ -205,6 +205,10 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 주인공이 계속 절차형으로만 낚시한다
    */
   /**
+   * 17 — **주인공 둘이 플래티넘 의상 색으로 선다.** BDSP 몸 `pc0001_00`·`pc0002_00`은 DP 의상이라 루카스 모자가
+   * 주황빨강 · 스카프가 금색이었고 빛나 스카프가 분홍이었다. 롬 그림 PT ↔ DP를 맞대어 잰 색으로 레이어 색을 갈아 끼운다
+   * (`NPC_RECOLOR` — 꼬리 없이 같은 번들 이름). 두 몸의 텍스처 색만 달라진다. 빛나의 장화는 `wear@shoes1` 사본 재질로 DP 분홍을 지킨다
+   *
    * 16 — **ASTC 그림을 개발 추출기와 같은 규칙으로 푼다** (`import/bdsp/astc.ts` — 16비트 보간값의 위 8비트 · astcenc `decode_unorm8`).
    * 예전 브라우저 디코더는 `texture2ddecoder`를 따라 반올림해서 개발 추출기(UnityPy → `astc_encoder`)와 ±1씩 갈렸다 — 512² 한 장에서
    * 18,385바이트, 256으로 줄이면 ±2로 벌어진다. 사람 그림은 526/527장이 `ASTC_RGB_6x6`이라 이 그룹 · `monModels` · `monVariants`의
@@ -219,7 +223,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 쪽찐 할머니 · `fc2022`의 옷이 통째로 잘려 머리 · 손 · 발만 떠 있었고, 사이클리스트 헬멧 · 안경알이 사라졌다.
    * 파도타기 · 공중날기 포켓몬(`models/pcParts.glb`)의 눈도 알파가 거의 0이라 잘려 있었다
    */
-  npcModels: 16,
+  npcModels: 17,
   /**
    * 5 — ASTC 그림을 개발 추출기와 같은 규칙으로 푼다 (`npcModels` 16과 같은 고침). ⚠️ 4도 그대로 쓴다(`GROUP_ACCEPTS`)
    *

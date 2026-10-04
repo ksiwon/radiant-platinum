@@ -332,6 +332,8 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       quakeTarget.copy(shot.target).setX(shot.target.x + quake)
       state.camera.lookAt(quakeTarget)
     } else state.camera.lookAt(shot.target)
+    // BDSP 기술 시퀀스의 카메라 굴림(`CameraTwist`) — 바라본 뒤 시선 축으로 돌린다
+    if (shot === battleStage && battleStage.roll !== 0) state.camera.rotateZ(battleStage.roll)
     const lens = state.camera as PerspectiveCamera
     // 필드 화각은 **카메라 시스템**이 낸다 — 깨어진 세계는 8.09도로 갈아 낀다
     const fov = cinematicStage.active ? cinematicStage.fov

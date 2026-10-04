@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  backAt, bodyAt, ease, particleAt, planFrames, planSequence, shakeAt,
+  backAt, bodyAt, cameraAt, ease, particleAt, planFrames, planSequence, shakeAt,
   type SeqContext, type SeqData,
 } from './sequence'
 
@@ -114,5 +114,38 @@ describe('BDSP 시퀀스', () => {
   it('쉬움 곡선 0은 직선', () => {
     expect(ease(0, 0.25)).toBe(0.25)
     expect(ease(1, 0.5)).toBeCloseTo(0.25)
+  })
+})
+
+describe('시퀀스 카메라', () => {
+  const base = { pos: [2.7, 1.5, 5] as [number, number, number], target: [0, 0.05, 0] as [number, number, number], fov: 30, roll: 0 }
+  const cctx = { ...ctx, scale: () => 1 }
+  const seq: SeqData = { name: 'cam', groups: [{ name: 'c', no: 0, options: [], commands: [
+    c(0, 0, 'CameraReset', { move: ['0'] }),
+    // 맞는 쪽(−Z에 서서 +Z를 본다) 앞 3.5m · 위 0.4m에서 그 몸을 본다
+    c(16, 16, 'CameraMoveRelativePoke', { poke: ['1'], node: ['5'], isRot: ['1'], isFlip: ['1'], isScale: ['0'], rate: ['100'], fov: ['20'], move: ['0'], pos: ['0', '40', '350'], trg: ['0', '25', '0'] }),
+    c(20, 30, 'CameraTwist', { twist: ['10'], relative: ['0'], move: ['0'] }),
+    c(40, 50, 'CameraReset', { move: ['0'] }),
+  ] }] }
+  const plan = planSequence(seq)
+
+  it('명령이 서기 전과 Reset 뒤는 기본 카메라(null)', () => {
+    expect(cameraAt(plan, 5, cctx, base)).toBeNull()
+    expect(cameraAt(plan, 60, cctx, base)).toBeNull()
+  })
+
+  it('몸 기준 오프셋 — 맞는 쪽 앞(+Z로) 3.5m에서 그 몸을 본다 · 화각 20', () => {
+    const cam = cameraAt(plan, 17, cctx, base)!
+    expect(cam.pos[2]).toBeCloseTo(-2.2 + 3.5, 6)
+    expect(cam.pos[1]).toBeCloseTo(0.5 + 0.4, 6)
+    expect(cam.target).toEqual([0, 0.75, -2.2])
+    expect(cam.fov).toBe(20)
+  })
+
+  it('굴림은 시간에 걸쳐 · Reset은 기본으로 옮겨 간다', () => {
+    expect(cameraAt(plan, 25, cctx, base)!.roll).toBeCloseTo(5 * Math.PI / 180, 6)
+    const mid = cameraAt(plan, 45, cctx, base)!
+    expect(mid.fov).toBeGreaterThan(20)
+    expect(mid.fov).toBeLessThan(30)
   })
 })

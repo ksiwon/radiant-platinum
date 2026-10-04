@@ -446,6 +446,18 @@ def borrowed_clips(
     return animations, stat
 
 
+def scoped_material(mat_name: str, mesh_name: str, recolor: dict | None) -> str:
+    """`재질@조각` 키 중 이 조각(메시 이름에 `조각`이 들었다)에 맞는 것의 이름. 없으면 재질 이름 그대로.
+
+    브라우저 변환기 `model.ts`의 `scopedMaterial`과 같은 규칙이다 — 키는 사전순으로 먼저 맞는 것
+    """
+    for key in sorted(recolor or {}):
+        mat, _, scope = key.partition("@")
+        if scope and mat == mat_name and scope in mesh_name:
+            return key
+    return mat_name
+
+
 def export(bundle, out: Path, color_index: int | None = None,
            clips_from: Path | None = None, only: set[str] | None = None,
            max_texture: int | None = None, keep_clips: bool = True,
@@ -656,6 +668,8 @@ def export(bundle, out: Path, color_index: int | None = None,
             # 버퍼에 들어가고 삼각형 수·법선 통계도 같이 어긋난다
             if drop and mat_name in drop:
                 continue
+            # `재질@메시` 키가 이 조각을 가리키면 그 사본 재질을 쓴다 (`NPC_RECOLOR` 머리말)
+            mat_name = scoped_material(mat_name, mesh.m_Name, recolor)
             first = sub.firstByte // (2 if mesh.m_IndexFormat == 0 else 4)
             tri = indices[first: first + sub.indexCount].reshape(-1, 3)
             # X를 뒤집었으므로 감기 순서를 되돌린다. 안 하면 안팎이 뒤집힌다
@@ -914,6 +928,10 @@ def main() -> int:
     args = ap.parse_args()
     recolor: dict = {}
     for item in (x for x in args.recolor.split(",") if x):
+        # 물감 없는 조각(`재질@조각`만 적은 것)은 「원래 색」이라는 뜻이다
+        if "@" in item and ":" not in item and "=" not in item:
+            recolor.setdefault(item, {})
+            continue
         where, _, value = item.partition("=")
         mat, _, prop = where.partition(":")
         if not (mat and prop and value):

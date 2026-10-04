@@ -12,7 +12,7 @@ import type { ItemPlan } from '../meta/bagItem'
 import type { PokemonInstance, Status } from '../../pokemon/instance'
 import { abilityOf, genderOf, isShiny, maxPpOf, natureOf } from '../../pokemon/instance'
 import { romMove, simAbility, simItem, simMove, simSpecies } from './bridge'
-import type { ChatterOdds } from '../dex/mechanics'
+import type { ChatterOdds, TerrainBattle } from '../dex/mechanics'
 
 /** 성격 번호 → sim이 아는 이름. stats.ts의 격자 순서와 같은 순서다 */
 const NATURE_NAMES = [
@@ -186,6 +186,11 @@ export interface BattleOptions {
    */
   chatterOdds?: readonly [number, number]
   /**
+   * 싸우는 땅 (`BattleTerrain` 번호). 자연의힘·비밀의힘·위장이 이걸 본다
+   * (`dex/mechanics`의 `TERRAIN_*`). 안 주면 평지다
+   */
+  terrain?: number
+  /**
    * 상대에게도 맨 뒤에 빈 턴 칸을 붙인다 (`IDLE_MOVE`).
    *
    * **도구를 든 트레이너에게만 붙인다.** 도구를 쓰는 턴에 기술을 안 쓰게 하는
@@ -329,6 +334,10 @@ export class BattleSession {
     // 수다의 확률은 기술이 쓰일 때 배틀 객체에서 읽는다 (`ChatterOdds`)
     if (options.chatterOdds && this.raw.battle) {
       (this.raw.battle as unknown as ChatterOdds).chatterOdds = options.chatterOdds
+    }
+    // 땅도 같은 길이다 — 자연의힘·비밀의힘·위장이 기술이 쓰일 때 읽는다 (`TerrainBattle`)
+    if (options.terrain !== undefined && this.raw.battle) {
+      (this.raw.battle as unknown as TerrainBattle).terrain = options.terrain
     }
     this.write(`>player p1 ${JSON.stringify({
       name: options.player.name,

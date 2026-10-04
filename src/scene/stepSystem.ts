@@ -17,6 +17,7 @@ import { VAR_PARTNER_TRAINER_ID, VARS_START } from '../engine/script/vars'
 import { SYSTEM_FLAG } from '../engine/script/commands'
 import { DIR } from '../engine/script/movement'
 import { mapById, world as mapWorld } from '../engine/map/world'
+import { overworldWeather } from '../engine/world/overworldWeather'
 import { worldState } from '../state/worldState'
 import { useSaveStore } from '../state/saveStore'
 import { poketchStep } from './poketch'
@@ -122,7 +123,8 @@ function publishMods(): void {
   // 프레임 안에서만 보므로 같은 객체를 계속 써도 된다
   const mods = encounters.mods
   mods.lead = lead
-  mods.weather = mapById(mapWorld.mapId)?.weather ?? 0
+  // 해석된 날씨다 — 헤더 32~36은 날짜 표를 거친 값이어야 눈숨기가 먹는다 (`FieldOverworldState_GetWeather`)
+  mods.weather = overworldWeather.value
   mods.flute = save.flute
   mods.repelLevel = save.steps.repel > 0 ? battler?.level ?? 0 : 0
   mods.month = date.month

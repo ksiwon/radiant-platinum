@@ -259,6 +259,18 @@ export function canShayminSky(
     && hour >= 4 && hour < 20
 }
 
+/**
+ * 맡기면 랜드로 돌아간다 (`BoxPokemon_SetShayminForm(LAND)`).
+ *
+ * PC 박스에 넣을 때마다(`PCBoxes_TryStoreBoxMonInBox`·`At`)와 키우미집에 맡길 때
+ * (`daycare.c`) 원작이 부른다 — 박스에서 꺼낸 스카이 쉐이미는 없다. 두 폼의 HP
+ * 종족값이 같아(100) 현재 HP는 건드릴 것이 없어서 칸만 되돌린다
+ */
+export function landShayminForDeposit(mon: PokemonInstance): PokemonInstance {
+  if (mon.species !== SPECIES_SHAYMIN || mon.form === SHAYMIN_LAND) return mon
+  return { ...mon, form: SHAYMIN_LAND }
+}
+
 /** 밤이면 랜드로 돌아간다 (`Party_SetShayminForm`) — 20시부터 4시까지 */
 export function shayminMustLand(hour: number): boolean {
   return hour >= 20 || hour < 4

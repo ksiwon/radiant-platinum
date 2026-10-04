@@ -67,9 +67,71 @@ function chatterModifyMove(
   confusion.chance = this.chatterOdds?.[pokemon.side.n === 0 ? 0 : 1] ?? CHATTER_UNRECORDED
 }
 
+/**
+ * 배틀이 서 있는 땅 (`BattleTerrain` 번호) — 배틀 객체에 붙는다 (`sim/session`).
+ * 없으면 평지(0)로 본다
+ */
+export interface TerrainBattle { terrain?: number }
+
+/**
+ * 땅 → 기술·타입·부가효과 (`include/data/terrain/to_move.h` · `to_type.h` ·
+ * `to_secondary_effect.h`). 자리는 `enum BattleTerrain` 번호 그대로고,
+ * 12(아론 방)부터는 전부 `TERRAIN_SPECIAL`로 접힌다 (`terrain > TERRAIN_SPECIAL`이면 SPECIAL)
+ */
+const TERRAIN_SPECIAL = 12
+const TERRAIN_MOVE = [
+  'earthquake', 'earthquake', 'seedbomb', 'seedbomb', 'rockslide', 'rockslide', 'blizzard',
+  'hydropump', 'icebeam', 'triattack', 'mudbomb', 'airslash', 'triattack',
+] as const
+const TERRAIN_TYPE = [
+  'Ground', 'Ground', 'Grass', 'Grass', 'Rock', 'Rock', 'Ice',
+  'Water', 'Ice', 'Normal', 'Ground', 'Flying', 'Normal',
+] as const
+/** 비밀의힘의 30% 부가효과. 명중·공격·회피 하락은 한 단계다 */
+const TERRAIN_SECONDARY: readonly Record<string, unknown>[] = [
+  { boosts: { accuracy: -1 } }, { boosts: { accuracy: -1 } },
+  { status: 'slp' }, { status: 'slp' },
+  { volatileStatus: 'flinch' }, { volatileStatus: 'flinch' },
+  { status: 'frz' },
+  { boosts: { atk: -1 } },
+  { status: 'frz' },
+  { status: 'par' },
+  { boosts: { spe: -1 } },
+  { boosts: { evasion: -1 } },
+  { status: 'par' },
+]
+
+function terrainSlot(battle: TerrainBattle): number {
+  return Math.min(Math.max(battle.terrain ?? 0, 0), TERRAIN_SPECIAL)
+}
+
+/** 자연의힘 (`BtlCmd_GetTerrainMove`) — 땅이 고른 기술을 쓴다 */
+function naturePowerHit(this: TerrainBattle & { actions: { useMove: (id: string, user: unknown) => unknown } }, pokemon: unknown): void {
+  this.actions.useMove(TERRAIN_MOVE[terrainSlot(this)]!, pokemon)
+}
+
+/** 비밀의힘 (`BtlCmd_GetTerrainSecondaryEffect`) — 땅이 부가효과를 고른다 */
+function secretPowerModifyMove(this: TerrainBattle, move: { secondaries?: unknown[] | null }): void {
+  move.secondaries = [{ chance: 30, ...TERRAIN_SECONDARY[terrainSlot(this)]! }]
+}
+
+/** 위장 (`BtlCmd_TryCamouflage`) — 땅의 타입으로 바뀐다. 이미 그 타입이면 실패 */
+function camouflageHit(
+  this: TerrainBattle & { add: (...args: unknown[]) => void },
+  target: { hasType: (t: string) => boolean, setType: (t: string) => boolean },
+): boolean | undefined {
+  const type = TERRAIN_TYPE[terrainSlot(this)]!
+  if (target.hasType(type) || !target.setType(type)) return false
+  this.add('-start', target, 'typechange', type)
+  return undefined
+}
+
 /** 원작 규칙으로 갈아 끼운 기술 효과. sim의 표보다 앞선다 */
 const ROM_MOVE_RULES: Record<string, Mechanics> = {
   chatter: { ...MOVE_MECHANICS.chatter, onModifyMove: chatterModifyMove },
+  naturepower: { ...MOVE_MECHANICS.naturepower, onHit: naturePowerHit },
+  secretpower: { ...MOVE_MECHANICS.secretpower, onModifyMove: secretPowerModifyMove },
+  camouflage: { ...MOVE_MECHANICS.camouflage, onHit: camouflageHit },
 }
 
 export const MechanicsRegistry = {

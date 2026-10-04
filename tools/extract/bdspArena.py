@@ -165,6 +165,45 @@ def tint_of(floats: dict, colors: dict, layer: bool, see: bool) -> list[float] |
     return [clamp(c[0] * k), clamp(c[1] * k), clamp(c[2] * k), 0 if k == 0 else clamp(c[3])]
 
 
+def cascade_mix(env, d: dict, colors: dict, floats: dict, max_size: int | None) -> bytes | None:
+    """**마스크로 두 색을 섞는 그림 없는 재질** — 바탕(`_MainTex`)도 층(`_LayerTex`)도 없이 `_BlendTex`만 물렸다.
+
+    충호 방(g038) 바닥 `M_B_038_Floor_24`가 그렇다 — `_CASCADE_BLENDUV0`라 첫 UV로 `_BlendTex`를 읽어 R만큼
+    `_Color` × `_ColorIntensity`(0.75 × 1.7 — 가운데 빛)에서 `_LayerColor` × `_LayerColorIntensity`(남청)로 넘어간다.
+    `_Color`만 실으면 25 m 판이 통째로 하얗게 탄다. 섞은 색을 그림 한 장으로 굽는다 — 브라우저 변환기 `arena.ts`의 `cascadeMix`와 같다
+    """
+    # 둘째 UV로 읽는 것(`_BlendUVIndex` 1 — g009 · g010 바다)과 거울 반사 물(`_ENVIRONMENTMAPENABLE_MIRRORMAP` — g011)은
+    # 둘째 UV를 안 싣고 반사도 안 옮기니 손대지 않는다
+    words = str(d.get("m_ShaderKeywords") or "")
+    if "_CASCADE_BLENDUV0" not in words or "MIRRORMAP" in words or floats.get("_BlendUVIndex", 0.0) != 0:
+        return None
+    tex = dict(prop_pairs(d.get("m_SavedProperties", {}).get("m_TexEnvs", [])))
+    pid = lambda k: (tex.get(k) or {}).get("m_Texture", {}).get("m_PathID", 0)
+    if pid("_BlendTex") == 0 or pid("_MainTex") != 0 or pid("_LayerTex") != 0:
+        return None
+    mask = next((o for o in env.objects if o.path_id == pid("_BlendTex")), None)
+    if mask is None:
+        return None
+    from io import BytesIO
+    from PIL import Image
+    img = mask.read().image.convert("RGBA")
+    if max_size is not None and max(img.size) > max_size:
+        k = max_size / max(img.size)
+        img = img.resize((max(1, round(img.size[0] * k)), max(1, round(img.size[1] * k))), Image.BILINEAR)
+    r = np.asarray(img, dtype=np.float32)[..., 0:1] / 255.0
+
+    def lin(key: str, gain: str) -> np.ndarray:
+        c = colors.get(key) or {}
+        k = floats.get(gain, 1.0)
+        return np.array([srgb_to_linear_scalar(c.get(x, 1.0)) * k for x in ("r", "g", "b")], dtype=np.float32)
+
+    mix = np.clip(lin("_Color", "_ColorIntensity") * (1 - r) + lin("_LayerColor", "_LayerColorIntensity") * r, 0, 1)
+    srgb = np.where(mix <= 0.0031308, mix * 12.92, 1.055 * np.power(mix, 1 / 2.4) - 0.055)
+    out = BytesIO()
+    Image.fromarray(np.round(srgb * 255).astype(np.uint8), "RGB").save(out, "PNG")
+    return out.getvalue()
+
+
 def plant_colors(colors: dict) -> tuple[np.ndarray, np.ndarray]:
     """나무열매 재질의 `_Color` · `_LayerColor` — 선형 float32. 색은 감마로 적혀 있다 (`tint_of`와 같은 자리). 브라우저 변환기 `arena.ts`의 `plantColors`와 같다"""
     def rgb(key: str) -> np.ndarray:
@@ -362,6 +401,15 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
             **alpha_of(name),
             "doubleSided": True,
         }
+        mixed = cascade_mix(env, d, colors, floats, max_size)
+        if mixed is not None:
+            images.append({"bufferView": buf.view(mixed), "mimeType": "image/png", "name": name})
+            want = {"wrapS": 10497, "wrapT": 10497}
+            if want not in samplers:
+                samplers.append(want)
+            textures.append({"source": len(images) - 1, "sampler": samplers.index(want)})
+            mat["pbrMetallicRoughness"]["baseColorTexture"] = {"index": len(textures) - 1}
+            mat["pbrMetallicRoughness"]["baseColorFactor"] = [1.0, 1.0, 1.0, 1.0]
         # 스스로 빛나는 것 (`_EmissionColorIntensity`가 0보다 클 때만).
         # 세기까지는 안 옮긴다 — glTF의 `emissiveFactor`는 0~1이라 4배를 실을 수 없다
         glow = colors.get("_EmissionColor")

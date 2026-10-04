@@ -10,6 +10,8 @@
 // ⚠️ **덮어쓸 때 두 자리만 예외다** — 안개제거를 쓴 상태의 안개와 플래시를 쓴
 // 상태의 어둠은 **맑음이 된다.** 이게 없으면 비전기술을 써도 화면이 그대로라,
 // 안개제거가 아무 일도 안 하는 기술이 된다.
+import { YEARLY_WEATHER } from './yearlyWeather'
+
 /**
  * 여기서 쓰는 날씨 번호만 (`constants/overworld_weather.h`).
  *
@@ -23,6 +25,54 @@ export const OVERWORLD_WEATHER = {
   darkFlash: 16,
 } as const
 
+/**
+ * 헤더 날씨 32~36의 시작 (`OVERWORLD_WEATHER_YEARLY_START`). 이 다섯은 날씨가 아니라
+ * 날짜 표(`yearlyWeather`)의 열이다 — 212번도로 남쪽·213번도로·216번도로·아큐티 호반·눈설시티
+ */
+export const YEARLY_WEATHER_START = 32
+
+/** 오늘. 시계에서 읽은 달력 날짜 (`RTCDate`) — 달은 1~12 */
+export interface WeatherDate { year: number, month: number, day: number }
+
+/** 지금의 날짜 (본체 시계 = 이 기기의 시계) */
+export function nowWeatherDate(now: Date = new Date()): WeatherDate {
+  return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() }
+}
+
+/** 4로 나뉘고 100으로 안 나뉘거나 400으로 나뉘는 해 (`IsLeapYear`) */
+function isLeapYear(year: number): boolean {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0
+}
+
+/** 평년 기준 달 첫날 앞까지의 날수 (`DayNumberForDate`의 `monthStart`) */
+const MONTH_START = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334] as const
+
+/**
+ * 헤더 날씨를 오늘의 날씨로 (`FieldSystem_GetWeather`).
+ *
+ * 32 미만이면 헤더 값 그대로다. 32~36이면 `YEARLY_WEATHER[오늘][헤더 − 32]`다.
+ *
+ * ⚠️ **표는 윤년 달력이다.** `DayNumberForDate`는 윤년의 3월 이후에 하루를 더해 세고(= 윤년 기준
+ * 번호), 평년이면 `GetWeather`가 3월 이후에 하루를 **다시 더해** 같은 행을 가리킨다 — 둘을
+ * 한 번에 합치면 하루가 어긋난다.
+ *
+ * `penalty`는 시계를 돌린 표식(`FieldSystem_HasPenalty`)이다. 서면 1월 2일 행을 읽는다.
+ * 우리 게임은 그 표식을 아직 안 세워서 부르는 쪽이 안 넘긴다
+ */
+export function resolveHeaderWeather(
+  headerWeather: number, date: WeatherDate, penalty = false,
+): number {
+  if (headerWeather < YEARLY_WEATHER_START) return headerWeather
+  const leap = isLeapYear(date.year)
+  // DayNumberForDate(…) − 1
+  let at = date.day + MONTH_START[date.month - 1]! - 1
+  if (date.month >= 3 && leap) at++
+  if (date.month > 2 && !leap) at++
+  if (penalty) at = 1
+  const row = YEARLY_WEATHER[at]
+  return row?.[headerWeather - YEARLY_WEATHER_START] ?? OVERWORLD_WEATHER.clear
+}
+
 /** 지금 걸린 날씨. 한 번에 하나뿐이라 모듈에 둔다 */
 export const overworldWeather: { value: number } = { value: OVERWORLD_WEATHER.clear }
 
@@ -35,17 +85,22 @@ interface FieldMoveActive {
 /**
  * 맵에 들어설 때 걸리는 날씨 (`field_map_change.c`).
  *
- * 헤더 값 그대로인데, **안개 + 안개제거**와 **어둠 + 플래시**만 맑음이 된다
+ * 헤더 값을 (32~36이면 오늘 날짜의 칸으로 풀어서) 그대로 쓰는데, **안개 + 안개제거**와 **어둠 + 플래시**만 맑음이 된다
  */
-export function weatherOnEnter(headerWeather: number, active: FieldMoveActive): number {
+export function weatherOnEnter(
+  headerWeather: number, active: FieldMoveActive, date: WeatherDate = nowWeatherDate(),
+): number {
+  headerWeather = resolveHeaderWeather(headerWeather, date)
   if (headerWeather === OVERWORLD_WEATHER.fog && active.defog) return OVERWORLD_WEATHER.clear
   if (headerWeather === OVERWORLD_WEATHER.darkFlash && active.flash) return OVERWORLD_WEATHER.clear
   return headerWeather
 }
 
 /** 맵을 옮겼다. 헤더 값으로 덮어쓴다 */
-export function enterMapWeather(headerWeather: number, active: FieldMoveActive): number {
-  overworldWeather.value = weatherOnEnter(headerWeather, active)
+export function enterMapWeather(
+  headerWeather: number, active: FieldMoveActive, date: WeatherDate = nowWeatherDate(),
+): number {
+  overworldWeather.value = weatherOnEnter(headerWeather, active, date)
   return overworldWeather.value
 }
 

@@ -6,6 +6,7 @@
 // 그래서 "지금 카메라를 누가 갖는가"를 여기 두고 EngineDriver가 물어본다.
 import { Vector3, type Object3D } from 'three'
 import { BATTLE_FOV } from '../../engine/battle/shots'
+import type { ArenaCollider } from '../../engine/battle/fx/arenaCollider'
 
 export const battleStage = {
   /** 배틀 무대가 카메라를 가져갔는가 */
@@ -19,7 +20,15 @@ export const battleStage = {
    * 화면 높이의 4%짜리 점이 된다. 파트너 고르는 장면과 같은 방식이다
    */
   fov: BATTLE_FOV,
+  /** 굴림(라디안) — BDSP 시퀀스의 `CameraTwist`. 기본 0 */
+  roll: 0,
 }
+
+/**
+ * 지금 선 무대의 지오메트리 충돌 — 시퀀스 카메라가 벽 · 천장 구조물에 안 박히게 (`fx/cameraClamp`).
+ * 무대(`BattleStage`의 `Arena`)가 설 때 한 번 짓고 내려갈 때 지운다. 받는 중 · 깨어진 세계는 `null`이다
+ */
+export const arenaRoom: { current: ArenaCollider | null } = { current: null }
 
 /**
  * 배틀 무대가 서는 자리. 오버월드에서 **멀리 떨어뜨린다.**
@@ -155,6 +164,9 @@ export function clearBallOpen(): void {
   for (const key of Object.keys(ballOpen)) delete ballOpen[key]
 }
 
+/** 자리마다 선 몸의 상자 (무대 좌표) — 대기 자세에서 잰다(`BattleStage`의 `Slot`) */
+export const slotBox: Record<string, { min: [number, number, number]; max: [number, number, number] }> = {}
+
 /**
  * 자리마다 **선 몸의 뿌리**와 그 몸을 옮기는 그룹 (BATTLE_FX §4).
  *
@@ -177,9 +189,22 @@ export const seqStage: {
   body: Record<string, SeqBodyPose | null>
   /** 화면 흔들림 진폭 (m) */
   shake: number
+  /**
+   * 시퀀스 카메라 — 기본 카메라를 받아 그 프레임 카메라를 낸다. 카메라 명령이 안 선 동안은 `null`을
+   * 낸다(기본 카메라). 시퀀스가 없으면 함수째 `null`
+   */
+  camera: ((base: SeqCameraPose) => SeqCameraPose | null) | null
   /** 배경 물들임 (0~1 색 · 진하기) */
   back: { color: [number, number, number]; alpha: number } | null
-} = { running: false, frame: 0, body: {}, shake: 0, back: null }
+} = { running: false, frame: 0, body: {}, shake: 0, camera: null, back: null }
+
+/** 시퀀스 카메라 (`engine/battle/fx/sequence`의 `SeqCamera`) — 무대 좌표 · 화각(도) · 굴림(라디안) */
+interface SeqCameraPose {
+  pos: [number, number, number]
+  target: [number, number, number]
+  fov: number
+  roll: number
+}
 
 /** 시퀀스가 몸 하나에 거는 값 (`engine/battle/fx/sequence`의 `BodyPose`) */
 interface SeqBodyPose {
@@ -197,5 +222,6 @@ export function clearSeqStage(): void {
   seqStage.frame = 0
   seqStage.body = {}
   seqStage.shake = 0
+  seqStage.camera = null
   seqStage.back = null
 }

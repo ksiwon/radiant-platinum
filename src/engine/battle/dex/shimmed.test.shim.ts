@@ -8,7 +8,7 @@
 // `provider.test.ts`가 오라클로 설 수 있지만, 그 실행은 **배포판이 실제로
 // 도는지를 한 번도 안 잰다.** 표를 다 갈아 끼웠는데 sim이 못 읽는 모양이면
 // 배틀이 그 자리에서 죽고, 그것을 배포 직전에야 만나게 된다.
-import { beforeAll, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { resetGameDataCache } from '../../../data/gameData'
 import { installNodeAssets, withData } from '../../../data/romData.testkit'
 import { movesById, spawn } from '../sim/fixtures.testkit'
@@ -147,4 +147,72 @@ withData('species.json', 'moves.json', 'items.json')('껍데기를 낀 채로 �
     expect(await confused(CHATOT, undefined, 400)).toBeLessThan(13)
     expect(await confused(PIDGEY, [31, 31], 100)).toBe(0)
   }, 180_000)
+
+  /**
+   * 자연의힘·비밀의힘·위장은 **싸우는 땅**을 본다 (`to_move.h` · `to_type.h` · `to_secondary_effect.h`).
+   *
+   * ⚠️ sim의 4세대 표는 늘 트라이어택·노말·마비 30%다. 땅 번호를 배틀 객체에 붙이고(`SessionOptions.terrain`)
+   * `mechanics.ts`가 세 기술을 갈아 끼운다
+   */
+  describe('땅이 정하는 기술 셋', () => {
+    const NATURE_POWER = 267
+    const SECRET_POWER = 290
+    const CAMOUFLAGE = 293
+    const SAND = 1, SNOW = 6, WATER = 7, BUILDING = 9, SPECIAL = 15
+
+    const play = async (move: number, terrain: number | undefined, seed: number) => {
+      const mine = spawn(SNORLAX, 100, 1000 + seed, 'p1-0')
+      mine.mon.moves = [{ move, pp: movesById.get(move)?.pp ?? 20, ppUps: 0 }]
+      const foe = spawn(SNORLAX, 100, 5000 + seed, 'p2-0')
+      foe.mon.moves = [{ move: SPLASH, pp: 40, ppUps: 0 }]
+      const battle = new BattleSession({
+        player: { name: '나', team: [mine] },
+        foe: { name: '야생', team: [foe] },
+        seed: [seed & 0xffff, 2, 3, 4],
+        ...(terrain === undefined ? {} : { terrain }),
+      })
+      await battle.settle()
+      battle.send('p1 move 1')
+      battle.send('p2 move 1')
+      const lines = (await battle.settle()).p1
+      battle.destroy()
+      return lines
+    }
+    const used = (lines: string[]): string[] =>
+      lines.filter((l) => l.startsWith('|move|p1a:')).map((l) => l.split('|')[3]!)
+
+    it('자연의힘 — 땅마다 다른 기술이 불린다', async () => {
+      expect(used(await play(NATURE_POWER, WATER, 1))).toContain('hydropump')
+      expect(used(await play(NATURE_POWER, SNOW, 2))).toContain('blizzard')
+      expect(used(await play(NATURE_POWER, SAND, 3))).toContain('earthquake')
+      expect(used(await play(NATURE_POWER, SPECIAL, 4))).toContain('triattack')
+      // 땅을 안 주면 평지(지진)다
+      expect(used(await play(NATURE_POWER, undefined, 5))).toContain('earthquake')
+    }, 60_000)
+
+    it('위장 — 땅의 타입으로 바뀐다', async () => {
+      const typeChange = (lines: string[]): string | undefined =>
+        lines.find((l) => l.startsWith('|-start|p1a:') && l.includes('typechange'))?.split('|')[4]
+      expect(typeChange(await play(CAMOUFLAGE, SNOW, 1))).toBe('Ice')
+      expect(typeChange(await play(CAMOUFLAGE, WATER, 2))).toBe('Water')
+      expect(typeChange(await play(CAMOUFLAGE, BUILDING, 3))).toBeUndefined() // 이미 노말이다
+    }, 60_000)
+
+    it('비밀의힘 — 땅마다 부가효과가 다르다 (30%)', async () => {
+      const hits = async (terrain: number, tag: RegExp): Promise<number> => {
+        let n = 0
+        for (let i = 0; i < 120; i++) {
+          const lines = await play(SECRET_POWER, terrain, 100 + i)
+          if (lines.some((l) => tag.test(l))) n++
+        }
+        return n
+      }
+      // 이항분포 120회 p=0.3: 평균 36, σ≈5 — 넉넉히 ±5σ 안
+      const near = (n: number): void => { expect(n).toBeGreaterThan(36 - 26); expect(n).toBeLessThan(36 + 26) }
+      near(await hits(SNOW, /^\|-status\|p2a:.*\|frz/))
+      near(await hits(BUILDING, /^\|-status\|p2a:.*\|par/))
+      // 물 위에서는 마비가 안 걸린다
+      expect(await hits(WATER, /^\|-status\|p2a:.*\|par/)).toBe(0)
+    }, 180_000)
+  })
 })

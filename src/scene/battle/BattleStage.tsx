@@ -18,7 +18,11 @@ import {
   Group,
   Mesh,
   MeshStandardMaterial,
+  NormalBlending,
+  Vector3,
+  type BufferGeometry,
   type CanvasTexture,
+  type Material,
   type Texture,
 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
@@ -38,19 +42,21 @@ import { useBattleStore } from '../../state/battleStore'
 import type { ViewMon } from '../../engine/battle/view'
 import { SLOTS, type SlotId } from '../../engine/battle/events'
 import {
-  ballOpen, battleStage, impactHits, moveImpact, seqStage, slotBody, slotRig, STAGE_ORIGIN,
+  arenaRoom, ballOpen, battleStage, impactHits, moveImpact, seqStage, slotBody, slotBox, slotRig, STAGE_ORIGIN,
 } from './stageRefs'
 import { BattleBallEffects, SEND_RECALL_TIME } from './BattleBallEffects'
-import { BattleWorldLabels } from './BattleWorldLabels'
 import { captureBodyScale, recallsBody } from './battleBallMotion'
 import { bodyColor } from './bodyColor'
 import { loadMonSprite, loadSpriteIndex, spriteFit } from './monSprite'
 import { loadMonModel, makeBody, play, type MonBody, type MotionName } from './monModel'
 import { spriteKey } from '../../engine/pokemon/form'
 import { MoveVfx } from './MoveVfx'
+import type { SeqCamera } from '../../engine/battle/fx/sequence'
+import { clampShot, type Box } from '../../engine/battle/fx/cameraClamp'
+import { buildArenaCollider } from '../../engine/battle/fx/arenaCollider'
 import { BattleAtmosphere } from './BattleAtmosphere'
 import { MOVE_FRAMES, moveFramesOf } from '../../engine/battle/vfx'
-import { CAMERA, FIGHT_LOOK_Y, PAIR_DIR, pairOffset, SLOT } from '../../engine/battle/shots'
+import { BATTLE_FOV, CAMERA, FIGHT_LOOK_Y, PAIR_DIR, pairOffset, SLOT } from '../../engine/battle/shots'
 import { useOptionsStore } from '../../state/optionsStore'
 import {
   BACK_DIR,
@@ -665,7 +671,13 @@ function Slot({
           // ⚠️ **상자는 월드 좌표다.** 무대가 `STAGE_ORIGIN`(0, −500, 0)에
           // 서 있어서 그대로 쓰면 −496이 나오고, 그러면 "더 커졌나"가 영영
           // 거짓이라 카메라가 한 번도 안 물러난다 — 실제로 그랬다
-          const top = new Box3().setFromObject(model.root, true).max.y - STAGE_ORIGIN.y - GROUND
+          const box = new Box3().setFromObject(model.root, true)
+          const top = box.max.y - STAGE_ORIGIN.y - GROUND
+          // 시퀀스 카메라가 이 상자 속에 서지 않게 (`clampShot`) — 무대 좌표로 적는다
+          slotBox[slot] = {
+            min: [box.min.x - STAGE_ORIGIN.x, box.min.y - STAGE_ORIGIN.y, box.min.z - STAGE_ORIGIN.z],
+            max: [box.max.x - STAGE_ORIGIN.x, box.max.y - STAGE_ORIGIN.y, box.max.z - STAGE_ORIGIN.z],
+          }
           if (top > grown.current + 0.02) {
             grown.current = top
             onBody(top)
@@ -758,7 +770,9 @@ function Slot({
  * 한 벌이 2~8MB라 배틀이 열리는 순간에 받는다. 받는 동안은 아래 `Flat`이 대신
  * 선다 — 첫 프레임에 빈 화면을 보이지 않으려고
  */
-function Arena({ look, file, onUp }: { look: TimeLook; file: string; onUp: (up: boolean) => void }) {
+function Arena({ look, file, radius, onUp }: {
+  look: TimeLook; file: string; radius: number; onUp: (up: boolean) => void
+}) {
   const gltf = useLoader(GLTFLoader, useAssetUrl(`models/arena/${file}`))
   // 이 부품이 서는 것 자체가 「무대가 왔다」다 — `useLoader`가 풀려야 마운트된다.
   // ⚠️ **나갈 때 도로 내린다.** 깃발을 밖에서 초기화하면, 무대 파일이 이미
@@ -780,6 +794,32 @@ function Arena({ look, file, onUp }: { look: TimeLook; file: string; onUp: (up: 
     })
     return root
   }, [gltf])
+  // 시퀀스 카메라가 벽 · 천장 구조물에 안 박히게 무대 삼각형으로 충돌을 짓는다 — **무대가 설 때 한 번**.
+  // 그려지는 불투명 면만 넣는다: 더하기 창빛(빛기둥 판)은 카메라를 막지 않는다. 무대 뿌리는 `STAGE_ORIGIN`
+  // 그룹 바로 밑에 변환 없이 서므로 뿌리 기준 월드 행렬이 곧 무대 좌표다
+  const room = useMemo(() => {
+    scene.updateMatrixWorld(true)
+    const tris: number[] = []
+    const v = new Vector3()
+    scene.traverse((o) => {
+      if (!(o instanceof Mesh) || !o.visible) return
+      const m = o.material as Material
+      if (m.transparent || m.blending !== NormalBlending) return
+      const geo = o.geometry as BufferGeometry
+      const pos = geo.getAttribute('position')
+      const index = geo.getIndex()
+      const n = index ? index.count : pos.count
+      for (let k = 0; k < n; k++) {
+        v.fromBufferAttribute(pos, index ? index.getX(k) : k).applyMatrix4(o.matrixWorld)
+        tris.push(v.x, v.y, v.z)
+      }
+    })
+    return buildArenaCollider(tris, radius)
+  }, [scene, radius])
+  useEffect(() => {
+    arenaRoom.current = room
+    return () => { if (arenaRoom.current === room) arenaRoom.current = null }
+  }, [room])
   // 무대는 낮 기준으로 구워져 있다. 밤에 그대로 두면 배경만 대낮이라, 시간대의
   // 지면색을 곱해 톤을 맞춘다 — 오버월드에서 걸어 들어온 그 시각이어야 한다
   useEffect(() => {
@@ -903,7 +943,7 @@ export function BattleStage() {
   // ⚠️ **더블에서는 한 걸음 물러난다.** 무대에 넷이 서므로 싱글 화각 그대로면
   // 바깥 둘이 화면 밖으로 나간다. 짝을 벌린 만큼만 물러난다
   const doubles = useBattleStore((s) => s.doubles)
-  useBattleCamera(cameraFit(arena, Math.max(...Object.values(tall))) * (doubles ? 1.35 : 1))
+  useBattleCamera(cameraFit(arena, Math.max(...Object.values(tall))) * (doubles ? 1.35 : 1), arena.radius)
 
   /** 그 개체의 폼. 명단이 임자다 — 뷰는 폼을 안 들고 있다 */
   const formOf = (mon: ViewMon | null): number =>
@@ -954,7 +994,7 @@ export function BattleStage() {
         <DistortionArena onUp={arenaUp} />
       ) : (
         <Suspense fallback={<Flat look={timeLook} />}>
-          <Arena look={timeLook} file={arena.file} onUp={arenaUp} />
+          <Arena look={timeLook} file={arena.file} radius={arena.radius} onUp={arenaUp} />
         </Suspense>
       )}
       <BattleAtmosphere
@@ -994,15 +1034,6 @@ export function BattleStage() {
           }}
         />
       ))}
-      {view && (
-        <BattleWorldLabels
-          view={view}
-          spotAt={(id) => {
-            const p = spotOf(id)
-            return [p.x, p.z]
-          }}
-        />
-      )}
       {/*
         기술 연출. 박자가 `MOVE_FRAMES`만큼 쉬는 그 자리에 한 번 돈다 —
         틀은 롬의 기술 데이터가, 색은 타입이 정한다 (`engine/battle/vfx`)
@@ -1043,11 +1074,14 @@ export function BattleStage() {
  * 흔들림은 남는다. 다만 **샷이 정하는 흔들림이 아니라 기술 대본이 시키는
  * 것**이다 (`moveImpact.camera` — `Func_ShakeBg`가 적힌 기술 서른 개)
  */
-function useBattleCamera(fit: number): void {
+function useBattleCamera(fit: number, arenaRadius: number): void {
   /** 지금 카메라가 선 거리 배율. 첫 프레임에는 목표 그대로 선다 */
   const shownFit = useRef<number | null>(null)
+  /** 시퀀스 카메라의 마지막 자리 · 시퀀스가 놓은 시각 — 돌아오는 길을 잇는다 */
+  const lastSeq = useRef<SeqCamera | null>(null)
+  const leftAt = useRef<number | null>(null)
   const time = useRef(new ClockReader())
-  useFrame(() => {
+  useFrame((state) => {
     const dt = time.current.read(battleClock.now())
     // 등장 장면부터 대사창 위의 내 몸을 담는다 (`FIGHT_LOOK_Y`). 배틀에 사람이 서지 않아 머리가 잘릴 일이 없다
     const aim = FIGHT_LOOK_Y
@@ -1069,16 +1103,95 @@ function useBattleCamera(fit: number): void {
     // 천장 위에 선다. 바라보는 자리는 그대로 두고 거리만 줄인다
     const [lx, , lz] = CAMERA.look
     const ly = aim
-    battleStage.position
-      .set(
-        lx + (CAMERA.position[0] - lx) * at + quake,
-        ly + (CAMERA.position[1] - ly) * at + quake * 0.7,
-        lz + (CAMERA.position[2] - lz) * at,
-      )
-      .add(STAGE_ORIGIN)
-    battleStage.target.set(lx, ly, lz).add(STAGE_ORIGIN)
+    const base: SeqCamera = {
+      pos: [lx + (CAMERA.position[0] - lx) * at, ly + (CAMERA.position[1] - ly) * at, lz + (CAMERA.position[2] - lz) * at],
+      target: [lx, ly, lz],
+      fov: BATTLE_FOV,
+      roll: 0,
+    }
+    // ── BDSP 시퀀스 카메라 (BATTLE_FX §4) ──
+    //
+    // 기술 시퀀스가 카메라를 몸 가까이로 당기고 돌린다 — 그래야 이펙트가 점이 아니라 화면을 채운다.
+    // 명령이 없는 동안(`null`)과 시퀀스 밖은 위의 기본 카메라 그대로다. 시퀀스가 `CameraReset` 없이
+    // 끝나도 튀지 않게 마지막 자리에서 기본 자리로 `SEQ_CAMERA_RETURN`초에 걸쳐 돌아온다
+    const want = seqStage.camera?.(base) ?? null
+    // 지금 몸이 선 자리의 상자만 — 쓰러지거나 바뀐 자리의 낡은 상자가 카메라를 밀면 안 된다
+    const boxes = (): Box[] => Object.entries(slotBox).filter(([slot]) => slotRig[slot]?.root).map(([, b]) => b)
+    const aspect = state.size.width / Math.max(1, state.size.height)
+    let shot = base
+    if (want) {
+      shot = clampShot(want, arenaRadius, boxes(), aspect, arenaRoom.current)
+      lastSeq.current = shot
+      leftAt.current = null
+    } else if (lastSeq.current) {
+      leftAt.current ??= battleClock.now()
+      const k = Math.min(1, (battleClock.now() - leftAt.current) / SEQ_CAMERA_RETURN)
+      const from = lastSeq.current
+      // ⚠️ **크게 돌아야 하면 끊는다.** 껍질에 숨기(`ew110`)는 모부기 얼굴 앞(상대 쪽)에서 끝나고 기본 자리는
+      // 모부기 등 뒤다. 그 사이를 곧게 이으면 카메라가 모부기 몸 곁을 0.35초에 스쳐 지나며, 주황빛 모부기가
+      // 화면 왼쪽 아래를 통째로 덮고 바닥만 비친 칸이 섰다(C3 3.2초). 보는 곳에서 본 두 자리의 수평 방향이
+      // `SEQ_CAMERA_CUT`보다 벌어지면 곧바로 기본 자리로 끊고, 그 안이면 보는 곳 둘레를 **돌아서** 온다
+      if (k === 0 && swing(from, base) > SEQ_CAMERA_CUT) {
+        lastSeq.current = null; leftAt.current = null
+      } else {
+        const e = k * k * (3 - 2 * k)
+        shot = clampShot(orbitBlend(from, base, e), arenaRadius, boxes(), aspect, arenaRoom.current)
+        if (k >= 1) { lastSeq.current = null; leftAt.current = null; shot = base }
+      }
+    }
+    battleStage.position.set(shot.pos[0] + quake, shot.pos[1] + quake * 0.7, shot.pos[2]).add(STAGE_ORIGIN)
+    battleStage.target.set(shot.target[0], shot.target[1], shot.target[2]).add(STAGE_ORIGIN)
+    battleStage.fov = shot.fov
+    battleStage.roll = shot.roll
   })
 }
+
+/** 시퀀스 카메라가 끝난 뒤 기본 자리로 돌아오는 시간(초) — 우리 값 */
+const SEQ_CAMERA_RETURN = 0.35
+
+/**
+ * 돌아오는 길이 보는 곳 둘레를 이 각(도)보다 크게 돌아야 하면 잇지 않고 끊는다 — 우리 값.
+ *
+ * 0.35초에 90°를 돌면 초당 260°다. 그보다 빠르면 화면이 휙 쓸려 무엇이 지나갔는지 안 읽히고(필름의 180° 규칙도
+ * 반대편으로 넘어가는 이음은 끊어 간다), 그 안이면 도는 것이 오히려 두 샷을 잇는다
+ */
+const SEQ_CAMERA_CUT = 90
+
+/** 두 샷의 카메라가 각자의 보는 곳에서 본 수평 방향이 벌어진 각(도) */
+function swing(a: SeqCamera, b: SeqCamera): number {
+  const ax = a.pos[0] - a.target[0], az = a.pos[2] - a.target[2]
+  const bx = b.pos[0] - b.target[0], bz = b.pos[2] - b.target[2]
+  const d = Math.abs(Math.atan2(ax * bz - az * bx, ax * bx + az * bz))
+  return (d * 180) / Math.PI
+}
+
+/**
+ * 돌아오는 길 — 보는 곳은 곧게, 카메라는 **보는 곳 둘레를 돌아서**(수평 방위 · 내려다보는 각 · 거리를 따로 잇는다).
+ * 카메라 자리를 곧게 이으면 두 자리 사이에 선 몸 곁을 스친다
+ */
+function orbitBlend(from: SeqCamera, to: SeqCamera, e: number): SeqCamera {
+  const target = lerpV(from.target, to.target, e)
+  const polar = (c: SeqCamera) => {
+    const dx = c.pos[0] - c.target[0], dy = c.pos[1] - c.target[1], dz = c.pos[2] - c.target[2]
+    const r = Math.hypot(dx, dy, dz)
+    return { yaw: Math.atan2(dx, dz), pitch: Math.asin(Math.max(-1, Math.min(1, dy / (r || 1)))), r }
+  }
+  const a = polar(from), b = polar(to)
+  let dyaw = b.yaw - a.yaw
+  dyaw -= Math.round(dyaw / (2 * Math.PI)) * 2 * Math.PI
+  const yaw = a.yaw + dyaw * e
+  const pitch = a.pitch + (b.pitch - a.pitch) * e
+  const r = a.r + (b.r - a.r) * e
+  return {
+    pos: [target[0] + Math.sin(yaw) * Math.cos(pitch) * r, target[1] + Math.sin(pitch) * r, target[2] + Math.cos(yaw) * Math.cos(pitch) * r],
+    target,
+    fov: from.fov + (to.fov - from.fov) * e,
+    roll: from.roll * (1 - e),
+  }
+}
+
+const lerpV = (a: readonly number[], b: readonly number[], t: number): [number, number, number] =>
+  [a[0]! + (b[0]! - a[0]!) * t, a[1]! + (b[1]! - a[1]!) * t, a[2]! + (b[2]! - a[2]!) * t]
 
 /**
  * 카메라가 작은 몸 쪽으로 다가가는 감쇠의 시간 상수(초).

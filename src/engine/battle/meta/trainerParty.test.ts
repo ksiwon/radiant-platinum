@@ -100,4 +100,18 @@ describe('트레이너 개체', () => {
     }
     expect(mons).toBe(1878)
   })
+
+  it('파티 개체의 폼 칸이 개체에 실린다', () => {
+    // 이전엔 form이 0으로 고정돼 트레이너의 도롱마담이 언제나 풀 옷감이었다
+    const withForm = trainers.flatMap((t) => t.party.filter((m) => (m.form ?? 0) > 0).map((m) => ({ t, m })))
+    expect(withForm.length).toBeGreaterThan(0)
+    for (const { t, m } of withForm) {
+      const i = t.party.indexOf(m)
+      const mon = trainerMonToInstance(m, species.get(m.species)!, t.id, i)
+      expect(mon.form, `#${t.id} ${m.species}`).toBe(m.form)
+    }
+    // 폼 칸이 없는 개체는 기본형이다
+    const plain = trainers[250]!.party[0]!
+    expect(trainerMonToInstance(plain, species.get(plain.species)!, 250, 0).form).toBe(0)
+  })
 })
