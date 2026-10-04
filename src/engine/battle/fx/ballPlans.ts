@@ -34,7 +34,7 @@ function common(ball: number, meta: BallMeta | null): PlanOptions {
  * 볼이 트레이너 손을 떠나는 프레임의 `THROW_FRAMES` 앞 — 그 앞은 배틀에 서지 않는 트레이너의 몸짓이라 잘라 낸다.
  * 손에 든 볼이 없는 시퀀스면 0
  */
-export function throwStart(seq: SeqData, opts: PlanOptions): number {
+function throwStart(seq: SeqData, opts: PlanOptions): number {
   const plan = planSequence(seq, { ...opts, startAt: 0 })
   let off = Infinity
   for (const m of plan.models) {
@@ -85,7 +85,7 @@ export function sendOutHome(side: 'p1' | 'p2'): [number, number, number] {
 }
 
 /** 포획 한 벌 — 계획과 박자 */
-export interface CapturePlan {
+interface CapturePlan {
   plan: SeqPlan
   /** 흔들림이 다 끝나고 결과 시퀀스가 서는 프레임 */
   resultAt: number
@@ -96,7 +96,7 @@ export interface CapturePlan {
 }
 
 /** 흔들림 수 (보이는 것) — 잡히면 셋, 놓치면 `shakes`(0~3) */
-export function wobblesOf(shakes: number, caught: boolean): number {
+function wobblesOf(shakes: number, caught: boolean): number {
   return caught ? 3 : Math.max(0, Math.min(3, shakes))
 }
 

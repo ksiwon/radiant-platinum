@@ -6,7 +6,7 @@ import type { SeqAnchor, Role, SeqContext, bodyAt } from '../../../engine/battle
 import { slotAnchor } from './seqAnchors'
 
 type RoleSlots = readonly [string | null, string | null]
-export type RoleContext = Pick<SeqContext, 'anchor' | 'home' | 'mine' | 'rest'>
+type RoleContext = Pick<SeqContext, 'anchor' | 'home' | 'mine' | 'rest'>
 
 /**
  * @param spotAt 그 자리의 발판 (x, z)

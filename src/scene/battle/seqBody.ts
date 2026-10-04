@@ -14,7 +14,7 @@ import type { SeqBodyPose } from './stageRefs'
 export const SEQ_MOTION_SECONDS = { attack: 1.1, damage: 0.7, cry: 1.3, wait: Infinity, down: Infinity, landB: Infinity, landC: 0.7 } as const
 
 /** 시퀀스가 시키는 동작 이름 (`attack`은 물리 · 특수 중 그 기술의 것으로 풀린다 — 부르는 쪽이 안다) */
-export type SeqMotionName = NonNullable<SeqBodyPose['motion']>['name']
+type SeqMotionName = NonNullable<SeqBodyPose['motion']>['name']
 
 /**
  * 시퀀스가 시킨 동작을 아직 트는가.

@@ -4,7 +4,7 @@ import type { SlotId } from '../../engine/battle/events'
 // 볼의 움직임 자체는 BDSP 시퀀스가 정한다(`engine/battle/fx/ballPlans` · `fx/sequence`의 `modelAt`) — 여기에는
 // 시퀀스가 모르는 것(배틀에 서지 않는 트레이너의 자리)과 무대가 볼 연출을 걸지 말지 가르는 규칙만 남는다.
 
-export type Point3 = readonly [number, number, number]
+type Point3 = readonly [number, number, number]
 
 /** 볼이 손을 떠나는 높이(m) */
 const HAND = 1.65

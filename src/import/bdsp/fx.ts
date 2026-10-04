@@ -942,7 +942,7 @@ const DPR_MASTERDATAS = 'Dpr/masterdatas'
  * `DprParticleMoveRelativeModel nodeIndex=3` · `DprModelParticlePlay particleIndex=0`). 그 번호는 프리팹의
  * `ObjectEntity._animationPlayer._clips` · `_locators` · `_modelParticleEntities` 차례다 — 열여섯 볼이 다 같다(실측)
  */
-export interface BallModelTable {
+interface BallModelTable {
   /** 클립 번호 → 이름. 빈 칸은 `null` */
   clips: (string | null)[]
   /** 클립 번호 → 길이(초, `m_MuscleClip`의 `m_StopTime − m_StartTime`). 시퀀스 길이를 잴 때 쓴다 */
@@ -954,7 +954,7 @@ export interface BallModelTable {
 }
 
 /** 볼 번들의 `ObjectEntity`에서 번호표를 읽는다 */
-export function ballModelTable(env: Environment): BallModelTable | null {
+function ballModelTable(env: Environment): BallModelTable | null {
   const nameOfGo = (pid: number): string | null => {
     const v = env.read(pid) as Obj | null
     return v && typeof v.m_Name === 'string' ? v.m_Name : null

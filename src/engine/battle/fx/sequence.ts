@@ -843,7 +843,7 @@ function mulQ(a: readonly number[], b: readonly number[]): Q {
 // ─── 시퀀스 모델 (볼) ────────────────────────────────────
 
 /** 시퀀스 모델의 그 프레임 값 */
-export interface ModelPose {
+interface ModelPose {
   no: number
   kind: 'ball' | 'locator'
   visible: boolean
@@ -858,7 +858,7 @@ export interface ModelPose {
 }
 
 /** 그 묶음 번호의 모델 */
-export function modelTrack(plan: SeqPlan, no: number): ModelTrack | null {
+function modelTrack(plan: SeqPlan, no: number): ModelTrack | null {
   return plan.models.find((m) => m.no === no) ?? null
 }
 
@@ -1044,7 +1044,7 @@ interface BodyPose {
 }
 
 /** 동작 번호 → 우리 동작 (BDSP 모션 표: 16 피격 · 17 쓰러짐 · 30~42 공격 · 0 대기) */
-export type SeqMotion = 'attack' | 'damage' | 'wait' | 'cry' | 'down' | 'landB' | 'landC'
+type SeqMotion = 'attack' | 'damage' | 'wait' | 'cry' | 'down' | 'landB' | 'landC'
 
 function motionOf(id: number): SeqMotion | null {
   if (id === 16) return 'damage'
