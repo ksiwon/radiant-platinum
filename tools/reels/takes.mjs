@@ -54,18 +54,18 @@ export const TAKES = [
   {
     id: 'C3-move', what: '기술 — 모부기 흡수', cp: 'grass',
     steps: [{ do: 'hour', hour: 15 }, { do: 'wild', species: 403, level: 5, after: 100 }, { do: 'menu' }, { do: 'keys', keys: ['z', 'ArrowDown', 'ArrowDown'], gap: 500 }],
-    settle: 200, seconds: 6, recKeys: [{ at: 0.2, key: 'z' }],
+    settle: 200, seconds: 8, recKeys: [{ at: 0.2, key: 'z' }],
   },
   {
     id: 'C4-night', what: '밤 배틀 기술 — 몸통박치기', cp: 'grass-night',
     steps: [{ do: 'wild', species: 399, level: 5, after: 100 }, { do: 'menu' }, { do: 'keys', keys: ['z'], gap: 500 }],
-    settle: 200, seconds: 6, recKeys: [{ at: 0.2, key: 'z' }],
+    settle: 200, seconds: 8, recKeys: [{ at: 0.2, key: 'z' }],
   },
   {
     id: 'C5-cave', what: '동굴 무대 기술', cp: 'oreburgh-gate',
     // 배틀 배경은 배틀이 설 때의 world.mapId로 정해진다 — 259(무쇠길 관문)에 내려앉기 전에 열면 시작 맵의 풀밭이 박혔다
     steps: [{ do: 'map', map: 259 }, { do: 'wild', species: 74, level: 8, after: 100 }, { do: 'menu' }, { do: 'keys', keys: ['z'], gap: 500 }],
-    settle: 200, seconds: 6, recKeys: [{ at: 0.2, key: 'z' }],
+    settle: 200, seconds: 8, recKeys: [{ at: 0.2, key: 'z' }],
   },
   {
     id: 'C6-catch', what: '볼 던지기 → 빨려 듦 → 흔들림 → 잡힘', cp: 'grass',

@@ -70,8 +70,8 @@ const MAIN = [
   { cue: 'E1g', take: 'E1-c', cut: [2.4, 0.43] },
   { cue: 'E1h', take: 'E1-e', cut: [3.5, 0.44], fade: 0.2 },
   { cue: 'E2', take: 'E2-spear', cut: [0.6, 2.1], warp: 'out', fade: 0.4 },
-  { cue: 'E3a', take: 'E3-distortion', cut: [0.6, 2.4], warp: 'in', fade: 0.3 }, // 1.8초에 V — 1인칭 → 3인칭
-  { cue: 'E3b', take: 'E3-giratina', cut: [2.8, 1.6], fade: 0.15 },
+  { cue: 'E3a', take: 'E3-distortion', cut: [0.4, 4.4], warp: 'in', fade: 0.3 }, // 2.2초에 V — 1인칭 → 3인칭으로 발판을 따라 더 걷는다
+  { cue: 'E3b', take: 'E3-giratina', cut: [0.3, 4.4], fade: 0.15 },
   { cue: 'E4', card: 'white', seconds: 0.5, fade: 0.3 },
   { cue: 'F1', card: 'wordmark', fade: 0.2 },
   { cue: 'F2', card: 'rom', fade: 0.2 },
@@ -102,8 +102,8 @@ const SHORTS = [
   { cue: 'E1c', take: 'E1-c', cut: [1.8, 0.8], crop: 0.45 },
   { cue: 'E1e', take: 'E1-e', cut: [3.2, 0.8], crop: 0.42, fade: 0.2 },
   { cue: 'E2', take: 'E2-spear', cut: [0.6, 1.6], warp: 'out', fade: 0.4 },
-  { cue: 'E3a', take: 'E3-distortion', cut: [0.6, 2.4], warp: 'in', fade: 0.3 },
-  { cue: 'E3b', take: 'E3-giratina', cut: [2.8, 1.6], crop: 0.55, fade: 0.15 },
+  { cue: 'E3a', take: 'E3-distortion', cut: [0.4, 4.4], warp: 'in', fade: 0.3 },
+  { cue: 'E3b', take: 'E3-giratina', cut: [0.3, 4.4], crop: 0.55, fade: 0.15 },
   { cue: 'E4', card: 'white', seconds: 0.5, fade: 0.3 },
   { cue: 'F1', card: 'wordmark', seconds: 2.5, fade: 0.2 },
   { cue: 'F2', card: 'rom', seconds: 4.2, fade: 0.2 },
