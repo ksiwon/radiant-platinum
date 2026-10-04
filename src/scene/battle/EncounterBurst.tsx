@@ -116,6 +116,7 @@ export function EncounterBurst({ withParticles }: { withParticles: boolean }) {
       foe={ORIGIN}
       basis={BASIS}
       metre={metre.current}
+      overlay
       onDone={() => {
         setCues(null)
       }}

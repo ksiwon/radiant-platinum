@@ -131,6 +131,8 @@ function buildRig(group: SplGroup): Rig {
  *   원작 입자 공간이 「카메라가 +Z에서 원점을 본다」이고 우리 연출 카메라도
  *   그러므로, 그런 자리는 **항등 기저**를 넣어 준다
  * @param onDone 입자가 다 죽었을 때
+ * @param overlay 무대 지오메트리에 안 가린다(깊이 검사를 끈다). 원작이 2D 배경 위에 그리던 **화면 전체 이펙트**용이다 —
+ *   3D 땅이 아래 반을 잘라 평평한 흰 반구로 보였다(조우 연출 `EncounterBurst`)
  */
 export function SplParticles({
   cues,
@@ -141,6 +143,7 @@ export function SplParticles({
   from,
   seed,
   onDone,
+  overlay,
 }: {
   cues: readonly SplCue[]
   by: Vec3
@@ -150,6 +153,7 @@ export function SplParticles({
   from?: number
   seed?: number
   onDone?: () => void
+  overlay?: boolean
 }) {
   const show = useMemo(() => {
     const made = new SplShow(cues, by, foe, basis ?? splBasis(by, foe), metre, seed)
@@ -159,7 +163,11 @@ export function SplParticles({
     return made
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `from`은 붙는 순간의 값이라 딸림값이 아니다
   }, [cues, by, foe, metre, basis, seed])
-  const rigs = useMemo(() => show.groups.map(buildRig), [show])
+  const rigs = useMemo(() => show.groups.map((g) => {
+    const r = buildRig(g)
+    if (overlay) r.material.depthTest = false
+    return r
+  }), [show, overlay])
   const meshes = useRef<(Mesh | null)[]>([])
   const acc = useRef(0)
   /** 연출 시계에서 마지막으로 본 시각. 델타를 여기서 뽑는다 */
@@ -231,7 +239,7 @@ export function SplParticles({
           }}
           geometry={r.geometry}
           material={r.material}
-          renderOrder={r.group.renderOrder}
+          renderOrder={overlay ? 1000 + r.group.renderOrder : r.group.renderOrder}
           frustumCulled={false}
           visible={false}
         />
