@@ -176,15 +176,23 @@ function anyVentTemplate(): VentTemplate | null {
  * (`VentModels`). 말뚝은 BDSP 지역이 그 칸에 `BlockPale`을 구워 둔 것만 든다 (`bakedBollardAt`)
  */
 export function bakedVentActors(list: readonly NpcActor[], was: ReadonlySet<NpcActor>): ReadonlySet<NpcActor> {
-  const out = new Set<NpcActor>()
   const anyTemplate = anyVentTemplate() !== null
-  for (const actor of list) {
+  const takes = (actor: NpcActor): boolean => {
     const x = actor.x + 0.5, z = actor.z + 0.5
-    const taken = actor.gfx === VENT_GFX ? anyTemplate || bakedVentNear(x, z)
+    return actor.gfx === VENT_GFX ? anyTemplate || bakedVentNear(x, z)
       : actor.gfx === BOLLARD_GFX && bakedBollardAt(x, z)
-    if (taken) out.add(actor)
   }
-  if (out.size === was.size && [...out].every((a) => was.has(a))) return was
+  // ⚠️ **바뀌지 않았으면 아무것도 안 만든다** — 프레임마다 불리므로 Set · 배열을 먼저 만들지 않고 지난 값과 바로 견준다.
+  // 몫이 지난 값의 부분집합이고 개수가 같으면 같은 집합이다 (배우는 목록에 한 번씩만 든다)
+  let n = 0, same = true
+  for (const actor of list) {
+    if (!takes(actor)) continue
+    n++
+    if (!was.has(actor)) { same = false; break }
+  }
+  if (same && n === was.size) return was
+  const out = new Set<NpcActor>()
+  for (const actor of list) if (takes(actor)) out.add(actor)
   return out
 }
 
@@ -194,10 +202,18 @@ export function bakedVentActors(list: readonly NpcActor[], was: ReadonlySet<NpcA
  */
 function VentModels({ grid, layer, mapId }: { grid: MapGrid, layer: number, mapId: number }) {
   const [vents, setVents] = useState<readonly NpcActor[]>([])
-  useEffect(() => { setVents(npcActors.list.filter((a) => a.gfx === VENT_GFX)) }, [mapId])
+  /** 이 맵의 목록을 읽어 둔 맵 — 아직 안 읽었으면 null */
+  const readFor = useRef<number | null>(null)
   const meshes = useRef<(Mesh | null)[]>([])
   const [template, setTemplate] = useState<VentTemplate | null>(null)
+  useEffect(() => { readFor.current = null; setVents([]) }, [mapId])
   useFrame(() => {
+    // ⚠️ **배우 목록이 아직 앞 맵의 것일 수 있다** (`npcActors.mapId` · `BerryPatchProps`와 같은 경주). 맞는 목록이 올 때까지
+    // 프레임마다 다시 본다 — 맵 id만 믿고 한 번 읽으면 앞 맵의 환풍구가 이 맵 좌표에 선다
+    if (readFor.current !== mapId && npcActors.mapId === mapId) {
+      readFor.current = mapId
+      setVents(npcActors.list.filter((a) => a.gfx === VENT_GFX))
+    }
     const t = anyVentTemplate()
     if (t !== template) setTemplate(t)
     if (t === null) return
