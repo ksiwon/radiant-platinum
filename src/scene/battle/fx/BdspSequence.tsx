@@ -1,21 +1,27 @@
-// BDSP 연출 시퀀스 한 번 — 입자 칸마다 이펙트를 세우고, 몸 · 화면 · 배경에 거는 것을
+// BDSP 연출 시퀀스 한 번 — 입자 칸마다 이펙트를 세우고, 시퀀스 모델(볼)을 그리고, 몸 · 화면 · 배경에 거는 것을
 // `stageRefs.seqStage`에 적는다 (BATTLE_FX §4).
 //
 // 시계는 연출 시계다: 시작 시각(`startedAt`, 초)에서 지금까지를 30fps 프레임으로 센다.
 // 입자 칸은 **처음부터 다 세워 둔다**(그래서 프리팹을 미리 받는다) — 제 시작 프레임 전에는
 // 이펙트 시계가 0에 서 있어 아무것도 안 뿜는다(`BdspEffect`의 `clock`).
 //
-// ⚠️ **몸에 거는 것은 `seqStage.running`이 켜진 동안만 무대가 읽는다.** 끝나면 비운다 —
-// 안 비우면 다음 턴까지 몸이 상대 앞에 서 있다.
+// ⚠️ **볼의 클립도 연출 시계로 맞춘다.** 믹서를 흘리지 않고 프레임마다 시퀀스가 접은 시각(`modelAt`의 `clip.time`)을
+// 그대로 꽂는다 — 가상 시계(`tools/reels`)로 찍어도 · 되감아도 같은 자세다.
+//
+// ⚠️ **몸에 거는 것은 이 시퀀스가 도는 동안만 무대가 읽는다.** 끝나면 제가 건 것만 놓는다(`releaseSeq`) —
+// 안 비우면 다음 턴까지 몸이 상대 앞에 서 있다. 여럿이 같이 돌 수 있다(더블 첫 등판 · 기술 중 기절).
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
+import { AnimationMixer, LoopOnce, LoopRepeat, Vector3, type AnimationAction, type Group, type Object3D } from 'three'
 import { battleClock } from '../../../engine/battle/presentationClock'
 import {
-  backAt, bodyAt, cameraAt, particleAt, planFrames, shakeAt, SEQ_FPS,
-  type Role, type SeqCamera, type SeqContext, type SeqPlan,
+  backAt, bodyAt, cameraAt, modelAt, othersHidden, particleAt, planFrames, shakeAt, SEQ_FPS,
+  type Role, type SeqCamera, type SeqContext, type SeqPlan, type V3,
 } from '../../../engine/battle/fx/sequence'
-import { clearSeqStage, seqStage, tallOf } from '../stageRefs'
+import { claimSeq, releaseSeq, seqStage, tallOf } from '../stageRefs'
+import { trainerThrowOrigin } from '../battleBallMotion'
 import { BdspEffect } from './BdspEffect'
+import { cloneBall, loadBallModel, type BallModel } from './ballModel'
 import { slotAnchor } from './seqAnchors'
 
 /** 마지막 명령 뒤로 입자가 사그라지기를 기다리는 위끝 (초) */
@@ -23,48 +29,108 @@ const TAIL = 1.5
 
 const ignoredSeen = new Set<string>()
 
+/** 무대에 선 시퀀스 모델 — 로케이터를 이름으로 찾는다 */
+interface LiveModel {
+  root: Object3D
+  nodes: Map<string, Object3D>
+}
+
+const tmpA = new Vector3()
+const tmpB = new Vector3()
+
 export function BdspSequence({
-  plan, roles, spotAt, startedAt, vanish = false, onDone,
+  plan, roles, spotAt, startedAt, vanish = false, onDone, ball, world, camera = true, hideOthers = false,
+  bodies = [true, true], others = [], ballScale = 1, minScale = 0.6,
 }: {
   plan: SeqPlan
-  /** 0 쓴 쪽 · 1 맞는 쪽 자리 */
-  roles: readonly [string, string]
+  /** 0 쓴 쪽 · 1 맞는 쪽 자리. 쓴 쪽이 없는 시퀀스(내보내기 · 기절)는 0이 `null`이어도 된다 */
+  roles: readonly [string | null, string | null]
   spotAt: (slot: string) => [number, number]
   /** 연출 시계에서 시작한 시각 (초) */
   startedAt: number
   /**
    * 쓴 쪽 감추기(`PokemonVisible trg=0`)를 따르는가. ⚠️ BDSP는 카메라가 몸을 지나갈 때도 그 몸을
-   * 감춘다(실측: 챔피언전 토대부기가 제 기술 내내 사라졌다). 우리 카메라는 안 움직이므로 **정말
-   * 사라지는 기술**(공중날기 · 구멍파기 — DS 대본의 `vanish`)일 때만 따른다
+   * 감춘다(실측: 챔피언전 토대부기가 제 기술 내내 사라졌다). 기술은 **정말 사라지는 것**(공중날기 · 구멍파기 —
+   * DS 대본의 `vanish`)일 때만 따른다. 볼 · 기절 시퀀스는 몸이 정말 볼에 들어가므로 따른다
    */
   vanish?: boolean
   onDone?: () => void
+  /** 시퀀스 모델(`ModelCreateBall` …)로 세울 볼 번호. 없으면 볼을 안 그린다 */
+  ball?: number
+  /** BDSP 절대 자리 → 무대 좌표 (`SeqContext.world`) */
+  world?: (cm: V3) => V3
+  /** 시퀀스 카메라를 쓰는가 (기본 참) */
+  camera?: boolean
+  /** `PokemonVisibleOther`를 따르는가 — 시퀀스 카메라가 선 동안만 다른 몸(`others`)을 감춘다 */
+  hideOthers?: boolean
+  /** 역할마다 몸 값을 무대에 거는가 — 볼 시퀀스는 맞는 쪽만 건다(다른 몸의 제 동작을 안 끊는다) */
+  bodies?: readonly [boolean, boolean]
+  /** 감출 수 있는 다른 자리들 */
+  others?: readonly string[]
+  /** 볼 모델 배율 — BDSP 실제 크기가 1 */
+  ballScale?: number
+  /**
+   * 몸 크기 배율(`isScale`)의 아래끝. 기술은 0.6(작은 몸 앞으로 카메라가 다가간다). 볼 · 기절 시퀀스는 1이다 — 그 카메라는
+   * 볼과 빛을 담는 자리라 작은 몸(비버니 0.5m)에 맞춰 당기면 볼이 화면 위로 빠지고 빛 고리가 화면을 덮는다(실측)
+   */
+  minScale?: number
 }) {
-  const ctx = useRef<SeqContext>({
-    anchor: (role: Role, node: number) => slotAnchor(roles[role]!, node, spotAt(roles[role]!)),
-    home: (role: Role) => {
-      const [x, z] = spotAt(roles[role]!)
-      return { pos: [x, 0, z], yaw: slotAnchor(roles[role]!, 0, [x, z]).yaw }
+  const owner = useMemo(() => Symbol(plan.name), [plan])
+  const live = useRef(new Map<number, LiveModel>())
+  const ctx = useRef<SeqContext>(null as unknown as SeqContext)
+  ctx.current ??= {
+    anchor: (role: Role, node: number) => {
+      const slot = roles[role]
+      return slot ? slotAnchor(slot, node, spotAt(slot)) : null
     },
-    mine: (role: Role) => roles[role]!.startsWith('p1'),
+    home: (role: Role) => {
+      const slot = roles[role]
+      if (!slot) return null
+      const [x, z] = spotAt(slot)
+      return { pos: [x, 0, z], yaw: slotAnchor(slot, 0, [x, z]).yaw }
+    },
+    mine: (role: Role) => {
+      const slot = roles[role]
+      if (slot) return slot.startsWith('p1')
+      const other = roles[role === 0 ? 1 : 0]
+      return other ? !other.startsWith('p1') : role === 0
+    },
     rest: (role: Role, node: number) => {
-      const slot = roles[role]!
+      const slot = roles[role]
+      if (!slot) return null
       const a = slotAnchor(slot, node, spotAt(slot))
-      const off = seqStage.body[slot]?.offset
+      const off = seqStage.bodyOwner[slot] === owner ? seqStage.body[slot]?.offset : undefined
       if (off) { a.pos[0] -= off[0]; a.pos[1] -= off[1]; a.pos[2] -= off[2] }
       return a
     },
-  })
+    world,
+    scale: (role: Role) => bodyScale(roles[role] ?? null, minScale),
+    trainer: (id: number) => [...trainerThrowOrigin(id % 2 === 0 ? 'p1a' : 'p2a')] as V3,
+    modelNode: (no: number, node: number | string, f: number) => {
+      const pose = modelAt(plan, no, f, ctx.current)
+      if (!pose) return null
+      const m = live.current.get(no)
+      const name = typeof node === 'string' ? node : ballNodeName(m, node)
+      const hit = m && name ? m.nodes.get(name) ?? null : null
+      if (!m || !hit) return pose.pos
+      // 뿌리 자리는 그 프레임의 접은 값 · 뿌리에서 노드까지는 지금 클립 자세 그대로 — 클립이 노드를 옮긴다(떨어짐 · 흔들림)
+      hit.getWorldPosition(tmpA)
+      m.root.getWorldPosition(tmpB)
+      return [pose.pos[0] + tmpA.x - tmpB.x, pose.pos[1] + tmpA.y - tmpB.y, pose.pos[2] + tmpA.z - tmpB.z]
+    },
+  }
   // 카메라는 무대(`BattleStage`의 `useBattleCamera`)가 제 기본 카메라를 넘겨 부른다 — 그 프레임 시각으로 다시 접는다
   const cameraFn = useMemo(() => (base: SeqCamera): SeqCamera | null => {
     const f = (battleClock.now() - startedAt) * SEQ_FPS
-    return cameraAt(plan, f, { ...ctx.current, scale: (role: Role) => bodyScale(roles[role]!) }, base)
+    return cameraAt(plan, f, { ...ctx.current, scale: (role: Role) => bodyScale(roles[role] ?? null, minScale) }, base)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 한 시퀀스 안에서 안 바뀐다
   }, [plan, startedAt])
   const [gone, setGone] = useState<ReadonlySet<string>>(new Set())
   const ended = useRef(false)
+  const released = useRef(false)
   /** 칸마다 살아 있는 입자 수 (진단) */
   const alive = useRef<Record<string, number>>({})
+  const [model, setModel] = useState<BallModel | null>(null)
 
   useEffect(() => {
     for (const n of plan.ignored) {
@@ -75,34 +141,66 @@ export function BdspSequence({
   }, [plan])
 
   useEffect(() => {
-    seqStage.running = true
-    return () => { clearSeqStage() }
-  }, [])
+    if (ball === undefined || !plan.models.some((m) => m.kind === 'ball')) return undefined
+    let ok = true
+    void loadBallModel(ball).then((m) => { if (ok) setModel(m) })
+    return () => { ok = false }
+  }, [ball, plan])
+
+  useEffect(() => {
+    claimSeq(owner)
+    return () => { releaseSeq(owner) }
+  }, [owner])
+
+  const usesCamera = camera && plan.camera.length > 0
+  const ownsScreen = usesCamera || plan.shakes.length > 0 || plan.back.length > 0
 
   useFrame(() => {
     const f = (battleClock.now() - startedAt) * SEQ_FPS
     if (import.meta.env.DEV) {
       // 진단 손잡이 — 개발 서버에서만. 지금 프레임의 입자 칸 자세
-      (window as unknown as { __fxSeq?: unknown }).__fxSeq = {
+      const w = window as unknown as { __fxSeq?: unknown; __fxSeqs?: Record<string, unknown> }
+      w.__fxSeq = {
         name: plan.name, f, alive: { ...alive.current }, poses: plan.particles.map((p) => ({ prefab: p.prefab, ...particleAt(p, f, ctx.current) })),
       }
+      // 시퀀스마다 시작 시각 — 찍는 도구가 시계를 그 프레임에 맞춘다
+      ;(w.__fxSeqs ??= {})[plan.name] = { startedAt, frames: planFrames(plan), slot: roles[1], cams: plan.camera.length, usesCamera, owner: seqStage.owner === owner }
     }
     if (f < 0) return
     const last = planFrames(plan)
     if (f <= last) {
-      seqStage.running = true
-      seqStage.frame = f
+      // ⚠️ **제 몸에 거는 기술(쓴 쪽 = 맞는 쪽)은 두 역할의 값을 합친다.** 역할마다 따로 적으면 맞는 쪽 값이 쓴 쪽 값을 덮어
+      // 쓴 쪽 동작 · 나감이 통째로 지워졌다
+      const written = new Map<string, ReturnType<typeof bodyAt>>()
       for (const role of [0, 1] as const) {
+        const slot = roles[role]
+        if (!slot || !bodies[role]) continue
         const pose = bodyAt(plan, role, f, ctx.current)
         if (!vanish) pose.visible = true
-        seqStage.body[roles[role]!] = pose
+        const was = written.get(slot)
+        written.set(slot, was ? mergePose(was, pose) : pose)
       }
-      seqStage.shake = shakeAt(plan, f)
-      seqStage.camera = cameraFn
-      seqStage.back = backAt(plan, f)
-    } else if (seqStage.running) {
-      // 명령이 다 끝났다 — 몸 · 화면은 놓고 입자만 사그라지게 둔다
-      clearSeqStage()
+      for (const [slot, pose] of written) {
+        seqStage.body[slot] = { ...pose, frame: f }
+        seqStage.bodyOwner[slot] = owner
+      }
+      const camNow = usesCamera ? cameraFn({ pos: [0, 0, 0], target: [0, 0, 1], fov: 30, roll: 0 }) !== null : false
+      const hide = hideOthers && camNow && othersHidden(plan, f)
+      for (const slot of others) {
+        if (slot === roles[1]) continue
+        if (hide) seqStage.hide[slot] = owner
+        else if (seqStage.hide[slot] === owner) delete seqStage.hide[slot]
+      }
+      if (ownsScreen) {
+        seqStage.owner = owner
+        seqStage.shake = shakeAt(plan, f)
+        seqStage.camera = usesCamera ? cameraFn : null
+        seqStage.back = backAt(plan, f)
+      }
+    } else if (!released.current) {
+      // 명령이 다 끝났다 — 몸 · 화면은 놓고 입자 · 볼만 남긴다
+      released.current = true
+      releaseSeq(owner)
     }
     // 지운 칸
     const remove = plan.particles.filter((p) => p.remove !== null && f >= p.remove && !gone.has(p.key))
@@ -115,6 +213,21 @@ export function BdspSequence({
 
   return (
     <group>
+      {model && plan.models.filter((m) => m.kind === 'ball').map((m) => (
+        <SeqBallModel
+          key={m.no}
+          no={m.no}
+          plan={plan}
+          model={model}
+          ctx={ctx}
+          startedAt={startedAt}
+          scale={ballScale}
+          register={(lm) => {
+            if (lm) live.current.set(m.no, lm)
+            else live.current.delete(m.no)
+          }}
+        />
+      ))}
       {plan.particles.filter((p) => !gone.has(p.key)).map((p) => (
         <BdspEffect
           key={p.key}
@@ -133,12 +246,107 @@ export function BdspSequence({
   )
 }
 
+/** 한 몸에 걸린 두 역할의 값 — 옮김 · 떨림 · 돌기는 더하고, 크기는 곱하고, 감추기는 어느 한쪽이라도, 동작은 늦게 시킨 쪽 */
+function mergePose(a: ReturnType<typeof bodyAt>, b: ReturnType<typeof bodyAt>): ReturnType<typeof bodyAt> {
+  const motion = !a.motion ? b.motion : !b.motion ? a.motion : b.motion.at >= a.motion.at ? b.motion : a.motion
+  return {
+    offset: [a.offset[0] + b.offset[0], a.offset[1] + b.offset[1], a.offset[2] + b.offset[2]],
+    scale: [a.scale[0] * b.scale[0], a.scale[1] * b.scale[1], a.scale[2] * b.scale[2]],
+    visible: a.visible && b.visible,
+    glow: b.glow ?? a.glow,
+    turn: a.turn + b.turn,
+    shake: [a.shake[0] + b.shake[0], a.shake[1] + b.shake[1], a.shake[2] + b.shake[2]],
+    motion,
+    motionSpeed: Math.min(a.motionSpeed, b.motionSpeed),
+    intro: a.intro || b.intro,
+  }
+}
+
+/** 로케이터 번호 → 노드 이름 (0은 뿌리) */
+function ballNodeName(m: LiveModel | undefined, index: number): string | null {
+  if (!m) return null
+  const name = (m.root.userData.locators as readonly string[] | undefined)?.[index]
+  return name === undefined || name === '' ? null : name
+}
+
+/** 시퀀스 볼 한 개 — 뼈째 복제하고 클립을 시퀀스 시각으로 꽂는다 */
+function SeqBallModel({ no, plan, model, ctx, startedAt, scale, register }: {
+  no: number
+  plan: SeqPlan
+  model: BallModel
+  ctx: { current: SeqContext }
+  startedAt: number
+  scale: number
+  register: (m: LiveModel | null) => void
+}) {
+  const group = useRef<Group>(null)
+  const rig = useMemo(() => {
+    const root = cloneBall(model)
+    root.userData.locators = model.meta.locators
+    const nodes = new Map<string, Object3D>()
+    root.traverse((o) => { if (o.name && !nodes.has(o.name)) nodes.set(o.name, o) })
+    return { root, nodes, mixer: new AnimationMixer(root), action: null as AnimationAction | null, clip: -1 }
+  }, [model])
+
+  useEffect(() => {
+    register({ root: rig.root, nodes: rig.nodes })
+    return () => {
+      register(null)
+      rig.mixer.stopAllAction()
+      rig.mixer.uncacheRoot(rig.root)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 한 벌에 한 번
+  }, [rig])
+
+  useFrame(() => {
+    const g = group.current
+    if (!g) return
+    const f = (battleClock.now() - startedAt) * SEQ_FPS
+    const pose = f < 0 ? null : modelAt(plan, no, f, ctx.current)
+    g.visible = pose !== null && pose.visible
+    if (!pose) return
+    g.position.set(pose.pos[0], pose.pos[1], pose.pos[2])
+    g.quaternion.set(pose.quat[0], pose.quat[1], pose.quat[2], pose.quat[3])
+    g.scale.setScalar(scale)
+    const clip = pose.clip
+    if (!clip) {
+      if (rig.action) { rig.mixer.stopAllAction(); rig.action = null; rig.clip = -1 }
+      return
+    }
+    if (clip.index !== rig.clip) {
+      const name = model.meta.clips[clip.index]
+      const found = name ? model.clips.find((c) => c.name === name) ?? null : null
+      rig.mixer.stopAllAction()
+      rig.action = found ? rig.mixer.clipAction(found) : null
+      rig.clip = clip.index
+      if (rig.action) {
+        rig.action.setLoop(clip.loop ? LoopRepeat : LoopOnce, Infinity)
+        rig.action.clampWhenFinished = true
+        rig.action.play()
+      }
+    }
+    const a = rig.action
+    if (!a) return
+    const dur = a.getClip().duration
+    a.enabled = true
+    a.paused = false
+    a.time = clip.loop && dur > 0 ? clip.time % dur : Math.max(0, Math.min(clip.time, dur))
+    rig.mixer.update(0)
+  })
+
+  return (
+    <group ref={group} visible={false}>
+      <primitive object={rig.root} />
+    </group>
+  )
+}
+
 /**
  * `isScale` 카메라 오프셋의 배율 — 그 자리에 선 몸의 키를 1m 기준으로. BDSP가 무엇으로 늘리는지는
  * 못 찾았다(우리 짐작) — 큰 몸 앞에서 카메라가 몸 속에 서지 않게 하는 것이 목적이다
  */
-function bodyScale(slot: string): number {
-  return Math.min(3, Math.max(0.6, tallOf(slot)))
+function bodyScale(slot: string | null, min: number): number {
+  return slot ? Math.min(3, Math.max(min, tallOf(slot))) : 1
 }
 
 function hash(s: string): number {
@@ -146,3 +354,4 @@ function hash(s: string): number {
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619)
   return h >>> 0
 }
+

@@ -112,14 +112,27 @@ const MOTION = {
   physical: /_ba20_/,
   special: /_ba21_/,
   damage: /_ba30_/,
+  /** 내보내기 — 공중(`landB`, 떨어지는 동안) · 땅에 닿음(`landC`). `ee400`의 `PokemonIntroMotion`이 시킨다 */
+  landB: /_ba01_landB/,
+  landC: /_ba01_landC/,
+  /** 쓰러짐 — 기절 시퀀스(`ee620` · `ee621`)의 `PokemonMotion motion=17`. 추가 동작 번들에서 굽는다(`import/bdsp/convert.ts`의 `DOWN_CLIP`) */
+  down: /_ba41_/,
 } as const
 
 export type MotionName = keyof typeof MOTION
 
-/** 그 동작의 클립. 없으면 대기, 그것도 없으면 첫 클립 */
+/**
+ * 그 동작이 없을 때 대신 트는 것. 착지 갈래가 하나뿐인 종(`ba01_land01`)은 그것을, 쓰러짐이 없는 종(잉어킹 ·
+ * 옛 판으로 구운 모델)은 **맞은 자세**로 쓰러진다 — 대기로 떨어지면 서서 숨 쉬며 줄어든다
+ */
+const STAND_IN: Partial<Record<MotionName, MotionName>> = { landB: 'enter', landC: 'enter', down: 'damage' }
+
+/** 그 동작의 클립. 없으면 대신 트는 것 → 대기 → 첫 클립 */
 function clipFor(clips: readonly AnimationClip[], want: MotionName): AnimationClip | null {
+  const stand = STAND_IN[want]
   return (
     clips.find((c) => MOTION[want].test(c.name)) ??
+    (stand ? clips.find((c) => MOTION[stand].test(c.name)) : undefined) ??
     clips.find((c) => MOTION.wait.test(c.name)) ??
     clips[0] ??
     null

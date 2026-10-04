@@ -41,6 +41,7 @@ from bdspPokemon import (
     glb_height,
     scale_key,
     trio,
+    with_down_clip,
 )
 from bdsp_bake_albedo import bake
 
@@ -124,8 +125,11 @@ def extract_female(key: str, row: dict, shiny: bool, fallback_texture: str) -> d
     label = "female-shiny" if shiny else "female"
     out = OUT / label / f"{key}.glb"
     out.parent.mkdir(parents=True, exist_ok=True)
+    paths, clips = with_down_clip(
+        row["AssetBundleName"], appearance_trio(row["AssetBundleName"], fallback_texture),
+    )
     export(
-        appearance_trio(row["AssetBundleName"], fallback_texture),
+        paths,
         out,
         None,
         None,
@@ -133,7 +137,7 @@ def extract_female(key: str, row: dict, shiny: bool, fallback_texture: str) -> d
         MAX_TEXTURE,
         True,
         MAIN_PROPS,
-        BATTLE_CLIPS,
+        clips,
     )
     return {
         "file": out.relative_to(ROOT / "public/models/pokemon").as_posix(),

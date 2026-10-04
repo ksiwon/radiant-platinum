@@ -96,6 +96,49 @@ const MAX_TEXTURE = 256
 /** 배틀에서 쓰는 동작만. 나머지 다섯은 아미티광장·필드용이고 애니 자료의 36%다 */
 const BATTLE_CLIPS = /_ba\d\d_/
 
+/**
+ * 쓰러짐 동작 — `PokemonMotion motion=17`(기절 시퀀스 `ee620` · `ee621`)이 트는 `ba41_down01`.
+ *
+ * ⚠️ **본 번들이 아니라 `battle/animations/<종>_<판>`에 있다.** 그 번들에는 대기 둘째(`waitB`) · 공격 둘째(`buturi02`) ·
+ * 아미티광장 돌기(`kw11`)도 같이 들었는데 그것들은 **안 싣는다** — 화면이 한 갈래(`ba10` · `ba20` …)의 첫 클립만 고르므로
+ * 실어도 안 쓰이고, 실으면 첫 클립이 바뀔 수 있다. 쓰러짐만 고른다(`monClipFilter`). 잉어킹처럼 그 번들에 아무것도
+ * 없는 종도 있다 — 그때는 쓰러짐 없이 굽고 화면이 맞은 자세로 가라앉힌다
+ */
+const DOWN_CLIP = /_ba41_/
+
+/** 종 하나의 추가 동작 번들 (`pm0025_00_00` → `battle/animations/pm0025_00`). 없으면 `null` */
+function monAnimPath(at: Map<string, string>, name: string): string | null {
+  return lookup(at, `${POKEMON_BATTLE}/animations/${name.replace(/_\d\d$/, '')}`)
+}
+
+/**
+ * 본 번들의 배틀 동작 + 추가 번들의 쓰러짐만 남기는 거르개. 추가 번들에서 쓰러짐이 아닌 클립 이름을 빼는 꼴이다 —
+ * 노드 추출기(`tools/extract/bdspPokemon.py`의 `clip_filter`)와 같은 규칙이다
+ */
+export function monClipFilter(extraNames: readonly string[]): RegExp {
+  const drop = extraNames.filter((n) => !DOWN_CLIP.test(n))
+  if (drop.length === 0) return BATTLE_CLIPS
+  const esc = (n: string): string => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`^(?!(?:${drop.map(esc).join('|')})$).*${BATTLE_CLIPS.source}`)
+}
+
+/** 종 하나를 굽는 번들들과 클립 거르개 — 본 번들 셋(`monPaths`) 뒤에 추가 동작 번들을 붙인다 */
+async function monSources(
+  src: BdspSource, at: Map<string, string>, name: string, paths: string[],
+): Promise<{ paths: string[], clipFilter: RegExp }> {
+  const anim = monAnimPath(at, name)
+  if (anim === null || paths.includes(anim)) return { paths, clipFilter: BATTLE_CLIPS }
+  const animEnv = await environmentOf(src, [anim])
+  if (!animEnv) return { paths, clipFilter: BATTLE_CLIPS }
+  const names: string[] = []
+  for (const e of animEnv.ofType('AnimationClip')) {
+    const v = animEnv.readEntry(e) as Props | null
+    if (typeof v?.m_Name === 'string') names.push(v.m_Name)
+  }
+  if (!names.some((n) => DOWN_CLIP.test(n))) return { paths, clipFilter: BATTLE_CLIPS }
+  return { paths: [...paths, anim], clipFilter: monClipFilter(names) }
+}
+
 /** 포켓몬 셰이더의 알베도 자리. `_MainTex`도 같이 본다 — 몇몇 이펙트 재질이 그쪽이다 */
 const MON_MAIN_PROPS = ['_Col0Tex', '_MainTex'] as const
 
@@ -594,14 +637,15 @@ async function convertMonModels(ctx: ConvertContext): Promise<Produced> {
     // ⚠️ **번들이 셋으로 갈려 있다.** 배틀 프리팹에 재질·뼈대·동작이 있고 메시와
     // 텍스처는 `pokemons/common` 쪽 번들 둘에 있다. 하나만 열면 "메시가 없다"로
     // 끝나고 그 종이 통째로 빠진다
-    const env = await environmentOf(src, monPaths(at, name))
+    const made = await monSources(src, at, name, monPaths(at, name))
+    const env = await environmentOf(src, made.paths)
     if (!env) missing.push(name)
     else {
       try {
         const { glb } = await exportModel(env, encodePng, {
           maxSize: MAX_TEXTURE,
           keepClips: true,
-          clipFilter: BATTLE_CLIPS,
+          clipFilter: made.clipFilter,
           mainProps: MON_MAIN_PROPS,
         })
         // 폼 0은 종 번호 그대로다 — 읽는 쪽이 폼을 모르는 자리가 아직 있다
@@ -738,13 +782,14 @@ async function convertMonVariants(ctx: ConvertContext): Promise<Produced> {
       const spare = lookup(at, `${POKEMON_COMMON}/${fallback}`)
       if (spare !== null && !paths.includes(spare)) paths.push(spare)
     }
-    const env = await environmentOf(src, paths)
+    const made = await monSources(src, at, look.bundle, paths)
+    const env = await environmentOf(src, made.paths)
     if (!env) return null
     try {
       const { glb } = await exportModel(env, encodePng, {
         maxSize: MAX_TEXTURE,
         keepClips: true,
-        clipFilter: BATTLE_CLIPS,
+        clipFilter: made.clipFilter,
         mainProps: MON_MAIN_PROPS,
       })
       const file = `variants/${label}/${key}.glb`

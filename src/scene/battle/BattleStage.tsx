@@ -42,10 +42,12 @@ import { useBattleStore } from '../../state/battleStore'
 import type { ViewMon } from '../../engine/battle/view'
 import { SLOTS, type SlotId } from '../../engine/battle/events'
 import {
-  arenaRoom, ballOpen, battleStage, impactHits, moveImpact, seqStage, slotBody, slotBox, slotRig, STAGE_ORIGIN,
+  arenaRoom, ballOpen, battleStage, bodyGone, clearSlotBody, impactHits, moveImpact, seqStage, slotBody, slotBox, slotRig,
+  STAGE_ORIGIN, type SeqBodyPose,
 } from './stageRefs'
-import { BattleBallEffects, SEND_RECALL_TIME } from './BattleBallEffects'
-import { captureBodyScale, recallsBody } from './battleBallMotion'
+import { BattleBallEffects } from './BattleBallEffects'
+import { recallsBody } from './battleBallMotion'
+import { recallSeconds } from '../../engine/battle/captureTiming'
 import { bodyColor } from './bodyColor'
 import { loadMonSprite, loadSpriteIndex, spriteFit } from './monSprite'
 import { loadMonModel, makeBody, play, type MonBody, type MotionName } from './monModel'
@@ -184,21 +186,30 @@ const MON_TALL = 1.2
  */
 /**
  * 시퀀스가 시킨 동작을 아직 트는가 (초). BDSP는 동작 하나가 끝나면 대기로 돌아간다 —
- * 클립 길이를 재지 않고 동작마다 한 값으로 둔다(공격 클립이 0.8~1.3초다)
+ * 클립 길이를 재지 않고 동작마다 한 값으로 둔다(공격 클립이 0.8~1.3초다). 쓰러짐(`down`)은 끝 자세로 멎고
+ * 시퀀스가 몸을 지울 때까지 간다. 착지(`landC`)는 피카츄 0.667초 — 그 뒤 대기로 이어진다
  */
-const SEQ_MOTION_SECONDS = { attack: 1.1, damage: 0.7, cry: 1.3, wait: Infinity } as const
+const SEQ_MOTION_SECONDS = { attack: 1.1, damage: 0.7, cry: 1.3, wait: Infinity, down: Infinity, landB: Infinity, landC: 0.7 } as const
 
-function seqMotionLive(m: { name: keyof typeof SEQ_MOTION_SECONDS; at: number }): boolean {
-  return (seqStage.frame - m.at) / 30 < SEQ_MOTION_SECONDS[m.name]
+function seqMotionLive(pose: SeqBodyPose): boolean {
+  const m = pose.motion
+  return m !== null && (pose.frame - m.at) / 30 < SEQ_MOTION_SECONDS[m.name]
 }
 
-/** 시퀀스의 몸 빛 (`PokemonShaderCol`)을 재질 발광으로 건다 — 처음 걸 때 재질을 떼어 낸다 */
+/**
+ * 시퀀스의 몸 빛 (`PokemonShaderCol`)을 재질 발광으로 건다.
+ *
+ * 재질은 **몸이 설 때 한 번** 떼어 낸다(`ownMaterials` — 같은 종 두 마리가 재질을 나눠 쓰므로 한 마리만 빛나게) —
+ * 그래서 빛날 때 새 재질이 생기지 않고 파이프라인도 등판 전에 굽힌다(`warmBeforeShow`). 끌 때는 그 재질의 원래 발광으로
+ * 되돌린다. 떼어 낸 재질은 몸이 내려갈 때 놓는다(`releaseMaterials`)
+ */
+interface OwnedMaterial { mat: MeshStandardMaterial; emissive: [number, number, number]; intensity: number }
+const owned = new WeakMap<object, OwnedMaterial[]>()
 const glowing = new WeakMap<object, boolean>()
-function glow(model: MonBody | null, g: { color: [number, number, number]; power: number } | null): void {
-  if (!model) return
-  const on = g !== null && g.power > 0.001
-  if (!on && !glowing.get(model.root)) return
-  glowing.set(model.root, on)
+
+function ownMaterials(model: MonBody): void {
+  if (owned.has(model.root)) return
+  const list: OwnedMaterial[] = []
   model.root.traverse((o) => {
     const mesh = o as Mesh
     if (!mesh.isMesh) return
@@ -206,20 +217,35 @@ function glow(model: MonBody | null, g: { color: [number, number, number]; power
     const next = mats.map((m) => {
       const std = m as MeshStandardMaterial
       if (!std.emissive) return m
-      // 같은 종 두 마리가 재질을 나눠 쓴다 — 한 마리만 빛나게 처음에 떼어 낸다
-      const own = std.userData.fxOwn === model.root ? std : std.clone()
-      own.userData.fxOwn = model.root
-      if (on) {
-        own.emissive.setRGB(g.color[0], g.color[1], g.color[2])
-        own.emissiveIntensity = g.power
-      } else {
-        own.emissive.setRGB(0, 0, 0)
-        own.emissiveIntensity = 1
-      }
+      const own = std.clone()
+      list.push({ mat: own, emissive: [std.emissive.r, std.emissive.g, std.emissive.b], intensity: std.emissiveIntensity })
       return own
     })
     mesh.material = Array.isArray(mesh.material) ? next : next[0]!
   })
+  owned.set(model.root, list)
+}
+
+function releaseMaterials(model: MonBody): void {
+  for (const o of owned.get(model.root) ?? []) o.mat.dispose()
+  owned.delete(model.root)
+  glowing.delete(model.root)
+}
+
+function glow(model: MonBody | null, g: { color: [number, number, number]; power: number } | null): void {
+  if (!model) return
+  const on = g !== null && g.power > 0.001 && (g.color[0] > 0 || g.color[1] > 0 || g.color[2] > 0)
+  if (!on && !glowing.get(model.root)) return
+  glowing.set(model.root, on)
+  for (const o of owned.get(model.root) ?? []) {
+    if (on) {
+      o.mat.emissive.setRGB(g.color[0], g.color[1], g.color[2])
+      o.mat.emissiveIntensity = g.power
+    } else {
+      o.mat.emissive.setRGB(o.emissive[0], o.emissive[1], o.emissive[2])
+      o.mat.emissiveIntensity = o.intensity
+    }
+  }
 }
 
 function Slot({
@@ -288,13 +314,18 @@ function Slot({
    *
    * ⚠️ 종이 바뀌는 순간 앞 몸을 지우면 거두는 빔(`BattleBallEffects`)이 빈 자리에 쏜다.
    * 그래서 서 있던 마리를 바꿔 낼 때는 앞 몸(모델이든 도트든)을 **새 몸이 올 때까지 그대로
-   * 두고**, 빔과 같은 시간(`SEND_RECALL_TIME`)에 걸쳐 줄여서 감춘다. 쓰러진 뒤의 교체는
+   * 두고**, 거두기 시퀀스(`ee610` — 볼 빛에 줄어 f24에 사라진다 · `captureTiming`의 `recallSeconds`)가 그 몸을 쥔다.
+   * 새 몸은 거두기가 끝날 때까지 미뤄 세운다(`pending`). 쓰러진 뒤의 교체는
    * 몸이 이미 졌으므로 거두지 않는다 — 원작도 쓰러진 마리는 거두지 않는다.
    *
    * ⚠️ **앞 몸을 다른 부모로 옮겨 그리지 않는다.** 같은 `object`를 새 `<primitive>`로
    * 다시 달면 옛 것을 떼는 커밋이 새 인스턴스의 `__r3f`까지 지운다 (R3F `removeChild`)
    */
   const recallFrom = useRef<number | null>(null)
+  /** 진 몸의 기록을 지웠는가 (`clearSlotBody` — 한 번만) */
+  const cleared = useRef(false)
+  /** 거두기가 끝나면 세울 새 몸 (`show`) */
+  const pending = useRef<(() => void) | null>(null)
   /** 지금 몸(모델이나 도트)이 서 있는가 — 종이 바뀌는 효과가 거둘 몸이 있는지 본다 */
   const hasBody = useRef(false)
   /** 앞서 그린 마리의 열쇠와, 그 마리가 서 있었는가. 아래 효과들이 **앞 커밋의 값**으로 읽는다 */
@@ -326,13 +357,28 @@ function Slot({
     // 몸이 바뀌면 시간도 다시 센다 — 안 그러면 새 모델이 앞 모델을 기다린
     // 시간을 첫 프레임에 통째로 소비한다
     stageTime.current.reset()
-    delete slotBody[slot]
+    pending.current = null
+    // 거두는 몸은 그 몸이 다 사라질 때까지 로케이터를 내준다(`ee610`의 빔이 그 몸을 겨눈다) — 기록은 거두기가 끝나면 지운다
+    if (!recall) clearSlotBody(slot)
     if (species === null) return
+    /** 새 몸을 세운다 — 앞 몸을 거두는 중이면 거두기가 끝날 때까지 미룬다(`pending`) */
+    const show = (put: () => void): void => {
+      const run = (): void => {
+        put()
+        recallFrom.current = null
+        hasBody.current = true
+        settle()
+      }
+      if (recallFrom.current !== null) pending.current = run
+      else run()
+    }
     void loadMonModel(species, form, { gender: mon?.gender, shiny: mon?.shiny })
       .then((loaded) => {
         if (!alive) return null
         if (loaded) {
           const body = makeBody(loaded)
+          // 몸 빛(`glow`)에 쓸 재질을 지금 떼어 낸다 — 굽기 전에 떼어야 그 재질의 파이프라인이 같이 굽힌다
+          ownMaterials(body)
           // ⚠️ **굽고 나서 세운다.** 그냥 `setModel`하면 R3F가 이번 프레임에
           // 씬에 붙이고, 그리는 그 프레임 안에서 파이프라인이 컴파일된다 —
           // ANGLE은 그 링크 확인에서 막히고(`warmPipelines`), 스킨 모델은
@@ -340,13 +386,12 @@ function Slot({
           // 제일 긴 프레임이 216~600ms였고 오버월드는 전부 16.8ms였다
           return warmBeforeShow(gl, r3fScene, camera, body.root)
             .then(() => {
-              if (!alive) return null
-              setModel(body)
-              setArt(null)
-              recallFrom.current = null
-              hasBody.current = true
-              settle()
-              onBody(body.tall)
+              if (!alive) { releaseMaterials(body); return null }
+              show(() => {
+                setModel(body)
+                setArt(null)
+                onBody(body.tall)
+              })
               return null
             })
         }
@@ -355,27 +400,30 @@ function Slot({
         return Promise.all([loadSpriteIndex(), loadMonSprite(key, mine)]).then(([idx, map]) => {
           if (!alive) return
           const box = idx.sprites[key]?.[mine ? 'back' : 'front']
-          setArt({ map, ...spriteFit(box, idx.size, MON_TALL) })
-          setModel(null)
-          recallFrom.current = null
-          hasBody.current = true
-          settle()
+          show(() => {
+            setArt({ map, ...spriteFit(box, idx.size, MON_TALL) })
+            setModel(null)
+          })
         })
       })
       .catch(() => {
         // 둘 다 못 받았다 — 이제야 아래에서 도형으로 떨어진다
         if (!alive) return
-        setModel(null)
-        setArt(null)
-        recallFrom.current = null
-        hasBody.current = true
-        settle()
+        show(() => {
+          setModel(null)
+          setArt(null)
+        })
       })
     return () => {
       alive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [species, form, mine, mon?.gender, mon?.shiny])
+
+  // 몸이 바뀌거나 자리가 내려가면 그 몸이 떼어 낸 재질을 놓는다 (`ownMaterials`)
+  useEffect(() => () => { if (model) releaseMaterials(model) }, [model])
+  // 자리가 내려가면 몸 기록도 지운다
+  useEffect(() => () => { clearSlotBody(slot) }, [slot])
 
   // 이번 커밋에 그린 마리를 적어 둔다. ⚠️ **위 효과보다 뒤에 둔다** — 효과는 적힌 차례로
   // 돌므로, 위에서는 앞 커밋의 마리를 읽고 여기서 이번 마리로 갈아 적는다
@@ -439,23 +487,6 @@ function Slot({
   useEffect(() => {
     if (struck?.slot === slot) flinch.current = 1
   }, [struck, slot])
-  const lastBall = useBattleStore((s) => s.view?.lastBall ?? null)
-  const capture = useRef<{
-    seq: number
-    started: number
-    shakes: number
-    caught: boolean
-  } | null>(null)
-  useEffect(() => {
-    if (!lastBall || lastBall.slot !== slot || capture.current?.seq === lastBall.seq) return
-    capture.current = {
-      seq: lastBall.seq,
-      started: battleClock.now(),
-      shakes: lastBall.shakes,
-      caught: lastBall.caught,
-    }
-  }, [lastBall, slot])
-
   // 물리냐 특수냐. **BDSP 모델이 그 둘을 따로 갖고 있다**(`ba20` · `ba21`) —
   // 롬의 기술 데이터가 정하는 값이라 여기서 짐작하지 않는다
   const special = useRef(false)
@@ -505,15 +536,27 @@ function Slot({
     // 그동안은 아래의 등판·동작·키 재기를 안 한다(거두는 몸은 이미 이 자리의 마리가 아니다)
     const recalling = recallFrom.current
     if (recalling !== null) {
-      const k = (battleClock.now() - recalling) / SEND_RECALL_TIME
-      const left = Math.max(0, 1 - k)
-      g.visible = left > 0.01
-      g.scale.setScalar(left)
+      // 앞 몸을 거두는 중 (`ee610`) — 볼 빛에 줄어들어 f24에 사라진다. 시퀀스가 없으면 같은 시간에 걸쳐 줄인다
+      const pose = seqStage.body[slot] ?? null
+      const done = battleClock.now() - recalling >= recallSeconds()
+      const k = pose ? pose.scale[0] : Math.max(0, 1 - (battleClock.now() - recalling) / recallSeconds())
+      const vis = !done && (pose ? pose.visible : k > 0.01)
+      g.visible = vis
+      g.scale.setScalar(Math.max(1e-4, k))
+      glow(model, pose?.glow ?? null)
       model?.mixer.update(delta)
       const sh = shade.current
       if (sh) {
-        sh.visible = left > 0.01
-        sh.scale.setScalar(left)
+        sh.visible = vis
+        sh.scale.setScalar(Math.max(1e-4, k))
+      }
+      // 거두는 동안도 로케이터를 내준다 — 빔이 이 몸 한가운데를 겨눈다
+      slotRig[slot] = { root: model?.root ?? null, body: g, yaw: slotRig[slot]?.yaw ?? 0, shown: vis }
+      if (done) {
+        clearSlotBody(slot)
+        const run = pending.current
+        pending.current = null
+        run?.()
       }
       // 새 몸은 **처음부터** 나온다 — 앞 몸의 등판 값을 물려받으면 볼이 열리기 전에 새 몸이
       // 다 선 채로 가라앉는 것부터 보인다
@@ -526,20 +569,26 @@ function Slot({
     // 먼저 서 있고 그 뒤에 볼이 날아와 터졌다
     const opensAt = ballOpen[slot] ?? 0
     const waiting = battleClock.now() < opensAt
-    const want = mon && !fainted && !waiting && settled.current ? 1 : 0
+    // 몸이 지는 시각 — 기절(`ee620` · `ee621`)과 포획(`ee101`)이 적는다. 그 전까지는 시퀀스가 몸을 쓰러뜨리고 줄인다.
+    // 적힌 것 없이 쓰러졌으면(시퀀스 없는 판) 곧바로 진다
+    const gone = bodyGone[slot]
+    const mine2 = gone !== undefined && mon !== null && gone.key === mon.key
+    const goneNow = mine2 && battleClock.now() >= gone.at
+    if (goneNow && !cleared.current) {
+      cleared.current = true
+      clearSlotBody(slot)
+    }
+    if (!goneNow) cleared.current = false
+    const want = mon && !(fainted && !mine2) && !goneNow && !waiting && settled.current ? 1 : 0
     if (want === 0 && shown.current > 0.01) leaving.current = true
     if (want === 1) leaving.current = false
     shown.current +=
       Math.sign(want - shown.current) * Math.min(delta / FADE, Math.abs(want - shown.current))
+    // 시퀀스가 등판을 쥐었다(`PokemonIntroMotion`) — 볼 빛 속에 자라나며 떨어지는 것이 시퀀스 몫이라 제 페이드를 안 건다
+    const seqNow = seqStage.body[slot] ?? null
+    if (seqNow?.intro && seqNow.visible && want === 1) shown.current = 1
     const t = shown.current
-    const captureNow = capture.current
-    const caughtScale = captureNow
-      ? captureBodyScale(
-          battleClock.now() - captureNow.started,
-          captureNow.shakes,
-          captureNow.caught,
-        )
-      : 1
+    const caughtScale = 1
     // ⚠️ **3D 모델은 크기를 여기서 안 만진다.** 배율은 BDSP가 종마다 적어 둔
     // 값이고(`monModel`), 등판할 때 작아졌다 커지는 것은 도트의 문법이다
     g.scale.setScalar((model ? 1 : 0.6 + 0.4 * t) * caughtScale)
@@ -594,12 +643,13 @@ function Slot({
     //
     // ⚠️ **시퀀스가 돌면 DS 몫(돌진 · 움찔 · 대본 떨림)을 끈다.** 둘이 같이 돌면 몸이 두 번
     // 나간다 — 나가고 돌아오는 것도, 맞고 흔들리는 것도 시퀀스가 프레임마다 정한다
-    const seq = seqStage.running ? seqStage.body[slot] ?? null : null
-    if (seqStage.running) {
+    const seq = seqNow
+    if (seq) {
       lunge.current = 0
       flinch.current = 0
     }
-    const seqHide = seq !== null && !seq.visible
+    // 다른 시퀀스(포획 · 기절)의 카메라가 이 몸 곁을 지나는 동안 감춘다 (`PokemonVisibleOther`)
+    const seqHide = (seq !== null && !seq.visible) || seqStage.hide[slot] !== undefined
 
     g.visible = t > 0.01 && caughtScale > 0.01 && !blink && !hidden && !seqHide
     if (squashX !== 1 || squashY !== 1) {
@@ -612,7 +662,10 @@ function Slot({
     // 놓아서 포켓몬이 제 발판에서 1m 가까이 떠 있었다. `spriteFit`이 이미
     // 판을 맞춰 놓는다 — 칠해진 그림의 아래끝이 이 그룹의 원점이다
     g.position.z = (other.z - spot.z) * reach + (seq ? seq.offset[2] + seq.shake[2] : 0)
-    g.position.y = GROUND + bob * t - (1 - t) * 0.5 + (seq ? seq.offset[1] + seq.shake[1] : 0)
+    // 등판 · 퇴장의 가라앉음은 시퀀스가 몸을 쥐지 않을 때만 — 쥐었으면(내보내기 · 기절) 시퀀스가 자리를 정하고, 숨은 몸이 땅 밑에
+    // 있으면 그 몸의 로케이터를 겨눈 카메라가 0.5m 아래를 본다(실측)
+    const sink = seq?.intro || seq?.motion?.name === 'down' ? 0 : (1 - t) * 0.5
+    g.position.y = GROUND + bob * t - sink + (seq ? seq.offset[1] + seq.shake[1] : 0)
     glow(model, seq?.glow ?? null)
 
     // 어디를 보는가.
@@ -632,20 +685,22 @@ function Slot({
       root: model?.root ?? null,
       body: g,
       yaw: Math.atan2(other.x - spot.x, other.z - spot.z) + (seq?.turn ?? 0),
+      shown: g.visible,
     }
 
     // 동작을 넘긴다. 때리고 맞는 것이 우선이고 그 타이머가 다 되면 대기로 돈다
+    // 시퀀스가 시킨 동작이 먼저다 — 쓰러짐(`ee620`의 `ba41`) · 착지(`ee400`의 `ba01_landB/C`)도 그렇다
     const now: MotionName =
-      // 지는 중에는 동작을 안 갈아 끼운다 — 맞은 자세 그대로 가라앉는다
-      leaving.current
+      seq?.motion && seqMotionLive(seq)
+        ? seq.motion.name === 'attack'
+          ? special.current ? 'special' : 'physical'
+          : seq.motion.name
+        // 지는 중에는 동작을 안 갈아 끼운다 — 맞은 자세 그대로 가라앉는다
+        : leaving.current
         ? motion.current
         : t < 0.99
         ? 'enter'
-        : seq?.motion && seqMotionLive(seq.motion)
-          ? seq.motion.name === 'attack'
-            ? special.current ? 'special' : 'physical'
-            : seq.motion.name === 'cry' ? 'cry' : seq.motion.name
-          : flinch.current > 0
+        : flinch.current > 0
           ? 'damage'
           : lunge.current > 0
             ? special.current
@@ -660,7 +715,8 @@ function Slot({
         motionCue.current = cue
         play(model, now)
       }
-      model.mixer.update(delta)
+      // 시퀀스가 동작을 세울 수 있다(`PokemonSetMotionSpeed 0` — 쓰러진 자세로 멎는다 · 볼이 날아오는 동안 상대가 굳는다)
+      model.mixer.update(delta * (seq?.motionSpeed ?? 1))
       // 자세를 먹인 키를 지켜본다. **대기 동작일 때만** 재고 **커진 만큼만**
       // 알린다 — 때리는 동작은 몸을 크게 뻗으므로 그것까지 담으면 카메라가
       // 기술 한 번마다 물러나고, 매 프레임 보내면 숨결에 맞춰 출렁인다
@@ -697,8 +753,9 @@ function Slot({
     // 그림자까지 같이 깜빡이면 땅이 번쩍인다
     const s = shade.current
     if (s) {
-      s.visible = t > 0.01 && caughtScale > 0.01
-      s.scale.setScalar(t * caughtScale)
+      s.visible = t > 0.01 && caughtScale > 0.01 && !seqHide
+      // 볼 빛 속에 자라나는 몸 · 볼로 줄어드는 몸은 그림자도 같이 (`PokemonScale` · `PokemonIntroMotion`)
+      s.scale.setScalar(Math.max(1e-4, t * caughtScale * (seq ? seq.scale[0] : 1)))
     }
   })
 
@@ -1115,8 +1172,8 @@ function useBattleCamera(fit: number, arenaRadius: number): void {
     // 명령이 없는 동안(`null`)과 시퀀스 밖은 위의 기본 카메라 그대로다. 시퀀스가 `CameraReset` 없이
     // 끝나도 튀지 않게 마지막 자리에서 기본 자리로 `SEQ_CAMERA_RETURN`초에 걸쳐 돌아온다
     const want = seqStage.camera?.(base) ?? null
-    // 지금 몸이 선 자리의 상자만 — 쓰러지거나 바뀐 자리의 낡은 상자가 카메라를 밀면 안 된다
-    const boxes = (): Box[] => Object.entries(slotBox).filter(([slot]) => slotRig[slot]?.root).map(([, b]) => b)
+    // 지금 화면에 선 몸의 상자만 — 쓰러지거나 거둔 몸 · 감춘 몸의 상자가 카메라를 밀면 안 된다
+    const boxes = (): Box[] => Object.entries(slotBox).filter(([slot]) => slotRig[slot]?.root && slotRig[slot]?.shown).map(([, b]) => b)
     const aspect = state.size.width / Math.max(1, state.size.height)
     let shot = base
     if (want) {

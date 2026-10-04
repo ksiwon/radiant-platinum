@@ -24,7 +24,8 @@ import {
 import { openEnvironment, type Environment } from './environment'
 import { meshFrom, CHANNEL, type MeshData } from './mesh'
 import { readTexture, resize, resource } from './texture'
-import { crc32 } from './model'
+import { crc32, exportModel } from './model'
+import { UNITY_BUILTIN_MESH, isBuiltinRef } from './unityBuiltin'
 import type { UnityValue } from './typetree'
 
 type Obj = Record<string, UnityValue>
@@ -41,19 +42,12 @@ const SHARED_BUNDLES = ['Effects/fxparticle', 'Effects/effect_common']
  * 필드 셰이더를 쓴다 — 없어도 굽기는 되고 그 재질의 `shader`만 `null`이다
  */
 const NAME_ONLY_BUNDLES = ['Dpr/shaders']
-/**
- * `unity default resources`의 기본 메시. 번들에 없고 PathID가 엔진에 박혀 있다 — 이펙트 넷(`ew209_kemuri` ·
- * `ew291_at_out_sea` · `ew329_*`)이 상자(10202)를 쓴다. 실행 쪽이 같은 모양을 만들도록 이름만 적는다
- */
-const BUILTIN_MESH: Readonly<Record<number, string>> = {
-  10202: 'Cube', 10206: 'Cylinder', 10207: 'Sphere', 10208: 'Capsule', 10209: 'Plane', 10210: 'Quad',
-}
 
 /**
  * 그림 긴 변의 상한. 원본은 대개 64~256이고 512가 드물게 있다. 띠 그림(1024×64 같은 것)은 비율을 지킨다.
  * 기술 이펙트까지 다 구우면 상한을 낮출지 여기서 정한다 (머리말의 총량)
  */
-export const FX_TEXTURE = 256
+const FX_TEXTURE = 256
 
 /** 볼 번호 — 몬스터볼 1 ~ 프레셔스볼 16 (`BallEffectData.BallID`) */
 const FIRST_BALL = 1
@@ -190,7 +184,7 @@ function simp(v: UnityValue, ref: (p: Obj) => Json): Json {
 // ── 굽는 판 ──────────────────────────────────────────────────────────────────
 
 /** 그림 한 장의 기록 (`tex/index.json`) */
-export interface FxTextureInfo {
+interface FxTextureInfo {
   /** 구운 크기 */
   size: [number, number]
   /** 원본 크기 */
@@ -341,7 +335,8 @@ export async function bakeFxPrefab(
     const f = find(p)
     let out: Json = null
     if (!f) {
-      const builtin = BUILTIN_MESH[pid]
+      // 이펙트 넷(`ew209_kemuri` · `ew291_at_out_sea` · `ew329_*`)이 기본 상자(10202)를 쓴다 — 실행 쪽이 같은 모양을 만들도록 이름만 적는다
+      const builtin = isObj(p) && isBuiltinRef(num(p.m_FileID), pid) ? UNITY_BUILTIN_MESH[Math.abs(pid)] : undefined
       if (builtin) out = { name: builtin, builtin }
       else problems.push(`메시 ${String(pid)}를 못 찾았다`)
     } else {
@@ -810,7 +805,7 @@ function bakeClip(
 
 // ── 시퀀스 ───────────────────────────────────────────────────────────────────
 
-export interface FxSequence {
+interface FxSequence {
   name: string
   groups: {
     name: string
@@ -929,6 +924,98 @@ const MOVE_FIELDS: Readonly<Record<string, string>> = {
  */
 const CAPTURE_SEQ = /^ee1\d\d$/
 const SENDOUT_SEQ = /^ee4\d\d(?:_seal)?$/
+/**
+ * 거두기 · 기절 시퀀스 — `ee610`(서 있던 마리를 볼로 거둔다) · `ee620`(트레이너의 포켓몬이 쓰러져 볼로 돌아간다) ·
+ * `ee621`(야생이 쓰러진다). 무리 이름이 「ダウン引っ込みカメラ」(쓰러짐 · 거둠 카메라)이고 `PokemonMotion motion=17`(쓰러짐 `ba41`)을 튼다
+ */
+const RETURN_SEQ = /^ee6\d\d$/
+
+/** 볼 모델 번들 — 볼 번호 n이 `ob02nn_00`이다 (`convert.ts`의 `POKEBALL` 머리말: 윗반구 색으로 1 마스터 · 3 슈퍼 · 4 몬스터를 쟀다) */
+const BALL_BUNDLE = (id: number): string => `Characters/objects/ob02${String(id).padStart(2, '0')}_00`
+/** 포켓몬 표(`PokemonInfo.Catalog`)가 든 번들 — 내보내기의 착지 갈래(`MoveType`)를 읽는다 */
+const DPR_MASTERDATAS = 'Dpr/masterdatas'
+
+/**
+ * 볼 모델 한 벌의 표 — **번호로 부르는 것들의 이름**이다 (`ObjectEntity`).
+ *
+ * 시퀀스는 볼의 클립 · 로케이터 · 붙은 이펙트를 번호로 부른다(`DprModelAnimationPlayIndex index=6` ·
+ * `DprParticleMoveRelativeModel nodeIndex=3` · `DprModelParticlePlay particleIndex=0`). 그 번호는 프리팹의
+ * `ObjectEntity._animationPlayer._clips` · `_locators` · `_modelParticleEntities` 차례다 — 열여섯 볼이 다 같다(실측)
+ */
+export interface BallModelTable {
+  /** 클립 번호 → 이름. 빈 칸은 `null` */
+  clips: (string | null)[]
+  /** 클립 번호 → 길이(초, `m_MuscleClip`의 `m_StopTime − m_StartTime`). 시퀀스 길이를 잴 때 쓴다 */
+  seconds: (number | null)[]
+  /** 로케이터 번호 → 노드 이름 (0이 뿌리 — 빈 문자열) */
+  locators: string[]
+  /** 붙은 이펙트 번호 → 프리팹 이름 (= 그 노드 이름) */
+  particles: string[]
+}
+
+/** 볼 번들의 `ObjectEntity`에서 번호표를 읽는다 */
+export function ballModelTable(env: Environment): BallModelTable | null {
+  const nameOfGo = (pid: number): string | null => {
+    const v = env.read(pid) as Obj | null
+    return v && typeof v.m_Name === 'string' ? v.m_Name : null
+  }
+  const nameOfTransform = (pid: number): string | null => {
+    const t = env.read(pid) as Obj | null
+    // 뿌리는 번들마다 이름이 다르다(`ob0201_00` · `ob0204_00`) — 빈 문자열로 적는다(프리팹 경로와 같은 약속)
+    if (t && num((t.m_Father as Obj | undefined)?.m_PathID) === 0) return ''
+    const go = t?.m_GameObject as Obj | undefined
+    return go ? nameOfGo(num(go.m_PathID)) : null
+  }
+  const nameOfBehaviour = (pid: number): string | null => {
+    const b = env.read(pid) as Obj | null
+    const go = b?.m_GameObject as Obj | undefined
+    return go ? nameOfGo(num(go.m_PathID)) : null
+  }
+  for (const e of env.entries) {
+    if (e.object.classId !== CLS.MonoBehaviour) continue
+    const v = env.readEntry(e)
+    if (!isObj(v) || !isObj(v._animationPlayer) || !Array.isArray(v._locators)) continue
+    const read = (arr((v._animationPlayer as Obj)._clips) as Obj[]).map((c) => {
+      const pid = num(c.m_PathID)
+      return pid === 0 ? null : env.read(pid) as Obj | null
+    })
+    while (read.length > 0 && read[read.length - 1] === null) read.pop()
+    const clips = read.map((clip) => (clip && typeof clip.m_Name === 'string' ? clip.m_Name : null))
+    const seconds = read.map((clip) => {
+      const m = clip?.m_MuscleClip as Obj | undefined
+      return m ? Math.round((num(m.m_StopTime) - num(m.m_StartTime)) * 1e4) / 1e4 : null
+    })
+    const locators = (arr(v._locators) as Obj[]).map((t) => nameOfTransform(num(t.m_PathID)) ?? '')
+    const particles = (arr(v._modelParticleEntities) as Obj[]).map((b) => nameOfBehaviour(num(b.m_PathID)) ?? '')
+    return { clips, seconds, locators, particles }
+  }
+  return null
+}
+
+/**
+ * 종마다 내보내기 착지 갈래 — `PokemonInfo.Catalog.MoveType`. 0이 아닌 것만 적는다(수컷 · 보통색 · 폼 0).
+ *
+ * 내보내기 시퀀스(`ee400` 등)는 `GroupOption 14`가 120 · 121 · 122인 묶음으로 갈린다 — 120은 1.6m 위에서 떨어져
+ * 착지 동작(`PokemonIntroMotion height=160`), 121은 볼이 몸 한가운데로 가고 떨어지지 않는다, 122는 볼이 낮게 와서
+ * 떨어지지 않는다. 세어 보면 `MoveType` 0이 298종(땅에 서는 것) · 1이 113종(주뱃 · 고오스 · 잉어킹 — 뜨거나 헤엄친다) ·
+ * 2가 12종(리자몽 · 팬텀 · 망나뇽 · 핫삼 — 큰 날개)이라 **120 + MoveType**으로 읽는다(롬에 그 이음이 적힌 표는 없다 — 우리 짐작).
+ * `ba01` 착지 클립도 0만 갖고 1 · 2는 없다(실측: 41 · 92 · 6에 `ba01`이 0개)
+ */
+function moveTypes(env: Environment): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const e of env.entries) {
+    if (e.object.classId !== CLS.MonoBehaviour) continue
+    const v = env.readEntry(e)
+    if (!isObj(v) || v.m_Name !== 'PokemonInfo') continue
+    for (const r of arr(v.Catalog) as Obj[]) {
+      if (num(r.Sex) !== 0 || num(r.Rare) !== 0 || num(r.FormNo) !== 0) continue
+      const t = num(r.MoveType)
+      if (t !== 0) out[String(num(r.MonsNo))] = t
+    }
+    break
+  }
+  return out
+}
 
 export async function convertBattleFx(ctx: ConvertContext): Promise<Produced> {
   const src = requireBdsp(ctx)
@@ -951,7 +1038,9 @@ export async function convertBattleFx(ctx: ConvertContext): Promise<Produced> {
     if (lower.startsWith(seqDir) && lower.indexOf('/', seqDir.length) < 0) seqNames.set(lower.slice(seqDir.length), real)
   }
   const wantSeq = new Set<string>()
-  for (const n of seqNames.keys()) if (CAPTURE_SEQ.test(n) || SENDOUT_SEQ.test(n) || n === 'ee000' || n === 'ee300') wantSeq.add(n)
+  for (const n of seqNames.keys()) {
+    if (CAPTURE_SEQ.test(n) || SENDOUT_SEQ.test(n) || RETURN_SEQ.test(n) || n === 'ee000' || n === 'ee300') wantSeq.add(n)
+  }
   for (const s of tables.intro.values()) if (s) wantSeq.add(s.toLowerCase())
   const moves: Record<string, Record<string, string>> = {}
   for (let id = 1; id <= LAST_MOVE; id++) {
@@ -976,6 +1065,36 @@ export async function convertBattleFx(ctx: ConvertContext): Promise<Produced> {
     if (b.capture) wantPrefab.add(b.capture)
     if (b.ballout) wantPrefab.add(b.ballout)
   }
+
+  // 볼 모델 열여섯 — 클립째 굽는다. 시퀀스가 번호로 부르는 클립 · 로케이터 · 붙은 이펙트의 이름표를 같이 적는다
+  // (`BallModelTable`). 붙은 이펙트(`ee102_01_check_light` 흔들림 불빛 · `ee105_03_succeeded_light` 성공 불빛)는
+  // 시퀀스의 `ParticleCreate`에 안 나오고 `DprModelParticlePlay`로만 불리므로 여기서 프리팹 목록에 넣는다
+  let ballTable: BallModelTable | null = null
+  const ballFiles: Record<string, string> = {}
+  const missingBalls: string[] = []
+  for (let id = FIRST_BALL; id <= LAST_BALL; id++) {
+    check(ctx)
+    const bytes = await read(BALL_BUNDLE(id))
+    if (!bytes) { missingBalls.push(BALL_BUNDLE(id)); continue }
+    const env = openEnvironment([bytes])
+    const table = ballModelTable(env)
+    if (!table) throw new Error(`볼 ${BALL_BUNDLE(id)}에 ObjectEntity가 없다`)
+    // 번호표는 열여섯이 같아야 한 장으로 적을 수 있다 — 다르면 선다
+    if (ballTable && JSON.stringify(ballTable) !== JSON.stringify(table)) {
+      throw new Error(`볼 ${BALL_BUNDLE(id)}의 클립 · 로케이터 표가 몬스터볼과 다르다`)
+    }
+    ballTable ??= table
+    const { glb } = await exportModel(env, encodePng, { maxSize: FX_TEXTURE, keepClips: true })
+    put(ctx, out, `data/fx/ball/${String(id)}.glb`, glb)
+    ballFiles[String(id)] = `ball/${String(id)}.glb`
+    await breathe(ctx)
+  }
+  if (missingBalls.length > 0) throw new Error(`BDSP 볼 모델이 없습니다 (${missingBalls.join(' · ')})`)
+  for (const p of ballTable?.particles ?? []) if (p) wantPrefab.add(p)
+
+  // 내보내기 착지 갈래 (`moveTypes`). 표가 없으면 다 땅에 서는 것(0)으로 간다
+  const dprBytes = await read(DPR_MASTERDATAS)
+  const moveType = dprBytes ? moveTypes(openEnvironment([dprBytes])) : {}
 
   const missingSequences: string[] = []
   const bakedSequences: string[] = []
@@ -1058,6 +1177,8 @@ export async function convertBattleFx(ctx: ConvertContext): Promise<Produced> {
     moves,
     intro: Object.fromEntries(tables.intro),
     capture: bakedSequences.filter((n) => CAPTURE_SEQ.test(n)),
+    ballModel: { ...ballTable, files: ballFiles },
+    moveType,
     sequences: bakedSequences,
     prefabs: baked.sort(),
     missingPrefabs: absent.sort(),

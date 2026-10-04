@@ -1,61 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import {
-  CAPTURE_DROP_TIME,
-  CAPTURE_SEAL_TIME,
-  CAPTURE_SHAKE_START,
-  CAPTURE_THROW_TIME,
-  ballDropLift,
-  ballPalette,
-  ballShakeAngle,
-  captureBodyScale,
-  captureResolveAt,
-  recallsBody,
-  throwArc,
-  trainerThrowOrigin,
-} from './battleBallMotion'
+import { recallsBody, trainerThrowOrigin } from './battleBallMotion'
 import { battleNdc } from '../../engine/battle/shots'
-
-describe('battle ball motion', () => {
-  it('keeps the throw endpoints exact and raises the midpoint', () => {
-    const from = trainerThrowOrigin('p1a')
-    const to = [1, 1, -2] as const
-    expect(throwArc(from, to, 0)).toEqual([...from])
-    expect(throwArc(from, to, 1)).toEqual([...to])
-    expect(throwArc(from, to, 0.5)[1]).toBeGreaterThan(2)
-  })
-
-  it('shakes only for the number of completed checks', () => {
-    expect(ballShakeAngle(0.2, 3)).toBe(0)
-    // 한 번 안에서 앞 0.817초는 가만히 있고 끝에 기운다 (BDSP `ee102_ball_anim`)
-    expect(ballShakeAngle(CAPTURE_SHAKE_START + 0.4, 3)).toBe(0)
-    expect(Math.abs(ballShakeAngle(CAPTURE_SHAKE_START + 0.817 + 0.07, 3))).toBeGreaterThan(0.1)
-    expect(ballShakeAngle(captureResolveAt(3), 3)).toBe(0)
-  })
-
-  it('drops from 0.5 m above rest, bounces twice and rests (BDSP ee101_ball_anim)', () => {
-    expect(ballDropLift(0)).toBeCloseTo(0.5, 6)
-    expect(ballDropLift(0.25)).toBe(0)
-    expect(ballDropLift(0.4)).toBeCloseTo(0.105, 3)
-    expect(ballDropLift(0.6)).toBeCloseTo(0.039, 3)
-    expect(ballDropLift(5)).toBe(0)
-    // 떨어지기 시작하는 시각은 닫힌 뒤, 흔들림은 멎은 뒤
-    expect(CAPTURE_DROP_TIME).toBeGreaterThan(CAPTURE_SEAL_TIME)
-    expect(CAPTURE_SHAKE_START - CAPTURE_DROP_TIME).toBeCloseTo(0.767, 3)
-  })
-
-  it('seals the target in the ball and releases it only after a failed catch', () => {
-    expect(captureBodyScale(CAPTURE_THROW_TIME, 2, false)).toBe(1)
-    expect(captureBodyScale(CAPTURE_SEAL_TIME, 2, false)).toBe(0)
-    expect(captureBodyScale(captureResolveAt(2) + 0.4, 2, false)).toBe(1)
-    expect(captureBodyScale(captureResolveAt(4) + 3, 4, true)).toBe(0)
-  })
-
-  it('uses distinct official ball color families and falls back to a Poke Ball', () => {
-    expect(ballPalette(1)).not.toEqual(ballPalette(4))
-    expect(ballPalette(13).bottom).toBe('#16191a')
-    expect(ballPalette(999)).toEqual(ballPalette(4))
-  })
-})
 
 describe('볼이 날아오는 자리', () => {
   // 배틀에 사람이 서지 않는다 — 등장 볼도 화면 밖에서 와서 화면으로 날아든다

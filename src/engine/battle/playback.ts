@@ -22,10 +22,10 @@
 // 도는 동안 게이지가 기다린다. 그 자리를 박자 하나로 낸다(`hold`) — 그동안
 // 무대의 `MoveVfx`가 틀 하나를 돌린다(`battle/vfx`). 길이는 틀과 위력이 정한다.
 import type { Stats } from '../../data/schema'
-import { captureFrames, captureTailFrames } from './captureTiming'
+import { captureFrames, captureTailFrames, faintSeconds, recallSeconds, sendOutSettledAt } from './captureTiming'
 import type { Actor, BattleEvent, CuredBy, LevelStep, SlotId } from './events'
 import { rewardSteps } from './events'
-import { BODY_FADE_SECONDS, FRAME_SECONDS } from './presentationClock'
+import { FRAME_SECONDS } from './presentationClock'
 import { moveFramesOf, statusAnimFrames } from './vfx'
 import { applyEvents, emptyView, slotOfKey, type BattleView } from './view'
 
@@ -156,12 +156,21 @@ const HOLD_FAINT = 7
 /**
  * 기절 박자가 실제로 쉬는 프레임.
  *
- * 체력창이 빠지는 7프레임 **더하기** 몸이 지는 시간이다
- * (`presentationClock`의 `BODY_FADE_SECONDS`). 원작 값 7만 쉬면 무대의 몸이
- * 아직 반쯤 남아 있는데 「쓰러졌다!」와 교체가 지나간다 — 값 7을 몸 동작의
- * 길이로 쓰지 말라는 것이 이 상수의 뜻이다
+ * 체력창이 빠지는 7프레임 **더하기** 무대의 기절 연출이다 — BDSP `ee620`(트레이너의 포켓몬 · 볼로 돌아간다) ·
+ * `ee621`(야생)이 쓰러지는 동작을 틀고 몸을 줄여 지우고 카메라를 옮기는 데까지(`captureTiming`의 `faintSeconds`).
+ * 원작 값 7만 쉬면 무대의 몸이 아직 쓰러지는 중에 「쓰러졌다!」와 교체가 지나간다
  */
-const HOLD_FAINT_PRESENTATION = HOLD_FAINT + Math.ceil(BODY_FADE_SECONDS / FRAME_SECONDS)
+function holdFaint(wild: boolean): number {
+  return HOLD_FAINT + Math.ceil(faintSeconds(wild) / FRAME_SECONDS)
+}
+
+/**
+ * 등판이 쉬는 프레임 — 원작 값과 무대의 내보내기 연출(BDSP `ee400` · `ee406`: 볼이 날아와 열리고 몸이 떨어져 착지한다 ·
+ * 앞 마리를 거두면 `ee610`이 먼저) 중 긴 쪽. 원작 값만 쉬면 몸이 아직 떨어지는 중에 「가랏!」이 뜬다
+ */
+function holdSendOut(ds: number, recall: boolean): number {
+  return Math.max(ds, Math.ceil(((recall ? recallSeconds() : 0) + sendOutSettledAt()) / FRAME_SECONDS))
+}
 
 /**
  * 경험치 줄을 찍고 게이지가 차기까지 쉬는 프레임 — `GET_EXP_MSG_DELAY = 30 / 4`.
@@ -487,9 +496,9 @@ export function buildBeats(
 
       case 'faint':
         // `PlayFaintAnimation / HealthBoxSlideOut / PrintMessage` — 먼저 쓰러지고 그 다음에 말한다.
-        // ⚠️ **몸이 사라지는 시간까지 쉰다** (`HOLD_FAINT_PRESENTATION`).
+        // ⚠️ **몸이 사라지는 시간까지 쉰다** (`holdFaint`).
         // `HOLD_FAINT 7`은 체력창이 빠지는 값이고 몸이 지는 시간이 아니다
-        show([e], HOLD_FAINT_PRESENTATION, 'presentation')
+        show([e], holdFaint(foeOnStage && e.actor.side === 'p2'), 'presentation')
         say(text(e), HOLD_MESSAGE)
         break
 
@@ -502,12 +511,13 @@ export function buildBeats(
         const first = !sentOut.has(e.actor.side)
         sentOut.add(e.actor.side)
         if (e.actor.slot.endsWith('b')) doubles = true
-        const hold = first && e.actor.side === 'p2' && foeOnStage ? HOLD_ENCOUNTER
-          : first ? HOLD_FIRST_SEND_OUT[e.actor.side] : HOLD_SEND_OUT
         const foe = view.active.p2a
         // 앞 마리를 **먼저** 거둔다 — 회수 글이 등판보다 앞이다 (`subscript_switch_pokemon`).
         // 쓰러진 자리(`presence: 'down'`)와 끌려 나온 자리는 거둘 몸이 없어 원작도 말이 없다
         const prev = view.active[e.actor.slot]
+        const recalled = prev !== null && prev !== undefined && prev.presence === 'alive' && prev.key !== e.actor.name
+        const hold = first && e.actor.side === 'p2' && foeOnStage ? HOLD_ENCOUNTER
+          : holdSendOut(first ? HOLD_FIRST_SEND_OUT[e.actor.side] : HOLD_SEND_OUT, !first && recalled)
         if (!first && !e.forced && prev && prev.presence === 'alive' && prev.key !== e.actor.name) {
           const percent = e.actor.side === 'p1' && !doubles
             // C의 나눗셈이다 — 0 쪽으로 버린다. 적어 둔 값이 0이면 원작은 0으로 나누는데
@@ -553,7 +563,7 @@ export function buildBeats(
         // 마지막 반짝임이 사그라지기를 기다린다. 그 뒤에야 닉네임·도감·배틀
         // 해제나 상대의 다음 수가 온다. 길이는 무대와 **같은 시간표**에서 온다
         // (`engine/battle/captureTiming`)
-        show([e], captureFrames(e.shakes), 'presentation')
+        show([e], captureFrames(e.shakes, e.caught), 'presentation')
         say(text(e), HOLD_MESSAGE)
         out.push({
           text: null, events: [], hold: captureTailFrames(e.shakes, e.caught), presentation: true,
