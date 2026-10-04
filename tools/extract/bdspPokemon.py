@@ -60,6 +60,32 @@ LAST_DEX = 493
 # 좋아하기·싫어하기, 포핀 먹기, 필드 걷기다 — 애니 데이터의 36%가 거기다
 BATTLE_CLIPS = re.compile(r"_ba\d\d_")
 
+# 쓰러짐 동작 — 기절 시퀀스(`ee620` · `ee621`)의 `PokemonMotion motion=17`이 트는 `ba41_down01`.
+# 본 번들이 아니라 `battle/animations/<종>_<판>`에 있고, 그 번들의 다른 클립(대기 둘째 · 공격 둘째 ·
+# 아미티광장)은 안 싣는다 — 브라우저 변환기(`import/bdsp/convert.ts`의 `monClipFilter`)와 같은 규칙이다
+DOWN_CLIP = re.compile(r"_ba41_")
+
+
+def clip_filter(extra_names: list[str]) -> "re.Pattern":
+    """본 번들의 배틀 동작 + 추가 번들의 쓰러짐만. 추가 번들에서 쓰러짐이 아닌 이름을 뺀다"""
+    drop = [n for n in extra_names if not DOWN_CLIP.search(n)]
+    if not drop:
+        return BATTLE_CLIPS
+    return re.compile(f"^(?!(?:{'|'.join(re.escape(n) for n in drop)})$).*{BATTLE_CLIPS.pattern}")
+
+
+def with_down_clip(name: str, paths: list[Path]) -> tuple[list[Path], "re.Pattern"]:
+    """번들 목록 뒤에 추가 동작 번들을 붙이고 클립 거르개를 낸다. 쓰러짐이 없으면 그대로"""
+    import UnityPy
+    anim = BATTLE / "animations" / re.sub(r"_\d\d$", "", name)
+    if not anim.is_file() or anim in paths:
+        return paths, BATTLE_CLIPS
+    names = [o.read_typetree()["m_Name"] for o in UnityPy.load(str(anim)).objects
+             if o.type.name == "AnimationClip"]
+    if not any(DOWN_CLIP.search(n) for n in names):
+        return paths, BATTLE_CLIPS
+    return [*paths, anim], clip_filter(names)
+
 # 텍스처 긴 변의 상한. 포켓몬 하나가 512짜리 넉 장을 들고 나오면 glb가 1MB를
 # 넘고, 493종이면 그것만 500MB다. 배틀에서 화면을 채우는 크기가 400픽셀 남짓이라
 # 256이면 텍셀이 남는다
@@ -132,9 +158,10 @@ def key_of(dex: int, form: int) -> str:
 
 def bake_one(dex: int, form: int, name: str, outdir: Path) -> dict:
     out = outdir / f"{key_of(dex, form)}.glb"
+    paths, clips = with_down_clip(name, trio(name))
     stat = export(
-        trio(name), out, None, None, None, MAX_TEXTURE, True, MAIN_PROPS,
-        BATTLE_CLIPS,
+        paths, out, None, None, None, MAX_TEXTURE, True, MAIN_PROPS,
+        clips,
     )
     return {
         "정점": stat["vertices"],

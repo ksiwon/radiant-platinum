@@ -11,6 +11,7 @@
 // 중앙값이 0.0이다 (`.audit/probe/bdspGroundH.py`)
 //
 // ⚠️ **굽는 쪽은 이것 하나다.** 개발 산출물(`pnpm extract:fields` → `tools/spike/bdspGroups.mjs`)도 이 파일을 돌린다 — 두 굽는 쪽이 갈릴 자리를 안 만든다
+import { UNITY_PLANE } from './unityBuiltin'
 import { bakeLooks, lanes, worldOf, type ImageShare, type Mat4 } from './arena'
 import {
   ARRAY_BUFFER, ELEMENT_BUFFER, FLOAT, GlbBuffer, UINT, USHORT, verifyGlb, writeGlb, type Gltf,
@@ -52,7 +53,6 @@ interface FieldStat {
  * (떡잎마을 `Plane_Water (1)` · 201·203·204·205·212·213·214·225·227·228·229번 도로 · 축복·연고·늪 등 36자리).
  * Unity 모양 그대로: 10×10, 11×11 정점, 법선 +Y, UV = 격자/10
  */
-const UNITY_PLANE = 10209
 /** 기본 평면 중 물만 세운다 — 그림자·그라데이션 판(`EntShadow` · `Grad` · `PlaneGrass`)은 따로 볼 일이다 */
 const BUILTIN_PLANE_MATERIAL = /Water/
 

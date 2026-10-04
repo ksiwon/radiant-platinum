@@ -244,15 +244,21 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 여섯 껍데기가 빠지면서 두 종의 glb 바이트가 달라진다
    * (`import/bdsp/albedo.ts`의 `carvedShells`)
    *
+   * 6 — **쓰러짐 동작(`ba41_down01`)을 싣는다** — 기절 시퀀스(`ee620` · `ee621`)의 `PokemonMotion motion=17`이다. 본 번들이 아니라
+   * `battle/animations/<종>_<판>`에 있어 같이 열고 그것만 고른다(`import/bdsp/convert.ts`의 `monClipFilter`). 종마다 클립 하나(피카츄
+   * 1.19 → 1.27MB). ⚠️ **4 · 5도 그대로 쓴다**(`GROUP_ACCEPTS`) — 없으면 맞은 자세로 쓰러질 뿐이다
+   *
    * 4 — **눈·입이 제 칸을 읽는다** (`_ColorBaseU`). 옛 판은 왼눈이 반쯤 감긴 칸 · 입이 옆 칸을 읽어 얼굴이 일그러지고
    * 슬퍼 보였다(눈 609 · 입 149 재질). glb의 UV 바이트와 구운 눈 그림이 달라진다
    */
-  monModels: 5,
+  monModels: 6,
   /**
+   * 3 — 암컷 몸에도 쓰러짐 동작(`ba41_down01`)을 싣는다 (`monModels` 6과 같은 고침). ⚠️ 1 · 2도 그대로 쓴다(`GROUP_ACCEPTS`)
+   *
    * 2 — 이로치 그림을 개발 추출기와 같은 ASTC 규칙으로 푼다 (`npcModels` 16과 같은 고침). `pnpm e2e` ⑮가 처음 픽셀로 견준 자리라
    * 이상해씨 `shiny/1/BodyA01.png`에서 5,504개가 갈렸다. ⚠️ 1도 그대로 쓴다(`GROUP_ACCEPTS`)
    */
-  monVariants: 2,
+  monVariants: 3,
   /**
    * 2 — **텍스처 없는 재질에 확산색을 실어 준다.**
    *
@@ -342,12 +348,17 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    */
   berryPlants: 2,
   /**
+   * 2 — **볼 모델과 거두기 · 기절 시퀀스가 붙는다.** 볼 열여섯(`data/fx/ball/<볼>.glb` — `ob02nn_00`을 클립째) · 그 클립 · 로케이터 ·
+   * 붙은 이펙트 번호표(`index.json`의 `ballModel`) · 붙은 이펙트 프리팹 둘(`ee102_01_check_light` · `ee105_03_succeeded_light`) ·
+   * `ee610`/`ee620`/`ee621`과 그 프리팹(`ee600_*`) · 종마다 내보내기 착지 갈래(`moveType`). 포획 · 내보내기 · 기절이 그 시퀀스를 그대로
+   * 튼다(`scene/battle/BattleBallEffects`) — 옛 판이면 볼이 안 서고 연출이 비므로 다시 굽게 한다
+   *
    * 1 — **포획 · 내보내기 · 기술 이펙트가 BDSP 원작 파티클이다** (`data/fx/` — `import/bdsp/fx.ts`의 `convertBattleFx` ·
    * 노드 쪽 `tools/extract/bdspFx.mjs`가 같은 코드를 돈다). 볼 16종의 `eb###_capture` · `eb###_ballout`, 포획 흐름
    * `ee101~113` · 내보내기 `ee4xx`, 기술 1~467의 시퀀스와 그것이 부르는 프리팹 · 그림. ⚠️ **필수 그룹이라**(`required.ts`)
    * 이미 깐 사람은 이 그룹만 새로 굽는다
    */
-  battleFx: 1,
+  battleFx: 2,
   /**
    * 1 — **바위깨기 · 풀베기 · 괴력 바위 · 꿀나무 · 눈덩이가 BDSP 입체다** (`models/gimmick/obj0001~0006_00.glb` · `index.json`,
    * 다섯 벌 415KB — `import/bdsp/convert.ts`의 `convertGimmicks` · 노드 쪽 `bdspArena.py --gimmicks`). 꿀나무는 뼈 넷과 흔들림
@@ -379,8 +390,9 @@ const GROUP_ACCEPTS: Readonly<Record<string, readonly number[]>> = {
   distortion: [1],
   // ASTC 반올림 (`GROUP_FORMAT.npcModels` 16) — 1~2/255 차이라 다시 굽게 하지 않는다
   npcModels: [15],
-  monModels: [4],
-  monVariants: [1],
+  // 쓰러짐 동작 (`GROUP_FORMAT.monModels` 6 · `monVariants` 3) — 없으면 맞은 자세로 쓰러진다
+  monModels: [4, 5],
+  monVariants: [1, 2],
   // 구역 사본 (`GROUP_FORMAT.fields` 4) — 겹쳐 서는 것만 다르다
   fields: [3],
 }
