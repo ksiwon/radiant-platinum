@@ -406,7 +406,10 @@ async function main() {
     if (!t) throw new Error(`모르는 장면: ${id}`)
     return t
   })
-  const vite = await startVite(await freePort())
+  // ⚠️ **나란히 찍을 때는 판마다 변환 캐시를 따로 준다** (`--lane=2` → `node_modules/.vite-harness-2`). 같은 캐시를 두 vite가
+  // 같이 쓰면 의존성 묶기가 서로를 지운다. 첫 판은 그 캐시를 새로 묶느라 몇 분 더 걸린다
+  const lane = args.find((a) => a.startsWith('--lane='))?.slice(7)
+  const vite = await startVite(await freePort(), lane ? `node_modules/.vite-harness-${lane}` : undefined)
   // ⚠️ **장면마다 브라우저를 새로 띄운다.** 한 브라우저로 무거운 장면을 열댓 개 이어 찍으니 뒤의 것들이 땅 없이 파란 허공에
   // 캡슐만 나왔다(GPU 메모리가 차는 것으로 본다). 다 찍은 뒤 가운데 프레임이 거의 한 빛(JPEG가 작다)이면 한 번 더 찍는다
   const queue = picked.map((take) => ({ take, tries: 0, stalls: 0 }))

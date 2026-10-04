@@ -6,7 +6,8 @@
 //
 // ① 장면마다 CDP 프레임(시각이 제각각)을 30fps로 고르게 다시 뽑는다 — 프레임마다 머문 시간을 ffconcat에 적고 `fps=30`이 고른다.
 // ② 글 카드는 HTML을 크로미움으로 프레임마다 그려 PNG로 받는다(`cards.mjs`) — ffmpeg `drawtext`보다 글꼴 · 빛 번짐이 곱다.
-// ③ 차례대로 `xfade`로 잇는다. 조각 길이는 「큐 길이 + 다음과 겹치는 길이」라 큐 시트의 시각이 그대로 맞는다. 소리는 아직 없다.
+// ③ 차례대로 `xfade`로 잇는다. 조각 길이는 「큐 길이 + 다음과 겹치는 길이」라 큐 시트의 시각이 그대로 맞는다.
+// ④ 곡(`SCORE`)을 큐 시각에 맞춰 깔고 마지막에 합친다. 곡은 BDSP 원곡을 풀어 둔 wav다(`.audit/reels/music/`, 깃에 없다).
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -111,6 +112,13 @@ const SHORTS = [
 ]
 
 const EDIT = SHORT ? SHORTS : MAIN
+
+/**
+ * 곡 — 큐에 붙인다. `at`은 그 큐가 시작하는 시각에서 몇 초 뒤인가, `from`은 곡 안 시작(초), `len`은 까는 길이(초).
+ * `fadeIn` · `fadeOut`은 그 조각의 앞뒤 페이드, `gain`은 dB. 조각끼리 겹치면 섞인다. 비어 있으면 소리 없이 낸다
+ */
+const SCORE = { '16:9': [], '9:16': [] }[ASPECT] ?? []
+const MUSIC = resolve(ROOT, '.audit/reels/music')
 const run = (cmd, argv) => execFileSync(cmd, argv, { stdio: ['ignore', 'ignore', 'pipe'], maxBuffer: 1 << 26 })
 const enc = ['-r', String(FPS), '-c:v', 'libx264', '-crf', '14', '-preset', 'slow', '-pix_fmt', 'yuv420p']
 
@@ -180,6 +188,27 @@ function duration(file) {
   return Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file]).toString().trim())
 }
 
+/** 곡 조각을 큐 시각에 놓고 섞어 영상에 붙인다. 끝은 영상 길이에서 자른다 */
+function mixScore(video, final, cueAt) {
+  const total = duration(video)
+  const srcs = [...new Set(SCORE.map((p) => p.src))]
+  const inputs = srcs.flatMap((s) => ['-i', resolve(MUSIC, `${s}.wav`)])
+  const chains = SCORE.map((p, i) => {
+    if (!(p.cue in cueAt)) throw new Error(`곡 조각 ${String(i)}: 큐 ${p.cue}가 편집에 없다`)
+    const start = cueAt[p.cue] + (p.at ?? 0)
+    const k = srcs.indexOf(p.src) + 1
+    const f = [`atrim=start=${p.from.toFixed(3)}:duration=${p.len.toFixed(3)}`, 'asetpts=PTS-STARTPTS', 'aformat=sample_rates=48000:channel_layouts=stereo']
+    if (p.fadeIn) f.push(`afade=t=in:d=${p.fadeIn}`)
+    if (p.fadeOut) f.push(`afade=t=out:st=${(p.len - p.fadeOut).toFixed(3)}:d=${p.fadeOut}`)
+    if (p.gain) f.push(`volume=${p.gain}dB`)
+    f.push(`adelay=${Math.round(start * 1000)}:all=1`)
+    return `[${String(k)}:a]${f.join(',')}[m${String(i)}]`
+  })
+  const mix = `${SCORE.map((_, i) => `[m${String(i)}]`).join('')}amix=inputs=${String(SCORE.length)}:normalize=0,alimiter=limit=0.89,atrim=duration=${total.toFixed(3)}[a]`
+  run('ffmpeg', ['-y', '-v', 'error', '-i', video, ...inputs, '-filter_complex', [...chains, mix].join(';'),
+    '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '320k', '-movflags', '+faststart', final])
+}
+
 async function main() {
   mkdirSync(WORK, { recursive: true })
   mkdirSync(OUT, { recursive: true })
@@ -218,8 +247,10 @@ async function main() {
     last = out
   }
   const final = resolve(OUT, SHORT ? 'radiant-reveal-short.mp4' : 'radiant-reveal.mp4')
+  const silent = SCORE.length ? resolve(WORK, 'video.mp4') : final
   run('ffmpeg', ['-y', '-v', 'error', ...inputs, '-filter_complex', parts.join(';'), '-map', '[v]', ...enc,
-    '-movflags', '+faststart', final])
+    '-movflags', '+faststart', silent])
+  if (SCORE.length) mixScore(silent, final, Object.fromEntries(stamps.map((l) => { const [c, t] = l.split(' '); return [c, Number(t)] })))
   writeFileSync(resolve(WORK, 'stamps.txt'), stamps.join('\n'))
   console.log(`\n  ${final} · ${duration(final).toFixed(2)}초${missing ? ` · 빠진 장면 ${String(missing)}` : ''}`)
 }
