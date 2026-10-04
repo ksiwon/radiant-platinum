@@ -55,6 +55,7 @@ import { spriteKey } from '../../engine/pokemon/form'
 import { MoveVfx } from './MoveVfx'
 import type { SeqCamera } from '../../engine/battle/fx/sequence'
 import { clampShot, type Box } from '../../engine/battle/fx/cameraClamp'
+import { NO_RETURN, stepCamera, type CameraReturn } from './battleCamera'
 import { buildArenaCollider } from '../../engine/battle/fx/arenaCollider'
 import { BattleAtmosphere } from './BattleAtmosphere'
 import { MOVE_FRAMES, moveFramesOf } from '../../engine/battle/vfx'
@@ -1134,9 +1135,8 @@ export function BattleStage() {
 function useBattleCamera(fit: number, arenaRadius: number): void {
   /** 지금 카메라가 선 거리 배율. 첫 프레임에는 목표 그대로 선다 */
   const shownFit = useRef<number | null>(null)
-  /** 시퀀스 카메라의 마지막 자리 · 시퀀스가 놓은 시각 — 돌아오는 길을 잇는다 */
-  const lastSeq = useRef<SeqCamera | null>(null)
-  const leftAt = useRef<number | null>(null)
+  /** 시퀀스 카메라의 마지막 자리 · 놓은 시각 — 돌아오는 길을 잇는다 */
+  const back = useRef<CameraReturn>(NO_RETURN)
   const time = useRef(new ClockReader())
   useFrame((state) => {
     const dt = time.current.read(battleClock.now())
@@ -1175,80 +1175,16 @@ function useBattleCamera(fit: number, arenaRadius: number): void {
     // 지금 화면에 선 몸의 상자만 — 쓰러지거나 거둔 몸 · 감춘 몸의 상자가 카메라를 밀면 안 된다
     const boxes = (): Box[] => Object.entries(slotBox).filter(([slot]) => slotRig[slot]?.root && slotRig[slot]?.shown).map(([, b]) => b)
     const aspect = state.size.width / Math.max(1, state.size.height)
-    let shot = base
-    if (want) {
-      shot = clampShot(want, arenaRadius, boxes(), aspect, arenaRoom.current)
-      lastSeq.current = shot
-      leftAt.current = null
-    } else if (lastSeq.current) {
-      leftAt.current ??= battleClock.now()
-      const k = Math.min(1, (battleClock.now() - leftAt.current) / SEQ_CAMERA_RETURN)
-      const from = lastSeq.current
-      // ⚠️ **크게 돌아야 하면 끊는다.** 껍질에 숨기(`ew110`)는 모부기 얼굴 앞(상대 쪽)에서 끝나고 기본 자리는
-      // 모부기 등 뒤다. 그 사이를 곧게 이으면 카메라가 모부기 몸 곁을 0.35초에 스쳐 지나며, 주황빛 모부기가
-      // 화면 왼쪽 아래를 통째로 덮고 바닥만 비친 칸이 섰다(C3 3.2초). 보는 곳에서 본 두 자리의 수평 방향이
-      // `SEQ_CAMERA_CUT`보다 벌어지면 곧바로 기본 자리로 끊고, 그 안이면 보는 곳 둘레를 **돌아서** 온다
-      if (k === 0 && swing(from, base) > SEQ_CAMERA_CUT) {
-        lastSeq.current = null; leftAt.current = null
-      } else {
-        const e = k * k * (3 - 2 * k)
-        shot = clampShot(orbitBlend(from, base, e), arenaRadius, boxes(), aspect, arenaRoom.current)
-        if (k >= 1) { lastSeq.current = null; leftAt.current = null; shot = base }
-      }
-    }
+    // 돌아오는 길과 끊을지는 `battleCamera.stepCamera`가 정한다
+    const step = stepCamera(back.current, want, base, battleClock.now(), (c) => clampShot(c, arenaRadius, boxes(), aspect, arenaRoom.current))
+    back.current = step.state
+    const shot = step.shot
     battleStage.position.set(shot.pos[0] + quake, shot.pos[1] + quake * 0.7, shot.pos[2]).add(STAGE_ORIGIN)
     battleStage.target.set(shot.target[0], shot.target[1], shot.target[2]).add(STAGE_ORIGIN)
     battleStage.fov = shot.fov
     battleStage.roll = shot.roll
   })
 }
-
-/** 시퀀스 카메라가 끝난 뒤 기본 자리로 돌아오는 시간(초) — 우리 값 */
-const SEQ_CAMERA_RETURN = 0.35
-
-/**
- * 돌아오는 길이 보는 곳 둘레를 이 각(도)보다 크게 돌아야 하면 잇지 않고 끊는다 — 우리 값.
- *
- * 0.35초에 90°를 돌면 초당 260°다. 그보다 빠르면 화면이 휙 쓸려 무엇이 지나갔는지 안 읽히고(필름의 180° 규칙도
- * 반대편으로 넘어가는 이음은 끊어 간다), 그 안이면 도는 것이 오히려 두 샷을 잇는다
- */
-const SEQ_CAMERA_CUT = 90
-
-/** 두 샷의 카메라가 각자의 보는 곳에서 본 수평 방향이 벌어진 각(도) */
-function swing(a: SeqCamera, b: SeqCamera): number {
-  const ax = a.pos[0] - a.target[0], az = a.pos[2] - a.target[2]
-  const bx = b.pos[0] - b.target[0], bz = b.pos[2] - b.target[2]
-  const d = Math.abs(Math.atan2(ax * bz - az * bx, ax * bx + az * bz))
-  return (d * 180) / Math.PI
-}
-
-/**
- * 돌아오는 길 — 보는 곳은 곧게, 카메라는 **보는 곳 둘레를 돌아서**(수평 방위 · 내려다보는 각 · 거리를 따로 잇는다).
- * 카메라 자리를 곧게 이으면 두 자리 사이에 선 몸 곁을 스친다
- */
-function orbitBlend(from: SeqCamera, to: SeqCamera, e: number): SeqCamera {
-  const target = lerpV(from.target, to.target, e)
-  const polar = (c: SeqCamera) => {
-    const dx = c.pos[0] - c.target[0], dy = c.pos[1] - c.target[1], dz = c.pos[2] - c.target[2]
-    const r = Math.hypot(dx, dy, dz)
-    return { yaw: Math.atan2(dx, dz), pitch: Math.asin(Math.max(-1, Math.min(1, dy / (r || 1)))), r }
-  }
-  const a = polar(from), b = polar(to)
-  let dyaw = b.yaw - a.yaw
-  dyaw -= Math.round(dyaw / (2 * Math.PI)) * 2 * Math.PI
-  const yaw = a.yaw + dyaw * e
-  const pitch = a.pitch + (b.pitch - a.pitch) * e
-  const r = a.r + (b.r - a.r) * e
-  return {
-    pos: [target[0] + Math.sin(yaw) * Math.cos(pitch) * r, target[1] + Math.sin(pitch) * r, target[2] + Math.cos(yaw) * Math.cos(pitch) * r],
-    target,
-    fov: from.fov + (to.fov - from.fov) * e,
-    roll: from.roll * (1 - e),
-  }
-}
-
-const lerpV = (a: readonly number[], b: readonly number[], t: number): [number, number, number] =>
-  [a[0]! + (b[0]! - a[0]!) * t, a[1]! + (b[1]! - a[1]!) * t, a[2]! + (b[2]! - a[2]!) * t]
 
 /**
  * 카메라가 작은 몸 쪽으로 다가가는 감쇠의 시간 상수(초).
