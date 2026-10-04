@@ -4,11 +4,16 @@
 // 무엇이 붙었는지의 유일한 힌트라(무리가 좋을수록 크게 흔든다) 화면에서
 // 빠지면 규칙의 절반이 안 보인다.
 //
-// ⚠️ **원작의 애니를 그대로 못 튼다.** 원작은 소품 모델에 딸린 nsbca 세 벌 중
-// 하나를 렌더 오브젝트에 얹는다(`MapPropAnimationManager_AddAnimationToRenderObj`).
-// 우리 소품 파이프라인은 정지 메시만 굽는다 — 그래서 **세기만** 옮기고
-// (`shakeAnimation`이 주는 0·1·2), 흔드는 모양은 우리가 만든다. 값 셋은
-// 아래 `SWAY`에 적어 두었고 그것이 우리 것이라는 표시다.
+// **나무는 BDSP 꿀나무다** (`gimmick/obj0003_00` SweetTree · `engine/world/gimmicks`). 뼈 넷(`Root/Tree01/Tree02/Tree03`)에
+// 클립 넷이 실려 있고, 원작(DS)이 소품 모델에 딸린 nsbca 세 벌 중 하나를 얹듯(`MapPropAnimationManager_AddAnimationToRenderObj`)
+// 흔들림 세 단계(`shakeAnimation`의 0 · 1 · 2)에 `Move01` · `Move02` · `Move03`을 잇는다 — 셋의 흔들림 폭이 그 차례로 커진다
+// (`HONEY_TREE_CLIPS` 머리말의 실측). 안 흔들릴 때는 쉼 자세 `Wait`이다.
+//
+// ⚠️ **자리는 원작 소품 자리에서 반 칸씩 옮긴다.** 원작 소품 자리(배치 기록)는 막힌 2×2칸의 한가운데(칸 모서리)다 — 스물한 맵에서
+// 막힌 칸이 (x−1…x, z−1…z)다(`.audit/probe/gimmickHoney.mts`). BDSP 꿀나무는 줄기가 제 원점에서 (+0.5, +0.5)에 선다(줄기 밑동
+// 정점 평균 0.49 · 0.51). 그래서 (−0.5, −0.5)를 옮겨 줄기를 2×2칸 한가운데에 세운다.
+//
+// 기믹 그룹이 없는 옛 설치본은 원작 소품(26번)이 흔들림 없이 선다.
 //
 // ⚠️ **안 흔들릴 때도 우리가 그린다.** 청크는 소품을 들어설 때 한 번 세우고
 // 끝이라, 배틀이 끝나 목록에서 빠지면 나무가 사라진다 (`movingProps` 머리말)
@@ -17,18 +22,11 @@ import { world as mapWorld } from '../engine/map/world'
 import {
   honeyTreeOf, HONEY_TREE_MODEL, honeyTreeStatus, shakeAnimation, TREE_STATUS,
 } from '../engine/world/honeyTree'
+import { GIMMICK_MODELS, honeyTreeClip } from '../engine/world/gimmicks'
 import { useSaveStore } from '../state/saveStore'
 
-/**
- * 세기별 흔들림. **우리 값이다** — 원작 대응물이 nsbca라 옮길 수가 없다.
- *
- * 번호가 곧 세기라(0 작게 · 1 · 2 크게) 폭과 빠르기가 같이 오른다
- */
-const SWAY: readonly { angle: number, speed: number }[] = [
-  { angle: 0.022, speed: 5.5 },
-  { angle: 0.045, speed: 7.0 },
-  { angle: 0.075, speed: 8.5 },
-]
+/** BDSP 꿀나무 원점 → 원작 소품 자리 (머리말) */
+export const HONEY_TREE_SHIFT: readonly [number, number, number] = [-0.5, 0, -0.5]
 
 /** 배틀이 끝나면 스크립트가 여기로 멈추라고 한다 (`HoneyTree_StopShaking`) */
 export const honeyShake = {
@@ -42,7 +40,8 @@ interface HoneyTreeProp {
   x: number
   y: number
   z: number
-  rotZ: number
+  /** BDSP 꿀나무와 틀 클립 (`FeatureProps`가 세운다) */
+  gimmick: { name: string, clip: string, shift: readonly [number, number, number] }
 }
 
 /**
@@ -58,16 +57,14 @@ export function honeyTreeProp(): HoneyTreeProp | null {
   if (placed === null) return null
 
   const tree = useSaveStore.getState().honeyTrees.trees[at]
-  const shakes = tree === undefined ? 0 : shakeAnimation(tree.shakes)
+  const shakes = tree === undefined ? null : shakeAnimation(tree.shakes)
   const ripe = tree !== undefined && honeyTreeStatus(tree) === TREE_STATUS.encounter
-  const sway = ripe && shakes !== null && honeyShake.stopped !== at ? SWAY[shakes] : undefined
+  const shake = ripe && honeyShake.stopped !== at ? shakes : null
 
   return {
     model: HONEY_TREE_MODEL,
     x: placed.x, y: placed.y, z: placed.z,
-    rotZ: sway === undefined
-      ? 0
-      : Math.sin(performance.now() / 1000 * sway.speed) * sway.angle,
+    gimmick: { name: GIMMICK_MODELS.honeyTree, clip: honeyTreeClip(shake), shift: HONEY_TREE_SHIFT },
   }
 }
 

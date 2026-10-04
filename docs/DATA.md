@@ -2828,6 +2828,43 @@ area004의 `R208`과 같다).
 줄이고 우리 `resize`는 안 곱했다 — 알파 0 칸의 색과 가장자리가 갈려 첫 벌의 그림 넷 중 셋이 달랐다. 그래서 나무열매만 `resizePremultiplied`(`texture.ts`)로 줄인다
 (`BakeOptions.premultiplied`). 방 · 무대 · 사람은 안 건드렸다 — 그쪽의 같은 차이는 따로 잰다.
 
+#### 2.17.9 필드 기믹은 BDSP 입체다 — 바위 · 나무 · 꿀나무 · 눈덩이
+
+BDSP는 실행 때 자리에 세우는 물체를 지역 glb에 안 굽고 `Environments/gimmick`의 기믹 번들로 따로 둔다(`Dpr/masterdatas`의 `GimmickGraphics`가 목록이다).
+그중 다섯을 굽는다 — 설치 그룹 `gimmicks`(`import/bdsp/convert.ts`의 `convertGimmicks` · 개발 추출기는 `pnpm extract:gimmicks` = `bdspArena.py --gimmicks`).
+번들 ↔ 쓰임은 `engine/world/gimmicks.ts`의 `GIMMICK_MODELS`가 임자다(번들 안 프리팹 이름으로 맞췄다):
+
+| 번들 | 프리팹 | 쓰임 | 크기(칸) | 삼각형 | 구운 크기 |
+|---|---|---|---|---:|---:|
+| `obj0001_00` | `P_C_001_RockCrush_01` | 바위깨기 바위 (그림 85 · 배치 591) | 0.93×0.81×0.95 | 315 | 47KB |
+| `obj0002_00` | `P_C_001_SlashTree_01` | 풀베기 나무 (그림 86 · 49) | 1.30×1.29×0.88 | 1,172 | 82KB |
+| `obj0003_00` | `P_C_001_SweetTree_01` | 꿀나무 (스물한 맵 · 소품 26번 자리) | 높이 3.07 · 잎 2.2칸 폭 | 666 | 171KB |
+| `obj0004_00` | `P_C_001_Snowball_01` | 눈덩이 (그림 118 · 19) | 0.98 공 | 192 | 29KB |
+| `obj0006_00` | `P_C_001_RockMove_01` | 괴력 바위 (그림 84 · 50) | 1.01×0.76×0.96 | 315 | 86KB |
+
+산출물은 `models/gimmick/{번들}.glb` 다섯 벌 + `index.json`, 모두 **415KB**다. 그림은 원본 그대로다(넷은 256 · 꿀나무 512 — 상한 `GIMMICK_TEXTURE` 512).
+
+**넷은 정적 메시라 나무열매와 같은 길이다**(`exportArena`의 `groups` · `plant`) — 재질이 다 `plain`이라 `_Color`가 `baseColorFactor`로 실린다
+(바위 · 나무 1.0 · 눈덩이 0.95 → 선형 0.89). 풀베기 나무는 `TransparentCutout`이라 오려 낸다. **꿀나무는 뼈 넷(`Root/Tree01/Tree02/Tree03`)에 감긴
+스킨 메시라 인물 변환기(`exportModel` · `bdspGlb.py`)로 굽고 클립 넷을 싣는다.** 클립 넷은 이름이 다 `Take 001`이라 `FieldEventEntity`의 `clips` 이름표로
+갈아 단다(`entityClips` · `entity_clip_names`) — `Wait`(한 프레임 쉼 자세) · `Move01` · `Move02` · `Move03`(1초 · 24fps 반복). 흔들림 폭(`Tree02` z축
+사원수 성분)이 ±0.002 · −0.009~+0.011 · ±0.014로 커지고 `Move03`은 `Tree03`도 크게 흔든다 — 원작 흔들림 세 단계(`shakeAnimation` 0 · 1 · 2)에 차례대로 잇는다.
+
+**자리** — 바위 · 나무 · 눈덩이는 배치 칸 한가운데 땅(`groundYAt`)에 원점을 둔다(밑면 y ≈ 0). 꿀나무는 줄기가 원점에서 (+0.5, +0.5)에 서고(줄기 밑동 정점 평균
+0.49 · 0.51) 원작 소품 자리는 막힌 2×2칸의 한가운데라 (−0.5, 0, −0.5) 옮겨 세운다(`scene/honeyTree`의 `HONEY_TREE_SHIFT`). 바위 · 나무는 `NpcSprites`가
+번들마다 `InstancedMesh` 하나로 세운다(동굴 한 맵에 서른쯤). 깨기 · 베기 · 밀기 · 떨림은 배치(`actor.visible` · `offsetX`)가 하던 그대로다.
+
+**없으면 원작이 선다** — 기믹 그룹이 없는 옛 설치본은 바위가 덩이(`rockShape` + 원작 그림) · 나무가 판때기 · 눈덩이가 롬 소품(78) · 꿀나무가 롬 소품(26, 흔들림 없음)이다.
+받는 동안은 아무것도 안 세운다(`scene/gimmickModels`).
+
+⚠️ **굽는 쪽 둘이 같아야 한다.** `convert.test.ts`의 「필드 기믹」이 다섯 벌의 구조 · 정점(과 클립) · 그림 픽셀을 노드 산출물과 견준다. 꿀나무만 뼈 무게가
+마지막 자리(최대 6e-8)에서, 뼈 쉼 자세 · 역바인드 행렬이 0의 부호에서 갈린다 — 실수 덩이는 1e-6까지 본다.
+
+**안 굽는 것** — `obj0025_01~04`(`P_C_001_Bank_01~04` · `FieldEmbankmentEntity`)는 턱이 아니다. 한 칸 안의 둥근 둔덕(0.98×0.43×0.95 · 가운데가 가장 높고
+사방이 대칭)이라 뛰는 방향이 없다. 바깥 턱은 BDSP 지역 glb가 이미 그린다 — 턱 341칸 중 336칸에 낮은 절벽(`M_C_001_Cliff_04` · `Cliff_04B`, 착지 쪽 땅보다 0.16 높음)이
+있고, 평평한 다섯(221번도로 x 314 · z 896~900)만 우리 쐐기(`scene/Ledges`)가 선다(`Ledges.test`). 말뚝(그림 192)은 BDSP 지역의 `M_C_001_BlockPale_01`(0.9×0.75×0.9칸)이
+연고시티 · 만월섬 · 신월섬의 열 자리에 있다 — 필드 glb의 `M_T_013_Bollard_01`은 항구 계류주라 쓰지 않는다(`ObjectProps` 머리말).
+
 #### 2.17.4 trfgra — 트레이너 그림은 **네 번째 칸**이 통짜다
 
 `poketool/trgra/trfgra.narc`에 한 갈래가 다섯 칸을 쓴다 (`pokemon.c`의 `TCFT_*`):

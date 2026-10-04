@@ -29,10 +29,16 @@ import { addWhenWarm } from './warmPipelines'
 import { TURN_RATE } from './NpcModels'
 import { loadMonModel, makeBody, play, type MonBody } from './battle/monModel'
 
-/** 동시에 세우는 수. 사람 모델(24)보다 적다 — 한 마리가 사람보다 무겁다 */
-const MAX = 12
-/** 그리는 거리(타일). 판때기(48)보다 짧다 */
-const RANGE = 24
+/**
+ * 동시에 세우는 수 — 사람 모델과 같다(24). 한 맵에 오버월드 포켓몬이 가장 많은 곳이 물 빠진 입지호수(`D28R0101`)의 잉어킹
+ * 스물셋이다. 12로 두었을 때 그중 열하나가 판때기로 섰다 — 넘친 마리는 판때기(`NpcSprites`)로 선다
+ */
+const MAX = 24
+/**
+ * 그리는 거리(타일) — 판때기(48)와 같다. 24였을 때 24~48칸 사이의 마리가 판때기로 서 있다가 24칸 안에 들면 입체로 바뀌었다
+ * (먼 포켓몬이 「판으로 튄다」 · docs/orders/BATTLE_FX_20261004.md §8)
+ */
+const RANGE = 48
 /** 오버월드에 세울 때의 키 상한(m). 이보다 크면 줄여서 길을 안 막는다 */
 const TALL_CAP = 2.6
 

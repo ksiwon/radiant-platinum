@@ -337,6 +337,20 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * `Mi`(열매) 노드로 나뉜다. ⚠️ **필수 그룹이라**(`required.ts`) 이미 깐 사람은 이 그룹만 새로 굽는다 — 없으면 밭에 흙만 선다
    */
   berryPlants: 2,
+  /**
+   * 1 — **포획 · 내보내기 · 기술 이펙트가 BDSP 원작 파티클이다** (`data/fx/` — `import/bdsp/fx.ts`의 `convertBattleFx` ·
+   * 노드 쪽 `tools/extract/bdspFx.mjs`가 같은 코드를 돈다). 볼 16종의 `eb###_capture` · `eb###_ballout`, 포획 흐름
+   * `ee101~113` · 내보내기 `ee4xx`, 기술 1~467의 시퀀스와 그것이 부르는 프리팹 · 그림. ⚠️ **필수 그룹이라**(`required.ts`)
+   * 이미 깐 사람은 이 그룹만 새로 굽는다
+   */
+  battleFx: 1,
+  /**
+   * 1 — **바위깨기 · 풀베기 · 괴력 바위 · 꿀나무 · 눈덩이가 BDSP 입체다** (`models/gimmick/obj0001~0006_00.glb` · `index.json`,
+   * 다섯 벌 415KB — `import/bdsp/convert.ts`의 `convertGimmicks` · 노드 쪽 `bdspArena.py --gimmicks`). 꿀나무는 뼈 넷과 흔들림
+   * 클립 넷(`Wait` · `Move01~03`)을 싣는다. ⚠️ **필수 그룹이라**(`required.ts`) 이미 깐 사람은 이 그룹만 새로 굽는다 — 없으면
+   * 원작 그림(판 · 덩이 · 소품)이 선다
+   */
+  gimmicks: 1,
 }
 
 export function groupFormat(name: string): number {

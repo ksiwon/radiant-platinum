@@ -135,7 +135,7 @@ export const REQUIRED_PLATINUM_GROUPS = [
 ]
 
 export const REQUIRED_BDSP_GROUPS = [
-  'npcModels', 'monModels', 'arenas', 'motionTiming', 'monVariants', 'rooms', 'fields', 'dungeons', 'berryPlants',
+  'npcModels', 'monModels', 'arenas', 'motionTiming', 'monVariants', 'rooms', 'fields', 'dungeons', 'berryPlants', 'battleFx', 'gimmicks',
 ]
 
 export const REQUIRED_GROUPS = [...REQUIRED_PLATINUM_GROUPS, ...REQUIRED_BDSP_GROUPS]

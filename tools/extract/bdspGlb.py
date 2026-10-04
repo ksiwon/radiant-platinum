@@ -272,8 +272,29 @@ def sample(points: list[tuple[float, float]], t: float) -> float:
     return v0 + (v1 - v0) * k
 
 
+def entity_clip_names(env) -> dict[int, str]:
+    """기믹 번들의 클립 이름표 — `FieldEventEntity`의 `clips`(이름 · `animationClip`)가 클립 PathID에 붙인 이름.
+
+    꿀나무(`gimmick/obj0003_00`)는 클립 넷이 다 `Take 001`이라 클립 이름으로는 못 가른다. 실행 쪽이 부르는 이름은 이 표의
+    `Wait` · `Move01` · `Move02` · `Move03`이다. 브라우저 변환기 `model.ts`의 `entityClipNames`와 같다
+    """
+    out: dict[int, str] = {}
+    for obj in env.objects:
+        if obj.type.name != "MonoBehaviour":
+            continue
+        try:
+            d = obj.read_typetree()
+        except Exception:
+            continue
+        for c in d.get("clips") or []:
+            pid = int((c.get("animationClip") or {}).get("m_PathID", 0))
+            if pid and c.get("name"):
+                out[pid] = str(c["name"])
+    return out
+
+
 def build_animations(env, buf: "Buffer", node_of_hash: dict[int, int],
-                     keep: "re.Pattern | None" = None) -> tuple[list, dict]:
+                     keep: "re.Pattern | None" = None, entity_names: bool = False) -> tuple[list, dict]:
     """클립 전부를 glTF 애니메이션으로. 통계도 함께 돌려준다.
 
     `keep`을 주면 이름이 맞는 클립만 싣는다. **포켓몬 때문에 있다** — 종마다
@@ -281,10 +302,13 @@ def build_animations(env, buf: "Buffer", node_of_hash: dict[int, int],
     좋아하기 셋 · 싫어하기 · 포핀 먹기 · 필드 걷기)가 애니 데이터의 36%다
     """
     animations, stat = [], {"clips": 0, "channels": 0, "unresolved": 0, "keys": 0, "skipped": 0}
+    named = entity_clip_names(env) if entity_names else {}
     for obj in env.objects:
         if obj.type.name != "AnimationClip":
             continue
         clip = obj.read_typetree()
+        if obj.path_id in named:
+            clip["m_Name"] = named[obj.path_id]
         if keep is not None and not keep.search(clip["m_Name"]):
             stat["skipped"] += 1
             continue
@@ -436,7 +460,9 @@ def export(bundle, out: Path, color_index: int | None = None,
            # 근거는 `bdsp_bake_albedo.bake`의 머리말에 있다
            recolor: dict | None = None,
            # 아예 안 그릴 재질 이름들. 모자를 벗길 때 쓴다
-           drop: set[str] | None = None) -> dict:
+           drop: set[str] | None = None,
+           # 기믹(꿀나무)은 클립 이름을 `FieldEventEntity`의 이름표로 갈아 단다 (`entity_clip_names`)
+           entity_clips: bool = False) -> dict:
     # 번들이 여럿일 수 있다. **포켓몬이 그렇다** — 배틀 프리팹(재질·뼈대·동작)과
     # `pokemons/common`의 메시·텍스처 둘을 한 환경에 같이 올려야 풀린다
     paths = [bundle] if isinstance(bundle, (str, Path)) else list(bundle)
@@ -687,7 +713,7 @@ def export(bundle, out: Path, color_index: int | None = None,
     # 직접 돌려서 만드는 것이라(주인공도 그렇다) 구운 클립을 쓸 자리가 없다.
     # 벌레잡이(tr1006_00)에서 클립 아홉 개가 glb의 절반이다 — 2.58MB → 1.20MB
     animations, anim_stat = (
-        build_animations(env, buf, node_of_hash, clip_filter) if keep_clips
+        build_animations(env, buf, node_of_hash, clip_filter, entity_clips) if keep_clips
         else ([], {"clips": 0, "channels": 0, "unresolved": 0, "keys": 0})
     )
     if clips_from is not None:

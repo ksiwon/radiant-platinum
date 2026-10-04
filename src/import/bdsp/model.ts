@@ -280,15 +280,37 @@ interface AnimStat {
   skipped: number
 }
 
+/**
+ * 기믹 번들의 클립 이름표 — `FieldEventEntity`의 `clips`(이름 · `animationClip`)가 클립 PathID에 붙인 이름.
+ *
+ * 꿀나무(`gimmick/obj0003_00`)는 클립 넷이 다 `Take 001`이라 클립 이름으로는 못 가른다. 실행 쪽이 부르는 이름은 이 표의
+ * `Wait` · `Move01` · `Move02` · `Move03`이다. 노드 쪽 `bdspGlb.py`의 `entity_clip_names`와 같다
+ */
+function entityClipNames(env: Environment): Map<number, string> {
+  const out = new Map<number, string>()
+  for (const e of env.ofType('MonoBehaviour')) {
+    let v: Props | null
+    try { v = env.readEntry(e) as Props | null } catch { continue }
+    const clips = v?.clips
+    if (!Array.isArray(clips)) continue
+    for (const c of clips as Props[]) {
+      const pid = num((c.animationClip as Props | undefined)?.m_PathID)
+      if (pid !== 0 && typeof c.name === 'string' && c.name !== '') out.set(pid, c.name)
+    }
+  }
+  return out
+}
+
 function buildAnimations(
-  env: Environment, buf: GlbBuffer, nodeOfHash: Map<number, number>, keep: RegExp | null,
+  env: Environment, buf: GlbBuffer, nodeOfHash: Map<number, number>, keep: RegExp | null, entityNames = false,
 ): { animations: Record<string, unknown>[], stat: AnimStat } {
   const animations: Record<string, unknown>[] = []
   const stat: AnimStat = { clips: 0, channels: 0, unresolved: 0, keys: 0, skipped: 0 }
+  const named = entityNames ? entityClipNames(env) : new Map<number, string>()
   for (const e of env.ofType('AnimationClip')) {
     const clip = env.readEntry(e) as Props | null
     if (!clip) continue
-    const name = (clip.m_Name as string | undefined) ?? ''
+    const name = named.get(e.object.pathId) ?? (clip.m_Name as string | undefined) ?? ''
     if (keep && !keep.test(name)) { stat.skipped++; continue }
     const { curves } = clipCurves(clip)
     const samplers: Record<string, unknown>[] = []
@@ -505,6 +527,8 @@ interface ExportOptions extends BakeOptions {
   clipsFrom?: Environment | null
   /** 옮겨 올 클립 이름들. 비우면 전부 */
   borrowOnly?: ReadonlySet<string> | null
+  /** 기믹(꿀나무)은 클립 이름을 `FieldEventEntity`의 이름표로 갈아 단다 (`entityClipNames`) */
+  entityClips?: boolean
 }
 
 interface ExportStat {
@@ -848,7 +872,7 @@ export async function exportModel(
 
   const { animations, stat: anim } = options.keepClips === false
     ? { animations: [], stat: { clips: 0, channels: 0, unresolved: 0, keys: 0, skipped: 0 } }
-    : buildAnimations(env, buf, nodeOfHash, options.clipFilter ?? null)
+    : buildAnimations(env, buf, nodeOfHash, options.clipFilter ?? null, options.entityClips === true)
   // 빌려 온 것은 제 클립 **뒤에** 붙는다 — 이름이 안 겹치므로 차례가 뜻을 안 바꾼다
   const borrow = options.clipsFrom
     ? borrowedClips(options.clipsFrom, buf, bones, boneAt, options.borrowOnly ?? new Set())

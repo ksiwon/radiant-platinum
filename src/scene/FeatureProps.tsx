@@ -5,9 +5,16 @@
 // ⚠️ **목록을 프레임마다 묻는다.** 장치를 세우는 것은 맵에 들어설 때 도는
 // **스크립트**라 React 상태가 아니다 — 렌더 중에 읽으면 처음 한 프레임에는
 // 아직 없다
+//
+// BDSP 기믹 모델로 서는 것(`FeatureProp.gimmick` — 꿀나무)은 그 모델을 클립째 세운다(`GimmickRig`). 기믹 그룹이 없으면 원작
+// 소품이 서고, 받는 동안은 아무것도 안 선다 (`gimmickModels` 머리말)
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Group, type Material } from 'three'
+import { AnimationMixer, Group, LoopRepeat, type AnimationAction, type Material } from 'three'
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
+import type { GLTF } from 'three/addons/loaders/GLTFLoader.js'
+import { gimmickState, loadGimmick } from './gimmickModels'
+import { unifySkeletons } from './unifySkeleton'
 import {
   loadDistortionPropMesh, loadDistortionPropSheet, loadPropMesh, loadPropSheet, unlitMaterial,
   type ChunkMesh,
@@ -51,10 +58,15 @@ export function FeatureProps() {
   const groups = useRef(new Map<string, Group>())
 
   const wanted = featureProps()
+  /** 기믹 모델이 받아지면 한 번 다시 그린다 — 받는 동안은 아무것도 안 선다 */
+  const [, setGimmickTick] = useState(0)
 
   useEffect(() => {
     let alive = true
     for (const prop of featureProps()) {
+      if (prop.gimmick !== undefined) {
+        void loadGimmick(prop.gimmick.name).then(() => { if (alive) setGimmickTick((n) => n + 1) })
+      }
       const from = prop.from ?? 'prop'
       const key = modelKey(from, prop.model)
       if (loading.has(key)) continue
@@ -88,7 +100,8 @@ export function FeatureProps() {
     const now = featureProps()
     const key = now.map((p) => {
       const model = modelKey(p.from ?? 'prop', p.model)
-      return `${p.key}:${model}${treeModels.has(model) ? `@${String(p.x)},${String(p.z)}` : ''}`
+      return `${p.key}:${model}${treeModels.has(model) || p.gimmick ? `@${String(p.x)},${String(p.z)}` : ''}`
+        + (p.gimmick ? `#${p.gimmick.clip}` : '')
     }).join('|')
     if (key !== keys) setKeys(key)
     for (const p of now) {
@@ -102,6 +115,14 @@ export function FeatureProps() {
   return (
     <group>
       {wanted.map((p) => {
+        if (p.gimmick !== undefined) {
+          const st = gimmickState(p.gimmick.name)
+          if (st === 'loading') return null
+          if (st !== 'missing') {
+            const [dx, dy, dz] = p.gimmick.shift
+            return <GimmickRig key={p.key} gltf={st} clip={p.gimmick.clip} at={[p.x + dx, p.y + dy, p.z + dz]} />
+          }
+        }
         const got = meshes.get(modelKey(p.from ?? 'prop', p.model))
         if (got === undefined) return null
         return (
@@ -160,4 +181,37 @@ function FeatureTree({ id, tree, at }: { id: string, tree: PropTree, at: readonl
       <Foliage groups={groups} ground={groundAt} />
     </group>
   )
+}
+
+/** 틀 클립이 바뀔 때 섞는 시간(초). 우리 값이다 — 쉼 자세에서 흔들림으로 넘어갈 때 튀지 않을 만큼 */
+const CLIP_FADE = 0.25
+
+/**
+ * 클립이 있는 BDSP 기믹 한 그루 (꿀나무). 뼈째 복제해 제 믹서로 돌린다 — `Object3D.clone()`으로 복제하면 뼈가 틀을 가리킨다
+ * (`NpcModels`와 같은 까닭). 고른 클립을 반복하고, 바뀌면 섞어 넘어간다
+ */
+function GimmickRig({ gltf, clip, at }: { gltf: GLTF, clip: string, at: readonly [number, number, number] }) {
+  const root = useMemo(() => {
+    const made = cloneSkinned(gltf.scene)
+    // 조각이 하나라 합칠 것이 없지만 규칙대로 부른다 — 복제하는 자리는 다 뼈대를 합친다 (`unifySkeleton.test`)
+    unifySkeletons(made)
+    return made
+  }, [gltf])
+  const mixer = useMemo(() => new AnimationMixer(root), [root])
+  const playing = useRef<AnimationAction | null>(null)
+  useEffect(() => {
+    const found = gltf.animations.find((a) => a.name === clip)
+    if (found === undefined) return
+    const next = mixer.clipAction(found)
+    if (next === playing.current) return
+    next.reset().setLoop(LoopRepeat, Infinity).play()
+    if (playing.current !== null) next.crossFadeFrom(playing.current, CLIP_FADE, false)
+    playing.current = next
+  }, [gltf, mixer, clip])
+  useEffect(() => () => {
+    mixer.stopAllAction()
+    mixer.uncacheRoot(root)
+  }, [mixer, root])
+  useFrame((_, delta) => { mixer.update(delta) })
+  return <primitive object={root} position={[at[0], at[1], at[2]]} />
 }

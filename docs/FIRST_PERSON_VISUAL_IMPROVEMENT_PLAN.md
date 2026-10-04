@@ -408,6 +408,8 @@ LOD: 근경은 3D crown, 중경은 ring/분기 수를 줄인 동일 실루엣 �
 
 #### 7.4.1 현재 구현과 보존할 계약
 
+[확인 · BDSP 지역] BDSP 지역이 그리는 바깥에서는 **BDSP가 턱을 그린다.** 바깥 턱 341칸(남 305 · 서 21 · 동 15)에 지역 glb를 위에서 쏘면 336칸에 낮은 절벽 `M_C_001_Cliff_04` · `Cliff_04B`가 있다 — 칸 한가운데가 착지 쪽 땅보다 0.16(0.1~0.25) 높고 착지 쪽 +0.5~0.75에서 땅으로 닫힌다. 평평한 다섯(221번도로 x 314 · z 896~900, 동쪽 턱)에만 아래 쐐기가 선다(`Ledges`의 `BDSP_BARE_LEDGES` · `Ledges.test`). BDSP 기믹 `obj0025_01~04`(`P_C_001_Bank_0x`)는 사방이 대칭인 둥근 둔덕(0.98×0.43×0.95칸)이라 턱으로 쓰지 않는다. 아래 명세는 원작 땅으로 그릴 때의 쐐기다.
+
 [확인] `src/scene/Ledges.tsx:collect/Ledges`는 behavior로 턱 타일을 모아 중앙 높이를 조회한다. 각 타일에 `0.96 × 0.18 × 0.96` 갈색 상자와, 점프 방향으로 `0.43` 이동한 `0.9 × 0.26 × 0.12` 짙은 상자를 배치한다. 재질은 각각 단색 `#7c5b36`, `#4d3825` Standard다. 두 번째 상자는 중심 높이가 `ground + 0.09`이므로 바닥 아래 `0.04`부터 위 `0.22`까지 걸친다. 상단 상자는 회전하지 않고 앞면만 회전한다. 이는 현재 코드에서 확인한 구조이며, 모든 배치에서 실제 틈·관통이 보인다는 시각 검증 결과는 아니다.
 
 [기존 조사 기록] 소스 주석은 원본 갈색 그림을 `allpeak`로 지칭하고 턱 양쪽의 원본 높이가 같다고 기록한다. 주석의 720개 집계와 다른 파일의 과거 부분 집계는 현재 전수 개수로 인용하지 않는다. 구현 시 현재 ROM/provider의 behavior·높이·UV를 다시 조사한다. `allpeak` 이름만으로 전체 texture를 턱으로 분류하지 않는다.
@@ -504,9 +506,11 @@ LOD: 근경은 3D crown, 중경은 ring/분기 수를 줄인 동일 실루엣 �
 
 ### 9.1 잔여 스프라이트
 
-`NpcSprites`에서 실제로 그리는 actor를 기준으로 목록화한다. `standingPeople`, `standingMons`, `standingBalls`, `ObjectProps`, 숨김/변장/열매 경로를 적용한 뒤의 결과를 센다. 기존 문서의 ‘1,118개 판때기’ 수치를 사용하지 않는다.
+`NpcSprites`에서 실제로 그리는 actor를 기준으로 목록화한다. `standingPeople`, `standingMons`, `standingBalls`, `ObjectProps`, 숨김/변장/열매 경로를 적용한 뒤의 결과를 센다.
 
-순서: 바위깨기/괴력바위 → 베기 나무 → 환풍구/말뚝 → 특수 문 → 고유 물건. 각 gfx의 구조와 상호작용을 기록하고 검수 모델을 연결한다. 보이는 물건이 벽화라면 입체로 튀어나오게 만들지 말고 벽 부착 decal로 둔다.
+[확인] 지금 판때기로 남은 배치는 **22개**다(3D_GAP_AUDIT §3.1) — 갤럭시단아지트 문 10 · BDSP에 짝이 없는 말뚝 6 · 한 자리씩인 6. 바위깨기 바위 591 · 괴력 바위 50 · 풀베기 나무 49는 BDSP 기믹 모델(`gimmick/obj0001_00` · `obj0006_00` · `obj0002_00`)을 인스턴싱으로 세우고(`NpcSprites`), 환풍구 65는 BDSP 지역의 `Intake`(빠진 둘은 그 메시를 옮겨 세운다), 말뚝 10은 BDSP 지역의 `BlockPale`이 맡는다(`ObjectProps`). 눈덩이 19와 꿀나무 21도 BDSP 기믹이다(DATA.md §2.17.9).
+
+남은 순서: 특수 문 → 고유 물건. 각 gfx의 구조와 상호작용을 기록하고 검수 모델을 연결한다. 보이는 물건이 벽화라면 입체로 튀어나오게 만들지 말고 벽 부착 decal로 둔다.
 
 - NpcSprites가 actor를 건너뛰는 시점은 실제 모델이 씬에 준비된 뒤다.
 - 모델 로딩 실패는 기존 sprite를 유지한다. 로더 오류를 숨기거나 사라진 물건을 완료로 세지 않는다.
@@ -668,7 +672,7 @@ await page.waitForFunction(async () => {
 | FP-04 | 01 | 공간 P0: 문 막힘/잘못된 벽/지면·건물 틈의 verified patch | shell, roomWalls, floorPatch, ChunkModels | 실제 통행·워프 보존, 구멍/잘못된 막힘 해결 |
 | FP-05 | 01,02 | 나무 계열+원본 잎 swatch+배치+LOD | Foliage, treeSites, visual geometry | 줄기/수관 접합, 도로·건물 비침범, 변형/로드 순서 안정 |
 | FP-06 | 01,04 | 수면 높이/층/해안, 작은 변위, 풀·꽃 중복 조정 | Water, Grass, Flowers, floorPatch | 수면 교차/청크 seam 없음, 식생 역할 유지 |
-| FP-07 | 01 | 잔여 이벤트 물건·열매(BDSP 품종별 입체로 섬 — `BerryPatchProps`)·변장·도구 visibility | MapStreamer, NpcSprites, BerryPatchProps, DisguisePlates, FieldActionEffects | 상태별 원본/신규 전환, actor ID/상호작용 보존 |
+| FP-07 | 01 | 잔여 이벤트 물건·열매(BDSP 품종별 입체로 섬 — `BerryPatchProps`)·비전 장애물 · 꿀나무 · 눈덩이(BDSP 기믹 — `NpcSprites` 인스턴싱 · `FeatureProps` · `ObjectProps`)·변장·도구 visibility | MapStreamer, NpcSprites, BerryPatchProps, ObjectProps, FeatureProps, DisguisePlates, FieldActionEffects | 상태별 원본/신규 전환, actor ID/상호작용 보존 |
 | FP-08 | 02~07 | 전체 자산/배치 확장, 양 백엔드/야간·날씨/성능/회귀 | 위 변경 전체 | §13 최종 gate와 예외 목록 충족 |
 
 FP-04는 기준선에서 P0가 발견되는 즉시 FP-02/03/05보다 먼저 처리한다. FP-02~05의 일부 시제품이 성공했다고 전체 개선을 완료로 보고하지 않는다.

@@ -1087,7 +1087,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   /** 입체가 이미 맡은 배치 전부. 판때기는 여기 든 사람을 안 세운다 */
   const [standingBalls, setStandingBalls] = useState<ReadonlySet<NpcActor>>(() => new Set())
   /**
-   * BDSP 지역이 원통 모델로 이미 세운 환풍구 (`ObjectProps`의 `bakedVentActors`). 붙은 층의 환풍구 자리는 층이 붙고 뗄 때
+   * BDSP 지역이 모델로 이미 세운 환풍구 · 말뚝 (`ObjectProps`의 `bakedVentActors`). 붙은 층의 자리는 층이 붙고 뗄 때
    * 바뀌고 사람 목록은 맵을 옮길 때 바뀐다 — 둘 다 React 바깥이라 프레임마다 견주고 바뀐 때만 갈아 끼운다
    */
   const [standingVents, setStandingVents] = useState<ReadonlySet<NpcActor>>(() => new Set())
@@ -1436,7 +1436,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       {room !== null && <BdspRoom key={`${room}@${String(mapId)}`} name={room} mapId={mapId} />}
       {/* 던전(호수 · 숲 · 동굴 · 탑)도 BDSP가 있으면 그것이 선다 — 방과 같은 자리다 (`BdspDungeon`) */}
       {dungeon !== null && <BdspDungeon key={dungeon} name={dungeon} />}
-      {!bdspDraws && <Ledges grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet} />}
+      {/* 턱 — BDSP가 그리는 동안은 BDSP가 턱을 안 그린 칸만 세운다 (`Ledges` 머리말) */}
+      <Ledges grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet} bdsp={bdspDraws} />
       {/* 흔들리는 풀 무더기 (PARITY §6.5). 레이더를 켠 동안만 선다 */}
       <RadarPatches grid={grid} />
       {/* 나무열매 밭 — 흙 위에 자란 것이 선다 (PARITY §4.6) */}

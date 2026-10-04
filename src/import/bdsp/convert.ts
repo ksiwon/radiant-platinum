@@ -19,6 +19,7 @@ import {
 } from '../platinum/convertTypes'
 import { EVERY_ARENA } from '../../engine/battle/arena'
 import { berryPlantNames } from '../../engine/world/berryPlants'
+import { GIMMICK_ANIMATED, GIMMICK_STATIC, gimmickNames } from '../../engine/world/gimmicks'
 import {
   HERO_FIELD_CLIPS, NPC_BUNDLE, NPC_RECOLOR, baseBundle, buildOf, clipFilterFor, fieldClipDonor,
   modelFor,
@@ -31,6 +32,7 @@ import { exportModel } from './model'
 import { bakeAlbedo } from './albedo'
 import { exportArena } from './arena'
 import { exportField } from './field'
+import { convertBattleFx } from './fx'
 import { className, openBundle, readSerializedFile } from './unityfs'
 import type { UnityValue } from './typetree'
 
@@ -53,6 +55,8 @@ const ROOM_TEXTURE = 512
 const GIMMICK = 'Environments/gimmick'
 /** 나무 그림 긴 변의 상한 — 노드 쪽 `bdspArena.py`의 `BERRY_TEXTURE`와 같아야 한다 */
 const BERRY_TEXTURE = 256
+/** 기믹 그림 긴 변의 상한 — 노드 쪽 `bdspArena.py`의 `GIMMICK_TEXTURE`와 같아야 한다 (원본이 넷은 256 · 꿀나무 512) */
+const GIMMICK_TEXTURE = 512
 const MASTERDATAS = 'Dpr/masterdatas'
 /** 자전거. 오버월드에서 타는 물건이라 인물과 같은 자리에서 굽는다 */
 // ⚠️ **`ob1003_00`이 아니다** — 원작이 주인공을 태우는 자전거는 이쪽이다
@@ -908,6 +912,43 @@ async function convertBerryPlants(ctx: ConvertContext): Promise<Produced> {
   return out
 }
 
+// ── gimmicks ─────────────────────────────────────────────────────────────────
+//
+// **필드 기믹을 BDSP 입체로** (docs/orders/BATTLE_FX_20261004.md §8 · `engine/world/gimmicks`). 바위깨기 · 풀베기 · 눈덩이 · 괴력은
+// 정적 메시라 나무열매와 같은 길(무대 변환기 · 재질 색), 꿀나무는 뼈와 흔들림 클립이 있어 인물 변환기로 굽는다 — 클립 이름은
+// `FieldEventEntity`의 이름표(`Wait` · `Move01~03`)다. 노드 쪽 `bdspArena.py --gimmicks`와 같은 목록이다
+
+async function convertGimmicks(ctx: ConvertContext): Promise<Produced> {
+  const src = requireBdsp(ctx)
+  const at = await index(src)
+  const out: Produced = new Map()
+  const names = gimmickNames()
+  const made: string[] = []
+  const missing: string[] = []
+  let done = 0
+  for (const name of names) {
+    check(ctx)
+    const path = lookup(at, `${GIMMICK}/${name}`)
+    const env = path ? await environmentOf(src, [path]) : null
+    if (!env) missing.push(name)
+    else {
+      try {
+        const { glb } = GIMMICK_ANIMATED.includes(name)
+          ? await exportModel(env, encodePng, { maxSize: GIMMICK_TEXTURE, keepClips: true, entityClips: true })
+          : await exportArena(env, encodePng, { name, maxSize: GIMMICK_TEXTURE, groups: true, premultiplied: true, plant: true })
+        put(ctx, out, `models/gimmick/${name}.glb`, glb)
+        made.push(name)
+      } catch { missing.push(name) }
+    }
+    done++
+    ctx.onProgress?.(done, names.length)
+    await breathe(ctx)
+  }
+  requireAll('필드 기믹', GIMMICK_STATIC.length + GIMMICK_ANIMATED.length, missing)
+  put(ctx, out, 'models/gimmick/index.json', json({ gimmicks: made.sort() }))
+  return out
+}
+
 // ── rooms ────────────────────────────────────────────────────────────────────
 //
 // **실내를 BDSP 방으로** (docs/orders/VISUAL_20260929.md §5). 방 번들은 무대와 같은 꼴(정적 메시 + 재질)이라 무대 변환기로 굽는다.
@@ -1193,6 +1234,20 @@ export const BDSP_GROUPS: readonly GroupSpec[] = [
     outputs: ['models/berry/{kino번호}.glb', 'models/berry/kinoseeding.glb', 'models/berry/index.json'],
     converter: 1,
     convert: convertBerryPlants,
+  },
+  {
+    // 바위깨기 · 풀베기 · 괴력 바위 · 꿀나무 · 눈덩이 (docs/orders/BATTLE_FX_20261004.md §8 · DATA.md §2.17.9)
+    name: 'gimmicks',
+    outputs: ['models/gimmick/{번들}.glb', 'models/gimmick/index.json'],
+    converter: 1,
+    convert: convertGimmicks,
+  },
+  {
+    // 포획 · 내보내기 · 기술 이펙트 — 원작 파티클 프리팹 그대로 (docs/orders/BATTLE_FX_20261004.md §4 · `import/bdsp/fx.ts`)
+    name: 'battleFx',
+    outputs: ['data/fx/prefab/{프리팹}.json', 'data/fx/tex/{그림}.png', 'data/fx/tex/index.json', 'data/fx/seq/{시퀀스}.json', 'data/fx/index.json'],
+    converter: 1,
+    convert: convertBattleFx,
   },
   {
     name: 'rooms',

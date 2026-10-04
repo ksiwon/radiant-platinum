@@ -8,16 +8,18 @@
 // 써야 하는데, 한 맵에 서 있는 사람은 많아야 수십이라 그럴 값어치가 없다.
 // 대신 판때기와 재질은 **한 번 만들어 돌려 쓴다** — 프레임마다 만들면 GC가 돈다.
 //
-// ⚠️ **바위 둘만은 판때기로 안 세운다** — 괴력 바위(`STRENGTH_BOULDER` 84)와
-// 바위깨기 바위(`ROCK_SMASH` 85). 둘 다 동굴 바닥에 깔리는데(배치표 50 · 591)
-// 판때기면 BDSP 동굴 바닥 위에 늘 정면을 보는 도트 종잇장이 서고, 1인칭으로
-// 다가가면 계단 픽셀 판이 된다. 맵 바위(`Rocks`)와 같은 덩이 모양(`rockShape`)에
-// **그 그림을 그대로** 입힌다(`rockPaint`) — 모양만 우리 것이고 폭·높이·문양은
-// 원작 그림에서 온다. 그림이 아직 안 왔으면 판때기로 선다.
+// ⚠️ **비전머신 장애물 셋은 판때기로 안 세운다** — 괴력 바위(`STRENGTH_BOULDER` 84 · 배치 50) · 바위깨기 바위(`ROCK_SMASH` 85 ·
+// 591) · 풀베기 나무(`CUT_TREE` 86 · 49). BDSP 기믹 모델(`gimmick/obj0006_00` RockMove · `obj0001_00` RockCrush ·
+// `obj0002_00` SlashTree — `engine/world/gimmicks`)을 **인스턴싱으로** 세운다 — 바위가 빽빽한 동굴은 한 맵에 서른 개쯤이라
+// 그림마다 그리기 한 번이다. 판때기면 BDSP 바닥 위에 늘 정면을 보는 도트 종잇장이 서고, 1인칭으로 다가가면 계단 픽셀 판이 된다.
+//
+// 기믹 그룹을 안 구운 옛 설치본은 원작 쪽이 선다 — 바위 둘은 맵 바위(`Rocks`)와 같은 덩이 모양(`rockShape`)에 **그 그림을
+// 그대로** 입힌 것(`rockPaint` — 모양만 우리 것이고 폭·높이·문양은 원작 그림), 나무는 판때기다. 모델을 받는 동안은 아무것도
+// 안 세운다 (`gimmickModels` 머리말).
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import {
-  BufferAttribute, BufferGeometry, DataTexture, DoubleSide, Group, Mesh, MeshBasicMaterial,
+  BufferAttribute, BufferGeometry, DataTexture, DoubleSide, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial,
   MeshLambertMaterial, NearestFilter, PlaneGeometry, SRGBColorSpace,
   type DirectionalLight, type HemisphereLight, type Object3D,
 } from 'three'
@@ -37,6 +39,8 @@ import { FILL_DIR, litBody, makeBlobShadow, TIME_LOOKS, type TimeLook } from './
 import { worldState } from '../state/worldState'
 import { world } from '../engine/map/world'
 import { groundYAt } from './distortion'
+import { GIMMICK_MODELS } from '../engine/world/gimmicks'
+import { gimmickPieces, gimmickState } from './gimmickModels'
 import { rockUvs, spriteRockCrop } from './rockPaint'
 import {
   ROCK_RECIPES, rockAspect, rockPositions, rockSpan, rockSpin, rockVariant,
@@ -90,6 +94,16 @@ const ROCK_SPRITES: ReadonlySet<string> = new Set(['STRENGTH_BOULDER', 'ROCK_SMA
  * 딱 얹어 두면 바닥과의 경계가 칼로 자른 듯 떨어진다
  */
 const ROCK_SINK = 0.10
+
+/** 그림 이름 → BDSP 기믹 번들. 모델이 섰으면 판때기 · 덩이 대신 이것이 선다 */
+const GIMMICK_BY_SPRITE: Readonly<Record<string, string>> = {
+  STRENGTH_BOULDER: GIMMICK_MODELS.strength,
+  ROCK_SMASH: GIMMICK_MODELS.rockSmash,
+  CUT_TREE: GIMMICK_MODELS.cutTree,
+}
+
+/** 기믹 한 벌의 인스턴스 묶음 — 조각마다 `InstancedMesh` 하나. 판때기 상한(`MAX`)만큼 자리를 둔다 */
+interface GimmickBatch { meshes: InstancedMesh[], count: number }
 
 /** 바위 그림 하나로 만든 덩이 한 벌. 같은 그림의 바위가 다 같이 쓴다 */
 interface RockKit {
@@ -185,6 +199,9 @@ interface Rock {
   /** 마지막으로 선 프레임 */
   seen: number
 }
+
+/** 인스턴스 자리 하나를 쓰는 데 돌려 쓰는 행렬 */
+const at = new Matrix4()
 
 /** 낮의 몸빛 — 판때기 밝기의 기준 1이다 */
 const DAY_BODY = litBody(TIME_LOOKS[1]!)
@@ -332,6 +349,8 @@ export function NpcSprites({ grid, layer, standing }: Props) {
    */
   const rocks = useMemo(() => new Map<NpcActor, Rock>(), [])
   const spareRocks = useMemo(() => new Map<string, Rock[]>(), [])
+  /** BDSP 기믹 인스턴스 묶음 — 번들 이름마다. 모델이 처음 섰을 때 만들어 무리에 붙인다 */
+  const batches = useMemo(() => new Map<string, GimmickBatch>(), [])
   const frameNo = useRef(0)
 
   useEffect(() => {
@@ -351,8 +370,11 @@ export function NpcSprites({ grid, layer, standing }: Props) {
       for (const r of [...rocks.values(), ...[...spareRocks.values()].flat()]) group.remove(r.mesh)
       rocks.clear()
       spareRocks.clear()
+      // 모양 · 재질은 `gimmickModels`가 들고 있다 — 인스턴스 행렬만 놓는다
+      for (const b of batches.values()) for (const m of b.meshes) { group.remove(m); m.dispose() }
+      batches.clear()
     }
-  }, [slots, kit, rocks, spareRocks])
+  }, [slots, kit, rocks, spareRocks, batches])
 
   useFrame((_, delta) => {
     const p = worldState.player.position
@@ -369,6 +391,7 @@ export function NpcSprites({ grid, layer, standing }: Props) {
     kit.material.opacity = footShadowOpacity(foot.current)
     const group = groupRef.current
     const stamp = ++frameNo.current
+    for (const b of batches.values()) b.count = 0
     let n = 0
     for (const actor of npcActors.list) {
       if (n >= MAX) break
@@ -386,6 +409,46 @@ export function NpcSprites({ grid, layer, standing }: Props) {
       n++
 
       const y = groundYAt(grid, world.mapId, actor.x + 0.5, actor.z + 0.5, layer, actor.y, actor)
+      const bdspName = GIMMICK_BY_SPRITE[sprite.name]
+      const bdsp = bdspName === undefined ? null : gimmickState(bdspName)
+      if (bdsp === 'loading') {
+        // 받는 중 — 아무것도 안 세운다 (머리말)
+        slot.mesh.visible = false
+        slot.shadow.visible = false
+        continue
+      }
+      if (group !== null && bdspName !== undefined && bdsp !== null && bdsp !== 'missing') {
+        // BDSP 기믹. 판은 감추고 그림자 원판도 안 깐다 — 모델이 제 그림자를 드리운다. 깨기 · 베기 · 밀기 · 숨김은
+        // 위의 `actor.visible`이, 깨지기 전 떨림은 자리 어긋남(`offsetX`)이 한다 — 덩이와 같다
+        slot.mesh.visible = false
+        slot.shadow.visible = false
+        let batch = batches.get(bdspName)
+        if (batch === undefined) {
+          batch = {
+            count: 0,
+            meshes: gimmickPieces(bdsp, bdspName).map((piece) => {
+              const m = new InstancedMesh(piece.geometry, piece.material, MAX)
+              m.name = `기믹 ${sprite.name}`
+              m.castShadow = true
+              m.receiveShadow = true
+              // 인스턴스가 맵 곳곳에 흩어진다 — 모양 하나의 경계구로는 못 가린다
+              m.frustumCulled = false
+              m.count = 0
+              group.add(m)
+              return m
+            }),
+          }
+          batches.set(bdspName, batch)
+        }
+        at.makeTranslation(
+          actor.x + 0.5 + (actor.offsetX ?? 0),
+          y + (actor.offsetY ?? 0),
+          actor.z + 0.5 + (actor.offsetZ ?? 0),
+        )
+        for (const m of batch.meshes) m.setMatrixAt(batch.count, at)
+        batch.count++
+        continue
+      }
       const rock = group !== null && ROCK_SPRITES.has(sprite.name)
         ? rockKitOf(actor.gfx, sprite) : null
       if (group !== null && rock !== null && rock !== undefined) {
@@ -472,6 +535,12 @@ export function NpcSprites({ grid, layer, standing }: Props) {
       }
     }
     hideRest(slots, n)
+    for (const b of batches.values()) {
+      for (const m of b.meshes) {
+        m.count = b.count
+        m.instanceMatrix.needsUpdate = true
+      }
+    }
     for (let i = n; i < slots.length; i++) {
       const s = slots[i]
       if (s !== undefined) s.shadow.visible = false

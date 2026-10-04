@@ -24,16 +24,21 @@
 // 게시판 59/64(`Guide`) · 화살표 70/72 · 체육관 8/8 · 팁 14/14, 합 179곳이 BDSP에
 // 있다(던전 D03R0101 · D31도 0.2~0.4칸). 나머지 열 곳(2~13칸 떨어짐)은 원작 것을 세운다 — 맵 통째로 내리면 빠진다.
 // 책(방 넷 다 0.29칸에 `Book_03`)과 사천왕 방문(방 넷 다 0.04~0.10칸에 `DoorInner`)은 종류째 BDSP에 있다
-// (`BDSP_BAKED_KINDS`) · 눈덩이와 로토무 방 벽은 BDSP에 없어 늘 선다
+// (`BDSP_BAKED_KINDS`) · 로토무 방 벽은 BDSP에 없어 늘 선다.
+//
+// **눈덩이는 BDSP 기믹 모델이다** (`gimmick/obj0004_00` Snowball · `engine/world/gimmicks`). BDSP도 체육관 방에 안 굽고 기믹으로
+// 세우는 물건이라 방 glb에는 없다 — 원작 소품 대신 그 모델을 세운다. 기믹 그룹이 없는 옛 설치본은 원작 소품이 선다
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { InstancedMesh, Matrix4, Mesh, Vector3, type Material, type Object3D } from 'three'
+import { Box3, InstancedMesh, Matrix4, Mesh, Vector3, type BufferGeometry, type Material, type Object3D } from 'three'
 import { npcActors, type NpcActor } from '../engine/actor/npcs'
 import { PROP_KIND_BY_GFX } from '../import/platinum/fldeffProps'
 import { useLoadedProps } from './propMeshes'
 import { groundYAt } from './distortion'
 import { world } from '../engine/map/world'
 import type { MapGrid } from '../engine/map/grid'
+import { GIMMICK_MODELS } from '../engine/world/gimmicks'
+import { gimmickPieces, loadGimmick, type GimmickPiece } from './gimmickModels'
 
 /**
  * BDSP가 구워 둔 간판 · 우편함 · 게시판 재질 (`SignBoard_0x` · `Boardletter` · `Boardnumber` · `Post_01` · `Guide_0x` ·
@@ -62,34 +67,50 @@ export function holdBdspSigns(root: Object3D): () => void {
   root.updateMatrixWorld(true)
   const signs: (readonly [number, number])[] = []
   const vents: (readonly [number, number])[] = []
+  const bollards: BakedBox[] = []
+  let template: VentTemplate | null = null
   const at = new Matrix4()
   const c = new Vector3()
   root.traverse((o) => {
     if (!(o instanceof Mesh)) return
     const mats = (Array.isArray(o.material) ? o.material : [o.material]) as Material[]
+    const pale = mats.some(isBakedBollard)
     const into = mats.some(isBakedSign) ? signs : mats.some(isBakedVent) ? vents : null
-    if (into === null) return
+    if (into === null && !pale) return
     o.geometry.computeBoundingBox()
     const box = o.geometry.boundingBox
     if (!box) return
     box.getCenter(c)
     const center = c.clone()
+    const places: Matrix4[] = []
     if (o instanceof InstancedMesh) {
-      for (let i = 0; i < o.count; i++) {
-        o.getMatrixAt(i, at)
-        const w = center.clone().applyMatrix4(at.premultiply(o.matrixWorld))
-        into.push([w.x, w.z])
+      for (let i = 0; i < o.count; i++) { o.getMatrixAt(i, at); places.push(at.clone().premultiply(o.matrixWorld)) }
+    } else places.push(o.matrixWorld.clone())
+    for (const m of places) {
+      if (into === null) {
+        const b = new Box3().copy(box).applyMatrix4(m)
+        bollards.push([b.min.x, b.min.z, b.max.x, b.max.z])
+        continue
       }
-    } else {
-      const w = center.applyMatrix4(o.matrixWorld)
+      const w = center.clone().applyMatrix4(m)
       into.push([w.x, w.z])
+      // 환풍구 한 벌을 틀로 적어 둔다 — BDSP가 빠뜨린 두 자리에 같은 모델을 세운다 (`VentModels`)
+      if (into === vents && template === null) {
+        const bottom = new Vector3(center.x, box.min.y, center.z).applyMatrix4(m)
+        template = { geometry: o.geometry as BufferGeometry, material: o.material as Material | Material[], place: m, bottom }
+      }
     }
   })
   for (const p of signs) bakedSigns.add(p)
   for (const p of vents) bakedVents.add(p)
+  for (const b of bollards) bakedBollards.add(b)
+  const held = template
+  if (held !== null) ventTemplates.add(held)
   return () => {
     for (const p of signs) bakedSigns.delete(p)
     for (const p of vents) bakedVents.delete(p)
+    for (const b of bollards) bakedBollards.delete(b)
+    if (held !== null) ventTemplates.delete(held)
   }
 }
 
@@ -106,7 +127,8 @@ export function bakedSignNear(x: number, z: number): boolean {
 // 모델과 도트 판 두 벌로 선다(209번도로 · 1인칭에서 모델 뒤로 판이 삐져나온다).
 //
 // 실측(배치 65곳 · 지역 glb 13벌의 `Intake` 인스턴스 101개 · 칸 한가운데에서 가장 가까운 것): **63곳이 0.00칸**이고
-// 둘은 1.00칸 — 이웃 칸의 환풍구다(`events_fight_area` 648,438 · `events_route_212_south` 462,826). 그 둘은 BDSP에 없으므로 판때기가 선다.
+// 둘은 1.00칸 — 이웃 칸의 환풍구다(`events_fight_area` 648,438 · `events_route_212_south` 462,826). 그 둘은 BDSP에 없다 — 같은
+// `Intake` 메시를 그 칸에 옮겨 세운다(`VentModels` · 틀은 붙은 지역에서 하나 적는다). 지역이 안 붙었으면 판때기가 선다.
 // 방 · 던전 glb에는 `Intake`가 없다(환풍구 열여덟 맵이 다 바깥이다).
 //
 // ⚠️ **판만 거른다.** 배치는 그대로라 통행(`actor/obstacles`)과 말 걸기(스크립트 2027)는 안 바뀐다
@@ -132,24 +154,119 @@ export function bakedVentNear(x: number, z: number): boolean {
 }
 
 /**
- * 배치 중 BDSP가 모델로 이미 세운 환풍구들 — 판때기(`NpcSprites`)가 건너뛸 몫이다. 지난 값(`was`)과 같으면 그것을 그대로
- * 돌려준다(프레임마다 불러도 상태를 안 흔든다)
+ * BDSP 환풍구 한 벌의 틀 — 지역 glb의 `Intake` 메시 하나와 그 자리. 붙은 지역마다 하나를 적는다(`holdBdspSigns`).
+ * `bottom`은 그 자리에서 메시 밑면 한가운데다 — 다른 칸에 옮길 때 이 점을 칸 한가운데 땅에 댄다
+ */
+interface VentTemplate { geometry: BufferGeometry, material: Material | Material[], place: Matrix4, bottom: Vector3 }
+
+/** 지금 씬에 붙은 BDSP 지역들의 환풍구 틀 */
+const ventTemplates = new Set<VentTemplate>()
+
+/** 아무 틀 하나 — 지역이 하나도 안 붙었으면 null */
+function anyVentTemplate(): VentTemplate | null {
+  for (const t of ventTemplates) return t
+  return null
+}
+
+/**
+ * 배치 중 판때기(`NpcSprites`)가 건너뛸 몫 — BDSP가 모델로 이미 세운 환풍구 · 말뚝. 지난 값(`was`)과 같으면 그것을 그대로
+ * 돌려준다(프레임마다 불러도 상태를 안 흔든다).
+ *
+ * 환풍구는 BDSP가 빠뜨린 두 자리(머리말)도 지역이 붙어 있으면 든다 — 그 자리에는 붙은 지역의 `Intake` 틀을 옮겨 세운다
+ * (`VentModels`). 말뚝은 BDSP 지역이 그 칸에 `BlockPale`을 구워 둔 것만 든다 (`bakedBollardAt`)
  */
 export function bakedVentActors(list: readonly NpcActor[], was: ReadonlySet<NpcActor>): ReadonlySet<NpcActor> {
-  let n = 0
-  let same = true
-  for (const actor of list) {
-    if (actor.gfx !== VENT_GFX || !bakedVentNear(actor.x + 0.5, actor.z + 0.5)) continue
-    n++
-    if (!was.has(actor)) same = false
-  }
-  if (same && n === was.size) return was
   const out = new Set<NpcActor>()
+  const anyTemplate = anyVentTemplate() !== null
   for (const actor of list) {
-    if (actor.gfx === VENT_GFX && bakedVentNear(actor.x + 0.5, actor.z + 0.5)) out.add(actor)
+    const x = actor.x + 0.5, z = actor.z + 0.5
+    const taken = actor.gfx === VENT_GFX ? anyTemplate || bakedVentNear(x, z)
+      : actor.gfx === BOLLARD_GFX && bakedBollardAt(x, z)
+    if (taken) out.add(actor)
   }
+  if (out.size === was.size && [...out].every((a) => was.has(a))) return was
   return out
 }
+
+/**
+ * BDSP가 빠뜨린 환풍구 — 붙은 지역의 `Intake` 틀을 그 칸 한가운데 땅에 옮겨 세운다. 틀의 회전 · 크기는 그대로 둔다
+ * (원작 칸 둘 다 바깥이고 BDSP 환풍구 101개가 다 같은 메시다)
+ */
+function VentModels({ grid, layer, mapId }: { grid: MapGrid, layer: number, mapId: number }) {
+  const [vents, setVents] = useState<readonly NpcActor[]>([])
+  useEffect(() => { setVents(npcActors.list.filter((a) => a.gfx === VENT_GFX)) }, [mapId])
+  const meshes = useRef<(Mesh | null)[]>([])
+  const [template, setTemplate] = useState<VentTemplate | null>(null)
+  useFrame(() => {
+    const t = anyVentTemplate()
+    if (t !== template) setTemplate(t)
+    if (t === null) return
+    for (const [i, actor] of vents.entries()) {
+      const mesh = meshes.current[i]
+      if (!mesh) continue
+      const x = actor.x + 0.5, z = actor.z + 0.5
+      mesh.visible = actor.visible && !bakedVentNear(x, z)
+      if (!mesh.visible) continue
+      const y = groundYAt(grid, world.mapId, x, z, layer, actor.y)
+      t.place.decompose(mesh.position, mesh.quaternion, mesh.scale)
+      mesh.position.x += x - t.bottom.x
+      mesh.position.y += y - t.bottom.y
+      mesh.position.z += z - t.bottom.z
+    }
+  })
+  if (template === null || vents.length === 0) return null
+  return (
+    <group>
+      {vents.map((a, i) => (
+        <mesh
+          key={`${String(a.localID)}/${String(i)}`}
+          ref={(m) => { meshes.current[i] = m }}
+          geometry={template.geometry}
+          material={template.material}
+          visible={false}
+          castShadow
+          receiveShadow
+        />
+      ))}
+    </group>
+  )
+}
+
+// ── 말뚝 ──────────────────────────────────────────────────────────────────────────────────────────────────
+//
+// 말뚝(`OBJ_EVENT_GFX_BOLLARD` — 그림 192 · `pole`)은 원작에서 판때기다. 배치 16곳 중 **열 곳은 BDSP 지역이 같은 칸에 흰 돌기둥
+// (`M_C_001_BlockPale_*` · 높이 0.75칸)을 구워 두었다** — 연고시티 C05 넷(472·473·485·486, 687) · 만월섬 D15 셋(40, 275·276·278) ·
+// 신월섬 D30 셋(151, 275·276·278). 칸 한가운데에서 위로부터 쏘면 그 열 칸만 땅 + 0.75에 `BlockPale`이 맞는다
+// (`.audit/probe/gimmickLedges.mts look`). 그 자리에서 판때기까지 세우면 한 물체가 두 벌로 선다.
+//
+// 나머지 여섯은 BDSP에 짝이 없다 — 연고시티 체육관 방 `C05GYM0104`(8, 9·10)과 갤럭시단아지트 `D26R0104`(18·19, 14)는 그 칸이 맨바닥이고,
+// 파이트에리어 C11(617, 434·435)은 BDSP 지역(`area014`)에서 바다다. 그 여섯은 판때기가 선다. BDSP 필드 glb의 `M_T_013_Bollard_01`
+// (항구 계류주 0.89×0.69×0.83칸 · 선단 353·359,246 · 운하 42,753·756)은 모양이 다른 물건(버섯꼴 계류주)이라 갖다 쓰지 않는다.
+//
+// ⚠️ **판만 거른다.** 배치는 그대로라 통행(`actor/obstacles`)은 안 바뀐다
+
+/** `OBJ_EVENT_GFX_BOLLARD` */
+export const BOLLARD_GFX = 192
+
+/** BDSP가 구운 말뚝 자리 재질 (`M_C_001_BlockPale_*`) */
+export function isBakedBollard(m: Material): boolean {
+  return /_BlockPale_/.test(m.name)
+}
+
+/** 바닥에서 본 상자 (최소 x, 최소 z, 최대 x, 최대 z) */
+type BakedBox = readonly [number, number, number, number]
+
+/** 지금 씬에 붙은 BDSP 층들의 `BlockPale` 상자 */
+const bakedBollards = new Set<BakedBox>()
+
+/** 이 자리(칸 한가운데 월드 x, z)를 BDSP `BlockPale`이 덮는가 */
+export function bakedBollardAt(x: number, z: number): boolean {
+  for (const [x0, z0, x1, z1] of bakedBollards) if (x0 <= x && x <= x1 && z0 <= z && z <= z1) return true
+  return false
+}
+
+/** 눈덩이 소품 번호 (`fldeffProps`의 35 — 그림 118) */
+const SNOWBALL_KIND = 35
 
 /** 이 그림이 판때기가 아니라 소품인가 */
 function propKindOf(gfx: number): number | null {
@@ -216,6 +333,20 @@ export function ObjectProps({ grid, layer, mapId, bdsp }: Props) {
   )
   const { byKind, offsets } = useLoadedProps(kinds)
 
+  /**
+   * 눈덩이의 BDSP 모델 (`gimmick/obj0004_00`). `undefined`는 받는 중이라 아무것도 안 세운다 · `null`은 없어서 원작 소품이 선다
+   */
+  const [snow, setSnow] = useState<GimmickPiece | null | undefined>(undefined)
+  const wantsSnow = kinds.includes(SNOWBALL_KIND)
+  useEffect(() => {
+    if (!wantsSnow) return
+    let alive = true
+    void loadGimmick(GIMMICK_MODELS.snowball).then((gltf) => {
+      if (alive) setSnow(gltf === null ? null : gimmickPieces(gltf, GIMMICK_MODELS.snowball)[0] ?? null)
+    })
+    return () => { alive = false }
+  }, [wantsSnow])
+
   const meshes = useRef<(Mesh | null)[]>([])
 
   useFrame(() => {
@@ -226,7 +357,8 @@ export function ObjectProps({ grid, layer, mapId, bdsp }: Props) {
       const z = at.actor.z + 0.5
       mesh.visible = propShown(at.kind, x, z, at.actor.visible, bdsp)
       if (!mesh.visible) continue
-      const off = offsets[at.kind] ?? [0, 0, 0]
+      // BDSP 눈덩이는 밑동이 원점이다 — 원작 소품의 자리 어긋남을 안 쓴다
+      const off = at.kind === SNOWBALL_KIND && snow ? [0, 0, 0] : offsets[at.kind] ?? [0, 0, 0]
       mesh.position.set(
         x + off[0]!,
         groundYAt(grid, world.mapId, x, z, layer, at.actor.y) + off[1]!,
@@ -235,10 +367,26 @@ export function ObjectProps({ grid, layer, mapId, bdsp }: Props) {
     }
   })
 
-  if (placed.length === 0) return null
+  const vents = bdsp ? <VentModels grid={grid} layer={layer} mapId={mapId} /> : null
+  if (placed.length === 0) return vents
   return (
     <group>
+      {vents}
       {placed.map((at, i) => {
+        if (at.kind === SNOWBALL_KIND && snow !== null) {
+          if (snow === undefined) return null
+          return (
+            <mesh
+              key={`${String(at.actor.localID)}/${String(i)}`}
+              ref={(m) => { meshes.current[i] = m }}
+              geometry={snow.geometry}
+              material={snow.material}
+              visible={false}
+              castShadow
+              receiveShadow
+            />
+          )
+        }
         const got = byKind.get(at.kind)
         if (got === undefined) return null
         return (

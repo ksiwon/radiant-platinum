@@ -292,6 +292,18 @@ export const GROUPS = [
     match: under('models/berry/'),
   },
   {
+    // 필드 기믹 — BDSP `gimmick/obj0001~0006` (바위깨기 · 풀베기 · 꿀나무 · 눈덩이 · 괴력 · docs/DATA.md §2.17.9)
+    name: 'gimmick',
+    make: 'pnpm extract:gimmicks',
+    match: under('models/gimmick/'),
+  },
+  {
+    // 배틀 이펙트 — BDSP 파티클 프리팹 · 그림 · 시퀀스. 굽는 쪽은 설치기와 같은 타입스크립트다 (docs/orders/BATTLE_FX_20261004.md §4)
+    name: 'battleFx',
+    make: 'pnpm extract:fx',
+    match: under('data/fx/'),
+  },
+  {
     // 바깥 — BDSP 야외 지역 13벌 + 대습지. 굽는 쪽은 설치기와 같은 타입스크립트다 (docs/DATA.md §2.17.6)
     name: 'field',
     make: 'pnpm extract:fields',

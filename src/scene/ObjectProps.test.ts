@@ -7,7 +7,8 @@ import { describe, expect, it } from 'vitest'
 import { BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, MeshStandardMaterial, Quaternion, Vector3 } from 'three'
 import type { NpcActor } from '../engine/actor/npcs'
 import {
-  bakedSignNear, bakedVentActors, bakedVentNear, holdBdspSigns, isBakedSign, isBakedVent, propShown, VENT_GFX,
+  BOLLARD_GFX, bakedBollardAt, bakedSignNear, bakedVentActors, bakedVentNear, holdBdspSigns, isBakedBollard, isBakedSign,
+  isBakedVent, propShown, VENT_GFX,
 } from './ObjectProps'
 
 describe('BDSP가 구운 간판', () => {
@@ -81,7 +82,7 @@ describe('BDSP가 구운 환풍구', () => {
     expect(is('M_C_001_Pier_01')).toBe(false)
   })
 
-  it('붙은 지역에 모델이 있는 칸의 환풍구만 판때기를 거른다 — 이웃 칸 · 떼고 난 뒤는 판때기가 선다', () => {
+  it('지역이 붙으면 환풍구 판때기를 다 거른다 — 모델이 없는 칸은 붙은 지역의 `Intake`를 옮겨 세운다 · 떼면 판때기가 선다', () => {
     const root = new Group()
     // 209번도로 (540,712) · (541,712) — area004 실측 그대로 0.59 × 1.03 × 0.59
     const vents = new InstancedMesh(new BoxGeometry(0.59, 1.03, 0.59), new MeshStandardMaterial({ name: 'M_C_001_Intake_01' }), 2)
@@ -96,14 +97,44 @@ describe('BDSP가 구운 환풍구', () => {
     expect(bakedVentActors([a, b, far, sign], none).size).toBe(0)
     const release = holdBdspSigns(root)
     expect(bakedVentNear(540.5, 712.5)).toBe(true)
+    // 이웃 칸은 BDSP 모델이 아니다 — 틀을 옮겨 세우는 자리다 (`VentModels`)
+    expect(bakedVentNear(542.5, 712.5)).toBe(false)
     // 환풍구는 간판으로 안 센다
     expect(bakedSignNear(540.5, 712.5)).toBe(false)
     const got = bakedVentActors([a, b, far, sign], none)
-    expect([...got]).toEqual([a, b])
+    expect([...got]).toEqual([a, b, far])
     // 바뀐 것이 없으면 같은 집합을 돌려준다 — 프레임마다 상태를 안 흔든다
     expect(bakedVentActors([a, b, far, sign], got)).toBe(got)
     release()
     expect(bakedVentActors([a, b, far, sign], got).size).toBe(0)
+  })
+})
+
+describe('BDSP가 구운 말뚝', () => {
+  it('`BlockPale`만 고른다', () => {
+    const is = (name: string): boolean => isBakedBollard(new MeshStandardMaterial({ name }))
+    expect(is('M_C_001_BlockPale_01')).toBe(true)
+    expect(is('M_T_013_Bollard_01')).toBe(false)
+    expect(is('M_C_001_Intake_01')).toBe(false)
+  })
+
+  it('`BlockPale`이 덮은 칸의 말뚝만 판때기를 거른다 — 떼면 판때기가 선다', () => {
+    const root = new Group()
+    // 연고시티 (472,687) · (473,687) — area004 실측 그대로 한 벌 0.9 × 0.75 × 0.9 · 원점이 칸 모서리다
+    const geometry = new BoxGeometry(0.9, 0.75, 0.9).translate(0.5, 0.375, -0.5)
+    const blocks = new InstancedMesh(geometry, new MeshStandardMaterial({ name: 'M_C_001_BlockPale_01' }), 2)
+    blocks.setMatrixAt(0, new Matrix4().makeTranslation(472, 2, 688))
+    blocks.setMatrixAt(1, new Matrix4().makeTranslation(473, 2, 688))
+    root.add(blocks)
+    const a = actor(BOLLARD_GFX, 472, 687)
+    const b = actor(BOLLARD_GFX, 473, 687)
+    const far = actor(BOLLARD_GFX, 474, 687)
+    const release = holdBdspSigns(root)
+    expect(bakedBollardAt(472.5, 687.5)).toBe(true)
+    expect(bakedBollardAt(474.5, 687.5)).toBe(false)
+    expect([...bakedVentActors([a, b, far], new Set())]).toEqual([a, b])
+    release()
+    expect(bakedVentActors([a, b, far], new Set()).size).toBe(0)
   })
 })
 
@@ -152,7 +183,7 @@ function bakedPieces(file: string): Group {
       if (node.mesh === undefined) continue
       for (const p of g.meshes[node.mesh]!.primitives) {
         const material = new MeshStandardMaterial({ name: p.material === undefined ? '' : g.materials[p.material]!.name })
-        if (!isBakedSign(material) && !isBakedVent(material)) continue
+        if (!isBakedSign(material) && !isBakedVent(material) && !isBakedBollard(material)) continue
         const a = g.accessors[p.attributes.POSITION]!
         const min = new Vector3(...(a.min as V3))
         const max = new Vector3(...(a.max as V3))
@@ -222,19 +253,31 @@ describe.skipIf(!baked)('구운 지역과 배치표 (실측)', () => {
     ])
   })
 
-  it('환풍구 65곳 중 63곳은 BDSP 원통 모델이 같은 칸에 있어 판때기를 거른다 — 이웃 칸뿐인 둘은 판때기가 선다', () => {
+  it('환풍구 65곳 중 63곳은 BDSP 원통 모델이 같은 칸에 있다 — 이웃 칸뿐인 둘은 `Intake`를 옮겨 세우므로 판때기는 다 거른다', () => {
     const release = holdAll()
     const placed = outdoorPlaced((g) => g === VENT_GFX)
     expect(placed).toHaveLength(65)
     const actors = placed.map((v) => actor(VENT_GFX, v.x, v.z))
     const skipped = bakedVentActors(actors, new Set())
+    const bare = actors.filter((a) => !bakedVentNear(a.x + 0.5, a.z + 0.5))
     release()
-    expect(skipped.size).toBe(63)
-    // 209번도로 넷은 다 모델이다
+    expect(skipped.size).toBe(65)
+    // 209번도로 넷은 다 BDSP 모델이다
     for (const [x, z] of [[540, 712], [541, 712], [565, 702], [565, 700]] as const) {
-      expect([...skipped].some((a) => a.x === x && a.z === z), `${String(x)},${String(z)}`).toBe(true)
+      expect(bare.some((a) => a.x === x && a.z === z), `${String(x)},${String(z)}`).toBe(false)
     }
+    expect(bare.map((a) => `${String(a.x)},${String(a.z)}`).sort()).toEqual(['462,826', '648,438'])
+  })
+
+  it('바깥 말뚝 12곳 중 열 곳은 BDSP `BlockPale`이 같은 칸에 있다 — 파이트에리어 둘만 판때기가 선다', () => {
+    const release = holdAll()
+    const placed = outdoorPlaced((g) => g === BOLLARD_GFX)
+    expect(placed).toHaveLength(12)
+    const actors = placed.map((v) => actor(BOLLARD_GFX, v.x, v.z))
+    const skipped = bakedVentActors(actors, new Set())
+    release()
+    expect(skipped.size).toBe(10)
     expect(actors.filter((a) => !skipped.has(a)).map((a) => `${String(a.x)},${String(a.z)}`).sort())
-      .toEqual(['462,826', '648,438'])
+      .toEqual(['617,434', '617,435'])
   })
 })

@@ -9,12 +9,20 @@
 // 그림이고 통행은 여전히 거동값이 정한다.
 //
 // 모양은 `ledgeVisual`에 있다 — 자리는 원본 칸 텍셀, 높이는 §7.4.3 초기값이다.
+//
+// ⚠️ **BDSP 지역이 그리는 바깥에서는 BDSP가 턱을 그린다.** 지역 glb가 턱 341칸 중 336칸에 낮은 절벽(`M_C_001_Cliff_04` ·
+// `Cliff_04B`)을 구워 두었다 — 칸 한가운데가 땅보다 0.16(0.1~0.25) 높고 착지 쪽 +0.5~0.75에서 땅으로 닫힌다(`Ledges.test`).
+// 그래서 그 위에는 안 세운다. **BDSP가 턱을 안 그린 다섯 칸**(`BDSP_BARE_LEDGES` — 221번도로 x 314 · z 896~900의 동쪽 턱)만
+// 세운다. 그 칸은 BDSP 땅이 평평해서 안 세우면 보이지 않는 한쪽 문이 된다.
+// BDSP 기믹 `obj0025_01~04`(`P_C_001_Bank_0x` · `FieldEmbankmentEntity`)는 턱이 아니다 — 한 칸 안의 둥근 둔덕(높이 0.42 ·
+// 가운데가 가장 높고 사방이 대칭)이라 뛰는 방향이 없다
 // **색을 못 읽으면 안 세운다** (§4.4의 준비 대기). 그림 묶음이 오기 전에 상자를
 // 먼저 올리면 같은 자리에 두 벌이 겹쳤다가 바뀐다
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { InstancedMesh, MeshLambertMaterial, Mesh, Object3D, type BufferGeometry } from 'three'
 import type { MapGrid } from '../engine/map/grid'
 import { worldState } from '../state/worldState'
+import { bdspReady, bdspVersion, subscribeBdsp } from './bdspReady'
 import { loadTexSheet, type TexSheet } from './chunkMesh'
 import { recipeMode } from './visual/recipes'
 import {
@@ -22,7 +30,24 @@ import {
   type LedgeSwatch, type LedgeTile,
 } from './ledgeVisual'
 
-function collect(grid: MapGrid, center: number, radius: number): LedgeTile[] {
+/**
+ * BDSP 지역이 턱을 안 그린 칸과 그 칸을 그리는 지역 (`Ledges.test`의 실측). 턱 341칸 중 이 다섯만 지역 glb의 땅이 평평하다 —
+ * 221번도로(맵 392)의 동쪽으로 뛰는 세로 턱 한 줄이다. BDSP가 이 길을 고쳐 지으며 턱을 뺐고, 우리 통행은 원작대로 턱이다
+ */
+export const BDSP_BARE_LEDGES: readonly { x: number, z: number, field: string }[] = [
+  { x: 314, z: 896, field: 'area001' },
+  { x: 314, z: 897, field: 'area001' },
+  { x: 314, z: 898, field: 'area001' },
+  { x: 314, z: 899, field: 'area001' },
+  { x: 314, z: 900, field: 'area001' },
+]
+
+/** BDSP가 그리는 동안 우리가 세울 턱인가 — 그 칸을 그리는 지역이 서서 그려질 때만 참이다 */
+export function bdspBareLedge(x: number, z: number, ready: (key: string) => boolean = bdspReady): boolean {
+  return BDSP_BARE_LEDGES.some((c) => c.x === x && c.z === z && ready(c.field))
+}
+
+function collect(grid: MapGrid, center: number, radius: number, only?: (x: number, z: number) => boolean): LedgeTile[] {
   const out: LedgeTile[] = []
   const n = grid.chunkTiles
   const near = worldState.player.position.y
@@ -33,6 +58,7 @@ function collect(grid: MapGrid, center: number, radius: number): LedgeTile[] {
       for (let x = x0; x < x0 + n; x++) {
         const facing = ledgeFacing(grid.behavior(x, z))
         if (!facing) continue
+        if (only !== undefined && !only(x, z)) continue
         out.push({
           x: x + 0.5,
           y: grid.heightAtWorld(x + 0.5, z + 0.5, near) ?? 0,
@@ -109,8 +135,10 @@ function LegacyLedges({ tiles }: { tiles: readonly LedgeTile[] }) {
 
 /** 그림에 그려 둔 턱을 **줄 단위 쐐기**로 세운다 (§7.4). */
 export function Ledges(
-  { grid, chunkIndex, radius, texSet }: {
+  { grid, chunkIndex, radius, texSet, bdsp = false }: {
     grid: MapGrid; chunkIndex: number; radius: number; texSet: number
+    /** BDSP 층이 그리는 중이다 — BDSP가 턱을 안 그린 칸(`bdspBareLedge`)만 세운다 */
+    bdsp?: boolean
   },
 ) {
   const legacy = recipeMode() === 'legacy'
@@ -121,10 +149,15 @@ export function Ledges(
     return () => { alive = false }
   }, [texSet])
 
-  const tiles = useMemo(
-    () => collect(grid, chunkIndex, radius),
-    [grid, chunkIndex, radius],
-  )
+  // BDSP 지역이 서고 떨어질 때마다 다시 고른다 — 세울 칸이 `bdspBareLedge`를 읽는다. 열쇠는 지금 세울 칸들이다
+  useSyncExternalStore(subscribeBdsp, bdspVersion)
+  const bare = bdsp
+    ? BDSP_BARE_LEDGES.filter((c) => bdspBareLedge(c.x, c.z)).map((c) => `${String(c.x)},${String(c.z)}`).join('|')
+    : null
+  const tiles = useMemo(() => {
+    const keep = bare === null ? null : new Set(bare.split('|'))
+    return collect(grid, chunkIndex, radius, keep === null ? undefined : (x, z) => keep.has(`${String(x)},${String(z)}`))
+  }, [grid, chunkIndex, radius, bare])
   const runs = useMemo(() => (legacy ? [] : ledgeRuns(tiles)), [legacy, tiles])
 
   const meshes = useMemo(() => {

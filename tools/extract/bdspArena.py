@@ -564,6 +564,15 @@ BERRY_COUNT = 64
 BERRY_SEEDING = "kinoseeding"
 #: 나무 그림 긴 변의 상한. 나무는 한 칸 안에 서는 작은 물건이라 256이면 텍셀이 남는다 — 브라우저 변환기(`convert.ts`)의 `BERRY_TEXTURE`와 같아야 한다
 BERRY_TEXTURE = 256
+#: 필드 기믹 (docs/orders/BATTLE_FX_20261004.md §8 · DATA.md §2.17.9). BDSP가 필드 glb에 안 굽고 기믹 번들로 따로 두는 것들이다 —
+#: 바위깨기 바위 · 풀베기 나무 · 눈덩이 · 괴력 바위는 정적 메시라 이 변환기로, 꿀나무는 뼈 넷과 흔들림 클립 넷이 있어 인물
+#: 변환기(`bdspGlb`)로 굽는다. 목록은 `src/engine/world/gimmicks.ts`의 `GIMMICK_MODELS`와 같아야 한다
+GIMMICK_OUT = ROOT / "public/models/gimmick"
+GIMMICK_STATIC = ["obj0001_00", "obj0002_00", "obj0004_00", "obj0006_00"]
+GIMMICK_ANIMATED = ["obj0003_00"]
+#: 기믹 그림 긴 변의 상한. 넷은 원본이 256이고 꿀나무만 512다(세 칸 높이 나무라 1인칭으로 올려다본다) — 원본 그대로 싣는다.
+#: 브라우저 변환기(`convert.ts`)의 `GIMMICK_TEXTURE`와 같아야 한다
+GIMMICK_TEXTURE = 512
 
 
 def wanted() -> list[str]:
@@ -625,6 +634,28 @@ def bake_berries() -> int:
     return 0
 
 
+def bake_gimmicks() -> int:
+    from bdspGlb import export as export_model
+
+    names = GIMMICK_STATIC + GIMMICK_ANIMATED
+    print(f"기믹 {len(names)}벌")
+    total = 0
+    for name in GIMMICK_STATIC:
+        # 재질 색(`_Color`)을 곱하는 길은 나무열매와 같다 — 넷 다 `plain`이라 `baseColorFactor`가 실린다(눈덩이 0.95)
+        stat = export(GIMMICK / name, GIMMICK_OUT / f"{name}.glb", None, GIMMICK_TEXTURE, groups=True)
+        total += stat["바이트"]
+        print(f"  {name}  삼각형 {stat['삼각형']:>5,} · {stat['가로']}×{stat['높이']}×{stat['세로']} · {stat['바이트'] / 1e3:.0f}KB")
+    for name in GIMMICK_ANIMATED:
+        out = GIMMICK_OUT / f"{name}.glb"
+        stat = export_model(GIMMICK / name, out, max_texture=GIMMICK_TEXTURE, entity_clips=True)
+        total += out.stat().st_size
+        print(f"  {name}  삼각형 {stat['triangles']:>5,} · 뼈 {stat['bones']} · 클립 {stat['clips']} · {out.stat().st_size / 1e3:.0f}KB")
+    made = sorted(p.stem for p in GIMMICK_OUT.glob("*.glb"))
+    (GIMMICK_OUT / "index.json").write_text(json.dumps({"gimmicks": made}, separators=(",", ":")), encoding="utf-8")
+    print(f"모두 {total / 1e3:.0f}KB · 목차 {len(made)}벌")
+    return 0
+
+
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
@@ -636,12 +667,17 @@ def main() -> int:
                     help="실내 방을 굽는다. 이름을 안 주면 전부")
     ap.add_argument("--berries", action="store_true",
                     help="나무열매 나무(kino001~064 + 싹)를 묶음별 노드로 굽는다")
+    ap.add_argument("--gimmicks", action="store_true",
+                    help="필드 기믹(바위깨기 · 풀베기 · 눈덩이 · 괴력 · 꿀나무)을 굽는다")
     ap.add_argument("--far", type=float, default=None,
                     help="무대 한가운데에서 이보다 먼 메시는 버린다 (m)")
     args = ap.parse_args()
 
     if args.berries:
         return bake_berries()
+
+    if args.gimmicks:
+        return bake_gimmicks()
 
     if args.rooms is not None:
         return bake_rooms(args.rooms)

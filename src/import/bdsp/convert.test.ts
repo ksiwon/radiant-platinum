@@ -27,6 +27,7 @@ import { TRAINER_CLIP } from '../../scene/battle/battleTrainerVisual'
 import { TRAINER_MODELS } from './trainerModels'
 import { bundleDeps } from './bundleDeps'
 import { bdspDir, withLocal } from '../../data/romData.testkit'
+import { GIMMICK_MODELS, HONEY_TREE_CLIPS, gimmickNames } from '../../engine/world/gimmicks'
 
 const AA = bdspDir('root')
 const arena = (name: string): string | null => {
@@ -106,6 +107,76 @@ withLocal('BDSP AssetAssistant', berryBundle('kino001'))('나무열매 나무', 
       }
     }
   }, 60_000)
+})
+
+const GIMMICK_BAKED = join(__dirname, '../../../public/models/gimmick')
+
+withLocal('BDSP AssetAssistant', berryBundle('obj0003_00'))('필드 기믹', () => {
+  interface Parsed {
+    gltf: Record<string, unknown> & {
+      bufferViews: { byteOffset: number, byteLength: number, target?: number }[], images: { bufferView: number }[]
+      animations?: { name: string }[]
+    }
+    bin: Uint8Array
+  }
+  const parse = (g: Uint8Array): Parsed => {
+    const dv = new DataView(g.buffer, g.byteOffset, g.byteLength)
+    const n = dv.getUint32(12, true)
+    const gltf = JSON.parse(new TextDecoder().decode(g.subarray(20, 20 + n))) as Parsed['gltf']
+    const m = dv.getUint32(20 + n, true)
+    return { gltf, bin: g.subarray(28 + n, 28 + n + m) }
+  }
+  const bake = async (name: string): Promise<Uint8Array> => {
+    const env = openEnvironment([bytes(berryBundle(name)!)])
+    return name === GIMMICK_MODELS.honeyTree
+      ? (await exportModel(env, encodePng, { maxSize: 512, keepClips: true, entityClips: true })).glb
+      : (await exportArena(env, encodePng, { name, maxSize: 512, groups: true, premultiplied: true, plant: true })).glb
+  }
+
+  it('꿀나무 클립 넷이 `FieldEventEntity` 이름표대로 실린다 — 다 `Take 001`인 클립을 이름으로 가른다', async () => {
+    const { gltf } = parse(await bake(GIMMICK_MODELS.honeyTree))
+    expect(new Set(gltf.animations?.map((a) => a.name))).toEqual(new Set(['Wait', ...HONEY_TREE_CLIPS]))
+  }, 60_000)
+
+  // 노드 쪽 `bdspArena.py --gimmicks`와 같아야 한다 (두 굽는 쪽이 갈리지 않게). PNG를 압축하는 쪽이 달라 파일 바이트는 갈리므로
+  // **구조 · 정점(과 클립) 바이트 · 그림 픽셀**을 견준다. 산출물이 없으면 건너뛴다
+  it.runIf(existsSync(join(GIMMICK_BAKED, 'obj0001_00.glb')))('개발 산출물과 같다 — 다섯 벌 다 (꿀나무 뼈 · 클립 포함)', async () => {
+    for (const name of gimmickNames()) {
+      const mine = parse(await bake(name))
+      const want = parse(new Uint8Array(readFileSync(join(GIMMICK_BAKED, `${name}.glb`))))
+      // 0의 부호만 갈린다 — 파이썬은 `-0.0`을 그대로 적고 `JSON.stringify`는 `0`으로 적는다 (뼈 쉼 자세의 사원수)
+      const plain = (v: unknown): unknown => (v === undefined ? v : JSON.parse(JSON.stringify(v)))
+      for (const k of ['scenes', 'nodes', 'meshes', 'skins', 'materials', 'textures', 'samplers', 'accessors', 'animations']) {
+        expect(plain(mine.gltf[k]), `${name} ${k}`).toEqual(plain(want.gltf[k]))
+      }
+      const pick = (p: Parsed, i: number): Uint8Array => {
+        const v = p.gltf.bufferViews[i]!
+        return p.bin.subarray(v.byteOffset, v.byteOffset + v.byteLength)
+      }
+      expect(mine.gltf.bufferViews.length).toBe(want.gltf.bufferViews.length)
+      const images = new Set(mine.gltf.images.map((im) => im.bufferView))
+      // 실수 덩이는 1ulp까지 본다 — 인물 변환기의 뼈 무게 정규화가 두 언어에서 마지막 자리가 갈리고(꿀나무 무게 1,864개 중
+      // 최대 6e-8) 역바인드 행렬은 0의 부호만 갈린다. 색인 · 정수 덩이는 바이트로 같아야 한다
+      const floats = new Set((mine.gltf.accessors as { bufferView: number, componentType: number }[])
+        .filter((a) => a.componentType === 5126).map((a) => a.bufferView))
+      mine.gltf.bufferViews.forEach((_, i) => {
+        if (images.has(i)) return
+        const x = pick(mine, i), y = pick(want, i)
+        if (!floats.has(i)) { expect(Buffer.from(x).equals(Buffer.from(y)), `${name} 덩이 ${String(i)}`).toBe(true); return }
+        const fx = new Float32Array(x.slice().buffer), fy = new Float32Array(y.slice().buffer)
+        expect(fx.length, `${name} 덩이 ${String(i)}`).toBe(fy.length)
+        let worst = 0
+        fx.forEach((v, k) => { worst = Math.max(worst, Math.abs(v - fy[k]!)) })
+        expect(worst, `${name} 덩이 ${String(i)}`).toBeLessThan(1e-6)
+      })
+      for (const [i, im] of mine.gltf.images.entries()) {
+        const x = await decodePng(pick(mine, im.bufferView))
+        const y = await decodePng(pick(want, want.gltf.images[i]!.bufferView))
+        expect([x.width, x.height], `${name} 그림 ${String(i)}`).toEqual([y.width, y.height])
+        expect(Buffer.from(x.pixels).equals(Buffer.from(y.pixels)), `${name} 그림 ${String(i)} 픽셀`).toBe(true)
+      }
+    }
+  }, 120_000)
 })
 
 suite('무대', () => {

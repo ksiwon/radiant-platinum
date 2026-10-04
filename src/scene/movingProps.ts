@@ -45,8 +45,13 @@ export interface FeatureProp {
   rotY?: number
   /** x축 회전(라디안). 벽에 붙은 톱니만 쓴다 */
   rotX?: number
-  /** z축 회전(라디안). 밑동을 축으로 흔들리는 꿀 나무만 쓴다 */
+  /** z축 회전(라디안). 감금장치 통이 기울 때 쓴다 */
   rotZ?: number
+  /**
+   * BDSP 기믹 모델로 세운다 — 번들 이름 · 틀 클립 · 원점에서 소품 자리까지의 어긋남. 꿀나무만 쓴다 (`honeyTree`).
+   * 기믹 그룹이 없으면 `model`의 원작 소품이 선다
+   */
+  gimmick?: { name: string, clip: string, shift: readonly [number, number, number] }
 }
 
 /**

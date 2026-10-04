@@ -66,6 +66,8 @@ const LABELS: Readonly<Record<string, Readonly<Record<Lang, string>>>> = {
   rooms: { ko: '실내', en: 'Interiors', ja: '屋内' },
   fields: { ko: '야외', en: 'Outdoor areas', ja: '屋外' },
   berryPlants: { ko: '나무열매 나무', en: 'Berry plants', ja: 'きのみの木' },
+  gimmicks: { ko: '필드 장치', en: 'Field obstacles', ja: 'フィールドのしかけ' },
+  battleFx: { ko: '배틀 이펙트', en: 'Battle effects', ja: 'バトルエフェクト' },
   dungeons: { ko: '던전', en: 'Dungeons', ja: 'ダンジョン' },
   motionTiming: { ko: '타격 타이밍', en: 'Hit timing', ja: '攻撃のタイミング' },
   monVariants: { ko: '이로치·암컷 모습', en: 'Shiny and female forms', ja: '色違い・メスの姿' },

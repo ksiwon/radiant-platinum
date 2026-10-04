@@ -74,6 +74,12 @@ export const REQUIRED_BDSP_GROUPS = [
   // 나무열매 나무 — BDSP 입체다 (DATA.md §2.17.8). 없으면 밭에 흙만 서고 자란 것이 안 보인다.
   // ⚠️ **여기 있어야 이미 깐 사람도 받는다** — 위 `rooms`와 같은 까닭이다
   'berryPlants',
+  // 필드 기믹 — 바위깨기 · 풀베기 · 괴력 바위 · 꿀나무 · 눈덩이가 BDSP 입체다 (DATA.md §2.17.9). 없으면 원작 그림이 선다.
+  // ⚠️ **여기 있어야 이미 깐 사람도 받는다** — 위 `rooms`와 같은 까닭이다
+  'gimmicks',
+  // 포획 · 기술 이펙트 — BDSP 원작 파티클이다 (docs/orders/BATTLE_FX_20261004.md §4). 없으면 지금의 DS 입자가 선다.
+  // ⚠️ **여기 있어야 이미 깐 사람도 받는다** — 위 `rooms`와 같은 까닭이다
+  'battleFx',
 ] as const
 
 export const REQUIRED_GROUPS: readonly string[] = [

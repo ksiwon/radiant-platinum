@@ -19,7 +19,7 @@ class TextureError extends Error {
 
 /** Unity `TextureFormat` 번호 → 어떻게 푸는가 */
 interface FormatSpec {
-  kind: BcKind | 'astc' | 'alpha8' | 'rgba32' | 'rgb24' | 'argb32' | 'r8' | 'rg16'
+  kind: BcKind | 'astc' | 'alpha8' | 'rgba32' | 'rgb24' | 'argb32' | 'r8' | 'rg16' | 'rgba64'
   /** ASTC 블록 크기. 나머지는 0 */
   blockW: number
   blockH: number
@@ -51,6 +51,8 @@ const FORMATS: Readonly<Record<number, FormatSpec>> = {
   59: { kind: 'astc', blockW: 12, blockH: 12, pixelBytes: 0 },
   62: { kind: 'r8', blockW: 0, blockH: 0, pixelBytes: 1 },
   63: { kind: 'rg16', blockW: 0, blockH: 0, pixelBytes: 2 },
+  // 채널마다 16비트 (`RGBA64`). 배틀 이펙트 깃털 그림 둘(`ew297_*_feather`)이 이 꼴이다 — 위 8비트만 쓴다 (Pillow `RGBA;16L`과 같다)
+  74: { kind: 'rgba64', blockW: 0, blockH: 0, pixelBytes: 8 },
 }
 
 export interface Texture {
@@ -112,6 +114,9 @@ function toRgba(spec: FormatSpec, raw: Uint8Array, width: number, height: number
       case 'rg16': out[to] = raw[at]!; out[to + 1] = raw[at + 1]!; out[to + 3] = 255; break
       case 'rgb24': out[to] = raw[at]!; out[to + 1] = raw[at + 1]!; out[to + 2] = raw[at + 2]!; out[to + 3] = 255; break
       case 'rgba32': out.set(raw.subarray(at, at + 4), to); break
+      case 'rgba64':
+        out[to] = raw[at + 1]!; out[to + 1] = raw[at + 3]!; out[to + 2] = raw[at + 5]!; out[to + 3] = raw[at + 7]!
+        break
       case 'argb32':
         out[to] = raw[at + 1]!; out[to + 1] = raw[at + 2]!; out[to + 2] = raw[at + 3]!; out[to + 3] = raw[at]!
         break
