@@ -20,6 +20,7 @@ import { useBattleStore } from '../../state/battleStore'
 import { SplParticles } from './SplParticles'
 import { preloadSplPack, splFileFor, SPL_WAZA } from './splPack'
 import { encounterBurst, STAGE_ORIGIN } from './stageRefs'
+import { bdspFxInstalled, fxIndex } from './fx/moveSeq'
 import { DS_VIEW_TALL } from '../CinematicStage'
 import type { SplCue } from './splDraw'
 import type { SplBasis, Vec3 } from './splPlace'
@@ -61,7 +62,7 @@ export function EncounterBurst({ withParticles }: { withParticles: boolean }) {
 
   // 준비하는 동안 묶음을 미리 받아 둔다 — 열리는 그 프레임에 답이 나와야 한다
   useEffect(() => {
-    if (phase === 'loading') void preloadSplPack(SPL_WAZA)
+    if (phase === 'loading') { void preloadSplPack(SPL_WAZA); void fxIndex() }
   }, [phase])
 
   /** 열렸다는 것은 알았고 아직 안 텄다 */
@@ -90,7 +91,11 @@ export function EncounterBurst({ withParticles }: { withParticles: boolean }) {
     // (`ui/battle/BattleOpenVeil`) 여기서 그냥 돌아가면 배틀이 **검은 채로**
     // 남는다 — 입자 묶음을 못 받은 판이 정확히 그 자리다
     encounterBurst.at = performance.now()
-    if (!withParticles) return
+    // ⚠️ **BDSP 묶음이 깔렸으면 흰 막과 땅 입자를 안 튼다.** 둘 다 DS 화면(2D 배경 위)의 연출이다 — BDSP 배틀은 그것 없이
+    // 무대가 바로 서고, 3D 무대에서는 화면이 통째로 하얗게 덮여 「갑자기 흰 화면」으로 읽혔다(트레일러 검토 10-04).
+    // 검은 막이 걷히는 것은 그대로다 (`ui/battle/BattleOpenVeil`)
+    encounterBurst.white = !bdspFxInstalled()
+    if (!withParticles || !encounterBurst.white) return
     const [a, b] = burstMembers(battleTerrainNow())
     const fileA = splFileFor(SPL_WAZA, a)
     const fileB = splFileFor(SPL_WAZA, b)

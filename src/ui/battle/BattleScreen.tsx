@@ -1375,7 +1375,7 @@ function BattleOpenVeil() {
         const at = encounterBurst.at
         const frame = at > 0 ? (performance.now() - at) / (1000 / 60) : 0
         const black = Math.max(0, 1 - frame / BURST.whiteIn)
-        const white = burstWhite(frame)
+        const white = encounterBurst.white ? burstWhite(frame) : 0
         node.style.backgroundColor = black > white ? vars.scrim.black : vars.scrim.white
         node.style.opacity = String(Math.max(black, white))
       }

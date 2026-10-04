@@ -103,7 +103,7 @@ export const moveImpact: {
  * `SysTask_SetupUI` 안의 한 프레임 카운터다. 시작 시각을 여기 한 자리에 두고
  * 둘이 같이 읽는다 (진화·부화의 `cinematicStore.startedAt`과 같은 자리다)
  */
-export const encounterBurst: { at: number } = { at: 0 }
+export const encounterBurst: { at: number; white: boolean } = { at: 0, white: true }
 
 /** 연출이 끝났다. 걸어 둔 것을 전부 놓는다 */
 export function clearMoveImpact(): void {

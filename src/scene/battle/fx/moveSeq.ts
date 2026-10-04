@@ -31,9 +31,13 @@ const plans = new Map<string, SeqPlan>()
 
 onProviderSwap(() => {
   index = null
+  installed = null
   seqs.clear()
   plans.clear()
 })
+
+/** 표를 받아 봤는가 — 받기 전 `null` */
+let installed: boolean | null = null
 
 /** 이펙트 표. 묶음을 안 깔았으면 `null` */
 export function fxIndex(): Promise<FxIndex | null> {
@@ -41,8 +45,13 @@ export function fxIndex(): Promise<FxIndex | null> {
     const provider = assets()
     if (!(await provider.exists('data/fx/index.json'))) return null
     return (await readJson(provider, 'data/fx/index.json')) as FxIndex
-  })().catch(() => null)
+  })().catch(() => null).then((got) => { installed = got !== null; return got })
   return index
+}
+
+/** BDSP 이펙트 묶음이 깔렸는가 (동기). 표를 아직 안 받았으면 `false` — 판이 열리기 전에 `fxIndex()`를 걸어 둔다 */
+export function bdspFxInstalled(): boolean {
+  return installed === true
 }
 
 /** 시퀀스 한 벌. 없으면 `null` */

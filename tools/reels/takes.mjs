@@ -75,9 +75,10 @@ export const TAKES = [
   },
   {
     id: 'C6-catch', what: '볼 던지기 → 빨려 듦 → 흔들림 → 잡힘', cp: 'grass',
-    // 몬스터볼은 판마다 빠져나왔다(네 판 다) — 꼭 잡히는 마스터볼을 넣어 둔다. 보라 BDSP `eb001_capture`도 그대로 보인다
+    // 몬스터볼은 판마다 빠져나왔다(네 판 다) — 꼭 잡히는 마스터볼을 넣어 둔다. 보라 BDSP `eb001_capture`도 그대로 보인다.
+    // ⚠️ **볼 주머니를 비우고 넣는다.** 주머니 첫 칸이 던져지는데 몬스터볼이 앞에 있으면 그것이 날아가 빠져나왔다
     steps: [{ do: 'hour', hour: 15 },
-      { do: 'eval', js: `(async () => { const { useSaveStore } = await import('/src/state/saveStore.ts'); const { loadItems } = await import('/src/data/gameData.ts'); const bank = await loadItems(); useSaveStore.getState().addItem(bank.get(1).pocket ?? 0, 1, 1); return bank.get(1).pocket })()` },
+      { do: 'eval', js: `(async () => { const { useSaveStore } = await import('/src/state/saveStore.ts'); const { loadItems } = await import('/src/data/gameData.ts'); const bank = await loadItems(); const p = bank.get(1).pocket ?? 0; const s = useSaveStore.getState(); for (const e of [...(s.bag[p] ?? [])]) useSaveStore.getState().removeItem(p, e.item, e.count); useSaveStore.getState().addItem(p, 1, 1); return useSaveStore.getState().bag[p].map((e) => e.item) })()` },
       { do: 'wild', species: 399, level: 2, after: 100 }, { do: 'menu' },
       // 가방이 다 열리기 전에 누른 → 는 먹지 않는다(첫 판은 회복 주머니에서 상처약을 썼다) — 열고 한참 기다린다
       { do: 'keys', keys: ['ArrowDown', 'z'], gap: 900 }, { do: 'wait', ms: 1500 },
