@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CAPTURE_DROP_TIME,
   CAPTURE_SEAL_TIME,
+  CAPTURE_SHAKE_START,
   CAPTURE_THROW_TIME,
+  ballDropLift,
   ballPalette,
   ballShakeAngle,
   captureBodyScale,
@@ -23,14 +26,27 @@ describe('battle ball motion', () => {
 
   it('shakes only for the number of completed checks', () => {
     expect(ballShakeAngle(0.2, 3)).toBe(0)
-    expect(Math.abs(ballShakeAngle(1.02, 3))).toBeGreaterThan(0.1)
+    // 한 번 안에서 앞 0.817초는 가만히 있고 끝에 기운다 (BDSP `ee102_ball_anim`)
+    expect(ballShakeAngle(CAPTURE_SHAKE_START + 0.4, 3)).toBe(0)
+    expect(Math.abs(ballShakeAngle(CAPTURE_SHAKE_START + 0.817 + 0.07, 3))).toBeGreaterThan(0.1)
     expect(ballShakeAngle(captureResolveAt(3), 3)).toBe(0)
+  })
+
+  it('drops from 0.5 m above rest, bounces twice and rests (BDSP ee101_ball_anim)', () => {
+    expect(ballDropLift(0)).toBeCloseTo(0.5, 6)
+    expect(ballDropLift(0.25)).toBe(0)
+    expect(ballDropLift(0.4)).toBeCloseTo(0.105, 3)
+    expect(ballDropLift(0.6)).toBeCloseTo(0.039, 3)
+    expect(ballDropLift(5)).toBe(0)
+    // 떨어지기 시작하는 시각은 닫힌 뒤, 흔들림은 멎은 뒤
+    expect(CAPTURE_DROP_TIME).toBeGreaterThan(CAPTURE_SEAL_TIME)
+    expect(CAPTURE_SHAKE_START - CAPTURE_DROP_TIME).toBeCloseTo(0.767, 3)
   })
 
   it('seals the target in the ball and releases it only after a failed catch', () => {
     expect(captureBodyScale(CAPTURE_THROW_TIME, 2, false)).toBe(1)
     expect(captureBodyScale(CAPTURE_SEAL_TIME, 2, false)).toBe(0)
-    expect(captureBodyScale(captureResolveAt(2) + 0.3, 2, false)).toBe(1)
+    expect(captureBodyScale(captureResolveAt(2) + 0.4, 2, false)).toBe(1)
     expect(captureBodyScale(captureResolveAt(4) + 3, 4, true)).toBe(0)
   })
 

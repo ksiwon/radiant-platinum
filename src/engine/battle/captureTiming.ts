@@ -9,16 +9,29 @@
 // 씬이 여기서 읽어 간다 — 의존 방향이 엔진 → 씬이 되면 지연 로딩 경계가 깨진다.
 import { FRAME_SECONDS } from './presentationClock'
 
-/** 던진 볼이 상대에 닿는 시각(초) */
+// ⚠️ **던지기 뒤의 박자는 BDSP 볼 클립이다** (`ob0204_00`의 애니메이션 · 시퀀스 `ee101`~`ee104`).
+// 볼 프리팹을 클립째 꺼내(`tools/extract/bdspGlb.py … ob0204_00`) `Waist`의 자리 · 회전 곡선을 읽었다:
+//
+//   ee101_ball_anim  볼이 열려(시퀀스 f28) 빨아들이고 f46에 닫힌다 — 0.6초.
+//                    클립 1.483초에 볼이 쉬는 높이보다 0.50m 위에서 떨어져 1.733초에 땅에 닿고,
+//                    0.105m · 0.039m로 두 번 튀어 2.25초에 멎는다
+//   ee102~104        흔들림 한 번이 클립 하나다(1.15 · 1.283 · 1.583초) — 앞 0.8초는 가만히 있고
+//                    끝 0.35초 남짓에 좌우로 두 번 기운다(최대 약 0.25rad)
+//
+// 던지는 길(0.52초)만 우리 값이다 — BDSP는 트레이너가 던지는 몸짓까지 28프레임인데 배틀에 사람이 안 선다.
+
+/** 던진 볼이 상대 앞에 닿아 열리는 시각(초) */
 export const CAPTURE_THROW_TIME = 0.52
-/** 상대가 볼 안으로 다 들어가는 시각 */
-export const CAPTURE_SEAL_TIME = 0.74
-/** 땅에 놓인 볼이 첫 번째로 흔들리기 시작하는 시각 */
-export const CAPTURE_SHAKE_START = 0.92
-/** 흔들림 한 번의 길이 */
-export const CAPTURE_SHAKE_STEP = 0.46
-/** 튀어나온 상대가 제 크기로 돌아오는 데 걸리는 시간 */
-export const CAPTURE_RELEASE_TIME = 0.28
+/** 상대가 볼 안으로 다 들어가 볼이 닫히는 시각 — 열린 뒤 18프레임(30fps) */
+export const CAPTURE_SEAL_TIME = CAPTURE_THROW_TIME + 18 / 30
+/** 떠 있던 볼이 떨어지기 시작하는 시각 — `ee101_ball_anim` 1.483초 */
+export const CAPTURE_DROP_TIME = CAPTURE_THROW_TIME + 1.483
+/** 두 번 튀고 땅에 멎는 시각 — 같은 클립 2.25초. 첫 흔들림이 여기서 시작한다 */
+export const CAPTURE_SHAKE_START = CAPTURE_THROW_TIME + 2.25
+/** 흔들림 한 번의 길이 — `ee102_ball_anim` 1.15초 */
+export const CAPTURE_SHAKE_STEP = 1.15
+/** 튀어나온 상대가 제 크기로 돌아오는 데 걸리는 시간 — `ee106` `PokemonScale` 4~15프레임 */
+export const CAPTURE_RELEASE_TIME = 11 / 30
 
 /**
  * **결과가 확정되는 시각(초).** 흔들림이 다 끝나는 자리다.
@@ -30,9 +43,15 @@ export function captureResolveAt(shakes: number): number {
   return CAPTURE_SHAKE_START + Math.max(0, shakes) * CAPTURE_SHAKE_STEP
 }
 
-/** 연출 한 벌이 완전히 끝나는 시각(초). 잡히면 반짝임이 조금 더 길다 */
+/**
+ * 연출 한 벌이 완전히 끝나는 시각(초).
+ *
+ * 잡히면 성공 반짝임(`ee105_01_sucsess` f32~68)이 다 뜰 때까지다. 놓치면 튀어나온 몸이 제 크기로
+ * 서는 데(`ee106` f4~15)에 빛이 사그라질 틈을 조금 더 둔 36프레임 — `ee106_01_error`는 f64까지
+ * 뿜지만 그동안 배틀을 세워 둘 까닭이 없다(우리 값)
+ */
 export function captureDuration(shakes: number, caught: boolean): number {
-  return captureResolveAt(shakes) + (caught ? 0.72 : 0.62)
+  return captureResolveAt(shakes) + (caught ? 68 / 30 : 36 / 30)
 }
 
 /**

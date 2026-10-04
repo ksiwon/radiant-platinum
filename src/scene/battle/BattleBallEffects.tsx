@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
-import type { Group } from 'three'
+import type { Group, Mesh, MeshBasicMaterial } from 'three'
 import { SLOTS, type SlotId } from '../../engine/battle/events'
 import { battleClock } from '../../engine/battle/presentationClock'
 import type { BattleView } from '../../engine/battle/view'
@@ -12,7 +12,10 @@ import { useBattleStore } from '../../state/battleStore'
 import { Ball } from '../../engine/battle/meta/capture'
 import {
   CAPTURE_SEAL_TIME,
-  CAPTURE_SHAKE_START,
+  BALL_RADIUS,
+  CAPTURE_DROP_TIME,
+  ballDropLift,
+  captureHoverAt,
   CAPTURE_THROW_TIME,
   ballPalette,
   ballShakeAngle,
@@ -73,7 +76,7 @@ function shotDuration(shot: BallShot): number {
 function BallModel({ ball }: { ball: number }) {
   const palette = useMemo(() => ballPalette(ball), [ball])
   return (
-    <group scale={0.3}>
+    <group scale={BALL_RADIUS}>
       <mesh castShadow>
         <sphereGeometry args={[1, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
         <meshStandardMaterial
@@ -185,17 +188,19 @@ function useBallPieces(
       return [{ prefab: names.ballout, at: open, stop: 0.6, pos: center, scale: balloutScale }]
     }
     const resolve = captureResolveAt(shot.shakes)
-    const ground = (): readonly [number, number, number] => [spot[0], 0.34, spot[1]]
     const list: BallPiece[] = [
       // 볼이 몸에 닿아 열린다 — 빛줄기 · 볼별 빨아들임 · 몸 빛
       { prefab: 'ee101_03_ball_open', at: CAPTURE_THROW_TIME, stop: 0.9, pos: ballAt, scale: () => 1 },
       { prefab: names.capture, at: CAPTURE_THROW_TIME, stop: 0.9, pos: center, scale: () => 1 },
       { prefab: 'ee101_02_poke_flash', at: CAPTURE_THROW_TIME + 0.2, stop: 0.7, pos: center, scale: () => 0.4 },
-      // 닫힌다
-      { prefab: 'ee101_04_ball_close', at: CAPTURE_SEAL_TIME, stop: 0.35, pos: ground, scale: () => 1 },
+      // 닫힌다 — 떠 있는 볼에서
+      { prefab: 'ee101_04_ball_close', at: CAPTURE_SEAL_TIME, stop: 0.35, pos: ballAt, scale: () => 1 },
     ]
     if (shot.caught) {
-      list.push({ prefab: 'ee105_01_sucsess', at: resolve, stop: 1.2, pos: ground, scale: () => 1 })
+      // 성공 반짝임은 땅에 멎은 볼에서 (`ee105` f32~68 — 결과가 나고 1초 뒤)
+      // ⚠️ 별은 BDSP 실제 크기 볼(반지름 0.038m)에 맞춘 크기라 우리 볼(`BALL_RADIUS`)에서는 점으로 보였다 —
+      // 볼을 키운 만큼의 일부(3배)를 같이 키운다
+      list.push({ prefab: 'ee105_01_sucsess', at: resolve + 32 / 30, stop: 36 / 30, pos: ballAt, scale: () => 3 })
     } else {
       list.push({ prefab: 'ee106_01_error', at: resolve, stop: 1.9, pos: center, scale: () => 1 })
       list.push({ prefab: names.ballout, at: resolve + 0.07, stop: 0.6, pos: center, scale: balloutScale })
@@ -215,13 +220,17 @@ function ShotVisual({
   const ball = useRef<Group>(null)
   const flash = useRef<Group>(null)
   const recall = useRef<Group>(null)
+  /** 볼 밑 그림자 — 없으면 땅에 멎은 볼이 떠 보인다 */
+  const blob = useRef<Mesh>(null)
   const [x, z] = spotAt(shot.slot)
   const target = useMemo<Point3>(() => [x, 1.2, z], [x, z])
   // ⚠️ **볼은 늘 화면 밖에서 날아온다.** 배틀에 사람이 서지 않는다 (사용자 결정 2026-10-04 —
   // 제 포켓몬 맞은편에 선 사람이 트레이너가 포켓몬과 싸우는 것으로 읽혔다)
   const source = trainerThrowOrigin(shot.kind === 'capture' ? 'p1a' : shot.slot)
   const resultAt = captureResolveAt(shot.shakes)
-  const ballPos = useRef<[number, number, number]>([x, 1.2, z])
+  /** 포획 볼이 떠서 열리는 자리 */
+  const hover = useMemo(() => captureHoverAt([x, z], shot.slot), [x, z, shot.slot])
+  const ballPos = useRef<[number, number, number]>([...hover])
   const pieces = useBallPieces(shot, [x, z], () => ballPos.current)
   /** BDSP 조각이 서면 예전 빛(돔 · 구슬)은 물러난다 — 같은 자리에 두 벌이 겹친다 */
   const bdsp = pieces !== null
@@ -263,32 +272,40 @@ function ShotVisual({
       return
     }
 
+    // 던지기 → 상대 앞 0.7m · 쉬는 높이 위 0.5m에 떠서 열린다 → 빨아들이고 닫힌다 → 그대로 떠 있다가
+    // 떨어져 두 번 튀고 땅에 멎는다 → 흔들린다 (BDSP `ee101_ball_anim` · `ee102~104`, `captureTiming` 머리말)
+    const [hx, hy, hz] = hover
     if (elapsed < CAPTURE_THROW_TIME) {
       const flight = elapsed / CAPTURE_THROW_TIME
-      b.position.set(...throwArc(source, target, flight, 2.5))
-    } else if (elapsed < CAPTURE_SEAL_TIME) {
-      const drop = (elapsed - CAPTURE_THROW_TIME) / (CAPTURE_SEAL_TIME - CAPTURE_THROW_TIME)
-      b.position.set(x, 1.2 - drop * 0.86, z)
+      b.position.set(...throwArc(source, hover, flight, 2.5))
+      b.rotation.set(elapsed * 9, elapsed * 5, 0)
     } else {
-      b.position.set(x, 0.34, z)
+      const drop = elapsed - CAPTURE_DROP_TIME
+      b.position.set(hx, drop < 0 ? hy : BALL_RADIUS + ballDropLift(drop), hz)
+      // 단추가 카메라 쪽을 본다. 흔들림은 앞뒤 축으로 기운다
+      b.rotation.set(0, 0, ballShakeAngle(elapsed, shot.shakes))
     }
     b.scale.setScalar(1)
-    b.rotation.x = elapsed * 5
-    b.rotation.y = elapsed * 3
-    b.rotation.z = ballShakeAngle(elapsed, shot.shakes)
 
+    // 예전 빛(돔 · 구슬) — BDSP 조각이 없을 때만 보인다
     const sealedFor = elapsed - CAPTURE_THROW_TIME
     const resolvedFor = elapsed - resultAt
     if ((sealedFor >= 0 && sealedFor < 0.26) || (resolvedFor >= 0 && resolvedFor < 0.38)) {
       burst.visible = true
-      burst.position.set(x, sealedFor < 0.26 ? 1.05 : 0.45, z)
+      burst.position.set(hx, sealedFor < 0.26 ? hy : BALL_RADIUS, hz)
       const life = sealedFor < 0.26 ? sealedFor / 0.26 : resolvedFor / 0.38
       burst.scale.setScalar(0.3 + life * (shot.caught ? 1.7 : 1.25))
       burst.rotation.y = elapsed * 4
     }
     if (!shot.caught && elapsed > resultAt + 0.18) b.visible = false
-    if (shot.caught && elapsed > CAPTURE_SHAKE_START) {
-      b.position.y += Math.max(0, Math.sin((elapsed - resultAt) * Math.PI) * 0.08)
+    const sh = blob.current
+    if (sh) {
+      // 높을수록 옅고 크다 — 떠 있는 동안에도 땅에 자리를 찍어 둔다
+      const lift = Math.max(0, b.position.y - BALL_RADIUS)
+      sh.visible = b.visible && elapsed >= CAPTURE_THROW_TIME
+      sh.position.set(b.position.x, 0.004, b.position.z)
+      sh.scale.setScalar(1 + lift * 0.8)
+      ;(sh.material as MeshBasicMaterial).opacity = 0.35 / (1 + lift * 3)
     }
   })
 
@@ -298,6 +315,12 @@ function ShotVisual({
       <group ref={ball}>
         <BallModel ball={shot.ball} />
       </group>
+      {shot.kind === 'capture' && (
+        <mesh ref={blob} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
+          <circleGeometry args={[BALL_RADIUS * 1.05, 20]} />
+          <meshBasicMaterial color="#000000" transparent opacity={0.35} depthWrite={false} />
+        </mesh>
+      )}
       {/* BDSP 조각이 서면 예전 빛은 그룹째 숨긴다(`useFrame`이 켜도 부모가 꺼져 있다) */}
       <group visible={!bdsp}>
         <Flash innerRef={flash} color={flashColor} />

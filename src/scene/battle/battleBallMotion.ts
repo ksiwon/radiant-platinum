@@ -3,6 +3,7 @@ import type { SlotId } from '../../engine/battle/events'
 // 값을 봐야 포획 결과 글이 볼 연출을 기다린다 — 예전에는 이 초가 여기에만 있어서
 // 결과가 던지기와 같은 프레임에 떴다
 import {
+  CAPTURE_DROP_TIME,
   CAPTURE_RELEASE_TIME,
   CAPTURE_SEAL_TIME,
   CAPTURE_SHAKE_START,
@@ -15,6 +16,7 @@ import {
 export type Point3 = readonly [number, number, number]
 
 export {
+  CAPTURE_DROP_TIME,
   CAPTURE_SEAL_TIME,
   CAPTURE_SHAKE_START,
   CAPTURE_THROW_TIME,
@@ -76,8 +78,56 @@ export function ballShakeAngle(elapsed: number, shakes: number): number {
   if (local < 0 || shakes <= 0) return 0
   const cycle = Math.floor(local / CAPTURE_SHAKE_STEP)
   if (cycle >= shakes) return 0
-  const phase = (local - cycle * CAPTURE_SHAKE_STEP) / CAPTURE_SHAKE_STEP
-  return Math.sin(phase * Math.PI * 2) * Math.sin(phase * Math.PI) * 0.42
+  // BDSP 흔들림 클립(`ee102_ball_anim`)은 0.8초를 가만히 있다가 끝 0.35초에 좌우로 두 번 기운다
+  const at = local - cycle * CAPTURE_SHAKE_STEP - SHAKE_IDLE
+  if (at < 0) return 0
+  const phase = Math.min(1, at / (CAPTURE_SHAKE_STEP - SHAKE_IDLE))
+  return Math.sin(phase * Math.PI * 2) * Math.sin(phase * Math.PI) * 0.3
+}
+
+/** 흔들림 한 번 중 가만히 있는 앞 몫(초) — `ee102_ball_anim` 0.817초 */
+const SHAKE_IDLE = 0.817
+
+/**
+ * 떨어져 튀는 볼의 높이 — **쉬는 높이 위로 몇 m인가** (`ee101_ball_anim`의 `Waist` y에서 반지름 0.036을 뺀 값).
+ *
+ * @param t 떨어지기 시작한 뒤의 초 (`CAPTURE_DROP_TIME`부터)
+ */
+export function ballDropLift(t: number): number {
+  if (t <= 0) return DROP_KEYS[0]![1]
+  const last = DROP_KEYS[DROP_KEYS.length - 1]!
+  if (t >= last[0]) return 0
+  let i = 0
+  while (t > DROP_KEYS[i + 1]![0]) i++
+  const [t0, y0] = DROP_KEYS[i]!
+  const [t1, y1] = DROP_KEYS[i + 1]!
+  return y0 + (y1 - y0) * ((t - t0) / (t1 - t0))
+}
+
+/** [떨어진 뒤 초, 쉬는 높이 위 m] — 클립 1.483~2.25초를 30fps로 떠 온 것 */
+const DROP_KEYS: readonly (readonly [number, number])[] = [
+  [0, 0.5], [0.05, 0.461], [0.1, 0.381], [0.15, 0.277], [0.2, 0.149], [0.25, 0],
+  [0.3, 0.077], [0.35, 0.104], [0.4, 0.105], [0.45, 0.081], [0.5, 0.026], [0.55, 0.021],
+  [0.6, 0.039], [0.65, 0.036], [0.7, 0.012], [0.767, 0],
+]
+
+/** 볼이 떠서 열리는 높이 — 쉬는 높이 위 0.5m (떨어지기 시작하는 그 높이) */
+const BALL_HOVER = DROP_KEYS[0]![1]
+
+/**
+ * 볼 반지름(m). ⚠️ **원작 값이 아니다** — BDSP 볼 모델은 실제 크기(반지름 0.038m)인데 우리 카메라는 한
+ * 자리에서 5.8m 밖을 보므로 그 크기면 몇 픽셀이다. 지름 0.3m로 키운다(「읽히는 쪽이 이긴다」).
+ * 떨어지고 튀는 높이는 원작 m 그대로 둔다
+ */
+export const BALL_RADIUS = 0.15
+
+/**
+ * 볼이 떠서 열리는 자리 — 상대 앞 0.7m (`ee101` `ModelMoveRelativePoke pos=0/50/70`).
+ * 상대는 −Z에 서고 내 쪽이 +Z라 앞은 +Z다
+ */
+export function captureHoverAt(spot: readonly [number, number], slot: SlotId): Point3 {
+  const front = slot.startsWith('p2') ? 0.7 : -0.7
+  return [spot[0], BALL_RADIUS + BALL_HOVER, spot[1] + front]
 }
 
 export function captureBodyScale(elapsed: number, shakes: number, caught: boolean): number {
