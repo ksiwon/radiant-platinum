@@ -236,7 +236,7 @@ maybe('확인 지점', () => {
     }
   })
 
-  it('⚠️ 깨어진 세계 세 층은 지형 위에 서고, 판이 겹치면 그 판에서도 걸을 칸이다', () => {
+  it('⚠️ 깨어진 세계 B3F · B4F는 지형 위에 서고, 판이 겹치면 그 판에서도 걸을 칸이다. 1F는 이야기가 내려놓는 칸이다', () => {
     // 이 세 층에는 **바닥 판이 없다** — 1F 0장 · B3F 서쪽 벽 1장 · B4F 동쪽 벽과
     // 천장(웅덩이 46칸). 내려서면 지형(지역 y 1, `scene/distortionCore`의
     // `DISTORTION_STAND_Y`)을 딛는다. 그 높이에 판이 걸치면 원작은 그 판을 잡으니
@@ -253,6 +253,12 @@ maybe('확인 지점', () => {
       expect(floor, `${id}: 맵 ${String(c.map)}이 깨어진 세계 표에 없다`).toBeDefined()
       const grid = grids.get(maps[c.map]!.matrix)!
       const at = resolveSpot(grid, c.map, c.spot, warpsOf(c.map), npcsOf(c.map))!
+      // ⚠️ 1층은 이야기가 내려놓는 칸(롬 (55,40) − 층 오프셋 (21,10) = (34,30))에 선다. 그 칸은 DS 높이 자료 밖이다 —
+      // 첫 진입 장면이 거기서 서쪽으로 한 칸 걷기까지 원작 그대로다. 그 자리만 높이 대신 롬 좌표로 잰다
+      if (id === 'distortion') {
+        expect([Math.floor(at.x) + floor!.offsetX, Math.floor(at.z) + floor!.offsetZ], `${id}: 이야기가 내려놓는 칸이 아니다`).toEqual([55, 40])
+        continue
+      }
       expect(grid.heightAtWorld(at.x, at.z), `${id}: 지형이 없다`).not.toBeNull()
       const wx = Math.floor(at.x) + floor!.offsetX
       const wy = STAND_Y + floor!.offsetY
