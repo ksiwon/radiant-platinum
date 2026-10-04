@@ -33,6 +33,7 @@ import {
   type BackupPreview, type ImportPreview, type SaveData,
 } from '../../state/saveStore'
 import { PORTABLE_EXT } from '../../state/save/portable'
+import { APP_VERSION } from '../../state/save/contract'
 import {
   integrityFinding, subscribeIntegrity, verifyEverything, watchIntegrity,
 } from '../../app/integrityWatch'
@@ -790,6 +791,25 @@ function TitleMenu() {
         </div>
 
       </div>
+
+      {/*
+        판 표시 — 오른쪽 아래 구석에 작게. **값은 `package.json` 하나에서 온다**
+        (`vite.config`의 `__APP_VERSION__` → `APP_VERSION`). 손으로 또 적지 않는다.
+
+        ⚠️ **누르면 패치노트가 열린다.** 키로 가는 길은 따로 안 낸다 — 차림표
+        커서가 이 칸까지 돌면 「무엇부터 하나」가 흐려진다. 키로는 「더보기」 →
+        「패치노트」가 같은 창을 연다. 그래서 Tab도 안 받는다(`tabIndex`)
+      */}
+      <button
+        type="button"
+        className={css.version}
+        tabIndex={-1}
+        title="패치노트"
+        aria-label={`v${APP_VERSION} 패치노트 열기`}
+        onClick={() => { setShowPatch(true); setNewPatch(false) }}
+      >
+        {`v${APP_VERSION}`}
+      </button>
 
       <div className={css.foot}>
         <p className={css.hint}>←→ 고르기 · Z·Enter 결정</p>

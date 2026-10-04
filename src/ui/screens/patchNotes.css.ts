@@ -81,6 +81,19 @@ export const items = style({
 })
 
 /**
+ * 갈래 머리글 — 정식판처럼 줄이 많은 판에서만 선다 (`patchLog`의 `group`).
+ *
+ * 판 이름(`version`)보다 한 치수 작고 흐리다. 판 > 갈래 > 줄 순서로 읽힌다
+ */
+export const group = style({
+  marginTop: GAP.small,
+  fontSize: TEXT.tiny,
+  fontWeight: 700,
+  color: vars.ink.dim,
+  selectors: { '&:first-child': { marginTop: 0 } },
+})
+
+/**
  * 한 줄 — 딱지와 글, 두 칸.
  *
  * ⚠️ **표(grid)로 둔다.** 딱지를 글 흐름에 흘려 두면 글이 접힐 때 둘째 줄이

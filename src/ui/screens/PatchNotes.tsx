@@ -6,7 +6,7 @@
 //
 // ⚠️ **키로도 닫혀야 한다.** 타이틀 위에 서는 창은 마우스로만 닫히면 안 된다는
 // 자리를 「이런 게임은 어떠세요?」에서 이미 한 번 지났다 — X·Esc로 닫는다.
-import { useEffect } from 'react'
+import { Fragment, useEffect } from 'react'
 import { useMenuKeys } from '../menu/useMenuKeys'
 import { KIND_NAME, NOTES, markPatchSeen } from './patchLog'
 import * as css from './patchNotes.css'
@@ -35,10 +35,16 @@ export function PatchNotes({ onClose }: Props) {
               {note.lead !== undefined && <p className={css.lead}>{note.lead}</p>}
               <ul className={css.items}>
                 {note.items.map((it, i) => (
-                  <li key={i} className={css.item}>
-                    <span className={css.tag}>{KIND_NAME[it.kind]}</span>
-                    <span>{it.text}</span>
-                  </li>
+                  <Fragment key={i}>
+                    {/* 갈래가 바뀌는 자리에만 머리글이 선다 (`patchLog`의 `group`) */}
+                    {it.group !== undefined && it.group !== note.items[i - 1]?.group && (
+                      <li className={css.group}>{it.group}</li>
+                    )}
+                    <li className={css.item}>
+                      <span className={css.tag}>{KIND_NAME[it.kind]}</span>
+                      <span>{it.text}</span>
+                    </li>
+                  </Fragment>
                 ))}
               </ul>
             </li>
