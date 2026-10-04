@@ -22,12 +22,19 @@ import { claimSeq, releaseSeq, seqStage, tallOf } from '../stageRefs'
 import { trainerThrowOrigin } from '../battleBallMotion'
 import { BdspEffect } from './BdspEffect'
 import { cloneBall, loadBallModel, type BallModel } from './ballModel'
-import { slotAnchor } from './seqAnchors'
+import { mergePose, roleContext } from './seqContext'
 
 /** 마지막 명령 뒤로 입자가 사그라지기를 기다리는 위끝 (초) */
 const TAIL = 1.5
 
 const ignoredSeen = new Set<string>()
+
+/** 개발 진단 손잡이 `window.__fxSeq`가 읽을 때 부르는 것 (개발 서버에서만 채워진다) */
+let probe: (() => unknown) | null = null
+function installProbe(w: object): void {
+  if (Object.getOwnPropertyDescriptor(w, '__fxSeq')?.get) return
+  Object.defineProperty(w, '__fxSeq', { configurable: true, get: () => probe?.() })
+}
 
 /** 무대에 선 시퀀스 모델 — 로케이터를 이름으로 찾는다 */
 interface LiveModel {
@@ -79,30 +86,7 @@ export function BdspSequence({
   const live = useRef(new Map<number, LiveModel>())
   const ctx = useRef<SeqContext>(null as unknown as SeqContext)
   ctx.current ??= {
-    anchor: (role: Role, node: number) => {
-      const slot = roles[role]
-      return slot ? slotAnchor(slot, node, spotAt(slot)) : null
-    },
-    home: (role: Role) => {
-      const slot = roles[role]
-      if (!slot) return null
-      const [x, z] = spotAt(slot)
-      return { pos: [x, 0, z], yaw: slotAnchor(slot, 0, [x, z]).yaw }
-    },
-    mine: (role: Role) => {
-      const slot = roles[role]
-      if (slot) return slot.startsWith('p1')
-      const other = roles[role === 0 ? 1 : 0]
-      return other ? !other.startsWith('p1') : role === 0
-    },
-    rest: (role: Role, node: number) => {
-      const slot = roles[role]
-      if (!slot) return null
-      const a = slotAnchor(slot, node, spotAt(slot))
-      const off = seqStage.bodyOwner[slot] === owner ? seqStage.body[slot]?.offset : undefined
-      if (off) { a.pos[0] -= off[0]; a.pos[1] -= off[1]; a.pos[2] -= off[2] }
-      return a
-    },
+    ...roleContext(roles, spotAt, (slot) => (seqStage.bodyOwner[slot] === owner ? seqStage.body[slot]?.offset : undefined)),
     world,
     scale: (role: Role) => bodyScale(roles[role] ?? null, minScale),
     trainer: (id: number) => [...trainerThrowOrigin(id % 2 === 0 ? 'p1a' : 'p2a')] as V3,
@@ -133,6 +117,8 @@ export function BdspSequence({
   const [model, setModel] = useState<BallModel | null>(null)
 
   useEffect(() => {
+    // 진단 알림 — 개발 서버에서만. 설치본(제품)의 콘솔에는 안 낸다
+    if (!import.meta.env.DEV) return
     for (const n of plan.ignored) {
       if (ignoredSeen.has(n)) continue
       ignoredSeen.add(n)
@@ -158,11 +144,13 @@ export function BdspSequence({
   useFrame(() => {
     const f = (battleClock.now() - startedAt) * SEQ_FPS
     if (import.meta.env.DEV) {
-      // 진단 손잡이 — 개발 서버에서만. 지금 프레임의 입자 칸 자세
+      // 진단 손잡이 — 개발 서버에서만. `__fxSeq`는 **읽을 때** 지금 프레임의 입자 칸 자세를 접는다(프레임마다 모든 입자를
+      // 접지 않는다). 가장 늦게 그린 시퀀스의 것이다
       const w = window as unknown as { __fxSeq?: unknown; __fxSeqs?: Record<string, unknown> }
-      w.__fxSeq = {
+      installProbe(w)
+      probe = () => ({
         name: plan.name, f, alive: { ...alive.current }, poses: plan.particles.map((p) => ({ prefab: p.prefab, ...particleAt(p, f, ctx.current) })),
-      }
+      })
       // 시퀀스마다 시작 시각 — 찍는 도구가 시계를 그 프레임에 맞춘다
       ;(w.__fxSeqs ??= {})[plan.name] = { startedAt, frames: planFrames(plan), slot: roles[1], cams: plan.camera.length, usesCamera, owner: seqStage.owner === owner }
     }
@@ -244,22 +232,6 @@ export function BdspSequence({
       ))}
     </group>
   )
-}
-
-/** 한 몸에 걸린 두 역할의 값 — 옮김 · 떨림 · 돌기는 더하고, 크기는 곱하고, 감추기는 어느 한쪽이라도, 동작은 늦게 시킨 쪽 */
-function mergePose(a: ReturnType<typeof bodyAt>, b: ReturnType<typeof bodyAt>): ReturnType<typeof bodyAt> {
-  const motion = !a.motion ? b.motion : !b.motion ? a.motion : b.motion.at >= a.motion.at ? b.motion : a.motion
-  return {
-    offset: [a.offset[0] + b.offset[0], a.offset[1] + b.offset[1], a.offset[2] + b.offset[2]],
-    scale: [a.scale[0] * b.scale[0], a.scale[1] * b.scale[1], a.scale[2] * b.scale[2]],
-    visible: a.visible && b.visible,
-    glow: b.glow ?? a.glow,
-    turn: a.turn + b.turn,
-    shake: [a.shake[0] + b.shake[0], a.shake[1] + b.shake[1], a.shake[2] + b.shake[2]],
-    motion,
-    motionSpeed: Math.min(a.motionSpeed, b.motionSpeed),
-    intro: a.intro || b.intro,
-  }
 }
 
 /** 로케이터 번호 → 노드 이름 (0은 뿌리) */
