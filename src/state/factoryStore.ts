@@ -342,7 +342,7 @@ export const useFactoryStore = create<FactoryState>((set, get) => ({
       label: [cls, name].filter(Boolean).join(' '),
       cls,
       name,
-      // 상대가 **분류의 몸**으로 서게 번호를 그대로 넘긴다 (`FactoryBout.classId`). 없으면 절차형 몸이다
+      // 상대 분류 번호를 그대로 넘긴다 (`FactoryBout.classId` → `trainerClass`) — 배틀 곡(`audio/battleSongs`)과 승리 곡이 분류로 갈린다. 없으면 일반 트레이너(`null`)다. 배틀 무대에는 사람이 서지 않는다
       classId: base?.type,
       ai: aiMaskFor(round.round, id),
       doubles: round.challenge === ChallengeType.DOUBLE,
