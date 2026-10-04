@@ -616,6 +616,41 @@ const mask3 = (mask: readonly string[] | undefined, cur: V3, want: V3): V3 => [
   num(mask, 2, 1) === 1 ? want[2] : cur[2],
 ]
 
+/**
+ * 한 칸의 명령 목록을 `limit` 앞까지 `g` 프레임으로 접는다 — 자리 · 모델 자리 · 몸 자리 · 카메라가 다 같은 꼴이다:
+ * 이미 시작한 명령(`g >= start`)을 차례로 읽어 값을 갈아 끼우고, 아직 진행 중인 명령(`g < end`)은 **그 명령이 시작하는
+ * 프레임의 접힌 값**(`before`)에서 목표로 `progress`만큼 간다.
+ *
+ * `step`은 명령 하나가 만드는 다음 값이다. `undefined`면 그 명령은 값에 손대지 않는다(`null`은 값이다 — 카메라의 「기본」).
+ * 진행 중 명령의 출발값은 `before()`로 받는다 — 값싸게 안 쓰면 안 불린다.
+ *
+ * ⚠️ `before(i)`는 `g`와 상관없이 **명령 `i`의 시작 프레임에서 `i` 앞까지 접은 값**이라 한 번의 호출 안에서는
+ * 항상 같다. 겹친 이음이 많은 칸에서 같은 앞부분을 되풀이해 접지 않도록 호출 하나 안에서 한 번만 잰다(`memo`)
+ */
+export type FoldStep<T> = (c: SeqCommand, value: T, g: number, before: () => T) => T | undefined
+
+export function foldTrack<T>(
+  cmds: readonly SeqCommand[], limit: number, g: number, init: T, step: FoldStep<T>, memo?: Map<number, T>,
+): T {
+  let value = init
+  let shared = memo
+  for (let i = 0; i < limit; i++) {
+    const c = cmds[i]!
+    if (g < c.start) continue
+    const before = (): T => {
+      shared ??= new Map<number, T>()
+      if (!shared.has(i)) shared.set(i, foldTrack(cmds, i, c.start, init, step, shared))
+      return shared.get(i) as T
+    }
+    const next = step(c, value, g, before)
+    if (next !== undefined) value = next
+  }
+  return value
+}
+
+/** 이음이 아직 도는 중인가 (`g`가 `start` 이후 `end` 전) */
+const ramping = (c: SeqCommand, g: number): boolean => c.end > c.start && g < c.end
+
 // ─── 입자 칸 ─────────────────────────────────────────────
 
 interface ParticlePose {
@@ -639,7 +674,7 @@ export function particleAt(p: SeqParticle, f: number, ctx: SeqContext): Particle
   // (`DprParticleFollowModel`). 그 모델이 없으면 쓴 쪽 발밑에 세운다 — 무대 한가운데
   // (원점)에 서면 두 몸 사이 허공에 뜬다
   const placed = p.commands.some((c) => PLACE.has(c.name))
-  const pos = placed ? foldPlace(p, p.commands.length, at, ctx) : (ctx.home(0)?.pos ?? [0, 0, 0])
+  const pos = placed ? foldPlace(p, at, ctx) : (ctx.home(0)?.pos ?? [0, 0, 0])
   for (const c of p.commands) {
     if (at < c.start) continue
     const t = progress(c, at)
@@ -709,17 +744,14 @@ const PLACE = new Set([
   'DprParticleMoveRelativeModel', 'DprParticleFollowModel',
 ])
 
-/** 자리 명령을 `i` 앞까지 접은 `g` 프레임의 값 */
-function foldPlace(p: SeqParticle, i: number, g: number, ctx: SeqContext): V3 {
-  let value: V3 = [0, 0, 0]
-  for (let k = 0; k < i; k++) {
-    const c = p.commands[k]!
-    if (!PLACE.has(c.name) || g < c.start) continue
+/** 입자 자리 명령을 접은 `g` 프레임의 값 */
+function foldPlace(p: SeqParticle, g: number, ctx: SeqContext): V3 {
+  return foldTrack<V3>(p.commands, p.commands.length, g, [0, 0, 0], (c, value, g, before) => {
+    if (!PLACE.has(c.name)) return undefined
     const target = placeTarget(c, ctx, value, g)
-    if (target === null) continue
-    value = c.end > c.start && g < c.end ? lerp3(foldPlace(p, k, c.start, ctx), target, progress(c, g)) : target
-  }
-  return value
+    if (target === null) return undefined
+    return ramping(c, g) ? lerp3(before(), target, progress(c, g)) : target
+  })
 }
 
 /** 자리 명령 하나의 목표 (`g` 프레임에 잰다 — 모델을 따라가는 것은 그 프레임의 모델 자리다) */
@@ -847,7 +879,7 @@ export function modelAt(plan: SeqPlan, no: number, f: number, ctx: SeqContext): 
     }
   }
 
-  let pos = foldModelPlace(m, cmds.length, f, ctx)
+  let pos = foldModelPlace(m, f, ctx)
   let rot: V3 = [0, 0, 0]
   for (const c of cmds) {
     if (f < c.start || c.name !== 'ModelRotate') continue
@@ -865,7 +897,7 @@ export function modelAt(plan: SeqPlan, no: number, f: number, ctx: SeqContext): 
       visible = false
     } else {
       const k = Math.min(1, Math.max(0, (f - (off.start - THROW_FRAMES)) / THROW_FRAMES))
-      const to = foldModelPlace(m, cmds.length, off.start, ctx)
+      const to = foldModelPlace(m, off.start, ctx)
       pos = [
         from[0] + (to[0] - from[0]) * k,
         from[1] + (to[1] - from[1]) * k + Math.sin(k * Math.PI) * THROW_ARC,
@@ -902,12 +934,9 @@ function rotBefore(m: ModelTrack, f: number): V3 {
   return rot
 }
 
-/** 모델 자리 명령을 `i` 앞까지 접은 `g` 프레임의 값 */
-function foldModelPlace(m: ModelTrack, i: number, g: number, ctx: SeqContext): V3 {
-  let value: V3 = ctx.home(1)?.pos ?? [0, 0, 0]
-  for (let k = 0; k < i; k++) {
-    const c = m.commands[k]!
-    if (g < c.start) continue
+/** 모델 자리 명령을 접은 `g` 프레임의 값 */
+function foldModelPlace(m: ModelTrack, g: number, ctx: SeqContext): V3 {
+  return foldTrack<V3>(m.commands, m.commands.length, g, ctx.home(1)?.pos ?? [0, 0, 0], (c, value, g, before) => {
     let target: V3
     if (c.name === 'ModelMovePosition') {
       const v = vec(c.values.pos)
@@ -915,15 +944,14 @@ function foldModelPlace(m: ModelTrack, i: number, g: number, ctx: SeqContext): V
     } else if (c.name === 'ModelMoveRelativePoke') {
       const role: Role = num(c.values.trg) === 1 ? 1 : 0
       const a = ctx.rest(role, num(c.values.node))
-      if (!a) continue
+      if (!a) return undefined
       const rot = offsetYaw(c.values, 'isRotPos', role, a.yaw, ctx)
       const rate = num(c.values.rate, 0, 100) / 100
       target = lerp3(value, add(a.pos, offsetOf(vec(c.values.pos), rot)), rate)
-    } else continue
+    } else return undefined
     target = mask3(c.values.enableElem, value, target)
-    value = c.end > c.start && g < c.end ? lerp3(foldModelPlace(m, k, c.start, ctx), target, progress(c, g)) : target
-  }
-  return value
+    return ramping(c, g) ? lerp3(before(), target, progress(c, g)) : target
+  })
 }
 
 /** 그 프레임의 배속 */
@@ -1025,11 +1053,7 @@ export function bodyAt(plan: SeqPlan, role: Role, f: number, ctx: SeqContext): B
   const home = ctx.home(role)
   const cmds = plan.body[role].commands
   // 자리: 접어 가며
-  const offsetBefore = (limit: number, g: number): V3 => {
-    let value: V3 = [0, 0, 0]
-    for (let i = 0; i < limit; i++) {
-      const c = cmds[i]!
-      if (g < c.start) continue
+  out.offset = foldTrack<V3>(cmds, cmds.length, f, [0, 0, 0], (c, value, g, before) => {
       let target: V3 | null = null
       switch (c.name) {
         case 'PokemonMoveRelativePoke': {
@@ -1060,14 +1084,11 @@ export function bodyAt(plan: SeqPlan, role: Role, f: number, ctx: SeqContext): B
           target = [0, 0, 0]
           break
         default:
-          continue
+          return undefined
       }
-      if (target === null) continue
-      value = c.end > c.start && g < c.end ? lerp3(offsetBefore(i, c.start), target, progress(c, g)) : target
-    }
-    return value
-  }
-  out.offset = offsetBefore(cmds.length, f)
+    if (target === null) return undefined
+    return ramping(c, g) ? lerp3(before(), target, progress(c, g)) : target
+  })
 
   for (const c of cmds) {
     if (f < c.start) continue
@@ -1257,35 +1278,29 @@ export function cameraAt(
   plan: SeqPlan, f: number, ctx: SeqContext & { scale(role: Role): number }, base: SeqCamera,
 ): SeqCamera | null {
   const c = plan.cameraAtRest ? { ...ctx, anchor: (role: Role, node: number) => ctx.rest(role, node) } : ctx
-  return foldCamera(plan.camera, plan.camera.length, f, c, base)
+  return foldCamera(plan.camera, f, c, base)
 }
 
 function foldCamera(
-  cmds: readonly SeqCommand[], limit: number, g: number,
-  ctx: SeqContext & { scale(role: Role): number }, base: SeqCamera,
+  cmds: readonly SeqCommand[], g: number, ctx: SeqContext & { scale(role: Role): number }, base: SeqCamera,
 ): SeqCamera | null {
-  let cam: SeqCamera | null = null
-  for (let i = 0; i < limit; i++) {
-    const c = cmds[i]!
-    if (g < c.start) continue
+  return foldTrack<SeqCamera | null>(cmds, cmds.length, g, null, (c, cam, g, before) => {
     const from: SeqCamera = cam ?? base
     const step = cameraTarget(c, from, ctx, base)
-    if (step === null) continue
+    if (step === null) return undefined
     const reset = c.name === 'CameraReset' || c.name === 'CameraResetFieldAll'
-    if (c.end > c.start && g < c.end) {
-      const was = { ...(foldCamera(cmds, i, c.start, ctx, base) ?? base), ...step.start }
+    if (ramping(c, g)) {
+      const was = { ...(before() ?? base), ...step.start }
       const t = progress(c, g)
       const next: SeqCamera = { ...from }
       for (const part of step.parts) {
         if (part === 'pos' || part === 'target') next[part] = lerp3(was[part], step.cam[part], t)
         else next[part] = was[part] + (step.cam[part] - was[part]) * t
       }
-      cam = next
-    } else {
-      cam = reset ? null : { ...from, ...pick(step.cam, step.parts) }
+      return next
     }
-  }
-  return cam
+    return reset ? null : { ...from, ...pick(step.cam, step.parts) }
+  })
 }
 
 function pick(cam: SeqCamera, parts: readonly CamPart[]): Partial<SeqCamera> {
