@@ -220,6 +220,8 @@ withLocal('BDSP 야외', area001)('야외 지역 — 원본 자료', () => {
     const water = readPlaced(glb).filter((p) => /Water_03/.test(p.material)).flatMap((p) => p.tris)
     const pond = [...heightsAt(water, 112, 895), ...heightsAt(water, -112, 895)]
     expect(pond.some((y) => Math.abs(y - 0.5) < 0.05), '떡잎마을 연못(112, 895)에 물이 없다').toBe(true)
+    // 연못 물은 프리팹에서 꺼져 있다 — `ACTIVE_IN_PLAY`가 세운다. 이 지역의 꺼 둔 5개(연못 물 1 · 가짜 실내 4)는 다 예외다
+    expect(stat.inactive).toBe(0)
     // 같은 메시의 사본(낮은 나무 2,312 · 나무 954 · 풀 무더기 1,350)은 한 벌로 — 세운 삼각형이 고유 삼각형의 다섯 배쯤이다
     expect(stat.placedTriangles).toBeGreaterThan(stat.triangles * 4)
     expect(stat.instanced).toBeGreaterThan(20)
@@ -287,5 +289,15 @@ withLocal('BDSP 야외', area001)('야외 지역 — 원본 자료', () => {
     expect(seam.length).toBeGreaterThan(80)
     // 지역 상자는 이음매 뿌리(z 577)까지 늘지 않는다 — 빌린 흙(628)부터다
     expect(stat.box[1]).toBeGreaterThanOrEqual(620)
+  }, 300_000)
+
+  // 꺼 둔 물체는 안 세운다 — area009(206번도로 위쪽 눈길)의 `P_T_013_SnowCover_10` 둘만 예외 밖이다
+  const area009 = AREA ? join(AREA, 'fields', 'area009') : null
+  it('area009 — 꺼 둔 눈 덮개 둘은 안 서고, 꺼 둔 가짜 실내(예외)는 선다', async () => {
+    const env = openEnvironment([new Uint8Array(readFileSync(area009!))])
+    const { glb, stat } = await exportField(env, encodePng, { name: 'area009', maxSize: 64 })
+    expect(stat.problems).toEqual([])
+    expect(stat.inactive).toBe(2)
+    expect(readPlaced(glb).some((p) => /RoomInner/.test(p.material))).toBe(true)
   }, 300_000)
 })

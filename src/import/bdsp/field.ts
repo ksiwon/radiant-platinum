@@ -26,6 +26,29 @@ class FieldError extends Error {
 
 type Props = Record<string, UnityValue>
 const num = (v: UnityValue | undefined, fallback = 0): number => (typeof v === 'number' ? v : fallback)
+/**
+ * `bool` 필드 읽기. typetree가 `bool`을 JS 불리언으로 푼다(`typetree.ts`) — `num`은 불리언을 못 읽어 늘 기본값을 돌려주므로
+ * 꺼짐 검사가 한 번도 안 걸렸다. 숫자로 온 칸(스크립트 필드의 `m_Enabled 1`)도 받는다
+ */
+const flag = (v: UnityValue | undefined, fallback = true): boolean =>
+  typeof v === 'boolean' ? v : typeof v === 'number' ? v !== 0 : fallback
+
+/**
+ * 프리팹에서 꺼져 있지만(`m_IsActive` false) **원작이 게임 중에 켜서 보이는** 물체 — 꺼 둔 것은 안 세우되 이 목록만 세운다.
+ * 번들 안 스크립트 중에 이 물체를 켜는 것은 없다(`FieldEventDoorEntity` · `EffectActivator` · `EmissionColorChanger`…는 어느 것도
+ * 이 물체를 참조하지 않는다 — 지역 번들 13벌의 MonoBehaviour 필드와 대조). 그래서 켜는 쪽은 번들 밖 코드이고, 근거는 **원작 땅 자료**다.
+ *  - `Plane_Water (1)` (area001 `T01` · 떡잎마을 연못, 월드 (−112, 0.5, 895) · 10×10칸): 같은 번들의 다른 `Plane_Water`(`R203` · `R204`)는
+ *    켜져 있고, 이 자리 100칸 중 40칸이 DS 물 칸(`isWater` — `0x0010`)이다. BDSP 화면에도 연못이 있다
+ *  - `P_R_205b_Water_01` (area003 `R205b`, 원작 x 265~281 · z 522~541): 그 구역의 유일한 물 판이고, 박스 304칸 중 190칸이 DS 물 칸이다
+ *  - `RoomInner` 재질 (집 · 관문 문 너머 가짜 실내): **켜지는지는 증명 못 했다.** 세우는 쪽 근거만 있다 — 재질이 `_ZOffset −1e‑5`로
+ *    같은 높이의 땅을 이기게 지어졌고(아래 `ROOM_INNER`), 관문 방 바닥을 이 메시에서 쟀으며(`plates.test` 관문 시험), 바닥을 도려내는
+ *    굽기(`carve`)와 `area004` 시험이 이 바닥이 서 있는 것을 전제한다. 꺼 둔 채로 두려면 이 항목과 그 셋을 함께 고쳐야 한다
+ */
+const ACTIVE_IN_PLAY: readonly { area: string, name: RegExp, material?: RegExp }[] = [
+  { area: 'area001', name: /^Plane_Water \(1\)$/ },
+  { area: 'area003', name: /^P_R_205b_Water_01$/ },
+  { area: '*', name: /^P_C_001_RoomInner/, material: /RoomInner/ },
+]
 
 interface FieldStat {
   /** 세운 메시 (사본 포함) */
@@ -43,6 +66,8 @@ interface FieldStat {
   bytes: number
   /** 실내 바닥 밑에서 잘라 낸 삼각형 (위 `ROOM_INNER`) */
   carved: number
+  /** 꺼 둔 물체라 안 세운 것 (`ACTIVE_IN_PLAY` 예외 빼고) */
+  inactive: number
   problems: string[]
 }
 
@@ -492,6 +517,7 @@ export async function exportField(
   const zones = new Map<number, string | null>()
   let placed = 0
   let placedTriangles = 0
+  let inactive = 0
   for (const filter of filters) {
     const mf = env.readEntry(filter) as Props | null
     if (!mf) continue
@@ -518,11 +544,7 @@ export async function exportField(
     const goPid = num((mf.m_GameObject as Props | undefined)?.m_PathID)
     const go = env.read(goPid) as Props | null
     if (!go) continue
-    // ⚠️ **꺼 둔 물체는 안 세운다** (`m_IsActive 0`) — 원작 프리팹이 꺼 둔 것은 게임에서 안 보이는 것이다.
-    // 단 typetree가 `bool`을 JS 불리언으로 풀어(`typetree.ts`) `num`이 늘 1을 돌려 이 줄은 지금 아무것도 거르지 않는다
-    // (꺼 둔 144개가 선다 — 대개 `RoomInner_*`). 고치면 가짜 실내 바닥과 떡잎마을 연못 물(프리팹에서 꺼져 있으나
-    // DS 칸은 물 0x0010)이 함께 바뀌니 따로 다룬다
-    if (num(go.m_IsActive, 1) === 0) continue
+    const goActive = flag(go.m_IsActive)
     let transformPid = 0
     let slots: number[] = []
     let enabled = true
@@ -535,10 +557,19 @@ export async function exportField(
       if (type === 'MeshRenderer') {
         const mr = env.read(pid) as Props | null
         slots = ((mr?.m_Materials as Props[] | undefined) ?? []).map((p) => num(p.m_PathID))
-        enabled = num(mr?.m_Enabled, 1) !== 0
+        enabled = flag(mr?.m_Enabled)
       }
     }
     if (!enabled || slots.length === 0 || transformPid === 0) continue
+    // ⚠️ **꺼 둔 물체는 안 세운다** (`m_IsActive` false) — 위 `ACTIVE_IN_PLAY`만 예외다. 부모가 꺼진 것(`activeInHierarchy`)은 아직 안 본다:
+    // area008의 `R224b` · `D18` · `W231` 뿌리 아래 2,099개가 이 경우인데, 구역 뿌리를 켜고 끄는 것은 맵 정보라 따로 다룬다
+    if (!goActive) {
+      const goName = typeof go.m_Name === 'string' ? go.m_Name : ''
+      const mats = slots.map((m) => materialName.get(m) ?? '')
+      const on = ACTIVE_IN_PLAY.some((r) => (r.area === '*' || r.area === name) && r.name.test(goName)
+        && (!r.material || mats.some((m) => r.material!.test(m))))
+      if (!on) { inactive++; continue }
+    }
     if (builtin && !slots.every((m) => BUILTIN_PLANE_MATERIAL.test(materialName.get(m) ?? ''))) continue
     // 남의 구역 사본은 버린다 — 이음매 한 줄만 빌린다 (위 `FOREIGN_ZONES` · `ZONE_SEAMS`)
     let seam: readonly [number, number] | undefined
@@ -745,6 +776,7 @@ export async function exportField(
       box: [Math.floor(lowX), Math.floor(lowZ), Math.ceil(highX), Math.ceil(highZ)],
       bytes: glb.byteLength,
       carved,
+      inactive,
       problems: verifyGlb(glb),
     },
   }
