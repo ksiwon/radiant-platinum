@@ -381,6 +381,45 @@ export const disclaimer = style({
   ...WINDOW_SMALL,
 })
 
+/**
+ * 판 표시 — 오른쪽 아래 구석의 `v1.0.0` 한 줄. 누르면 패치노트가 열린다.
+ *
+ * ⚠️ **창을 깔지 않는다.** 판 하나 적자고 상자를 하나 더 세우면 차림표와 같은
+ * 무게로 읽힌다. 맨 글자로 두되, 그 자리는 `ground`가 바닥 쪽을 `scrim.deep`
+ * 으로 짙게 덮는 띠라 흐린 글(`onDarkDim`)도 읽힌다.
+ *
+ * ⚠️ **차림표 줄과 바닥선을 맞추고, 차림표 옆 빈자리에 선다.** 차림표는
+ * 가운데에 `min(940px, 100vw - 32px)`로 서므로 화면 폭이 1100px 남짓보다 좁으면
+ * 옆자리가 없다 — 그때는 차림표 줄 바로 위(`filesArea`와 같은 높이)의 오른쪽
+ * 끝으로 올린다. `filesArea`는 가운데 620px 안이라 닿지 않는다
+ */
+export const version = style({
+  position: 'absolute',
+  right: 'clamp(12px, 2vw, 24px)',
+  bottom: 'clamp(16px, 2.6vh, 30px)',
+  zIndex: 1,
+  margin: 0,
+  padding: '2px 4px',
+  appearance: 'none',
+  background: 'none',
+  border: 0,
+  fontFamily: vars.font.ui,
+  fontSize: TEXT.tiny,
+  fontVariantNumeric: 'tabular-nums',
+  color: vars.ink.onDarkDim,
+  cursor: 'pointer',
+  transition: 'color 120ms linear',
+  selectors: {
+    '&:hover': { color: vars.ink.onDark },
+    '&:focus-visible': { outline: 'none' },
+  },
+  '@media': {
+    'screen and (max-width: 1100px)': {
+      bottom: 'calc(clamp(16px, 2.6vh, 30px) + 58px)',
+    },
+  },
+})
+
 /** 파일을 열어 보고 나서 확인받는 자리, 그리고 실패 이유 */
 export const notice = style({
   ...WINDOW_SMALL,

@@ -22,7 +22,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { menuBeep } from '../../engine/audio/lazy'
 import { useMenuKeys } from '../menu/useMenuKeys'
-import { VERSION } from './patchLog'
+import { APP_VERSION } from '../../state/save/contract'
 import * as css from './bugReport.css'
 
 const API = 'https://api.emailjs.com/api/v1.0/email/send'
@@ -45,7 +45,8 @@ export type Phase = 'idle' | 'sending' | 'done' | 'fail'
  */
 function machine(): string {
   return [
-    `판 ${VERSION}`,
+    // 판은 `package.json`의 것이다 — 패치노트 맨 앞 판은 안쪽 정리만 한 판을 안 센다
+    `판 v${APP_VERSION}`,
     `창 ${window.innerWidth}×${window.innerHeight}`,
     navigator.userAgent,
   ].join('\n')
