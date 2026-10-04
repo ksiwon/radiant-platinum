@@ -550,8 +550,8 @@ export function MoveVfx({
   }, [roster])
   useEffect(() => {
     if (anims === null) return undefined
-    setMoveFrames((move) => {
-      const plan = moveSeqPlan(move, true)
+    setMoveFrames((move, mine) => {
+      const plan = moveSeqPlan(move, mine)
       if (plan) return 2 * (plan.hit ?? planFrames(plan))
       return moveAnimFrames(anims[move ?? -1] ?? null, wazaFile)
     })

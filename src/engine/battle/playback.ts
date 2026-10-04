@@ -541,7 +541,7 @@ export function buildBeats(
         // 연출이 도는 만큼 쉰다. 이 자리가 0이면 기술 이름이 뜨자마자 게이지가
         // 닳아서, 무엇이 무엇을 때렸는지가 화면에서 안 이어진다.
         // **기술마다 길이가 다르다** — 무대도 같은 자리에 물어본다 (`vfx`)
-        show([e], moveFramesOf(e.move), 'presentation')
+        show([e], moveFramesOf(e.move, e.actor.slot.startsWith('p1')), 'presentation')
         break
 
       case 'ball':

@@ -75,7 +75,7 @@ describe('연출 박자는 빠르기를 안 탄다', () => {
     expect(stage).toContain('Math.min(LUNGE, moveFramesOf(move) / 60)')
     // 박자도 같은 자리를 본다
     const pb = readFileSync(resolve(__dirname, '../../engine/battle/playback.ts'), 'utf8')
-    expect(pb).toContain('moveFramesOf(e.move)')
+    expect(pb).toContain("moveFramesOf(e.move, e.actor.slot.startsWith('p1'))")
   })
 
   it('그 박자는 글을 안 바꾼다 — 기술 이름이 뜬 채로 연출이 돈다', () => {

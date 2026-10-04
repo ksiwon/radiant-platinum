@@ -63,13 +63,15 @@ export async function preloadMoveSeqs(moves: Iterable<number>): Promise<void> {
     const name = idx.moves[String(move)]!.seq!
     const seq = await loadSeq(name)
     if (!seq) return
+    // ⚠️ **쪽마다 따로 정한다.** 짝 · 홀 묶음(`GroupOption`)이 쪽마다 다른 프리팹을 골라서, 한쪽만
+    // 빠질 수 있다. 빠진 쪽만 DS로 가고 그 쪽의 길이도 DS가 낸다 (`moveFramesOf`가 같은 표를 본다)
     for (const mine of [true, false]) {
       const plan = planSequence(seq, { attackerMine: mine })
-      // 프리팹이 하나라도 빠졌으면 이 기술은 DS로 간다 — 반쪽짜리 BDSP 연출보다 낫다
-      if (plan.particles.some((p) => missing.has(p.prefab))) return
+      // 프리팹이 하나라도 빠졌으면 이 쪽은 DS로 간다 — 반쪽짜리 BDSP 연출보다 낫다
+      if (plan.particles.some((p) => missing.has(p.prefab))) continue
       plans.set(`${move}:${mine ? 1 : 0}`, plan)
+      for (const p of plan.particles) void loadFxPrefab(p.prefab).catch(() => { /* 그릴 때 다시 */ })
     }
-    for (const p of plans.get(`${move}:1`)?.particles ?? []) void loadFxPrefab(p.prefab).catch(() => { /* 그릴 때 다시 */ })
   }))
 }
 
