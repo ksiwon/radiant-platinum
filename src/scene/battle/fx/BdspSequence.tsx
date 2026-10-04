@@ -343,7 +343,9 @@ function SeqBallModel({ no, plan, model, ctx, startedAt, scale, register }: {
 
 /**
  * `isScale` 카메라 오프셋의 배율 — 그 자리에 선 몸의 키를 1m 기준으로. BDSP가 무엇으로 늘리는지는
- * 못 찾았다(우리 짐작) — 큰 몸 앞에서 카메라가 몸 속에 서지 않게 하는 것이 목적이다
+ * 못 찾았다(우리 짐작) — 큰 몸 앞에서 카메라가 몸 속에 서지 않게 하는 것이 목적이다.
+ *
+ * 한계 — 위 3m · 아래 `minScale`(기본 0.6)도 우리 값이다(PARITY §2.13의 「0.5~3」). 출처 없이 정했고, 실측 기록도 없다
  */
 function bodyScale(slot: string | null, min: number): number {
   return slot ? Math.min(3, Math.max(min, tallOf(slot))) : 1

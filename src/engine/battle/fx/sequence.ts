@@ -102,6 +102,20 @@ export interface SeqContext {
   scale?(role: Role): number
 }
 
+/**
+ * 떨림 세 값 — **전부 우리 값이다. BDSP가 어떻게 읽는지 못 찾았고, 값을 정한 실측 기록도 없다.**
+ *
+ * 롬에는 `srate` · `erate`(세기의 처음과 끝) · `axis` · `sdec` · `edec`(`CameraShake`는 `dec`)가 적혀 있다. 단위와 감쇠(`dec`)의
+ * 뜻은 Unity 쪽 코드에 있고 우리 손에는 데이터뿐이다(`raw/decomp`는 DS 판이다). 그래서 세기를 cm로 읽고(`/ 100`) 배율을 곱한다.
+ * 감쇠(`dec`)는 읽지 않는다. 쓰는 값을 바꿀 때는 화면을 찍어 재야 한다
+ */
+/** 몸 · 모델 떨림 세기 배율 */
+const SHAKE_BODY_GAIN = 0.25
+/** 화면 흔들림 세기 배율 (`CameraShake`) */
+const SHAKE_CAMERA_GAIN = 0.35
+/** 몸 · 모델 떨림의 잦기 (Hz) */
+const SHAKE_HZ = 15
+
 /** 시퀀스 30fps 프레임 → 초 */
 export const SEQ_FPS = 30
 
@@ -909,12 +923,12 @@ export function modelAt(plan: SeqPlan, no: number, f: number, ctx: SeqContext): 
     }
   }
 
-  // 흔들림 — 세기(srate → erate)를 cm로 읽고 잦기는 초당 15번 (`PokemonSpMoveShake`와 같은 짐작)
+  // 흔들림 — 세기(srate → erate)를 cm로 읽고 `SHAKE_BODY_GAIN`을 곱한다. 잦기는 `SHAKE_HZ` (`PokemonSpMoveShake`와 같은 짐작)
   for (const c of cmds) {
     if (c.name !== 'ModelSpMoveShake' || f < c.start || f > c.end) continue
     const k = c.end > c.start ? (f - c.start) / (c.end - c.start) : 1
-    const amp = (num(c.values.srate) + (num(c.values.erate) - num(c.values.srate)) * k) / 100 * 0.25
-    const w = Math.sin((f / SEQ_FPS) * Math.PI * 2 * 15) * amp
+    const amp = (num(c.values.srate) + (num(c.values.erate) - num(c.values.srate)) * k) / 100 * SHAKE_BODY_GAIN
+    const w = Math.sin((f / SEQ_FPS) * Math.PI * 2 * SHAKE_HZ) * amp
     const axis = num(c.values.axis)
     pos = [pos[0] + (axis === 0 ? w : 0), pos[1] + (axis === 1 ? w : 0), pos[2] + (axis === 2 ? w : 0)]
   }
@@ -1132,10 +1146,10 @@ export function bodyAt(plan: SeqPlan, role: Role, f: number, ctx: SeqContext): B
         break
       case 'PokemonSpMoveShake': {
         if (f > c.end) break
-        // 세기(srate → erate)를 cm로 읽고, 잦기는 초당 15번으로 둔다 — 정확한 뜻은 못 찾았다
+        // 세기(srate → erate)를 cm로 읽고 `SHAKE_BODY_GAIN`을 곱한다 — 정확한 뜻은 못 찾았다
         const k = c.end > c.start ? (f - c.start) / (c.end - c.start) : 1
-        const amp = (num(c.values.srate) + (num(c.values.erate) - num(c.values.srate)) * k) / 100 * 0.25
-        const w = Math.sin((f / SEQ_FPS) * Math.PI * 2 * 15) * amp
+        const amp = (num(c.values.srate) + (num(c.values.erate) - num(c.values.srate)) * k) / 100 * SHAKE_BODY_GAIN
+        const w = Math.sin((f / SEQ_FPS) * Math.PI * 2 * SHAKE_HZ) * amp
         const axis = num(c.values.axis)
         if (axis === 1) out.shake[1] += w
         else if (axis === 2) out.shake[2] += w
@@ -1201,7 +1215,7 @@ export function shakeAt(plan: SeqPlan, f: number): number {
     const k = c.end > c.start ? (f - c.start) / (c.end - c.start) : 0
     // `srate`·`erate`(세기의 처음과 끝)를 cm로 읽는다 — 크게 흔드는 것(지진)이 12다
     const a = (num(c.values.srate) + (num(c.values.erate) - num(c.values.srate)) * k) / 100
-    amp = Math.max(amp, a * 0.35)
+    amp = Math.max(amp, a * SHAKE_CAMERA_GAIN)
   }
   return amp
 }

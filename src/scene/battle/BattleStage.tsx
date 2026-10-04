@@ -933,6 +933,14 @@ export function BattleStage() {
  * 흔들림은 남는다. 다만 **샷이 정하는 흔들림이 아니라 기술 대본이 시키는
  * 것**이다 (`moveImpact.camera` — `Func_ShakeBg`가 적힌 기술 서른 개)
  */
+/**
+ * 화면 흔들림의 사인 주기 (`sin(ms / N)`의 N) — **둘 다 우리 값이다.** 출처도 실측 기록도 없다.
+ * DS의 `Func_ShakeBg`(`quake` — 대본이 시키는 흔들림)와 BDSP의 `CameraShake`(`seqStage.shake`) 모두 세기만 값으로 있고
+ * 잦기를 적은 값을 못 찾았다. 11 → 초당 약 14.5번, 23 → 약 6.9번
+ */
+const QUAKE_PERIOD_MS = 11
+const SEQ_QUAKE_PERIOD_MS = 23
+
 function useBattleCamera(fit: number, arenaRadius: number): void {
   /** 지금 카메라가 선 거리 배율. 첫 프레임에는 목표 그대로 선다 */
   const shownFit = useRef<number | null>(null)
@@ -952,10 +960,10 @@ function useBattleCamera(fit: number, arenaRadius: number): void {
     // 지진·땅가르기가 그것이고, 번개는 안 흔든다 — 위력이 아니라 대본이
     // 정한다. 연출이 끝나면 `t`가 1이라 0이 곱해진다
     const quake = (moveImpact.t < 1 && moveImpact.camera > 0
-      ? Math.sin(battleClock.now() * 1000 / 11) * moveImpact.camera * (1 - moveImpact.t)
+      ? Math.sin(battleClock.now() * 1000 / QUAKE_PERIOD_MS) * moveImpact.camera * (1 - moveImpact.t)
       : 0)
       // BDSP 시퀀스의 `CameraShake` — 세기는 시퀀스가 낸다 (`engine/battle/fx/sequence`의 `shakeAt`)
-      + (seqStage.running ? Math.sin(battleClock.now() * 1000 / 23) * seqStage.shake : 0)
+      + (seqStage.running ? Math.sin(battleClock.now() * 1000 / SEQ_QUAKE_PERIOD_MS) * seqStage.shake : 0)
     // ⚠️ **좁은 무대에서는 카메라를 당긴다.** 자리는 풀밭(반지름 12m) 기준으로
     // 적혀 있는데 실내 무대는 12×18m짜리 방이라, 그대로 두면 카메라가 벽 밖
     // 천장 위에 선다. 바라보는 자리는 그대로 두고 거리만 줄인다
