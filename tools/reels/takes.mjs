@@ -137,7 +137,10 @@ export const TAKES = [
   {
     // 1인칭으로 걷다가 V로 3인칭으로 빠진다 (문서 「시점」 세 번째 전환 — 반대 방향)
     id: 'E3-distortion', what: '깨어진 세계 — 1인칭 → 3인칭', cp: 'distortion',
-    steps: [{ do: 'first' }], seconds: 4, hold: 'ArrowUp', recKeys: [{ at: 1.8, key: 'KeyV' }],
+    // 확인 지점의 'open'은 빈 칸 수로 고른 자리라 1층에서는 허공 가장자리에 섰다 — 이야기가 실제로 내려놓는 칸(롬 (55,40) → 1층 로컬 (34,30)에서 서쪽 한 칸)에 세운다
+    steps: [{ do: 'map', map: 573 }, { do: 'at', x: 33, z: 30 }, { do: 'first' }], seconds: 4, hold: 'ArrowUp', recKeys: [{ at: 1.8, key: 'KeyV' }],
   },
-  { id: 'E3-giratina', what: '기라티나 — 깨어진 세계에서 만남', cp: 'giratina', steps: [{ do: 'wild', species: 487, level: 47, after: 100 }], settle: 0, seconds: 7 },
+  { id: 'E3-giratina', what: '기라티나 — 깨어진 세계에서 만남', cp: 'giratina',
+    // 배틀 배경은 배틀이 설 때의 world.mapId로 한 번 정해진다 — 582에 내려앉기 전에 열면 시작 맵(풀숲) 배경이 박혔다
+    steps: [{ do: 'map', map: 582 }, { do: 'wild', species: 487, level: 47, after: 100 }], settle: 4000, seconds: 7 },
 ]

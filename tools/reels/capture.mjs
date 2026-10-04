@@ -85,6 +85,10 @@ async function step(page, s, cp) {
       await page.waitForFunction(async (w) => (await import('/src/engine/map/world.ts')).world.mapId === w, s.map, { timeout: 120_000 })
       await page.waitForTimeout(s.after ?? 8000)
       return
+    case 'map':
+      await page.waitForFunction(async (m) => (await import('/src/engine/map/world.ts')).world.mapId === m, s.map, { timeout: 120_000 })
+      await page.waitForTimeout(s.after ?? 8000)
+      return
     case 'at':
       await page.evaluate(async ([x, z]) => {
         const w = await import('/src/state/worldState.ts')
