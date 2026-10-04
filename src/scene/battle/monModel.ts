@@ -139,6 +139,14 @@ function clipFor(clips: readonly AnimationClip[], want: MotionName): AnimationCl
   )
 }
 
+/**
+ * 그 동작으로 **실제로 트는 클립**의 길이(초). 그 동작의 클립이 없어 대신 트는 것(`STAND_IN` · 대기)으로 떨어지는
+ * 몸은 `null` — 그 길이는 그 동작의 길이가 아니다
+ */
+export function motionClipSeconds(body: Pick<MonBody, 'clips'>, want: MotionName): number | null {
+  return body.clips.find((c) => MOTION[want].test(c.name))?.duration ?? null
+}
+
 export interface Loaded {
   scene: Group
   clips: AnimationClip[]

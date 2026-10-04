@@ -43,14 +43,15 @@ import type { ViewMon } from '../../engine/battle/view'
 import { SLOTS, type SlotId } from '../../engine/battle/events'
 import {
   arenaRoom, ballOpen, battleStage, bodyGone, clearSlotBody, impactHits, moveImpact, seqStage, slotBody, slotBox, slotRig,
-  STAGE_ORIGIN, type SeqBodyPose,
+  STAGE_ORIGIN,
 } from './stageRefs'
 import { BattleBallEffects } from './BattleBallEffects'
 import { recallsBody } from './battleBallMotion'
 import { recallSeconds } from '../../engine/battle/captureTiming'
 import { bodyColor } from './bodyColor'
 import { loadMonSprite, loadSpriteIndex, spriteFit } from './monSprite'
-import { loadMonModel, makeBody, play, type MonBody, type MotionName } from './monModel'
+import { loadMonModel, makeBody, motionClipSeconds, play, type MonBody, type MotionName } from './monModel'
+import { glow, ownMaterials, releaseMaterials, seqMotionLive } from './seqBody'
 import { spriteKey } from '../../engine/pokemon/form'
 import { MoveVfx } from './MoveVfx'
 import type { SeqCamera } from '../../engine/battle/fx/sequence'
@@ -185,70 +186,6 @@ const MON_TALL = 1.2
  * `mine`이면 **뒷모습**이다 — 원작 문법 그대로 내 포켓몬은 등을 보이고 상대는
  * 앞을 본다. 그림이 따로 있으므로 여기서 뒤집지 않는다
  */
-/**
- * 시퀀스가 시킨 동작을 아직 트는가 (초). BDSP는 동작 하나가 끝나면 대기로 돌아간다 —
- * 클립 길이를 재지 않고 동작마다 한 값으로 둔다(공격 클립이 0.8~1.3초다). 쓰러짐(`down`)은 끝 자세로 멎고
- * 시퀀스가 몸을 지울 때까지 간다. 착지(`landC`)는 피카츄 0.667초 — 그 뒤 대기로 이어진다
- */
-const SEQ_MOTION_SECONDS = { attack: 1.1, damage: 0.7, cry: 1.3, wait: Infinity, down: Infinity, landB: Infinity, landC: 0.7 } as const
-
-function seqMotionLive(pose: SeqBodyPose): boolean {
-  const m = pose.motion
-  return m !== null && (pose.frame - m.at) / 30 < SEQ_MOTION_SECONDS[m.name]
-}
-
-/**
- * 시퀀스의 몸 빛 (`PokemonShaderCol`)을 재질 발광으로 건다.
- *
- * 재질은 **몸이 설 때 한 번** 떼어 낸다(`ownMaterials` — 같은 종 두 마리가 재질을 나눠 쓰므로 한 마리만 빛나게) —
- * 그래서 빛날 때 새 재질이 생기지 않고 파이프라인도 등판 전에 굽힌다(`warmBeforeShow`). 끌 때는 그 재질의 원래 발광으로
- * 되돌린다. 떼어 낸 재질은 몸이 내려갈 때 놓는다(`releaseMaterials`)
- */
-interface OwnedMaterial { mat: MeshStandardMaterial; emissive: [number, number, number]; intensity: number }
-const owned = new WeakMap<object, OwnedMaterial[]>()
-const glowing = new WeakMap<object, boolean>()
-
-function ownMaterials(model: MonBody): void {
-  if (owned.has(model.root)) return
-  const list: OwnedMaterial[] = []
-  model.root.traverse((o) => {
-    const mesh = o as Mesh
-    if (!mesh.isMesh) return
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-    const next = mats.map((m) => {
-      const std = m as MeshStandardMaterial
-      if (!std.emissive) return m
-      const own = std.clone()
-      list.push({ mat: own, emissive: [std.emissive.r, std.emissive.g, std.emissive.b], intensity: std.emissiveIntensity })
-      return own
-    })
-    mesh.material = Array.isArray(mesh.material) ? next : next[0]!
-  })
-  owned.set(model.root, list)
-}
-
-function releaseMaterials(model: MonBody): void {
-  for (const o of owned.get(model.root) ?? []) o.mat.dispose()
-  owned.delete(model.root)
-  glowing.delete(model.root)
-}
-
-function glow(model: MonBody | null, g: { color: [number, number, number]; power: number } | null): void {
-  if (!model) return
-  const on = g !== null && g.power > 0.001 && (g.color[0] > 0 || g.color[1] > 0 || g.color[2] > 0)
-  if (!on && !glowing.get(model.root)) return
-  glowing.set(model.root, on)
-  for (const o of owned.get(model.root) ?? []) {
-    if (on) {
-      o.mat.emissive.setRGB(g.color[0], g.color[1], g.color[2])
-      o.mat.emissiveIntensity = g.power
-    } else {
-      o.mat.emissive.setRGB(o.emissive[0], o.emissive[1], o.emissive[2])
-      o.mat.emissiveIntensity = o.intensity
-    }
-  }
-}
-
 function Slot({
   mon,
   form,
@@ -692,7 +629,7 @@ function Slot({
     // 동작을 넘긴다. 때리고 맞는 것이 우선이고 그 타이머가 다 되면 대기로 돈다
     // 시퀀스가 시킨 동작이 먼저다 — 쓰러짐(`ee620`의 `ba41`) · 착지(`ee400`의 `ba01_landB/C`)도 그렇다
     const now: MotionName =
-      seq?.motion && seqMotionLive(seq)
+      seq?.motion && seqMotionLive(seq, (n) => (model ? motionClipSeconds(model, n === 'attack' ? (special.current ? 'special' : 'physical') : n) : null))
         ? seq.motion.name === 'attack'
           ? special.current ? 'special' : 'physical'
           : seq.motion.name
