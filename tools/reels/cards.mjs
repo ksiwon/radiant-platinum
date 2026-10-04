@@ -24,7 +24,7 @@ export const CARD_SECONDS = {
   disclaimer: 3.0,
   tunnel: 13.8, // A2 11초 + A3 감기 2초 + A4 섬광 0.8초
   sink: 0.7,
-  tagline: 5.0,
+  tagline: 6.5,
   white: 0.3,
   wordmark: 4.0,
   rom: 7.0,
@@ -119,29 +119,46 @@ const w=document.getElementById('w');window.draw=(t)=>{w.style.opacity=(1-ease(t
   if (kind === 'white') return `${head}<div style="position:absolute;inset:0;background:#fff"></div><script>window.draw=()=>{}</script>`
 
   if (kind === 'tagline') {
-    const text = portrait ? '그때 그 찬란함을<br>또 다시 한번' : '그때 그 찬란함을 또 다시 한번'
+    // 세 박자 — 「그때 그 찬란함을」 → 「실제 크기로, 빛나의 눈에서」 → 「다시 한번」 (사용자 · 2026-10-04).
+    // 줄마다 흐릿하게 떠올라 또렷해지며 느리게 다가오고, 다음 줄이 오면 앞 줄은 빛으로 흩어진다. 마지막 줄만 빛줄기를 내며 확대된다
+    const D = portrait ? 4.8 : 6.5
+    const lines = ['그때 그 찬란함을', portrait ? '실제 크기로,<br>빛나의 눈에서' : '실제 크기로, 빛나의 눈에서', '다시 한번']
+    const cuts = [0, 0.29, 0.66, 1].map((f) => f * D)
+    const size = (portrait ? 96 : 84) * u
     return `${head}<canvas id="cv" width="${W}" height="${H}"></canvas>
-<div class="c" id="box"><div id="tx" style="font-size:${(portrait ? 96 : 84) * u}px;font-weight:700;line-height:1.35;letter-spacing:${4 * u}px;color:#d6e8ff">${text}</div></div>
+${lines.map((l, i) => `<div class="c" id="b${String(i)}" style="opacity:0"><div id="t${String(i)}" style="font-size:${size}px;font-weight:700;line-height:1.35;letter-spacing:${4 * u}px;color:#d6e8ff">${l}</div></div>`).join('')}
 <div id="wash" style="position:absolute;inset:0;background:#fff;opacity:0"></div>
 <script>${common}
-const g=document.getElementById('cv').getContext('2d'),box=document.getElementById('box'),tx=document.getElementById('tx'),wash=document.getElementById('wash');
-window.draw=(t)=>{const a=ease(t/3),z=ease((t-4.5)/0.5);
-box.style.opacity=a.toFixed(3);box.style.filter='blur('+((1-a)*14*U).toFixed(2)+'px)';
-box.style.transform='scale('+(0.92+0.06*(t/5)+0.25*z*z).toFixed(4)+')';
-tx.style.textShadow='0 0 '+(18*U)+'px rgba(150,200,255,0.9),0 0 '+(60*U)+'px rgba(90,150,255,'+(0.5+0.5*z)+')';
+const D=${String(D)},C=${JSON.stringify(cuts)};
+const g=document.getElementById('cv').getContext('2d'),wash=document.getElementById('wash');
+const bs=[0,1,2].map((i)=>document.getElementById('b'+i)),ts=[0,1,2].map((i)=>document.getElementById('t'+i));
+window.draw=(t)=>{const z=ease((t-(D-0.5))/0.5);
+for(let i=0;i<3;i++){const s0=C[i],s1=C[i+1],len=s1-s0,u=(t-s0)/len,last=i===2;
+const a=ease(u/(last?0.45:0.5))*(last?1:1-ease((u-0.82)/0.18));
+const blur=(1-ease(u/(last?0.45:0.5)))*14+(last?0:ease((u-0.82)/0.18)*10);
+bs[i].style.opacity=(t<s0||(!last&&t>s1))?'0':a.toFixed(3);bs[i].style.filter='blur('+(blur*U).toFixed(2)+'px)';
+bs[i].style.transform='scale('+(0.94+0.05*clamp(u)+(last?0.25*z*z:0)+(last?0:0.06*ease((u-0.82)/0.18))).toFixed(4)+')';
+ts[i].style.textShadow='0 0 '+(18*U)+'px rgba(150,200,255,0.9),0 0 '+(60*U)+'px rgba(90,150,255,'+(0.5+(last?0.5*z:0))+')'}
 g.clearRect(0,0,W,H);if(z>0){g.globalCompositeOperation='lighter';for(let i=0;i<40;i++){const an=i/40*Math.PI*2+0.3,r=Math.hypot(W,H)*z;
 const gr=g.createLinearGradient(W/2,H/2,W/2+Math.cos(an)*r,H/2+Math.sin(an)*r);gr.addColorStop(0,'rgba(200,225,255,'+(0.5*z)+')');gr.addColorStop(1,'rgba(120,170,255,0)');
 g.strokeStyle=gr;g.lineWidth=(2+(i%3)*2)*U;g.beginPath();g.moveTo(W/2,H/2);g.lineTo(W/2+Math.cos(an)*r,H/2+Math.sin(an)*r);g.stroke()}g.globalCompositeOperation='source-over'}
-wash.style.opacity=ease((t-4.75)/0.25).toFixed(3)}</script>`
+wash.style.opacity=ease((t-(D-0.25))/0.25).toFixed(3)}</script>`
   }
 
   if (kind === 'wordmark') {
-    const iw = portrait ? W : W * 0.82
-    return `${head}<div class="c"><div id="lg" style="position:relative;width:${iw}px;height:${(iw * 941) / 1672}px;background:url('${url('public/assets/radiant-platinum-intro.webp')}') center/cover;overflow:hidden">
+    // 그림이 화면을 꽉 채운 채로 시작해 조금씩 다가간다 — 작게 띄우면 둘레 검은 여백이 보였다.
+    // 세로는 가로 그림을 꽉 채우면 로고가 잘리므로 같은 그림을 흐리게 깔아 채우고 로고 그림은 폭에 맞춘다
+    const img = url('public/assets/radiant-platinum-intro.webp')
+    const fill = `position:absolute;inset:0;background:url('${img}') center/cover`
+    const front = portrait
+      ? `<div id="bg" style="${fill};filter:blur(${24 * u}px) brightness(0.55);transform:scale(1.15)"></div>
+<div id="lg" style="position:absolute;left:0;right:0;top:50%;height:${(W * 941) / 1672}px;margin-top:${-(W * 941) / 1672 / 2}px;background:url('${img}') center/cover;overflow:hidden">`
+      : `<div id="lg" style="${fill};overflow:hidden">`
+    return `${head}<div id="all" style="position:absolute;inset:0;overflow:hidden">${front}
 <div id="sw" style="position:absolute;top:-30%;bottom:-30%;width:22%;transform:skewX(-18deg);background:linear-gradient(90deg,rgba(255,255,255,0) 0%,rgba(255,255,255,0.55) 50%,rgba(255,255,255,0) 100%);mix-blend-mode:screen"></div></div></div>
 <script>${common}
-const lg=document.getElementById('lg'),sw=document.getElementById('sw');
-window.draw=(t)=>{lg.style.opacity=(ease(t/0.6)*(1-ease((t-3.5)/0.5))).toFixed(3);lg.style.transform='scale('+(1+0.035*t/4).toFixed(4)+')';
+const all=document.getElementById('all'),lg=document.getElementById('lg'),sw=document.getElementById('sw');
+window.draw=(t)=>{all.style.opacity=(ease(t/0.6)*(1-ease((t-3.5)/0.5))).toFixed(3);lg.style.transform='scale('+(1+0.08*t/4).toFixed(4)+')';
 const x=(t-0.9)/1.1;sw.style.left=(-40+170*clamp(x))+'%';sw.style.opacity=(x>0&&x<1)?1:0}</script>`
   }
 

@@ -26,6 +26,7 @@ const ASPECT = (args.find((a) => a.startsWith('--aspect=')) ?? '--aspect=16:9').
 const VIEW = ASPECT === '9:16' ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 }
 const ids = args.filter((a) => !a.startsWith('--'))
 const still = args.includes('--still')
+const HERO = (args.find((a) => a.startsWith('--hero=')) ?? '--hero=girl').slice(7)
 
 function freePort() {
   return new Promise((done) => {
@@ -50,13 +51,41 @@ async function hideDevChrome(page) {
 }
 
 /** 확인 지점으로 뛰어든다 — `pnpm shot`과 같은 길 */
+/**
+ * 지형과 BDSP 층이 **섰다고 제품이 말할 때까지** 기다린다 (`terrainReady` · `bdspSettled`).
+ * 시간(`settle`)만 두면 기계가 바쁠 때 DS 지형이나 흰 허공이 찍혔다 — 다른 프로젝트 테스트와 겹친 판에서 D1~D3이 그랬다.
+ * 카메라 잔여만 남은 것은 선 것으로 본다(움직임 판은 카메라 시스템을 떼어 두어 잔여가 안 준다). 5분이 넘으면 이유를 적고 그대로 간다
+ */
+async function waitWorldStood(page, id) {
+  const t0 = Date.now()
+  let why = ''
+  let passed = false
+  while (Date.now() - t0 < 300_000) {
+    why = await page.evaluate(async () => {
+      const { terrainReady } = await import('/src/scene/terrainMark.ts')
+      const { bdspSettled } = await import('/src/scene/bdspReady.ts')
+      const t = terrainReady()
+      const terrainOk = t.ok || /카메라/.test(t.why ?? '')
+      if (!terrainOk) return `지형: ${t.why}`
+      if (!bdspSettled()) return 'BDSP 층이 아직 안 섰다'
+      return ''
+    })
+    // 둘레 지역 목록은 0.5초마다 다시 고른다(`BdspField`의 `near`) — 워프 직후엔 옛 자리 목록이라 비어 있어도 「섰다」다.
+    // 1.5초 뒤에 한 번 더 서 있어야 선 것으로 본다
+    if (why === '' && passed) return
+    passed = why === ''
+    await page.waitForTimeout(passed ? 1500 : 500)
+  }
+  console.log(`  ${id.padEnd(14)} 5분을 기다려도 안 섰다 — ${why}`)
+}
+
 async function jump(page, url, cp) {
   await page.goto(url, { waitUntil: 'load' })
   await page.waitForFunction(() => document.body.innerText.trim().length > 0, null, { timeout: 60_000 })
-  // 앱이 키를 받기 전에 누르면 안 열린다 — 몇 번 더 눌러 본다
+  // 앱이 키를 받기 전에 누르면 안 열린다 — 몇 번 더 눌러 본다. 기계가 바쁘면 1분을 넘겨서(다른 프로젝트 테스트와 겹친 판) 3분까지 본다
   for (let i = 0; ; i++) {
     await page.keyboard.press('Backquote')
-    try { await page.getByText('확인 지점').first().waitFor({ timeout: 15_000 }); break } catch (e) { if (i >= 3) throw e }
+    try { await page.getByText('확인 지점').first().waitFor({ timeout: 15_000 }); break } catch (e) { if (i >= 11) throw e }
   }
   const row = page.locator(`[data-checkpoint="${cp}"]`).first()
   await row.hover()
@@ -149,8 +178,9 @@ async function step(page, s, cp) {
     case 'menu':
       // 배틀 명령 메뉴가 뜰 때까지 — 등장 연출 길이를 어림하지 않는다
       // 「야생 꼬링크가 나타났다!」 같은 줄은 키를 기다린다 — 메뉴가 안 보이는 동안만 Z로 넘긴다
+      // 기계가 바쁘면 75초(300번)로 모자랐다 — 다른 프로젝트 테스트와 겹친 판의 E1-c. 5분까지 본다
       // ⚠️ 메뉴가 막 뜬 순간에 Z가 들어가면 기술 목록으로 들어가 버린다 — 그러면 X로 되돌린다
-      for (let i = 0; i < 300; i++) {
+      for (let i = 0; i < 1200; i++) {
         const seen = async (sel) => page.locator(sel).first().isVisible().catch(() => false)
         if (await seen('[data-pilot="fight"]')) break
         if (await seen('[data-pilot="move-0"]')) { await page.keyboard.press('KeyX'); await page.waitForTimeout(500); continue }
@@ -167,6 +197,17 @@ async function step(page, s, cp) {
     case 'wait':
       await page.waitForTimeout(s.ms)
       return
+    case 'until': {
+      // 장면 대사를 넘긴다 — 조건(`js`)이 설 때까지 키를 누른다. 확인 지점이 첫 진입 장면을 그대로 트는 곳이 있다
+      const end = Date.now() + (s.timeout ?? 180_000)
+      while (!(await page.evaluate(s.js))) {
+        if (Date.now() > end) throw new Error(`until: ${s.js}가 끝내 안 섰다`)
+        await page.keyboard.press(s.key ?? 'KeyZ')
+        await page.waitForTimeout(s.gap ?? 700)
+      }
+      await page.waitForTimeout(s.after ?? 1500)
+      return
+    }
     default:
       throw new Error(`모르는 단계: ${s.do}`)
   }
@@ -222,6 +263,25 @@ async function startMove(page, move, seconds) {
 const FPS = 30
 async function recordVirtual(page, dir, take) {
   const cdp = await page.context().newCDPSession(page)
+  // ⚠️ **받는 중에는 시계를 안 민다.** 배틀은 녹화 도중에 포켓몬 · 무대 glb를 받는데, 기계가 바쁘면 받기가 프레임을 못 따라가
+  // 포켓몬 없는 빈 무대가 몇 초씩 찍혔다(다른 프로젝트 테스트와 겹친 판). 가상 시계라 기다린 실제 시간은 영상에 안 남는다
+  const pending = new Map()
+  const onReq = (r) => pending.set(r, Date.now())
+  const onDone = (r) => pending.delete(r)
+  page.on('request', onReq); page.on('requestfinished', onDone); page.on('requestfailed', onDone)
+  const settleLoads = async () => {
+    const t0 = Date.now()
+    let waited = false
+    for (;;) {
+      // 20초 넘게 안 끝나는 요청(스트림 등)은 기다림에서 뺀다
+      const live = [...pending.values()].filter((at) => Date.now() - at < 20_000).length
+      if (live === 0 || Date.now() - t0 > 30_000) break
+      waited = true
+      await page.waitForTimeout(50)
+    }
+    // 받은 뒤 해석(glb · 텍스처 올리기)까지 — 실제 시간으로 잠깐
+    if (waited) await page.waitForTimeout(250)
+  }
   await page.evaluate((fps) => {
     const realRaf = window.requestAnimationFrame.bind(window)
     const realNow = performance.now.bind(performance)
@@ -247,18 +307,29 @@ async function recordVirtual(page, dir, take) {
   const frames = []
   const total = Math.round(take.seconds * FPS)
   const keys = (take.recKeys ?? []).map((k) => ({ ...k, frame: Math.round(k.at * FPS) }))
+  // 찍는 도중에 부르는 것(`recEval`) — 기다리지 않는 식이어야 한다. 시계가 멈춰 있어 기다리면 영영 안 끝난다
+  const evals = (take.recEval ?? []).map((k) => ({ ...k, frame: Math.round(k.at * FPS) }))
   // 화면 위 HTML(대사창 · HP 상자 · 명령 메뉴)을 숨긴다 — 원본 영상은 글 없는 화면이다. 찍기 직전에 건다: 준비 단계(`menu`)는
   // 메뉴가 보이는지로 판정하므로 그 전에 숨기면 Z를 끝없이 누른다. `keepUI`면 그대로 둔다
   if (!take.keepUI) await page.addStyleTag({ content: 'body *:not(canvas):not(:has(canvas)){visibility:hidden!important}' })
   // 몇 프레임 먼저 돌린다 — 시계를 쥔 첫 프레임은 쥐기 전에 멈춰 있던 그림(먼 데의 DS 지형)이 남아 있다
-  for (let i = 0; i < 8; i++) await page.evaluate(() => window.__reelStep())
+  for (let i = 0; i < 16; i++) { await settleLoads(); await page.evaluate(() => window.__reelStep()) }
   await startMove(page, take.move, take.move?.seconds ?? take.seconds)
   if (take.hold) await page.keyboard.down(take.hold)
   // `holdFor`초에 키를 뗀다 — 풀숲 속에서 멈춰 서는 컷(계속 걸으면 숲 벽에 박힌다)
   const release = take.holdFor === undefined ? -1 : Math.round(take.holdFor * FPS)
   for (let i = 0; i < total; i++) {
     if (i === release && take.hold) await page.keyboard.up(take.hold)
-    for (const k of keys) if (k.frame === i) await page.keyboard.press(k.key.length === 1 ? `Key${k.key.toUpperCase()}` : k.key)
+    // `act`가 'down' · 'up'이면 누르고 있다가 뗀다 — 한 장면에서 두 번 걷는 컷(1인칭으로 걷고 3인칭으로 또 걷는다)
+    for (const k of keys) {
+      if (k.frame !== i) continue
+      const name = k.key.length === 1 ? `Key${k.key.toUpperCase()}` : k.key
+      if (k.act === 'down') await page.keyboard.down(name)
+      else if (k.act === 'up') await page.keyboard.up(name)
+      else await page.keyboard.press(name)
+    }
+    for (const k of evals) if (k.frame === i) await page.evaluate(k.js)
+    await settleLoads()
     await page.evaluate(() => window.__reelStep())
     const shot = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 95 })
     const name = `f-${String(i + 1).padStart(5, '0')}.jpg`
@@ -266,6 +337,7 @@ async function recordVirtual(page, dir, take) {
     frames.push({ name, t: i / FPS })
   }
   if (take.hold) await page.keyboard.up(take.hold)
+  page.off('request', onReq); page.off('requestfinished', onDone); page.off('requestfailed', onDone)
   writeFileSync(resolve(dir, 'frames.json'), JSON.stringify({ seconds: take.seconds, virtual: true, frames }, null, 1))
   return frames.length
 }
@@ -322,9 +394,15 @@ async function main() {
       rmSync(dir, { recursive: true, force: true })
       mkdirSync(dir, { recursive: true })
       const page = await browser.newPage({ viewport: VIEW, deviceScaleFactor: 1 })
-      page.setDefaultNavigationTimeout(240_000)
+      page.setDefaultNavigationTimeout(600_000)
       try {
         await jump(page, vite.url, take.cp)
+        // 주인공을 빛나로 — 트레일러 카드가 「빛나의 실제 크기로, 빛나의 눈으로」다 (`--hero=boy`면 광휘)
+        await page.evaluate(async (g) => {
+          const { useSaveStore } = await import('/src/state/saveStore.ts')
+          const s = useSaveStore.getState()
+          useSaveStore.setState({ trainer: { ...s.trainer, gender: g } })
+        }, HERO)
         await hideDevChrome(page)
         for (const s of take.steps ?? []) await step(page, s, take.cp)
         // 카메라를 먼저 움직임의 첫 자리에 세워 둔다 — 그 둘레가 기다리는 동안 들어온다(안 그러면 해변시티 첫 1초가 하얗게 비었다)
@@ -340,6 +418,8 @@ async function main() {
           }, take.move)
         }
         // 야외는 BDSP 필드 glb가 다 들어올 때까지 기다린다 — 4초에 찍으면 DS 지형이 그대로 보인다
+        // 배틀 판은 빼고 — 배틀은 steps에서 이미 열려 실제 시간으로 흐르므로, 여기서 기다리면 등장 연출을 놓친다
+        if (!(take.steps ?? []).some((x) => x.do === 'wild' || x.do === 'trainer')) await waitWorldStood(page, take.id)
         await page.waitForTimeout(take.settle ?? 15_000)
         // 자리 맞추기 한 장은 움직임의 **첫 자리**에서 찍는다 — 0초로 한 번 돌려 둔다
         if (still && take.move) { await startMove(page, { ...take.move }, 0.001); await page.waitForTimeout(800) }
