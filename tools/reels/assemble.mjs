@@ -115,6 +115,7 @@ const EDIT = SHORT ? SHORTS : MAIN
 
 /**
  * 곡 — 큐에 붙인다. `at`은 그 큐가 시작하는 시각에서 몇 초 뒤인가, `from`은 곡 안 시작(초), `len`은 까는 길이(초).
+ * `len` 대신 `until`(큐)과 `untilAt`(초)을 주면 그 시각까지 깐다. 끝까지면 `until: 'end'`.
  * `fadeIn` · `fadeOut`은 그 조각의 앞뒤 페이드, `gain`은 dB. 조각끼리 겹치면 섞인다. 비어 있으면 소리 없이 낸다
  */
 const SCORE = { '16:9': [], '9:16': [] }[ASPECT] ?? []
@@ -193,18 +194,24 @@ function mixScore(video, final, cueAt) {
   const total = duration(video)
   const srcs = [...new Set(SCORE.map((p) => p.src))]
   const inputs = srcs.flatMap((s) => ['-i', resolve(MUSIC, `${s}.wav`)])
-  const chains = SCORE.map((p, i) => {
+  const chains = SCORE.map((piece, i) => {
+    let p = piece
     if (!(p.cue in cueAt)) throw new Error(`곡 조각 ${String(i)}: 큐 ${p.cue}가 편집에 없다`)
     const start = cueAt[p.cue] + (p.at ?? 0)
+    if (p.until !== undefined && p.until !== 'end' && !(p.until in cueAt)) throw new Error(`곡 조각 ${String(i)}: 큐 ${p.until}가 편집에 없다`)
+    const stop = p.until === 'end' ? total : p.until !== undefined ? cueAt[p.until] + (p.untilAt ?? 0) : start + p.len
+    // 영상 앞으로 넘친 만큼은 곡 안에서 앞당겨 자른다
+    const lead = Math.max(0, -start)
+    p = { ...p, len: Math.max(0.1, stop - start - lead), from: p.from + lead }
     const k = srcs.indexOf(p.src) + 1
     const f = [`atrim=start=${p.from.toFixed(3)}:duration=${p.len.toFixed(3)}`, 'asetpts=PTS-STARTPTS', 'aformat=sample_rates=48000:channel_layouts=stereo']
     if (p.fadeIn) f.push(`afade=t=in:d=${p.fadeIn}`)
     if (p.fadeOut) f.push(`afade=t=out:st=${(p.len - p.fadeOut).toFixed(3)}:d=${p.fadeOut}`)
     if (p.gain) f.push(`volume=${p.gain}dB`)
-    f.push(`adelay=${Math.round(start * 1000)}:all=1`)
+    f.push(`adelay=${Math.round(Math.max(0, start) * 1000)}:all=1`)
     return `[${String(k)}:a]${f.join(',')}[m${String(i)}]`
   })
-  const mix = `${SCORE.map((_, i) => `[m${String(i)}]`).join('')}amix=inputs=${String(SCORE.length)}:normalize=0,alimiter=limit=0.89,atrim=duration=${total.toFixed(3)}[a]`
+  const mix = `${SCORE.map((_, i) => `[m${String(i)}]`).join('')}amix=inputs=${String(SCORE.length)}:normalize=0,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000,alimiter=limit=0.84,atrim=duration=${total.toFixed(3)}[a]`
   run('ffmpeg', ['-y', '-v', 'error', '-i', video, ...inputs, '-filter_complex', [...chains, mix].join(';'),
     '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '320k', '-movflags', '+faststart', final])
 }
