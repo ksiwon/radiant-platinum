@@ -371,7 +371,8 @@ export function BdspEffect({
       {/* 인스턴스가 어디까지 가는지 경계 상자로는 모른다 — 자르지 않는다 */}
       {ready.rigs.map((r, i) => (only && !r.slot.path.includes(only) ? null : (
         <mesh
-          key={r.slot.path || r.slot.index}
+          // ⚠️ 경로만으로는 안 갈린다 — 같은 이름 형제가 있다(`ew104_bg_line` 그림자분신). 차례를 붙인다
+          key={`${String(i)}:${r.slot.path}`}
           ref={(m) => { meshes.current[i] = m }}
           geometry={r.geometry}
           material={r.material}

@@ -33,11 +33,14 @@ onProviderSwap(() => {
 })
 
 export function loadFxPrefab(name: string): Promise<FxPrefab> {
-  let got = prefabs.get(name)
+  // ⚠️ **파일 이름은 소문자다** (`import/bdsp/fx.ts`가 번들 경로를 소문자로 찾아 쓴다). 시퀀스는 원래 대소문자로
+  // 부른다 — `ew416_bulletBody` · `ew063_Blur` 등 일곱. 대소문자를 가리는 배포 서버 · OPFS에서 못 찾았다
+  const key = name.toLowerCase()
+  let got = prefabs.get(key)
   if (!got) {
-    got = readJson(assets(), `data/fx/prefab/${name}.json`) as Promise<FxPrefab>
-    got.catch(() => { prefabs.delete(name) })
-    prefabs.set(name, got)
+    got = readJson(assets(), `data/fx/prefab/${key}.json`) as Promise<FxPrefab>
+    got.catch(() => { prefabs.delete(key) })
+    prefabs.set(key, got)
   }
   return got
 }

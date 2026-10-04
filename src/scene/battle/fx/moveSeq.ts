@@ -72,7 +72,7 @@ export function loadSeq(name: string): Promise<SeqData | null> {
 export async function preloadMoveSeqs(moves: Iterable<number>): Promise<void> {
   const idx = await fxIndex()
   if (!idx) return
-  const missing = new Set(idx.missingPrefabs ?? [])
+  const missing = new Set((idx.missingPrefabs ?? []).map((p) => p.toLowerCase()))
   const todo = [...new Set(moves)].filter((m) => idx.moves[String(m)]?.seq)
   await Promise.all(todo.map(async (move) => {
     const name = idx.moves[String(move)]!.seq!
@@ -83,7 +83,7 @@ export async function preloadMoveSeqs(moves: Iterable<number>): Promise<void> {
     for (const mine of [true, false]) {
       const plan = planSequence(seq, { attackerMine: mine })
       // 프리팹이 하나라도 빠졌으면 이 쪽은 DS로 간다 — 반쪽짜리 BDSP 연출보다 낫다
-      if (plan.particles.some((p) => missing.has(p.prefab))) continue
+      if (plan.particles.some((p) => missing.has(p.prefab.toLowerCase()))) continue
       plans.set(`${move}:${mine ? 1 : 0}`, plan)
       for (const p of plan.particles) void loadFxPrefab(p.prefab).catch(() => { /* 그릴 때 다시 */ })
     }
