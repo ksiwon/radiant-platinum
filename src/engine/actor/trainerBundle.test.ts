@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { trainerModelBundle } from '../../engine/actor/npcModels'
+import { trainerModelBundle } from './npcModels'
 import { TRAINER_CLASS_NAMES } from '../../import/platinum/trainerClasses'
 
 const cls = (name: string): number => {
