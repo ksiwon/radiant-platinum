@@ -19,10 +19,10 @@ import { gpuArgs } from '../gpuFlags.mjs'
 import { TAKES } from './takes.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
-const OUT = resolve(ROOT, '.audit/reels/take', (process.argv.find((a) => a.startsWith('--aspect=')) ?? '--aspect=16:9').slice(9).replace(':', 'x'))
 const args = process.argv.slice(2)
 /** 본편은 가로 16:9(원본과 같다), 쇼츠 · 릴스는 세로 9:16 — `--aspect=9:16` */
 const ASPECT = (args.find((a) => a.startsWith('--aspect=')) ?? '--aspect=16:9').slice(9)
+const OUT = resolve(ROOT, '.audit/reels/take', ASPECT.replace(':', 'x'))
 const VIEW = ASPECT === '9:16' ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 }
 const ids = args.filter((a) => !a.startsWith('--'))
 const still = args.includes('--still')
@@ -50,7 +50,6 @@ async function hideDevChrome(page) {
   })
 }
 
-/** 확인 지점으로 뛰어든다 — `pnpm shot`과 같은 길 */
 /**
  * 지형과 BDSP 층이 **섰다고 제품이 말할 때까지** 기다린다 (`terrainReady` · `bdspSettled`).
  * 시간(`settle`)만 두면 기계가 바쁠 때 DS 지형이나 흰 허공이 찍혔다 — 다른 프로젝트 테스트와 겹친 판에서 D1~D3이 그랬다.
@@ -79,6 +78,7 @@ async function waitWorldStood(page, id) {
   console.log(`  ${id.padEnd(14)} 5분을 기다려도 안 섰다 — ${why}`)
 }
 
+/** 확인 지점으로 뛰어든다 — `pnpm shot`과 같은 길 */
 async function jump(page, url, cp) {
   await page.goto(url, { waitUntil: 'load' })
   await page.waitForFunction(() => document.body.innerText.trim().length > 0, null, { timeout: 60_000 })
@@ -214,6 +214,31 @@ async function step(page, s, cp) {
 }
 
 /**
+ * `recEval` 한 줄을 돌린다 — **시간 상한이 있다.** 식이 안 끝나면(시계가 멈춘 가상 판에서 기다리는 식 · 멎은 페이지) 장면 하나가
+ * 통째로 걸려 밤새 도는 판이 선다. 상한을 넘으면 적고 그대로 간다(식은 계속 돌 수 있다)
+ */
+const EVAL_CAP_MS = 5000
+async function recEvalCapped(page, id, js) {
+  let timer
+  const cap = new Promise((done) => { timer = setTimeout(() => { done('timeout') }, EVAL_CAP_MS) })
+  const ran = page.evaluate(js).then(() => 'ok', (e) => { console.log(`  ${id.padEnd(14)} recEval 식이 던졌다 — ${String(e.message ?? e).slice(0, 160)}`); return 'ok' })
+  const r = await Promise.race([ran, cap])
+  clearTimeout(timer)
+  if (r === 'timeout') console.log(`  ${id.padEnd(14)} recEval 식이 ${String(EVAL_CAP_MS / 1000)}초 안에 안 끝났다 — 기다리지 않고 간다: ${String(js).slice(0, 80)}`)
+}
+
+/** `recKeys`의 키 이름 — 한 글자는 `Key?`, 나머지는 그대로 */
+const keyName = (key) => (key.length === 1 ? `Key${key.toUpperCase()}` : key)
+
+/** 찍는 도중의 키 하나 — `act`가 'down' · 'up'이면 누르고 있다가 뗀다, 없으면 한 번 누른다 */
+async function pressRecKey(page, k) {
+  const name = keyName(k.key)
+  if (k.act === 'down') await page.keyboard.down(name)
+  else if (k.act === 'up') await page.keyboard.up(name)
+  else await page.keyboard.press(name)
+}
+
+/**
  * 찍는 동안의 움직임을 **페이지 안에서** 돌린다 — 노드에서 한 번씩 밀면 왕복 지연만큼 끊긴다.
  * `dolly`는 눈 · 시선을 곧게 옮기고, `yaw`는 1인칭 고개를 돌린다. 둘 다 부드럽게 들고 놓는다(smoothstep)
  */
@@ -321,14 +346,8 @@ async function recordVirtual(page, dir, take) {
   for (let i = 0; i < total; i++) {
     if (i === release && take.hold) await page.keyboard.up(take.hold)
     // `act`가 'down' · 'up'이면 누르고 있다가 뗀다 — 한 장면에서 두 번 걷는 컷(1인칭으로 걷고 3인칭으로 또 걷는다)
-    for (const k of keys) {
-      if (k.frame !== i) continue
-      const name = k.key.length === 1 ? `Key${k.key.toUpperCase()}` : k.key
-      if (k.act === 'down') await page.keyboard.down(name)
-      else if (k.act === 'up') await page.keyboard.up(name)
-      else await page.keyboard.press(name)
-    }
-    for (const k of evals) if (k.frame === i) await page.evaluate(k.js)
+    for (const k of keys) if (k.frame === i) await pressRecKey(page, k)
+    for (const k of evals) if (k.frame === i) await recEvalCapped(page, take.id, k.js)
     await settleLoads()
     await page.evaluate(() => window.__reelStep())
     const shot = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 95 })
@@ -358,11 +377,16 @@ async function record(page, dir, take) {
   })
   await startMove(page, take.move, take.move?.seconds ?? take.seconds)
   if (take.hold) await page.keyboard.down(take.hold)
-  const keys = take.recKeys ?? []
+  // 키 · 식 · `holdFor`로 떼기를 한 시간표로 놓고 실제 시계로 기다리며 돌린다 (가상판과 같은 뜻 — 순서가 같으면 키가 먼저)
+  const timeline = [
+    ...(take.recKeys ?? []).map((k) => ({ at: k.at, run: () => pressRecKey(page, k) })),
+    ...(take.recEval ?? []).map((k) => ({ at: k.at, run: () => recEvalCapped(page, take.id, k.js) })),
+    ...(take.hold && take.holdFor !== undefined ? [{ at: take.holdFor, run: () => page.keyboard.up(take.hold) }] : []),
+  ].sort((a, b) => a.at - b.at)
   const t0 = Date.now()
-  for (const k of keys) {
-    await page.waitForTimeout(Math.max(0, k.at * 1000 - (Date.now() - t0)))
-    await page.keyboard.press(k.key.length === 1 ? `Key${k.key.toUpperCase()}` : k.key)
+  for (const ev of timeline) {
+    await page.waitForTimeout(Math.max(0, ev.at * 1000 - (Date.now() - t0)))
+    await ev.run()
   }
   await page.waitForTimeout(Math.max(0, take.seconds * 1000 - (Date.now() - t0)))
   if (take.hold) await page.keyboard.up(take.hold)
@@ -385,10 +409,10 @@ async function main() {
   const vite = await startVite(await freePort())
   // ⚠️ **장면마다 브라우저를 새로 띄운다.** 한 브라우저로 무거운 장면을 열댓 개 이어 찍으니 뒤의 것들이 땅 없이 파란 허공에
   // 캡슐만 나왔다(GPU 메모리가 차는 것으로 본다). 다 찍은 뒤 가운데 프레임이 거의 한 빛(JPEG가 작다)이면 한 번 더 찍는다
-  const queue = picked.map((take) => ({ take, tries: 0 }))
+  const queue = picked.map((take) => ({ take, tries: 0, stalls: 0 }))
   try {
     while (queue.length > 0) {
-      const { take, tries } = queue.shift()
+      const { take, tries, stalls } = queue.shift()
       const browser = await chromium.launch({ args: gpuArgs('webgpu') })
       const dir = resolve(OUT, take.id)
       rmSync(dir, { recursive: true, force: true })
@@ -437,14 +461,21 @@ async function main() {
         } else {
           const n = args.includes('--realtime') ? await record(page, dir, take) : await recordVirtual(page, dir, take)
           // 다섯 자리 중 가장 큰 것 — 가운데 한 장만 보면 라이벌전의 흰 전환처럼 원래 한 빛인 프레임을 빈 화면으로 잘못 본다
-          const mid = Math.max(...[0.1, 0.3, 0.5, 0.7, 0.9].map((q) => statSync(resolve(dir, `f-${String(Math.max(1, Math.round(n * q))).padStart(5, '0')}.jpg`)).size))
+          // 한 장도 못 썼으면(n = 0) 재 볼 파일이 없다 — 0kB로 치고 빈 화면과 같이 다시 찍는다
+          const sizeAt = (q) => { try { return statSync(resolve(dir, `f-${String(Math.max(1, Math.round(n * q))).padStart(5, '0')}.jpg`)).size } catch { return 0 } }
+          const mid = n === 0 ? 0 : Math.max(...[0.1, 0.3, 0.5, 0.7, 0.9].map(sizeAt))
           if (mid < 80_000 && tries < 2) {
-            console.log(`  ${take.id.padEnd(14)} 프레임이 모두 ${String(Math.round(mid / 1000))}kB 이하 — 빈 화면으로 보고 다시 찍는다`)
-            queue.push({ take, tries: tries + 1 })
+            console.log(`  ${take.id.padEnd(14)} ${n === 0 ? '프레임이 한 장도 안 써졌다' : `프레임이 모두 ${String(Math.round(mid / 1000))}kB 이하`} — 빈 화면으로 보고 다시 찍는다`)
+            queue.push({ take, tries: tries + 1, stalls })
           } else console.log(`  ${take.id.padEnd(14)} ${String(n)}장 · ${String(take.seconds)}초 · 최대 ${String(Math.round(mid / 1000))}kB`)
         }
       } catch (e) {
-        console.error(`  ${take.id} 못 찍었다 — ${String(e.message ?? e).slice(0, 300)}`)
+        // 확인 지점으로 뛰어들기(`jump`) · 대사 넘기기(`until`) · 기다림의 시간 초과는 기계가 바쁜 탓인 때가 많다 — 한 번 더 찍는다
+        const stalled = e?.name === 'TimeoutError' || /^until:/.test(String(e?.message ?? e))
+        if (stalled && stalls < 1) {
+          console.log(`  ${take.id.padEnd(14)} 시간 초과 — 한 번 더 찍는다: ${String(e.message ?? e).split('\n')[0].slice(0, 160)}`)
+          queue.push({ take, tries, stalls: stalls + 1 })
+        } else console.error(`  ${take.id} 못 찍었다 — ${String(e.message ?? e).slice(0, 300)}`)
       } finally {
         await page.close()
         await browser.close()

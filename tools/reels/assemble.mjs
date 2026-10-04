@@ -123,11 +123,15 @@ function warpFilter(kind, len) {
   return ['format=gbrp', `geq=r='r(${dx},${dy})':g='g(${dx},${dy})':b='b(${dx},${dy})'`]
 }
 
+/**
+ * 이 큐가 읽을 장면 폴더. `crop`이 있으면 세로판에서도 가로(16x9)로 찍은 것을 잘라 쓴다(값은 자를 창의 가운데 · 가로 폭의 비율).
+ * 배틀 카메라는 세로 화면에 맞춰 서지 않아(노트북 이상만 본다) 세로로 찍으면 내 포켓몬이 화면 밖으로 잘린다
+ */
+const takeDir = (e) => resolve(e.crop === undefined ? TAKE : resolve(ROOT, '.audit/reels/take/16x9'), e.take)
+
 /** 장면 하나 → 30fps mp4 (길이 = 큐 길이 + 겹침) */
 function takeClip(e, file) {
-  // `crop` — 세로판에서 가로로 찍은 장면을 잘라 쓴다(값은 자를 창의 가운데 · 가로 폭의 비율). 배틀 카메라는 세로 화면에 맞춰
-  // 서지 않아(노트북 이상만 본다) 세로로 찍으면 내 포켓몬이 화면 밖으로 잘린다
-  const dir = resolve(e.crop === undefined ? TAKE : resolve(ROOT, '.audit/reels/take/16x9'), e.take)
+  const dir = takeDir(e)
   const { frames } = JSON.parse(readFileSync(resolve(dir, 'frames.json'), 'utf8'))
   if (frames.length < 2) throw new Error(`${e.take}: 프레임이 ${String(frames.length)}장`)
   const lines = ['ffconcat version 1.0']
@@ -188,7 +192,7 @@ async function main() {
     for (const e of EDIT) {
       const file = resolve(WORK, `${e.cue}.mp4`)
       if (e.take) {
-        if (!existsSync(resolve(e.crop === undefined ? TAKE : resolve(ROOT, '.audit/reels/take/16x9'), e.take, 'frames.json'))) { console.log(`  ${e.cue.padEnd(6)} ${e.take} 안 찍었다 — 건너뛴다`); missing++; continue }
+        if (!existsSync(resolve(takeDir(e), 'frames.json'))) { console.log(`  ${e.cue.padEnd(6)} ${e.take} 안 찍었다 — 건너뛴다`); missing++; continue }
         if (!cardsOnly || !existsSync(file)) takeClip(e, file)
       } else await cardClip(page, e, file)
       clips.push({ file, cue: e.cue, fade: overlap(e), trans: e.trans ?? 'fade', seconds: duration(file) })
