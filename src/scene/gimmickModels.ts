@@ -11,7 +11,7 @@ import { assets } from '../data/providers/assetProvider'
 const loader = new GLTFLoader()
 
 /** 받는 중 · 받음 · 없음 */
-export type GimmickState = 'loading' | GLTF | 'missing'
+type GimmickState = 'loading' | GLTF | 'missing'
 
 const states = new Map<string, GimmickState>()
 const waiting = new Map<string, Promise<GLTF | null>>()
@@ -71,11 +71,4 @@ export function gimmickPieces(gltf: GLTF, name: string): GimmickPiece[] {
   })
   pieces.set(name, out)
   return out
-}
-
-/** 시험용 — 받은 것을 다 잊는다 */
-export function forgetGimmicks(): void {
-  states.clear()
-  waiting.clear()
-  pieces.clear()
 }

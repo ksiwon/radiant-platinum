@@ -26,7 +26,7 @@ import { GIMMICK_MODELS, honeyTreeClip } from '../engine/world/gimmicks'
 import { useSaveStore } from '../state/saveStore'
 
 /** BDSP 꿀나무 원점 → 원작 소품 자리 (머리말) */
-export const HONEY_TREE_SHIFT: readonly [number, number, number] = [-0.5, 0, -0.5]
+const HONEY_TREE_SHIFT: readonly [number, number, number] = [-0.5, 0, -0.5]
 
 /** 배틀이 끝나면 스크립트가 여기로 멈추라고 한다 (`HoneyTree_StopShaking`) */
 export const honeyShake = {

@@ -29,13 +29,13 @@ export const OVERWORLD_WEATHER = {
  * 헤더 날씨 32~36의 시작 (`OVERWORLD_WEATHER_YEARLY_START`). 이 다섯은 날씨가 아니라
  * 날짜 표(`yearlyWeather`)의 열이다 — 212번도로 남쪽·213번도로·216번도로·아큐티 호반·눈설시티
  */
-export const YEARLY_WEATHER_START = 32
+const YEARLY_WEATHER_START = 32
 
 /** 오늘. 시계에서 읽은 달력 날짜 (`RTCDate`) — 달은 1~12 */
-export interface WeatherDate { year: number, month: number, day: number }
+interface WeatherDate { year: number, month: number, day: number }
 
 /** 지금의 날짜 (본체 시계 = 이 기기의 시계) */
-export function nowWeatherDate(now: Date = new Date()): WeatherDate {
+function nowWeatherDate(now: Date = new Date()): WeatherDate {
   return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() }
 }
 

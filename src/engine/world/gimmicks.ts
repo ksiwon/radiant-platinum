@@ -42,7 +42,7 @@ export function gimmickNames(): string[] {
  * `Wait`은 한 프레임짜리 쉼 자세다
  */
 export const HONEY_TREE_CLIPS = ['Move01', 'Move02', 'Move03'] as const
-export const HONEY_TREE_REST = 'Wait'
+const HONEY_TREE_REST = 'Wait'
 
 /** 원작 흔들림 단계(`shakeAnimation` — 0 · 1 · 2, 없으면 null) → 틀 클립 이름 */
 export function honeyTreeClip(shake: number | null): string {
