@@ -148,10 +148,10 @@ describe.skipIf(!baked)('밭 118곳과 구운 지역 (실측)', () => {
       expect(top.name).toMatch(/House_01/)
       expect(top.y).toBeGreaterThan(ground(x, 469))
     }
-    // 못 둑: 칸을 5×5로 쏘면 서쪽 두 줄(10곳)이 못 바닥(y 0)이고 나머지가 둑의 풀(BDSP 땅 y 1)이다
+    // 못 둑: 칸을 5×5로 쏘면 서쪽 두 줄(10곳)이 못 물(Unity 기본 Plane, y 0.5)이고 나머지가 둑의 풀(BDSP 땅 y 1)이다
     const at = (x: number, i: number): Hit => topAt(x + 0.1 + (i % 5) * 0.2, 469.1 + Math.floor(i / 5) * 0.2)!
     const bank = Array.from({ length: 25 }, (_, i) => at(827, i))
-    expect(bank.filter((h) => Math.abs(h.y) < 0.01)).toHaveLength(10)
+    expect(bank.filter((h) => Math.abs(h.y - 0.5) < 0.01 && /Water/.test(h.name))).toHaveLength(10)
     expect(bank.filter((h) => Math.abs(h.y - (ground(827, 469) - 2)) < 0.01 && /PondGrass/.test(h.name))).toHaveLength(15)
     // 나무: 25곳 중 21곳이 잎에 걸리고 원작 땅 높이가 그 잎 속이다. 나머지는 BDSP 땅(원작보다 두 칸 아래)이다
     const tree = Array.from({ length: 25 }, (_, i) => at(828, i))
