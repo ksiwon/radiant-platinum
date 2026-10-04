@@ -986,8 +986,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     rentalParty = team.map((m) => ({ ...m }))
     metTrainer = null
     set({
-      // ⚠️ **상대의 몸은 분류 번호로 선다** (`hasTrainer`). 비우면 무대에 상대 트레이너가 아예
-      // 안 서고, 교체 볼이 빈 자리에서 날아온다. 더블도 한 사람이다 — 프런티어 더블은
+      // ⚠️ **분류 번호는 곡을 고른다** (`trainerClass` → 배틀 곡 · 이긴 곡). 무대에 사람은 안 서고, 트레이너 판인지는
+      // `kind`가 가른다(`hasTrainer` — 팩토리도 트레이너전이다). 더블도 한 사람이다 — 프런티어 더블은
       // `BATTLE_TYPE_FRONTIER_DOUBLES`(= `TRAINER_DOUBLES`)라 태그(`2vs2`)가 아니다.
       //
       // `foes`는 비워 둔다 — 그 칸은 **트레이너 표(trdata)의 번호**를 드는 자리라
