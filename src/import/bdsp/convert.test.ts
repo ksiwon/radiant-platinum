@@ -22,8 +22,7 @@ import { POKEBALL, arenaFiles } from './convert'
 import { verifyGlb } from './glb'
 import { decodePng, encodePng } from '../platinum/png'
 import { SPRITE_NAMES } from '../platinum/spriteTable'
-import { HERO_FIELD_CLIPS, TRAINER_CLIPS, fieldClipDonor, modelFor } from '../../engine/actor/npcModels'
-import { TRAINER_CLIP } from '../../scene/battle/battleTrainerVisual'
+import { HERO_FIELD_CLIPS, clipFilterFor, fieldClipDonor, modelFor } from '../../engine/actor/npcModels'
 import { TRAINER_MODELS } from './trainerModels'
 import { bundleDeps } from './bundleDeps'
 import { bdspDir, withLocal } from '../../data/romData.testkit'
@@ -248,28 +247,17 @@ suite('인물', () => {
     expect(verifyGlb(glb)).toEqual([])
   }, 180_000)
 
-  // ⚠️ **굽는 쪽이 둘이라 여기서 브라우저 쪽을 잡는다.** 노드 추출기가 넷을
-  // 실어도 이쪽이 안 실으면 설치본의 트레이너만 안 움직인다 — 개발 서버에서는
-  // 멀쩡히 보이므로 눈으로는 절대 안 걸린다
-  it('등신 몸에 배틀 클립 넷만 실린다', async () => {
+  // ⚠️ **굽는 쪽이 둘이라 여기서 브라우저 쪽을 잡는다.** 노드 추출기(`--clip-filter`)가 하나도 안 실어도
+  // 이쪽이 싣거나 그 반대면 개발 서버와 설치본의 트레이너가 갈린다 — 개발 서버에서는 멀쩡히 보이므로 눈으로는 안 걸린다
+  it('등신 트레이너 몸에는 클립이 하나도 안 실린다', async () => {
     const env = openEnvironment([bytes(person('battle', 'tr0002_00')!)])
     const { glb, stat } = await exportModel(env, encodePng, {
-      maxSize: 256, keepClips: true, clipFilter: TRAINER_CLIPS,
+      maxSize: 256, keepClips: true, clipFilter: clipFilterFor('tr0002_00'),
     })
-    // 등장 · 쉬기 · 지시 · 패배 (`TRAINER_CLIP`). 쉬는 것이 빠지면 트레이너가
-    // 등장 클립 끝 자세로 굳는다
-    expect(stat.anim.clips).toBe(4)
-    // 걸러진 것이 있어야 한다 — 규칙이 아무것도 안 거르면 넷이 나올 리 없다
+    expect(stat.anim.clips).toBe(0)
+    // 걸러진 것이 있어야 한다 — 규칙이 아무것도 안 거르면 0이 나올 리 없다
     expect(stat.anim.skipped).toBeGreaterThan(0)
-    expect(stat.anim.channels).toBeGreaterThan(500)
     expect(verifyGlb(glb)).toEqual([])
-    // 실린 이름이 화면이 부르는 이름과 같아야 한다. glb의 JSON 청크는
-    // 12바이트 머리 뒤 8바이트 청크 머리 다음부터다
-    const head = new DataView(glb.buffer, glb.byteOffset, glb.byteLength)
-    const json = new TextDecoder().decode(glb.subarray(20, 20 + head.getUint32(12, true)))
-    const clipNames = (JSON.parse(json) as { animations?: { name: string }[] }).animations ?? []
-    expect(new Set(clipNames.map((a) => a.name)))
-      .toEqual(new Set(Object.values(TRAINER_CLIP)))
   }, 120_000)
 
   // ⚠️ **여기도 굽는 쪽 둘이다.** 필드 동작은 치비 번들에만 있어서 옮겨 와야
@@ -287,10 +275,10 @@ suite('인물', () => {
     expect(from.ofType('Transform').length).toBe(276)
 
     const { glb, stat } = await exportModel(env, encodePng, {
-      maxSize: 256, keepClips: true, clipFilter: TRAINER_CLIPS,
+      maxSize: 256, keepClips: true, clipFilter: clipFilterFor(hero),
       clipsFrom: from, borrowOnly: new Set(HERO_FIELD_CLIPS),
     })
-    // 제 클립은 셋뿐이다 — 주인공에게는 `lose01_b`가 아예 없다 (원작이 안 만들었다)
+    // 제 클립은 서 있기 · 걷기 · 뛰기 셋이다 (`wait_b` · `walk_b` · `run_b`) — 배틀 클립은 안 싣는다
     expect(stat.anim.clips).toBe(3)
     expect(stat.borrow?.borrowed).toBe(HERO_FIELD_CLIPS.length)
     expect(stat.borrow?.channels).toBe(1088)

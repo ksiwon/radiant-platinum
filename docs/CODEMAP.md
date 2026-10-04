@@ -239,7 +239,7 @@
 | 조명 프리셋·광원 방향 | `scene/fx/sky.test.ts` (면빛 비율) | PLAN §6.2 · 깨어진 세계는 PARITY §6.10 |
 | 필드 카메라 거리·화각 | `engine/actor/camera.test.ts` (방으로 물리는 규칙). 렌즈 값 자체는 화면으로 잰다 — `.audit/probe/voidShots.mjs` · `.audit/probe/distortionLook.mjs` | PARITY §6.2 · §6.10 |
 | 맵마다 도는 장치의 **배선** (체육관 여섯 · 리그 승강판) | `engine/script/mapFeatures.test.ts`(맵에 들어서면 켜지는가) · `scene/fieldServices.test.ts`(손잡이가 제 장치로 가는가) | PARITY §1.23 · PLAN §16.11 |
-| 어느 클립을 굽는가 (`engine/actor/npcModels`의 `TRAINER_CLIPS`·`HERO_FIELD_CLIPS`) | `import/bdsp/convert.test.ts`(굽는 쪽 둘이 같은 규칙을 보는가) · `scene/battle/battleTrainerVisual.test.ts`(무대가 쓰는 이름이 그 규칙에 드는가) | PLAN §16.9 · 3D_GAP_AUDIT §3.2 · `import/install/assetFormat`의 `npcModels`를 **올려야 한다**(이미 깔린 사람이 다시 굽는다) · DEPLOY §5의 ⑮(설치 크기) |
+| 어느 클립을 굽는가 (`engine/actor/npcModels`의 `clipFilterFor`·`HERO_FIELD_CLIPS`) | `import/bdsp/convert.test.ts`(굽는 쪽 둘이 같은 규칙을 보는가) · `engine/actor/npcModels.test.ts`(몸마다 무엇을 싣는가) | PLAN §16.9 · 3D_GAP_AUDIT §3.2 · `import/install/assetFormat`의 `npcModels`를 **올려야 한다**(이미 깔린 사람이 다시 굽는다) · DEPLOY §5의 ⑮(설치 크기) |
 | 타는 것·드는 것의 자리 (자전거 · 파도타기 · 공중날기 · 낚싯대 · 물뿌리개) | `scene/pcParts.test.ts`(번들에서 잰 자리) · `engine/actor/locomotion.test.ts`(발이 페달에, 손이 손잡이에) | DATA §4.2.1 · 3D_GAP_AUDIT §3.2 |
 | 기하 추출기 (`tools/extract/chunks·props·distortionProps·starterScene`) | `import/platinum/chunks.test.ts` · `distortionProps.test.ts` (**브라우저 변환기와 바이트로 같은가**) | DATA §2.2 |
 | 바닥 비트(`cover.bin`)·소품 상자·막는 규칙 | `engine/map/floorSeal.test.ts` · `import/platinum/chunks.test.ts`(파일 668개) · `engine/map/world.test.ts`(워프 1,207개가 내려놓는 자리) | REPAIR §22·§23 · DATA §2.2 |

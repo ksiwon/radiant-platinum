@@ -15,7 +15,7 @@
 // ⚠️ **텍스처와 클립을 줄여서 굽는다.** 그냥 구우면 한 명이 5.07MB고
 // 마흔둘이면 213MB다. 그 중 절반이 애니메이션 클립인데 걷기는
 // `actor/locomotion`이 뼈를 직접 돌려서 만들므로(주인공도 그렇다) 쓸 자리가
-// 없다. 싣는 것은 배틀에서 이어 붙는 넷(`TRAINER_CLIPS`)과, 주인공 둘에만
+// 없다. 싣는 것은 치비의 제 걷기 셋과(등신은 클립 없음 — `clipFilterFor`), 주인공 둘에만
 // 치비에서 옮겨 오는 필드 동작 열여섯(`HERO_FIELD_CLIPS`)뿐이다.
 // 텍스처는 긴 변 256으로 줄인다:
 //
@@ -112,7 +112,7 @@ function main() {
   // 건너뛰어졌다
   //
   // ⚠️ **규칙이 든 소스도 본다.** 어느 클립을 실을지는 `engine/actor/npcModels`가
-  // 정하는데(`TRAINER_CLIPS`·`HERO_FIELD_CLIPS`) 그 파일을 안 보면, 목록을 고쳐도
+  // 정하는데(`clipFilterFor`·`HERO_FIELD_CLIPS`) 그 파일을 안 보면, 목록을 고쳐도
   // 106벌이 전부 "그대로 둔 것"이 되어 낡은 클립을 실은 glb가 남는다
   const bakerAt = Math.max(
     ...['bdspGlb.py', 'bdsp_bake_albedo.py', 'bdspRetarget.py']

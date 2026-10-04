@@ -38,10 +38,14 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
   moves: 1,
   marts: 1,
   /**
+   * 5 — **꺼 둔 물체를 굽지 않는다** (`import/bdsp/field.ts`의 `m_IsActive` · 꺼진 부모 검사 · 유니티 내장 Plane 물). 번들이 꺼 둔 물체를
+   * 불리언으로 안 읽어 그대로 구웠다. 실측으로(개발 산출물 `public/models/field` 대비) 지역 14벌 중 area009의 `P_T_013_SnowCover_10` 둘이 빠지고
+   * area008은 `R224b` 909개(4,464 → 3,555)가 빠진다 — 다른 지역은 0이다.
+   * ⚠️ **4와 3은 이제 안 쓴다**(`GROUP_ACCEPTS`에서 뺐다) — 꺼 둔 물체가 원작에는 안 서므로 옛 지역 glb를 그대로 두면 안 된다
+   *
    * 4 — **이웃 구역의 사본을 한 지역에만 남긴다** (`import/bdsp/field.ts`의 `FOREIGN_ZONES`). 지역 여럿이 같은 구역을 품어 같은 삼각형을
    * 두세 번 그렸고, 섞어 그리는 그림자 · 더해 그리는 입구 빛이 겹친 만큼 진했다. area002의 영원시티 · 206번도로 사본은 한 칸 남쪽이라
    * 건물이 두 벌 섰다 — 206번도로와 207번도로 사이 한 줄만 그 사본에서 빌린다(`ZONE_SEAMS`).
-   * ⚠️ 3도 그대로 쓴다(`GROUP_ACCEPTS`) — 겹쳐 서도 길은 다 걸린다
    *
    * 3 — **문 너머 가짜 실내(`RoomInner`) 바닥과 같은 높이로 겹친 바깥 면을 굽기에서 잘라 낸다** (`import/bdsp/field.ts`). 원작은
    * `_ZOffset`으로 실내 바닥을 앞으로 당겨 이기는데 glTF에는 깊이 밀기가 없어서, 관문 · 집 문간에서 체크 바닥과 풀이 얼룩으로 싸웠다.
@@ -66,11 +70,23 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    */
   rooms: 2,
   /**
+   * 3 — **마스크로 섞는 그림 없는 재질의 섞은 그림을 두 굽는 쪽이 같은 바이트로 굽는다** (`import/bdsp/arena.ts`의 `cascadeMix` ·
+   * 노드 쪽 `bdspArena.py`의 `cascade_mix`). 충호 방 무대 g038~g041의 바닥(`M_B_038_Floor_24`) 그림이 RGBA PNG다 — 무대 30벌 중
+   * 4벌의 바이트만 갈린다(135,995,512 → 136,001,992 · 한 벌에 +1,620). 픽셀은 같다(`glbDiff` 최대 차 0 · 두 굽는 쪽 사이도 0).
+   * 방 117벌은 바이트가 그대로라 `rooms`는 안 올린다
+   *
    * 2 — 무대에도 방과 같은 규칙을 먹인다 (층 그림 바닥 · 벽 11재질 · 반투명 겹그림 `M_CB_029_Mark_03`의 색). 그리고 **더하는 물을 보통 섞기로 옮겨
    * 굽는다** (`import/bdsp/albedo.ts`의 `additiveWater`) — 물 체육관 무대 `g027`의 회색 물결이 알파 1로 바닥과 뒷벽을 덮어 흑백
    * 노이즈로 보였다. 30벌 중 8벌의 재질 · 그림이 바뀐다
    */
-  arenas: 2,
+  arenas: 3,
+  /**
+   * 2 — **던전도 꺼 둔 물체를 안 굽는다** (`import/bdsp/field.ts` — 던전도 같은 굽기를 쓴다). 던전 번들 138벌을 새로 구워 개발 산출물
+   * (`public/models/dungeon`)과 맞대면 glb 139벌 중 21벌의 바이트가 갈린다(합 117,709,252 → 117,726,512 바이트) —
+   * 그림 · 기하가 갈리는 것이 대부분이고 재질 JSON이 갈리는 것은 TV 화면 `M_C_001_Video_03` 둘(`d26r0102` · `d31r0201`)이다.
+   * 마스크로 섞는 재질(`cascadeMix`)은 던전 · 지역 번들 모두 0벌이라 그 고침과는 상관없다 (재질 2,434 · 1,500 실측)
+   */
+  dungeons: 2,
   /**
    * 2 — **능력 변화 무늬 묶음(`statChange.bin`)이 붙는다** (`import/platinum/particles.ts`의 `STAT_CHANGE_BG`). 능력이 오르고
    * 내릴 때 몸 실루엣 안에서 흐르는 배경 무늬 넷(`pl_batt_bg.narc` 멤버 열둘)이다. 옛 판에는 그 묶음이 없다
@@ -205,6 +221,12 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 주인공이 계속 절차형으로만 낚시한다
    */
   /**
+   * 18 — **등신 몸에 배틀 클립을 안 싣는다** (`engine/actor/npcModels`의 `clipFilterFor`). 배틀 무대에는 사람이 안 서서(사용자 결정 2026-10-04)
+   * 등장 · 쉬기 · 지시 · 패배(`advent_b` · `wait_b` · `order_b` · `lose01_b`)를 부르는 화면이 없다. 주인공 둘만 서 있기 `wait_b`와
+   * 걷기 · 뛰기를 남긴다(`PlayerModel`이 서 있는 자세를 거기서 가져온다). 새로 구운 108벌 대 옛 `public/models/npc`로 잰 클립 접근자 합계가
+   * 21,591,780 → 2,112,136바이트(−19.48MB · 18.6MiB), 클립 416 → 85개다. 두 굽는 쪽은 같은 정규식 하나를 본다 — 아무것도 안 싣는 규칙은 `^$`다
+   * (빈 값은 노드 쪽에서 「전부 싣는다」다)
+   *
    * 17 — **주인공 둘이 플래티넘 의상 색으로 선다.** BDSP 몸 `pc0001_00`·`pc0002_00`은 DP 의상이라 루카스 모자가
    * 주황빨강 · 스카프가 금색이었고 빛나 스카프가 분홍이었다. 롬 그림 PT ↔ DP를 맞대어 잰 색으로 레이어 색을 갈아 끼운다
    * (`NPC_RECOLOR` — 꼬리 없이 같은 번들 이름). 두 몸의 텍스처 색만 달라진다. 빛나의 장화는 `wear@shoes1` 사본 재질로 DP 분홍을 지킨다
@@ -223,7 +245,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 쪽찐 할머니 · `fc2022`의 옷이 통째로 잘려 머리 · 손 · 발만 떠 있었고, 사이클리스트 헬멧 · 안경알이 사라졌다.
    * 파도타기 · 공중날기 포켓몬(`models/pcParts.glb`)의 눈도 알파가 거의 0이라 잘려 있었다
    */
-  npcModels: 17,
+  npcModels: 18,
   /**
    * 5 — ASTC 그림을 개발 추출기와 같은 규칙으로 푼다 (`npcModels` 16과 같은 고침). ⚠️ 4도 그대로 쓴다(`GROUP_ACCEPTS`)
    *
@@ -381,8 +403,6 @@ const GROUP_ACCEPTS: Readonly<Record<string, readonly number[]>> = {
   npcModels: [15],
   monModels: [4],
   monVariants: [1],
-  // 구역 사본 (`GROUP_FORMAT.fields` 4) — 겹쳐 서는 것만 다르다
-  fields: [3],
 }
 
 /** 이 판의 그 그룹을 그대로 써도 되는가 */

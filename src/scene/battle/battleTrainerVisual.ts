@@ -1,12 +1,12 @@
 // 등신 몸에 실리는 배틀 클립 이름 (DATA.md §2.16)
 //
-// 배틀 무대에는 사람이 서지 않는다 (사용자 결정 2026-10-04). 이 이름들은 굽는 쪽
-// (`engine/actor/npcModels`의 `TRAINER_CLIPS`)과 변환 시험이 같은 값을 보려고 남아 있다
+// 배틀 무대에는 사람이 서지 않는다 (사용자 결정 2026-10-04). 굽는 쪽(`engine/actor/npcModels`의 `clipFilterFor`)은 이 클립들을
+// 더는 안 싣는다 — 이 파일을 부르는 곳이 없다
 
 /**
  * 등신 몸에 실린 배틀 클립.
  *
- * 굽는 쪽이 이 넷만 싣는다 (`engine/actor/npcModels`의 `TRAINER_CLIPS`).
+ * 굽는 쪽이 안 싣는다 (`engine/actor/npcModels`의 `clipFilterFor`).
  * 길이는 PLAN.md의 클립 표에서 잰 값이다
  */
 export const TRAINER_CLIP = {

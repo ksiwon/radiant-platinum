@@ -9,13 +9,13 @@
 //
 // ⚠️ **좌표계는 X 뒤집기다.** `model.ts`와 같은 이유다(그쪽 머리말). 손잡이가
 // 뒤집히므로 삼각형 감기 순서도 함께 뒤집는다.
-import { bakeAlbedo, plantKind } from './albedo'
+import { bakeAlbedo, linearToSrgb, plantKind, roundHalfEven } from './albedo'
 import {
   ARRAY_BUFFER, ELEMENT_BUFFER, FLOAT, GlbBuffer, UINT, USHORT,
   verifyGlb, writeGlb, type Gltf,
 } from './glb'
 import { meshFrom, CHANNEL, type MeshData } from './mesh'
-import { readTexture, resize, resource, type Texture } from './texture'
+import { readTexture, resize, resizePremultiplied, resource, type Texture } from './texture'
 import type { Environment } from './environment'
 import type { UnityValue } from './typetree'
 
@@ -36,6 +36,11 @@ function pairs(entries: UnityValue): Map<string, UnityValue> {
     if (typeof key === 'string') out.set(key, e[1] as UnityValue)
   }
   return out
+}
+
+/** 재질 그림 칸(`m_TexEnvs`의 `_MainTex` · `_LayerTex` · `_BlendTex` …)에 물린 그림의 PathID. 칸이 없거나 비면 0. 노드 쪽 `bdspArena.py`의 `tex_pid`와 같다 */
+export function texturePid(texEnvs: Map<string, UnityValue>, key: string): number {
+  return num(((texEnvs.get(key) as Props | undefined)?.m_Texture as Props | undefined)?.m_PathID)
 }
 
 // ── 월드 행렬 ────────────────────────────────────────────────────────────────
@@ -253,6 +258,22 @@ export function flipbookCell(columns: number, rows: number, start: number): { of
   return { offset: [col / columns, (rows - 1 - fromBottom) / rows], scale: [1 / columns, 1 / rows] }
 }
 
+/**
+ * 그림 없는 재질(또는 섞은 그림 한 장뿐인 재질)의 `baseColorFactor`.
+ *
+ * - 보통: `_Color` 그대로. 빛 재질을 싣는 쪽은 `_ColorIntensity`를 곱한다 — 빛 재질은 0이라 낮에 안 보인다
+ * - ⚠️ **섞은 그림이 있으면 색은 이미 그림에 들었다** (`cascadeMix`가 `_Color` × `_ColorIntensity`를 구워 넣는다) — RGB는 1이다.
+ *   안 그러면 세기가 두 번 곱해진다(빛 재질 쪽에서 `_Color` × `_ColorIntensity`로 다시 덮어 g038 바닥이 제곱으로 어두워졌다).
+ *   알파는 빛 재질 쪽만 `_Color`의 것을 싣는다 (노드 쪽 `bdspArena.py`는 빛 재질이 없어 늘 1)
+ */
+export function plainFactor(
+  base: Props, gain: number, lights: boolean, mixed: boolean,
+): [number, number, number, number] {
+  const [r, g, b, a] = [num(base.r, 1), num(base.g, 1), num(base.b, 1), num(base.a, 1)]
+  if (mixed) return [1, 1, 1, lights ? a : 1]
+  return lights ? [r * gain, g * gain, b * gain, a] : [r, g, b, a]
+}
+
 export async function bakeLooks(
   env: Environment,
   encodePng: (rgba: Uint8Array, width: number, height: number) => Promise<Uint8Array>,
@@ -296,8 +317,7 @@ export async function bakeLooks(
     looks.set(mat, { floats, colors: pairs(saved.m_Colors), slots })
     if (plant) {
       const te = pairs(saved.m_TexEnvs)
-      const pidOf = (k: string): number => num(((te.get(k) as Props | undefined)?.m_Texture as Props | undefined)?.m_PathID)
-      plantOf.set(mat, plantKind(String(v.m_ShaderKeywords ?? ''), pidOf('_MainTex'), pidOf('_LayerTex')))
+      plantOf.set(mat, plantKind(String(v.m_ShaderKeywords ?? ''), texturePid(te, '_MainTex'), texturePid(te, '_LayerTex')))
     }
     if (num(floats.get('_SrcBlend')) === ADD_SRC && num(floats.get('_DstBlend')) === ADD_DST) additive.add(mat)
   }
@@ -353,31 +373,33 @@ export async function bakeLooks(
     const words = String(v.m_ShaderKeywords ?? '')
     if (!words.includes('_CASCADE_BLENDUV0') || words.includes('MIRRORMAP') || num(floats.get('_BlendUVIndex')) !== 0) return null
     const te = pairs(((v.m_SavedProperties ?? {}) as Props).m_TexEnvs)
-    const pidOf = (k: string): number => num(((te.get(k) as Props | undefined)?.m_Texture as Props | undefined)?.m_PathID)
-    if (pidOf('_BlendTex') === 0 || pidOf('_MainTex') !== 0 || pidOf('_LayerTex') !== 0) return null
-    const at = textureAt.get(pidOf('_BlendTex'))
+    if (texturePid(te, '_BlendTex') === 0 || texturePid(te, '_MainTex') !== 0 || texturePid(te, '_LayerTex') !== 0) return null
+    const at = textureAt.get(texturePid(te, '_BlendTex'))
     if (!at) return null
-    at.read ??= readTexture(env.read(pidOf('_BlendTex')) as Props, at.entry.bundle)
+    at.read ??= readTexture(env.read(texturePid(te, '_BlendTex')) as Props, at.entry.bundle)
     let [w, h, px] = [at.read.width, at.read.height, at.read.pixels]
+    // 줄이는 길은 노드 쪽과 같다 — PIL RGBA `LANCZOS`(알파 곱한 채)에 크기는 `round`(짝수 반올림)
     if (maxSize !== null && Math.max(w, h) > maxSize) {
       const k = maxSize / Math.max(w, h)
-      const tw = Math.max(1, Math.round(w * k)); const th = Math.max(1, Math.round(h * k))
-      px = resize(px, w, h, tw, th); w = tw; h = th
+      const tw = Math.max(1, roundHalfEven(w * k)); const th = Math.max(1, roundHalfEven(h * k))
+      px = resizePremultiplied(px, w, h, tw, th); w = tw; h = th
     }
+    // float32로 센다 — 노드 쪽 numpy와 끝자리가 같게 (`albedo.ts`와 같은 길)
+    const f32 = Math.fround
     const lin = (key: string, gain: string): number[] => {
       const c = (colors.get(key) ?? {}) as Props
       const k = floats.has(gain) ? num(floats.get(gain)) : 1
-      return [toLinear(num(c.r, 1)) * k, toLinear(num(c.g, 1)) * k, toLinear(num(c.b, 1)) * k]
+      return [f32(toLinear(num(c.r, 1)) * k), f32(toLinear(num(c.g, 1)) * k), f32(toLinear(num(c.b, 1)) * k)]
     }
     const a = lin('_Color', '_ColorIntensity')
     const b = lin('_LayerColor', '_LayerColorIntensity')
-    const toSrgb = (x: number): number => (x <= 0.0031308 ? x * 12.92 : 1.055 * x ** (1 / 2.4) - 0.055)
     const out = new Uint8Array(w * h * 4)
     for (let i = 0; i < w * h; i++) {
-      const r = px[i * 4]! / 255
+      const r = f32(px[i * 4]! / 255)
+      const rest = f32(1 - r)
       for (let c = 0; c < 3; c++) {
-        const m = Math.min(1, Math.max(0, a[c]! * (1 - r) + b[c]! * r))
-        out[i * 4 + c] = Math.round(toSrgb(m) * 255)
+        const m = Math.min(1, Math.max(0, f32(f32(a[c]! * rest) + f32(b[c]! * r))))
+        out[i * 4 + c] = roundHalfEven(f32(linearToSrgb(m) * 255))
       }
       out[i * 4 + 3] = 255
     }
@@ -465,10 +487,11 @@ export async function bakeLooks(
     const colors = pairs(saved.m_Colors)
     const floats = pairs(saved.m_Floats)
     const base = (colors.get('_Color') ?? {}) as Props
+    const gain = floats.has('_ColorIntensity') ? num(floats.get('_ColorIntensity')) : 1
     const plain: Record<string, unknown> = {
       name: mat,
       pbrMetallicRoughness: {
-        baseColorFactor: [num(base.r, 1), num(base.g, 1), num(base.b, 1), num(base.a, 1)],
+        baseColorFactor: plainFactor(base, gain, lights, false),
         metallicFactor: 0,
         roughnessFactor: 0.9,
       },
@@ -483,7 +506,7 @@ export async function bakeLooks(
       textures.push({ source: images.length - 1, sampler })
       const pbr = plain.pbrMetallicRoughness as Record<string, unknown>
       pbr.baseColorTexture = { index: textures.length - 1 }
-      pbr.baseColorFactor = [1, 1, 1, 1]
+      pbr.baseColorFactor = plainFactor(base, gain, lights, true)
     }
     // 스스로 빛나는 것. 세기까지는 안 옮긴다 — glTF의 `emissiveFactor`는 0~1이라
     // 4배를 실을 수 없다
@@ -495,10 +518,6 @@ export async function bakeLooks(
       plain.emissiveFactor = [num(glow.r), num(glow.g), num(glow.b)]
     }
     if (lights) {
-      // 바탕색에 `_ColorIntensity`를 곱한다 — 빛 재질은 0이라 낮에 안 보인다
-      const k = floats.has('_ColorIntensity') ? num(floats.get('_ColorIntensity')) : 1
-      const pbr = plain.pbrMetallicRoughness as { baseColorFactor: number[] }
-      pbr.baseColorFactor = [num(base.r, 1) * k, num(base.g, 1) * k, num(base.b, 1) * k, num(base.a, 1)]
       const extras: Record<string, unknown> = {}
       if (additive.has(mat)) { plain.alphaMode = 'BLEND'; extras.add = true }
       const tex = pairs(saved.m_TexEnvs).get('_EmissionTex') as Props | undefined

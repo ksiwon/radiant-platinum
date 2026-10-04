@@ -917,8 +917,8 @@ def main() -> int:
     ap.add_argument("--only", default="",
                     help="옮겨 올 클립 이름들, 쉼표로 나눈다. 비우면 전부")
     ap.add_argument("--clip-filter", default="",
-                    help="이 정규식에 맞는 클립만 싣는다. 비우면 전부. "
-                         "배틀 트레이너는 '^(advent_b|order_b|lose01_b)$'")
+                    help="이 정규식에 맞는 클립만 싣는다. 비우면 전부(⚠️ 하나도 안 싣는 것은 '^$'다). "
+                         "치비는 '^(walk_f|run_f|wait_f)$' — 몸마다 무엇을 싣는지는 `npcModels.ts`의 `clipFilterFor`")
     ap.add_argument("--drop", default="",
                     help="이 이름의 재질은 아예 안 그린다. 쉼표로 잇는다 (예: 'hat')")
     ap.add_argument("--recolor", default="",

@@ -10,7 +10,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { EMPTY_ALPHA, MASK_CHANNEL_PROPS, VARIATION_CHANNEL_PROPS, bakeAlbedo, untaggedAlpha } from './albedo'
+import { EMPTY_ALPHA, MASK_CHANNEL_PROPS, VARIATION_CHANNEL_PROPS, bakeAlbedo, plantKind, scopedMaterial, untaggedAlpha } from './albedo'
 import { openEnvironment } from './environment'
 import { bdspDir, withLocal } from '../../data/romData.testkit'
 
@@ -95,4 +95,37 @@ withLocal('BDSP 무대 g027', g027)('더하는 물 — 원본 번들', () => {
     const floor = (additiveWater: boolean) => bakeAlbedo(env, { additiveWater }).find((m) => m.name === 'M_CB_027_Floor_01')!.pixels
     expect(floor(true)).toEqual(floor(false))
   }, 120_000)
+})
+
+describe('나무열매 색 입히는 길 (`plantKind`)', () => {
+  it('`_CASCADE_BLENDUV0`는 잎(blend) — 그림 칸과 상관없다', () => {
+    expect(plantKind('_A _CASCADE_BLENDUV0 _B', 0, 0)).toBe('blend')
+    expect(plantKind('_CASCADE_BLENDUV0', 3, 4)).toBe('blend')
+  })
+  it('`_LayerTex`가 `_MainTex`와 다른 그림이면 꽃(mask)', () => {
+    expect(plantKind('', 3, 4)).toBe('mask')
+  })
+  it('나머지는 plain — 같은 그림이거나 한쪽이 비었을 때', () => {
+    expect(plantKind('', 3, 3)).toBe('plain')
+    expect(plantKind('', 3, 0)).toBe('plain')
+    expect(plantKind('', 0, 4)).toBe('plain')
+    // 낱말 일부만 겹치면 안 된다
+    expect(plantKind('_CASCADE_BLENDUV01', 0, 0)).toBe('plain')
+  })
+})
+
+describe('`재질@조각` 키 (`scopedMaterial`)', () => {
+  const recolor = { 'wear@shoes2': {}, 'wear@shoes1': {}, 'hat@x': {}, wear: {} }
+  it('조각 이름에 `조각`이 들어 있으면 그 키다', () => {
+    expect(scopedMaterial('wear', 'body_shoes1_L', recolor)).toBe('wear@shoes1')
+    expect(scopedMaterial('hat', 'xx', recolor)).toBe('hat@x')
+  })
+  it('둘 이상 맞으면 사전순으로 먼저인 키다', () => {
+    expect(scopedMaterial('wear', 'shoes1_shoes2', recolor)).toBe('wear@shoes1')
+  })
+  it('안 맞거나 표가 없으면 재질 이름 그대로다 — 꼬리 없는 키는 안 본다', () => {
+    expect(scopedMaterial('wear', 'body', recolor)).toBe('wear')
+    expect(scopedMaterial('face', 'shoes1', recolor)).toBe('face')
+    expect(scopedMaterial('wear', 'shoes1', undefined)).toBe('wear')
+  })
 })

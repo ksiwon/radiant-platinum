@@ -34,7 +34,7 @@ import numpy as np
 import UnityPy
 from UnityPy.helpers import MeshHelper
 
-from bdsp_bake_albedo import bake, plant_kind, prop_pairs, srgb_to_linear_scalar
+from bdsp_bake_albedo import bake, linear_to_srgb, plant_kind, prop_pairs, srgb_to_linear_scalar
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tools.raw.sources import require_dir
@@ -165,6 +165,12 @@ def tint_of(floats: dict, colors: dict, layer: bool, see: bool) -> list[float] |
     return [clamp(c[0] * k), clamp(c[1] * k), clamp(c[2] * k), 0 if k == 0 else clamp(c[3])]
 
 
+def tex_pid(tex: dict, key: str) -> int:
+    """재질 그림 칸(`m_TexEnvs`의 `_MainTex` · `_LayerTex` · `_BlendTex` …)에 물린 그림의 PathID. 칸이 없거나 비면 0. 브라우저 변환기 `arena.ts`의 `texturePid`와 같다"""
+    v = tex.get(key)
+    return v.get("m_Texture", {}).get("m_PathID", 0) if isinstance(v, dict) else 0
+
+
 def cascade_mix(env, d: dict, colors: dict, floats: dict, max_size: int | None) -> bytes | None:
     """**마스크로 두 색을 섞는 그림 없는 재질** — 바탕(`_MainTex`)도 층(`_LayerTex`)도 없이 `_BlendTex`만 물렸다.
 
@@ -178,10 +184,9 @@ def cascade_mix(env, d: dict, colors: dict, floats: dict, max_size: int | None) 
     if "_CASCADE_BLENDUV0" not in words or "MIRRORMAP" in words or floats.get("_BlendUVIndex", 0.0) != 0:
         return None
     tex = dict(prop_pairs(d.get("m_SavedProperties", {}).get("m_TexEnvs", [])))
-    pid = lambda k: (tex.get(k) or {}).get("m_Texture", {}).get("m_PathID", 0)
-    if pid("_BlendTex") == 0 or pid("_MainTex") != 0 or pid("_LayerTex") != 0:
+    if tex_pid(tex, "_BlendTex") == 0 or tex_pid(tex, "_MainTex") != 0 or tex_pid(tex, "_LayerTex") != 0:
         return None
-    mask = next((o for o in env.objects if o.path_id == pid("_BlendTex")), None)
+    mask = next((o for o in env.objects if o.path_id == tex_pid(tex, "_BlendTex")), None)
     if mask is None:
         return None
     from io import BytesIO
@@ -189,7 +194,8 @@ def cascade_mix(env, d: dict, colors: dict, floats: dict, max_size: int | None) 
     img = mask.read().image.convert("RGBA")
     if max_size is not None and max(img.size) > max_size:
         k = max_size / max(img.size)
-        img = img.resize((max(1, round(img.size[0] * k)), max(1, round(img.size[1] * k))), Image.BILINEAR)
+        # `bdsp_bake_albedo.bake`의 줄이기와 같다 — RGBA `LANCZOS` (`arena.ts`는 `resizePremultiplied`)
+        img = img.resize((max(1, round(img.size[0] * k)), max(1, round(img.size[1] * k))), Image.LANCZOS)
     r = np.asarray(img, dtype=np.float32)[..., 0:1] / 255.0
 
     def lin(key: str, gain: str) -> np.ndarray:
@@ -198,9 +204,11 @@ def cascade_mix(env, d: dict, colors: dict, floats: dict, max_size: int | None) 
         return np.array([srgb_to_linear_scalar(c.get(x, 1.0)) * k for x in ("r", "g", "b")], dtype=np.float32)
 
     mix = np.clip(lin("_Color", "_ColorIntensity") * (1 - r) + lin("_LayerColor", "_LayerColorIntensity") * r, 0, 1)
-    srgb = np.where(mix <= 0.0031308, mix * 12.92, 1.055 * np.power(mix, 1 / 2.4) - 0.055)
+    rgb = np.round(linear_to_srgb(mix) * 255).astype(np.uint8)
+    # RGBA로 싣는다 — 다른 알베도 그림(`bake`)과 같은 꼴, `arena.ts`도 알파 255를 채워 싣는다
+    rgba = np.concatenate([rgb, np.full(rgb.shape[:2] + (1,), 255, dtype=np.uint8)], axis=2)
     out = BytesIO()
-    Image.fromarray(np.round(srgb * 255).astype(np.uint8), "RGB").save(out, "PNG")
+    Image.fromarray(rgba, "RGBA").save(out, "PNG")
     return out.getvalue()
 
 
@@ -238,7 +246,9 @@ def top_group(transform) -> str:
     return chain[-2] if len(chain) >= 2 else chain[-1]
 
 
-def export(bundle: Path, out: Path, far: float | None, max_size: int | None = None, groups: bool = False) -> dict:
+def export(bundle: Path, out: Path, far: float | None, max_size: int | None = None, groups: bool = False,
+           plant: bool = False) -> dict:
+    """`groups` 뿌리 바로 아래 자식마다 노드를 따로 둔다 · `plant` 나무열매 색 입히기 (`arena.ts`의 `plant`와 같다 — 둘은 따로 켠다)"""
     env = UnityPy.load(str(bundle))
     filters = [o.read() for o in env.objects if o.type.name == "MeshFilter"]
     if not filters:
@@ -258,7 +268,7 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
     kinds = {}
     #: 재질마다 수 · 색 · 물린 그림 칸 (`arena.ts`의 `looks`)
     looks: dict[str, tuple[dict, dict, set]] = {}
-    #: 나무열매(`groups`)만 — 재질마다 색 입히는 길 (`plant_kind`)
+    #: 나무열매(`plant`)만 — 재질마다 색 입히는 길 (`plant_kind`)
     plant_of: dict[str, str] = {}
     for obj in env.objects:
         if obj.type.name != "Material":
@@ -271,14 +281,9 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         slots = {k for k, v in prop_pairs(props.get("m_TexEnvs", []))
                  if isinstance(v, dict) and v.get("m_Texture", {}).get("m_PathID", 0) != 0}
         looks[name] = (dict(prop_pairs(props.get("m_Floats", []))), dict(prop_pairs(props.get("m_Colors", []))), slots)
-        if groups:
+        if plant:
             te = dict(prop_pairs(props.get("m_TexEnvs", [])))
-
-            def pid_of(key: str) -> int:
-                v = te.get(key)
-                return v.get("m_Texture", {}).get("m_PathID", 0) if isinstance(v, dict) else 0
-
-            plant_of[name] = plant_kind(str(d.get("m_ShaderKeywords") or ""), pid_of("_MainTex"), pid_of("_LayerTex"))
+            plant_of[name] = plant_kind(str(d.get("m_ShaderKeywords") or ""), tex_pid(te, "_MainTex"), tex_pid(te, "_LayerTex"))
 
     def alpha_of(name: str) -> dict:
         kind = kinds.get(name, "Opaque")
@@ -311,7 +316,7 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
     samplers: list[dict] = []
     # ⚠️ **재질이 적어 둔 UV 배율을 먹여야 한다.** 무대 바닥이 배율 (11, 11)로
     # 되풀이하는 그림이다 — 안 먹이면 타일 121장이 한 장으로 늘어난다
-    spec = bake(bundle, albedo, None, max_size, additive_water=True, plant=groups)
+    spec = bake(bundle, albedo, None, max_size, additive_water=True, plant=plant)
     baked = [(png.name[: -len("_albedo.png")], png, spec) for png in albedo.glob("*_albedo.png")]
     baked = [b for b in baked if b[0] not in layered]
     if layered:
@@ -346,7 +351,7 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         pbr = {"baseColorTexture": tex}
         # ⚠️ **나무열매는 재질 색이 곧 색이다.** 줄기 · 잎 · 꽃 그림은 회색 마스크라 안 곱하면 **하얗다** (`plant_kind`).
         #   plain  `_Color`를 `baseColorFactor`로 · mask  꽃은 그림에 구워 넣었다 · blend  잎은 정점 색 `COLOR_0`이 낸다
-        if groups:
+        if plant:
             kind = plant_of.get(name, "plain")
             if kind == "plain":
                 c0, _ = plant_colors(colors)
@@ -672,7 +677,7 @@ def bake_berries() -> int:
     print(f"나무열매 {len(names)}벌")
     total = 0
     for name in names:
-        stat = export(GIMMICK / name, BERRY_OUT / f"{name}.glb", None, BERRY_TEXTURE, groups=True)
+        stat = export(GIMMICK / name, BERRY_OUT / f"{name}.glb", None, BERRY_TEXTURE, groups=True, plant=True)
         total += stat["바이트"]
         print(f"  {name}  삼각형 {stat['삼각형']:>5,} · 재질 {stat['재질']:>2} · {stat['바이트'] / 1e3:.0f}KB")
     # 목차는 **구운 것 전부**다 — 브라우저 설치기와 같은 바이트로(빈칸 없이)
@@ -690,7 +695,7 @@ def bake_gimmicks() -> int:
     total = 0
     for name in GIMMICK_STATIC:
         # 재질 색(`_Color`)을 곱하는 길은 나무열매와 같다 — 넷 다 `plain`이라 `baseColorFactor`가 실린다(눈덩이 0.95)
-        stat = export(GIMMICK / name, GIMMICK_OUT / f"{name}.glb", None, GIMMICK_TEXTURE, groups=True)
+        stat = export(GIMMICK / name, GIMMICK_OUT / f"{name}.glb", None, GIMMICK_TEXTURE, groups=True, plant=True)
         total += stat["바이트"]
         print(f"  {name}  삼각형 {stat['삼각형']:>5,} · {stat['가로']}×{stat['높이']}×{stat['세로']} · {stat['바이트'] / 1e3:.0f}KB")
     for name in GIMMICK_ANIMATED:

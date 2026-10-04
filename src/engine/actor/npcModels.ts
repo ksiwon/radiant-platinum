@@ -458,32 +458,34 @@ export function buildOf(bundle: string): 'battle' | 'field' {
 }
 
 /**
- * 등신 몸(`tr*`·`pc*`)에서 실을 클립.
+ * 이 이름의 클립은 없다 — 아무것도 안 싣는 규칙.
  *
- * 몸 하나에 여덟이 오는데 배틀에서 이어 붙일 자리가 있는 것은 넷이다 —
- * 등장 · **쉬기** · 지시 · 패배 (`scene/battle/battleTrainerVisual`의 `TRAINER_CLIP`). 배틀 무대에는
- * 지금 사람이 서지 않아 (사용자 결정 2026-10-04) 이 클립을 부르는 화면이 없다.
+ * ⚠️ **빈 문자열이 아니다.** 노드 쪽 `bdspGlb.py --clip-filter`는 빈 값을 「거르지 않음(전부 싣는다)」으로 읽는다.
+ * `^$`는 파이썬 `re`와 자바스크립트에서 같이 아무 이름에도 안 맞는다
+ */
+const NO_CLIPS = /^$/
+
+/**
+ * 등신 몸(`tr*`·`pc*`)에서 실을 클립 — **주인공 둘만 서 있기 `wait_b`를 싣는다.**
  *
- * ⚠️ **`wait_b`가 없으면 트레이너가 굳는다.** 한동안 셋만 실었는데, 등장
- * 클립이 끝나면 돌아갈 자리가 없어 **마지막 자세 그대로 멈춰 있었다** —
- * 배틀 내내 움직이는 것이 1.2cm짜리 사인파 흔들림 하나뿐이었다. 원작에서
- * 트레이너는 명령을 기다리는 동안 계속 쉬는 동작을 돈다.
+ * 몸 하나에 여덟이 오는데 배틀 클립(`advent_b` · `wait_b` · `order_b` · `lose01_b`)을 부르는 화면이 없다. 배틀 무대에는
+ * 사람이 서지 않고(사용자 결정 2026-10-04) 필드의 등신은 서 있기를 치비 `wait_f`나 절차형 자세로 세운다
+ * (`actor/clipGait`의 `pickFieldIdleClip`). 그래서 트레이너 87벌 · 주인공 둘에서 이 클립들을 뺐다 —
+ * 새로 구운 108벌을 `public/models/npc`와 맞대면 클립 접근자 합계가 21.59 → 2.11MB(−19.48MB · 18.6MiB), 클립 416 → 85개다
+ * (옛 판에서 종류별로는 등장 10.98 · 패배 4.92 · 지시 4.26 · 쉬기 0.93MB).
  *
- * 나머지 넷은 그대로 안 싣는다: `wait02_b`·`speak01_b`·`eye01_b`는 이어 붙일
- * 자리가 없고, `advent02_b`는 **움직이는 채널이 0**이라 실어도 아무것도 안 한다
- * (PLAN.md의 클립 표가 여덟을 다 재 두었다).
+ * ⚠️ **주인공만 `wait_b`가 남는다.** `PlayerModel`이 `pickGaitClips`로 이동 클립을 고를 때 서 있는 동안의
+ * 자세(`GaitPlayer`의 `wait`)를 몸의 `wait_b`에서 가져온다. 이것을 빼면 서 있는 주인공이 절차형 쉬는 자세로 떨어진다
  *
  * ⚠️ **굽는 쪽 둘이 이것을 같이 본다.** `tools/extract/npcModels.mjs`는
  * `.source`를 파이썬 `re`에 그대로 넘기고(`bdspGlb.py --clip-filter`),
  * `src/import/bdsp/convert.ts`는 이 정규식을 그대로 쓴다. 따로 적으면
  * 개발 서버와 설치본이 다른 클립을 싣는다
  */
-const TRAINER_CLIP_NAMES = ['advent_b', 'wait_b', 'order_b', 'lose01_b'] as const
+const HERO_IDLE_CLIP_NAMES = ['wait_b'] as const
 
 /** 이름 목록 → `^(a|b)$`. 파이썬 `re`와 자바스크립트에서 같은 뜻이다 */
 const clipRe = (names: readonly string[]): RegExp => new RegExp(`^(${names.join('|')})$`)
-
-export const TRAINER_CLIPS = clipRe(TRAINER_CLIP_NAMES)
 
 /**
  * 주인공 몸에만 더 싣는 **걷기와 뛰기**.
@@ -498,7 +500,7 @@ export const TRAINER_CLIPS = clipRe(TRAINER_CLIP_NAMES)
  * 옮긴다 (`engine/actor/clipGait`). 한 사람마다 구우면 360KB씩, 아흔한 벌이면
  * 33MB가 는다.
  *
- * ⚠️ **굽는 쪽 둘이 이것을 같이 본다** (`TRAINER_CLIPS`와 같은 이유)
+ * ⚠️ **굽는 쪽 둘이 이것을 같이 본다** (`HERO_IDLE_CLIP_NAMES`와 같은 이유)
  */
 const HERO_GAIT_CLIP_NAMES = ['walk_b', 'run_b'] as const
 
@@ -519,8 +521,8 @@ const CHIBI_GAIT_CLIPS = clipRe(['walk_f', 'run_f', 'wait_f'])
 export function clipFilterFor(bundle: string): RegExp {
   const base = baseBundle(bundle)
   if (buildOf(base) === 'field') return CHIBI_GAIT_CLIPS
-  if (base !== NPC_BUNDLE.hero && base !== NPC_BUNDLE.heroine) return TRAINER_CLIPS
-  return clipRe([...TRAINER_CLIP_NAMES, ...HERO_GAIT_CLIP_NAMES])
+  if (base !== NPC_BUNDLE.hero && base !== NPC_BUNDLE.heroine) return NO_CLIPS
+  return clipRe([...HERO_IDLE_CLIP_NAMES, ...HERO_GAIT_CLIP_NAMES])
 }
 
 /**

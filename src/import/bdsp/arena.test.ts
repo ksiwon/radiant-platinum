@@ -5,9 +5,9 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { exportArena, flipbookCell } from './arena'
+import { exportArena, flipbookCell, plainFactor, texturePid } from './arena'
 import { openEnvironment } from './environment'
-import { encodePng } from '../platinum/png'
+import { decodePng, encodePng } from '../platinum/png'
 import { bdspDir, withLocal } from '../../data/romData.testkit'
 
 describe('플립북 첫 칸 (`flipbookCell`)', () => {
@@ -114,5 +114,50 @@ withLocal('BDSP 무대 g027', g027)('물 체육관 무대 (원본 번들)', () =
     expect(water.alphaMode).toBe('BLEND')
     expect(water.pbrMetallicRoughness.baseColorTexture).toBeDefined()
     expect(water.pbrMetallicRoughness.baseColorFactor).toBeUndefined()
+  }, 120_000)
+})
+
+describe('그림 없는 재질의 색 (`plainFactor`)', () => {
+  const base = { r: 0.5, g: 0.25, b: 1, a: 0.8 }
+  it('보통은 `_Color` 그대로, 빛 재질은 세기를 곱한다', () => {
+    expect(plainFactor(base, 2, false, false)).toEqual([0.5, 0.25, 1, 0.8])
+    expect(plainFactor(base, 2, true, false)).toEqual([1, 0.5, 2, 0.8])
+  })
+  // ⚠️ 섞은 그림(`cascadeMix`)에는 `_Color` × `_ColorIntensity`가 이미 구워져 있다 — 빛 재질 쪽이 다시 곱하면 제곱이 된다
+  it('섞은 그림이 있으면 빛 재질도 RGB를 1로 둔다 — 세기를 두 번 곱하지 않는다', () => {
+    expect(plainFactor(base, 1.7, true, true)).toEqual([1, 1, 1, 0.8])
+    expect(plainFactor(base, 1.7, false, true)).toEqual([1, 1, 1, 1])
+  })
+  it('칸이 빈 재질의 그림 번호는 0이다 (`texturePid`)', () => {
+    const te = new Map<string, unknown>([
+      ['_MainTex', { m_Texture: { m_PathID: 42 } }],
+      ['_LayerTex', { m_Texture: { m_PathID: 0 } }],
+    ]) as Parameters<typeof texturePid>[0]
+    expect(texturePid(te, '_MainTex')).toBe(42)
+    expect(texturePid(te, '_LayerTex')).toBe(0)
+    expect(texturePid(te, '_BlendTex')).toBe(0)
+  })
+})
+
+const g038 = ARENAS ? join(ARENAS, 'ground', 'g038') : null
+withLocal('BDSP 무대 g038', g038)('충호 방 무대 (원본 번들)', () => {
+  it('마스크로 섞은 바닥은 흰 판이 아니다 — 섞은 색이 그림에 있고 색 배율은 1이다', async () => {
+    const env = openEnvironment([new Uint8Array(readFileSync(g038!))])
+    const { glb } = await exportArena(env, encodePng, { name: 'g038', maxSize: 64 })
+    const g = gltfOf(glb) as unknown as {
+      materials: Material[], textures: { source: number }[], images: { bufferView: number }[],
+      bufferViews: { byteOffset?: number, byteLength: number }[]
+    }
+    const floor = g.materials.find((m) => m.name === 'M_B_038_Floor_24')!
+    expect(floor.pbrMetallicRoughness.baseColorFactor).toEqual([1, 1, 1, 1])
+    const view = new DataView(glb.buffer, glb.byteOffset, glb.byteLength)
+    const bin = 20 + view.getUint32(12, true) + 8
+    const bv = g.bufferViews[g.images[g.textures[floor.pbrMetallicRoughness.baseColorTexture!.index]!.source]!.bufferView]!
+    const png = glb.subarray(bin + (bv.byteOffset ?? 0), bin + (bv.byteOffset ?? 0) + bv.byteLength)
+    const { pixels: rgba } = await decodePng(png)
+    let sum = 0
+    for (let i = 0; i < rgba.length; i += 4) sum += rgba[i]! + rgba[i + 1]! + rgba[i + 2]!
+    // 흰색이면 765 · 남청 쪽으로 넘어가는 판이라 평균이 훨씬 낮다
+    expect(sum / (rgba.length / 4)).toBeLessThan(600)
   }, 120_000)
 })

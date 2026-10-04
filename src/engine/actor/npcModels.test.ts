@@ -444,14 +444,17 @@ describe('다시 칠하기', () => {
 })
 
 describe('실을 클립', () => {
-  it('치비는 필드에서 설 `wait_f`를 싣고, 등신은 배틀 넷만 싣는다', () => {
+  it('치비는 필드에서 설 `wait_f`를 싣고, 등신은 아무것도 안 싣는다 — 주인공만 서 있기와 걷기 · 뛰기', () => {
     // 아지트 조무래기의 두 몸. 치비 쪽 `wait_f`가 굽기에서 떨어지면 서 있는 사람이 걷기 첫 장으로 굳는다
     const chibi = clipFilterFor('fc1073_00')
     for (const name of ['walk_f', 'run_f', 'wait_f']) expect(chibi.test(name)).toBe(true)
     expect(chibi.test('wait_b')).toBe(false)
     const trainer = clipFilterFor('tr1073_00')
-    for (const name of ['advent_b', 'wait_b', 'order_b', 'lose01_b']) expect(trainer.test(name)).toBe(true)
-    expect(trainer.test('wait_f')).toBe(false)
+    for (const name of ['advent_b', 'wait_b', 'order_b', 'lose01_b', 'wait_f', 'walk_b']) expect(trainer.test(name), name).toBe(false)
+    // 주인공은 `PlayerModel`이 서 있는 자세로 `wait_b`를 쓴다 — 배틀 클립은 빠졌다
+    const hero = clipFilterFor(NPC_BUNDLE.hero)
+    for (const name of ['wait_b', 'walk_b', 'run_b']) expect(hero.test(name), name).toBe(true)
+    for (const name of ['advent_b', 'order_b', 'lose01_b']) expect(hero.test(name), name).toBe(false)
   })
 })
 

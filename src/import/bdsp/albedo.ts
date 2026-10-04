@@ -92,7 +92,7 @@ const f32 = Math.fround
  * numpy `ndarray.round()`는 **짝수로 반올림한다** (round-half-to-even).
  * `Math.round`는 늘 위로 올린다 — 0.5로 떨어지는 자리마다 한 칸씩 갈린다
  */
-function roundHalfEven(v: number): number {
+export function roundHalfEven(v: number): number {
   const down = Math.floor(v)
   const rest = v - down
   if (rest > 0.5) return down + 1
@@ -102,7 +102,7 @@ function roundHalfEven(v: number): number {
 
 const srgbToLinear = (x: number): number =>
   (x <= 0.04045 ? f32(x / 12.92) : f32(f32(f32(x + 0.055) / 1.055) ** 2.4))
-const linearToSrgb = (x: number): number =>
+export const linearToSrgb = (x: number): number =>
   (x <= 0.0031308 ? f32(x * 12.92) : f32(f32(1.055 * f32(Math.max(0, x) ** (1 / 2.4))) - 0.055))
 
 /** 0..255 → 선형. 256칸이라 표로 두면 곱셈마다 pow를 안 부른다 */
