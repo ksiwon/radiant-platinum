@@ -50,6 +50,23 @@ const ACTIVE_IN_PLAY: readonly { area: string, name: RegExp, material?: RegExp }
   { area: '*', name: /^P_C_001_RoomInner/, material: /RoomInner/ },
 ]
 
+/**
+ * **꺼진 뿌리 중 세우는 것** (area008만 있다 — 다른 지역의 꺼진 부모는 0). 뿌리가 꺼져 있으면 그 아래 전부가 안 보인다(`activeInHierarchy`).
+ * area008의 꺼진 뿌리는 셋이다 — 번들 안 스크립트는 하나도 참조하지 않는다(MonoBehaviour 필드 대조). 근거는 `MapInfo`(`Dpr/scriptableobjects/gamesettings`)다:
+ *  - `D18` (418개 · 원작 x 896~924 · z 192~224) = 꽃의 낙원. 존 285 `はなのらくえん`이 `AssetBundleName fields/area008`이다
+ *  - `W231` (772개 · x 896~912 · z 224~480) = 바다갈림길. 존 490 `うみわれのみち`이 `fields/area008`이다
+ *  둘은 플래티넘에도 있는 맵이고(우리 맵 274 `D18` · 472 `W231`) 이 판이 BDSP 그림의 **유일한 사본**이다(다른 지역에 같은 뿌리 없음).
+ *  이야기가 열기 전엔 못 가는 곳이라 늘 세워도 보일 일이 없다. 안 세우면 열린 뒤에 BDSP 그림이 없다
+ * 안 세우는 꺼진 뿌리:
+ *  - `R224b` (909개 · 224번도로 아래 · x 864~926 · z 481~576): 켜진 `R224/R224`(774개)와 **같은 길의 다른 판**이다 — 메시 이름 · 자리가 같고
+ *    (909개 중 768개가 켜진 쪽 배치와 0.01칸 안에서 일치) 땅 · 절벽 · 못만 `_224` ↔ `_224b`로 갈린다. 둘 다 세우면 같은 풀 · 바위 · 땅이 두 번 그려진다.
+ *    켜진 쪽이 기본 상태다. `R224b`를 언제 켜는지는 증명하지 못했다 (이야기 진행에 따른 바뀐 모습으로 짐작하나 번들에 근거 없음)
+ */
+const ACTIVE_ROOTS: readonly { area: string, name: string }[] = [
+  { area: 'area008', name: 'D18' },
+  { area: 'area008', name: 'W231' },
+]
+
 interface FieldStat {
   /** 세운 메시 (사본 포함) */
   placed: number
@@ -68,6 +85,8 @@ interface FieldStat {
   carved: number
   /** 꺼 둔 물체라 안 세운 것 (`ACTIVE_IN_PLAY` 예외 빼고) */
   inactive: number
+  /** 부모가 꺼져 있어(`activeInHierarchy` false) 안 세운 것 (`ACTIVE_ROOTS` 빼고) */
+  inactiveByParent: number
   problems: string[]
 }
 
@@ -518,6 +537,25 @@ export async function exportField(
   let placed = 0
   let placedTriangles = 0
   let inactive = 0
+  let inactiveByParent = 0
+  const parentMemo = new Map<number, boolean>()
+  const inactiveAncestor = (tp: number, area: string, memo: Map<number, boolean>): boolean => {
+    const had = memo.get(tp)
+    if (had !== undefined) return had
+    const t = env.read(tp) as Props | null
+    const father = num((t?.m_Father as Props | undefined)?.m_PathID)
+    let hidden = false
+    if (father !== 0 && father !== tp) {
+      const ft = env.read(father) as Props | null
+      const fgo = env.read(num((ft?.m_GameObject as Props | undefined)?.m_PathID)) as Props | null
+      const fname = typeof fgo?.m_Name === 'string' ? fgo.m_Name : ''
+      const off = fgo !== null && !flag(fgo.m_IsActive)
+      const kept = off && ACTIVE_ROOTS.some((r) => r.area === area && r.name === fname)
+      hidden = (off && !kept) || inactiveAncestor(father, area, memo)
+    }
+    memo.set(tp, hidden)
+    return hidden
+  }
   for (const filter of filters) {
     const mf = env.readEntry(filter) as Props | null
     if (!mf) continue
@@ -561,8 +599,9 @@ export async function exportField(
       }
     }
     if (!enabled || slots.length === 0 || transformPid === 0) continue
-    // ⚠️ **꺼 둔 물체는 안 세운다** (`m_IsActive` false) — 위 `ACTIVE_IN_PLAY`만 예외다. 부모가 꺼진 것(`activeInHierarchy`)은 아직 안 본다:
-    // area008의 `R224b` · `D18` · `W231` 뿌리 아래 2,099개가 이 경우인데, 구역 뿌리를 켜고 끄는 것은 맵 정보라 따로 다룬다
+    // ⚠️ **꺼 둔 물체는 안 세운다** (`m_IsActive` false) — 위 `ACTIVE_IN_PLAY`만 예외다. 부모가 꺼진 것(`activeInHierarchy`)도 같다 —
+    // 꺼진 뿌리는 `ACTIVE_ROOTS`만 세운다
+    if (inactiveAncestor(transformPid, name, parentMemo)) { inactiveByParent++; continue }
     if (!goActive) {
       const goName = typeof go.m_Name === 'string' ? go.m_Name : ''
       const mats = slots.map((m) => materialName.get(m) ?? '')
@@ -777,6 +816,7 @@ export async function exportField(
       bytes: glb.byteLength,
       carved,
       inactive,
+      inactiveByParent,
       problems: verifyGlb(glb),
     },
   }

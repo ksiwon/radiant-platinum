@@ -300,4 +300,19 @@ withLocal('BDSP 야외', area001)('야외 지역 — 원본 자료', () => {
     expect(stat.inactive).toBe(2)
     expect(readPlaced(glb).some((p) => /RoomInner/.test(p.material))).toBe(true)
   }, 300_000)
+
+  // area008의 꺼진 뿌리 — `R224b`(켜진 224번도로의 다른 판)는 안 서고, 꽃의 낙원 `D18` · 바다갈림길 `W231`은 선다 (`ACTIVE_ROOTS`)
+  const area008 = AREA ? join(AREA, 'fields', 'area008') : null
+  it('area008 — 224번도로 다른 판(R224b)은 안 서고, 꽃의 낙원 · 바다갈림길 뿌리는 선다', async () => {
+    const env = openEnvironment([new Uint8Array(readFileSync(area008!))])
+    const { glb, stat } = await exportField(env, encodePng, { name: 'area008', maxSize: 64 })
+    expect(stat.problems).toEqual([])
+    expect(stat.inactiveByParent).toBe(909)
+    expect(stat.inactive).toBe(0)
+    // 꽃의 낙원(x 896~924 · z 192~224) · 바다갈림길(x 896~912 · z 224~480)이 상자 안에 든다
+    const [, z0, x1] = stat.box
+    expect(z0).toBeLessThanOrEqual(192)
+    expect(x1).toBeGreaterThanOrEqual(924)
+    expect(readPlaced(glb).length).toBeGreaterThan(0)
+  }, 300_000)
 })
