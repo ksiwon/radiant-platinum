@@ -1,22 +1,23 @@
 // 시퀀스 카메라가 놓인 뒤 돌아오는 길 — 이음 · 끊음 · 완주를 잰다
 import { describe, expect, it } from 'vitest'
 import type { SeqCamera } from '../../engine/battle/fx/sequence'
-import { NO_RETURN, SEQ_CAMERA_CUT, SEQ_CAMERA_RETURN, lerpV, orbitBlend, stepCamera, swing } from './battleCamera'
+import { lerp3 } from '../../engine/battle/fx/vec3'
+import { NO_RETURN, SEQ_CAMERA_CUT, SEQ_CAMERA_RETURN, orbitBlend, stepCamera, swing } from './battleCamera'
 
 const cam = (pos: [number, number, number], target: [number, number, number] = [0, 0, 0], fov = 40, roll = 0): SeqCamera =>
   ({ pos, target, fov, roll })
 const id = (c: SeqCamera): SeqCamera => c
 
-describe('swing / lerpV', () => {
+describe('swing', () => {
   it('같은 방향은 0도, 반대는 180도, 직각은 90도', () => {
     expect(swing(cam([0, 1, 5]), cam([0, 9, 2]))).toBeCloseTo(0, 6)
     expect(swing(cam([0, 1, 5]), cam([0, 1, -5]))).toBeCloseTo(180, 6)
     expect(swing(cam([0, 1, 5]), cam([5, 1, 0]))).toBeCloseTo(90, 6)
   })
-  it('lerpV는 양 끝을 돌려준다', () => {
-    expect(lerpV([0, 2, 4], [10, 12, 14], 0)).toEqual([0, 2, 4])
-    expect(lerpV([0, 2, 4], [10, 12, 14], 1)).toEqual([10, 12, 14])
-    expect(lerpV([0, 2, 4], [10, 12, 14], 0.5)).toEqual([5, 7, 9])
+  it('lerp3(공용 벡터)는 양 끝을 돌려준다', () => {
+    expect(lerp3([0, 2, 4], [10, 12, 14], 0)).toEqual([0, 2, 4])
+    expect(lerp3([0, 2, 4], [10, 12, 14], 1)).toEqual([10, 12, 14])
+    expect(lerp3([0, 2, 4], [10, 12, 14], 0.5)).toEqual([5, 7, 9])
   })
 })
 

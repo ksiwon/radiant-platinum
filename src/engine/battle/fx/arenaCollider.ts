@@ -7,7 +7,9 @@
 // 좌표는 무대 좌표(`STAGE_ORIGIN` 기준)다. three를 안 쓴다 — 삼각형은 부르는 쪽(`BattleStage`의 `Arena`)이
 // 월드 행렬을 곱해 넘긴다.
 
-export type V3 = [number, number, number]
+import type { V3 } from './vec3'
+
+export type { V3 }
 
 export interface ArenaCollider {
   /**

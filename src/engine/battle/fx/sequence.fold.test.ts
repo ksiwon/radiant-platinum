@@ -5,7 +5,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { ease, foldTrack, type FoldStep, type SeqData } from './sequence'
 
-interface Cmd { start: number; end: number; name: string; values: Record<string, string[]> }
+interface Cmd { start: number; end: number; name: string; values: Readonly<Record<string, readonly string[]>> }
 const cmd = (start: number, end: number, name = 'Move', v = 0): Cmd => ({ start, end, name, values: { v: [String(v)] } })
 
 /** 예전 접기 그대로 — 진행 중인 명령마다 앞부분을 처음부터 다시 접는다 (비교용 기준) */

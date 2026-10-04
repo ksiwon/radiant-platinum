@@ -13,8 +13,9 @@
 //      (`frameSubject`). 후보도 하나하나 3을 거친 뒤에 잰다
 
 import type { ArenaCollider } from './arenaCollider'
+import { add, cross, dot, len, norm, scale, sub, type V3 } from './vec3'
 
-export type V3 = [number, number, number]
+export type { V3 }
 
 interface ShotLike {
   pos: V3
@@ -293,14 +294,6 @@ function keepInArena(p: V3, target: V3, radius: number): V3 {
   pos[1] = Math.max(0.15, pos[1])
   return pos
 }
-
-const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
-const scale = (a: V3, k: number): V3 => [a[0] * k, a[1] * k, a[2] * k]
-const dot = (a: V3, b: V3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
-const len = (a: V3): number => Math.hypot(a[0], a[1], a[2])
-const norm = (a: V3): V3 => scale(a, 1 / (len(a) || 1))
 
 function inside(p: V3, b: { readonly min: readonly number[]; readonly max: readonly number[] }): boolean {
   return p[0] > b.min[0] && p[0] < b.max[0] && p[1] > b.min[1] && p[1] < b.max[1] && p[2] > b.min[2] && p[2] < b.max[2]

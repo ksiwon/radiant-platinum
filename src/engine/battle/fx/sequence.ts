@@ -31,6 +31,8 @@
 // X를 뒤집어 받는다 — 무대 전체가 BDSP의 X 거울이기 때문이다. 절대 자리를 어디에 둘지는
 // 시퀀스마다 다르다(`SeqContext.world`) — 기술은 무대 한가운데 기준, 포획은 맞는 쪽 발밑 기준이다.
 
+import { add, dist3, lerp3, type V3 } from './vec3'
+
 interface SeqCommand {
   start: number
   end: number
@@ -50,7 +52,7 @@ export interface SeqData {
   groups: readonly SeqGroup[]
 }
 
-export type V3 = [number, number, number]
+export type { V3 }
 type Q = [number, number, number, number]
 /** 0 쓴 쪽 · 1 맞는 쪽 */
 export type Role = 0 | 1
@@ -606,9 +608,6 @@ function offsetYaw(values: SeqCommand['values'], rotKey: string, role: Role, yaw
   return null
 }
 
-const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
-const lerp3 = (a: V3, b: V3, t: number): V3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
-const dist3 = (a: V3, b: V3): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
 /** `enableElem` 축 고르기 — 꺼진 축은 앞 값 그대로 */
 const mask3 = (mask: readonly string[] | undefined, cur: V3, want: V3): V3 => [
   num(mask, 0, 1) === 1 ? want[0] : cur[0],

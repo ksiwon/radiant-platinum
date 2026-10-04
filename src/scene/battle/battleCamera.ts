@@ -1,6 +1,7 @@
 // 배틀 카메라의 순수 계산 — 시퀀스 카메라가 놓인 뒤 기본 자리로 돌아오는 길과 끊을지의 결정.
 // 훅(`BattleStage`의 `useBattleCamera`)은 시계·ref·충돌 보정만 맡고 판단은 여기서 한다
 import type { SeqCamera } from '../../engine/battle/fx/sequence'
+import { lerp3 } from '../../engine/battle/fx/vec3'
 
 /** 시퀀스 카메라가 끝난 뒤 기본 자리로 돌아오는 시간(초) — 우리 값 */
 export const SEQ_CAMERA_RETURN = 0.35
@@ -12,9 +13,6 @@ export const SEQ_CAMERA_RETURN = 0.35
  * 반대편으로 넘어가는 이음은 끊어 간다), 그 안이면 도는 것이 오히려 두 샷을 잇는다
  */
 export const SEQ_CAMERA_CUT = 90
-
-export const lerpV = (a: readonly number[], b: readonly number[], t: number): [number, number, number] =>
-  [a[0]! + (b[0]! - a[0]!) * t, a[1]! + (b[1]! - a[1]!) * t, a[2]! + (b[2]! - a[2]!) * t]
 
 /** 두 샷의 카메라가 각자의 보는 곳에서 본 수평 방향이 벌어진 각(도) */
 export function swing(a: SeqCamera, b: SeqCamera): number {
@@ -29,7 +27,7 @@ export function swing(a: SeqCamera, b: SeqCamera): number {
  * 카메라 자리를 곧게 이으면 두 자리 사이에 선 몸 곁을 스친다
  */
 export function orbitBlend(from: SeqCamera, to: SeqCamera, e: number): SeqCamera {
-  const target = lerpV(from.target, to.target, e)
+  const target = lerp3(from.target, to.target, e)
   const polar = (c: SeqCamera) => {
     const dx = c.pos[0] - c.target[0], dy = c.pos[1] - c.target[1], dz = c.pos[2] - c.target[2]
     const r = Math.hypot(dx, dy, dz)
