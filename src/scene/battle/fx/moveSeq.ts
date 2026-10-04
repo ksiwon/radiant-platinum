@@ -10,11 +10,16 @@
 // 못 받은 기술은 DS 길이로 간다 — 그 판의 그 한 번만 DS 연출이 선다.
 import { assets, onProviderSwap, readJson } from '../../../data/providers/assetProvider'
 import { planSequence, type SeqData, type SeqPlan } from '../../../engine/battle/fx/sequence'
+import type { BallMeta } from '../../../engine/battle/fx/ballPlans'
 import { loadFxPrefab } from './fxAssets'
 
 interface FxIndex {
   balls: Record<string, { capture: string; ballout: string }>
   moves: Record<string, { seq?: string }>
+  /** 볼 모델 표와 파일 (`import/bdsp/fx.ts`의 `BallModelTable`) — 옛 판으로 구운 묶음에는 없다 */
+  ballModel?: BallMeta & { files: Record<string, string> }
+  /** 종 → 내보내기 착지 갈래 (`MoveType`, 0이 아닌 것만) */
+  moveType?: Record<string, number>
   prefabs?: string[]
   missingPrefabs?: string[]
 }
@@ -31,7 +36,7 @@ onProviderSwap(() => {
 })
 
 /** 이펙트 표. 묶음을 안 깔았으면 `null` */
-function fxIndex(): Promise<FxIndex | null> {
+export function fxIndex(): Promise<FxIndex | null> {
   index ??= (async () => {
     const provider = assets()
     if (!(await provider.exists('data/fx/index.json'))) return null
@@ -40,7 +45,8 @@ function fxIndex(): Promise<FxIndex | null> {
   return index
 }
 
-function loadSeq(name: string): Promise<SeqData | null> {
+/** 시퀀스 한 벌. 없으면 `null` */
+export function loadSeq(name: string): Promise<SeqData | null> {
   let got = seqs.get(name)
   if (!got) {
     got = (readJson(assets(), `data/fx/seq/${name}.json`) as Promise<SeqData>).catch(() => null)

@@ -147,21 +147,30 @@ export function impactHits(who: string, slot: string): boolean {
 }
 
 /**
- * 자리마다 **볼이 열리는 시각**(초, `performance.now()/1000`).
+ * 자리마다 **몸이 나타나는 시각**(초, 연출 시계 `battleClock.now()`).
  *
  * ⚠️ **몸이 볼보다 먼저 나오면 안 된다.** 등판 연출은 「누가 그 자리에 섰다」를
  * 보고 시작하는데(`BattleBallEffects`가 `view.active`의 열쇠가 바뀌면 던진다),
  * 몸을 그리는 쪽은 같은 값을 보고 **그 프레임에 바로** 나타났다 — 그래서 포켓몬이
  * 먼저 서 있고 그 뒤에 볼이 날아와 터졌다.
  *
- * 던지는 쪽이 **볼이 열리는 시각**을 여기 적고, 몸은 그때까지 안 나온다.
+ * 던지는 쪽이 **볼이 열려 몸이 나타나는 시각**(내보내기 시퀀스의 `PokemonIntroMotion` — `captureTiming`의
+ * `sendOutAppearAt`)을 여기 적고, 몸은 그때까지 안 나온다. 소리(울음) · 체력판도 이 시각을 기다린다.
  * 적힌 것이 없으면(연출이 안 도는 자리) 곧바로 나온다
  */
 export const ballOpen: Record<string, number> = {}
 
+/**
+ * 자리마다 **몸이 사라지는 시각**(초, 연출 시계)과 그 몸의 열쇠 — 기절(`ee620` · `ee621`) · 포획(`ee101`) · 거두기(`ee610`)가
+ * 몸을 지우는 프레임이다(`BattleBallEffects`가 적는다). 무대의 몸은 이 시각부터 안 그린다 — 시퀀스가 끝나 몸 값을 놓아도
+ * 쓰러진 · 잡힌 몸이 다시 서지 않는다. 열쇠가 다르면(다음 마리) 안 따른다
+ */
+export const bodyGone: Record<string, { at: number; key: string }> = {}
+
 /** 배틀이 끝나면 놓는다 — 안 지우면 다음 배틀 첫 몸이 옛 시각을 기다린다 */
 export function clearBallOpen(): void {
   for (const key of Object.keys(ballOpen)) delete ballOpen[key]
+  for (const key of Object.keys(bodyGone)) delete bodyGone[key]
 }
 
 /** 자리마다 선 몸의 상자 (무대 좌표) — 대기 자세에서 잰다(`BattleStage`의 `Slot`) */
@@ -172,21 +181,38 @@ export const slotBox: Record<string, { min: [number, number, number]; max: [numb
  *
  * BDSP 연출 시퀀스가 몸의 로케이터(`EffMouth01` · `EffCenter01` …)에 이펙트를 붙인다.
  * 로케이터는 BDSP 모델에 노드로 들어 있어서(`models/pokemon/*.glb`) 몸을 쥔 `Slot`이 여기
- * 적고 시퀀스가 읽는다. 도트로 선 자리는 `root`가 `null`이다
+ * 적고 시퀀스가 읽는다. 도트로 선 자리는 `root`가 `null`이다. `shown`은 그 몸이 지금 화면에 서 있는가 —
+ * 카메라 막이(`clampShot`)는 서 있는 몸의 상자만 본다
  */
-export const slotRig: Record<string, { root: Object3D | null; body: Object3D | null; yaw: number }> = {}
+export const slotRig: Record<string, { root: Object3D | null; body: Object3D | null; yaw: number; shown: boolean }> = {}
 
 /**
- * 지금 도는 BDSP 시퀀스가 무대에 거는 것 (`scene/battle/fx/BdspSequence`).
+ * 그 자리의 몸 기록을 지운다 — 종이 바뀌거나 몸이 졌을 때. ⚠️ 안 지우면 쓰러진 몸 · 바뀐 몸의 상자가 카메라 막이에
+ * 남고(`clampShot`), 옛 뿌리를 읽은 로케이터(`slotAnchor`)가 크기 0의 몸에서 땅으로 무너진다
+ */
+export function clearSlotBody(slot: string): void {
+  delete slotBody[slot]
+  delete slotBox[slot]
+  delete slotRig[slot]
+}
+
+/**
+ * 지금 도는 BDSP 시퀀스들이 무대에 거는 것 (`scene/battle/fx/BdspSequence`).
  *
- * ⚠️ **`running`이면 DS 대본 몫(`moveImpact` · 돌진 · 움찔)을 안 건다.** 둘이 같이 돌면
- * 몸이 두 번 나간다. 시퀀스가 끝나면 비운다
+ * **여럿이 같이 돈다** — 더블 첫 등판은 볼 넷이 한꺼번에 날고, 기술 연출 중에 다른 자리가 쓰러질 수 있다. 그래서
+ * 몸 값은 자리마다 · 카메라 · 흔들림 · 배경은 쓴 시퀀스(`owner`)를 들고, 시퀀스가 끝나면 **제 것만** 놓는다
+ * (`releaseSeq`). 몸 값은 그 자리를 쥔 시퀀스가 있는 동안만 무대가 읽는다 — 끝나면 비운다. 안 비우면 다음 턴까지
+ * 몸이 상대 앞에 서 있다
  */
 export const seqStage: {
+  /** 도는 시퀀스가 하나라도 있는가 */
   running: boolean
-  /** 지금 시퀀스 프레임 (30fps) */
-  frame: number
+  /** 자리 → 그 자리 몸에 거는 값 (시퀀스 프레임을 같이 든다) */
   body: Record<string, SeqBodyPose | null>
+  /** 자리 → 그 몸을 쥔 시퀀스 */
+  bodyOwner: Record<string, symbol>
+  /** 자리 → 그 몸을 감춘 시퀀스 (`PokemonVisibleOther` — 시퀀스 카메라가 선 동안만) */
+  hide: Record<string, symbol>
   /** 화면 흔들림 진폭 (m) */
   shake: number
   /**
@@ -196,7 +222,11 @@ export const seqStage: {
   camera: ((base: SeqCameraPose) => SeqCameraPose | null) | null
   /** 배경 물들임 (0~1 색 · 진하기) */
   back: { color: [number, number, number]; alpha: number } | null
-} = { running: false, frame: 0, body: {}, shake: 0, camera: null, back: null }
+  /** 카메라 · 흔들림 · 배경을 쓴 시퀀스 */
+  owner: symbol | null
+  /** 도는 시퀀스들 */
+  live: Set<symbol>
+} = { running: false, body: {}, bodyOwner: {}, hide: {}, shake: 0, camera: null, back: null, owner: null, live: new Set() }
 
 /** 시퀀스 카메라 (`engine/battle/fx/sequence`의 `SeqCamera`) — 무대 좌표 · 화각(도) · 굴림(라디안) */
 interface SeqCameraPose {
@@ -206,22 +236,54 @@ interface SeqCameraPose {
   roll: number
 }
 
-/** 시퀀스가 몸 하나에 거는 값 (`engine/battle/fx/sequence`의 `BodyPose`) */
-interface SeqBodyPose {
+/** 시퀀스가 몸 하나에 거는 값 (`engine/battle/fx/sequence`의 `BodyPose`) + 그 시퀀스의 지금 프레임 */
+export interface SeqBodyPose {
   offset: [number, number, number]
   scale: [number, number, number]
   visible: boolean
   glow: { color: [number, number, number]; power: number } | null
   turn: number
   shake: [number, number, number]
-  motion: { name: 'attack' | 'damage' | 'wait' | 'cry'; at: number } | null
+  motion: { name: 'attack' | 'damage' | 'wait' | 'cry' | 'down' | 'landB' | 'landC'; at: number } | null
+  motionSpeed: number
+  intro: boolean
+  /** 그 시퀀스의 지금 프레임 (30fps) — `motion.at`과 견준다 */
+  frame: number
 }
 
+/** 시퀀스가 돌기 시작한다 */
+export function claimSeq(owner: symbol): void {
+  seqStage.live.add(owner)
+  seqStage.running = true
+}
+
+/** 시퀀스가 끝났다 — 제가 건 것만 놓는다 */
+export function releaseSeq(owner: symbol): void {
+  for (const slot of Object.keys(seqStage.bodyOwner)) {
+    if (seqStage.bodyOwner[slot] !== owner) continue
+    delete seqStage.bodyOwner[slot]
+    delete seqStage.body[slot]
+  }
+  for (const slot of Object.keys(seqStage.hide)) if (seqStage.hide[slot] === owner) delete seqStage.hide[slot]
+  if (seqStage.owner === owner) {
+    seqStage.owner = null
+    seqStage.camera = null
+    seqStage.shake = 0
+    seqStage.back = null
+  }
+  seqStage.live.delete(owner)
+  seqStage.running = seqStage.live.size > 0
+}
+
+/** 다 놓는다 — 배틀이 내려갈 때 */
 export function clearSeqStage(): void {
-  seqStage.running = false
-  seqStage.frame = 0
+  for (const owner of [...seqStage.live]) releaseSeq(owner)
   seqStage.body = {}
+  seqStage.bodyOwner = {}
+  seqStage.hide = {}
   seqStage.shake = 0
   seqStage.camera = null
   seqStage.back = null
+  seqStage.owner = null
+  seqStage.running = false
 }
