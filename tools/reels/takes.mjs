@@ -70,7 +70,8 @@ export const TAKES = [
   {
     id: 'C5-cave', what: '동굴 무대 기술', cp: 'oreburgh-gate',
     // 배틀 배경은 배틀이 설 때의 world.mapId로 정해진다 — 259(무쇠길 관문)에 내려앉기 전에 열면 시작 맵의 풀밭이 박혔다
-    steps: [{ do: 'map', map: 259 }, { do: 'wild', species: 74, level: 8, after: 100 }, { do: 'menu' }, { do: 'keys', keys: ['z'], gap: 500 }],
+    steps: [{ do: 'map', map: 259 }, { do: 'wild', species: 74, level: 8, after: 100 }, { do: 'menu' },
+      { do: 'keys', keys: ['z'], gap: 500 }],
     settle: 200, seconds: 8, recKeys: [{ at: 0.2, key: 'z' }],
   },
   {

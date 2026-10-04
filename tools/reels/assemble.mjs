@@ -41,18 +41,20 @@ const MAIN = [
   { cue: 'B2', take: 'B2-twinleaf', cut: [0.3, 1.6], fade: 0.25 },
   { cue: 'B3', take: 'B3-jubilife', cut: [0.5, 1.8], fade: 0.25 },
   { cue: 'B4', take: 'B4-floaroma', cut: [0.3, 1.6], fade: 0.25 },
-  { cue: 'B5-B6', take: 'B5-switch', cut: [0.1, 1.9], fade: 0.3, trans: 'wiperight' }, // 컷 안에서 3인칭 → 1인칭
-  { cue: 'B7', card: 'white', seconds: 0.4, fade: 0.2 },
-  { cue: 'C1', take: 'C1-wild', cut: [1.6, 1.7], fade: 0.1 },
-  { cue: 'C2', take: 'C1-wild', cut: [4.8, 1.2], fade: 0.1 },
-  { cue: 'C3', take: 'C3-move', cut: [5.1, 0.8] },
-  { cue: 'C4', take: 'C4-night', cut: [0.9, 0.8] },
-  { cue: 'C5', take: 'C5-cave', cut: [3.2, 0.9] },
-  { cue: 'C6', take: 'C6-catch', cut: [0.4, 0.6] },
-  { cue: 'C7', take: 'C6-catch', cut: [1.0, 1.2], fade: 0.15 },
-  // 흔들림 셋은 3.5초라 다 못 싣는다 — 떨어져 튀는 데와 딸깍 · 별이 튀는 끝을 잇는다
-  { cue: 'C8', take: 'C6-catch', cut: [2.0, 1.0] },
-  { cue: 'C8b', take: 'C6-catch', cut: [8.5, 1.1], fade: 0.2 },
+  // 한 장면으로 잇는다 — 3인칭으로 걷다 1인칭으로 두리번(1.0~3.8초) · 꼬링크 조우 컷인(4.4초) · 꼬링크가 선다(5.0초)
+  { cue: 'B5-B6', take: 'B5-switch', cut: [0.2, 5.4], fade: 0.15 },
+  // 같은 장면의 뒤 — 내보내기 카메라(7.6초) · 볼이 열리고(8.0초) · 모부기가 내려앉아 선다(10.2초)
+  { cue: 'C1', take: 'B5-switch', cut: [7.5, 2.9], fade: 0.2 },
+  // 기술은 끝까지 — 흡수 0.8~4.6초(꼬링크 쪽 클로즈업 → 모부기가 빛나며 회복)
+  { cue: 'C3', take: 'C3-move', cut: [0.7, 4.0], fade: 0.15 },
+  // 밤 — 모부기 몸통박치기와 비버니 몸통박치기 둘
+  { cue: 'C4', take: 'C4-night', cut: [1.3, 2.7], fade: 0.15 },
+  // 무쇠게이트 굴 무대 — 모부기 몸통박치기(1.6초)와 꼬마돌 몸통박치기(4.2초)
+  { cue: 'C5', take: 'C5-cave', cut: [1.4, 3.4], fade: 0.15 },
+  // 포획 — 던지기 · 빨아들이기 · 떨어짐(0.8~2.8초) → 흔들림 하나(카메라가 다가간다) → 별(7.2초)
+  { cue: 'C6', take: 'C6-catch', cut: [0.8, 2.0] },
+  { cue: 'C7', take: 'C6-catch', cut: [5.0, 1.2], fade: 0.15 },
+  { cue: 'C8', take: 'C6-catch', cut: [7.0, 1.8], fade: 0.2 },
   { cue: 'D1', take: 'D1-lake', cut: [0.3, 1.3], fade: 0.15 },
   { cue: 'D2', take: 'D2-windworks', cut: [0.5, 0.8] },
   { cue: 'D3', take: 'D3-flowers', cut: [0.6, 1.0] },
@@ -61,7 +63,7 @@ const MAIN = [
   { cue: 'D6', take: 'D6-night', cut: [0.3, 1.4] },
   { cue: 'D7', take: 'D7-forest', cut: [0.3, 1.0] },
   { cue: 'D8', take: 'D8-city', cut: [0.8, 1.7] },
-  { cue: 'D11', take: 'D11-champion', cut: [2.5, 2.4], fade: 0.15 },
+  { cue: 'D11', take: 'D11-champion', cut: [1.4, 3.0], fade: 0.15 }, // 내보내기 카메라 → 볼이 열리고 토대부기가 선다
   { cue: 'E1a', take: 'E1-a', cut: [0.9, 0.75] },
   { cue: 'E1b', take: 'E1-b', cut: [0.9, 0.9] },
   { cue: 'E1c', take: 'E1-c', cut: [1.8, 1.0] },
@@ -88,23 +90,21 @@ const SHORTS = [
   { cue: 'A7', card: 'white', fade: 0.25 },
   { cue: 'B1', take: 'B1-room', cut: [0.3, 2.6], fade: 0.25 },
   { cue: 'B2', take: 'B2-twinleaf', cut: [0.3, 1.6], fade: 0.25 },
-  { cue: 'B5-B6', take: 'B5-switch', cut: [0.1, 1.9], fade: 0.3, trans: 'wipeup' },
-  { cue: 'B7', card: 'white', seconds: 0.4, fade: 0.2 },
-  { cue: 'C1', take: 'C1-wild', cut: [1.6, 1.7], crop: 0.5, fade: 0.1 },
-  { cue: 'C2', take: 'C1-wild', cut: [4.8, 1.2], crop: 0.33, fade: 0.1 },
-  { cue: 'C3', take: 'C3-move', cut: [5.1, 0.8], crop: 0.47 },
-  { cue: 'C6', take: 'C6-catch', cut: [0.4, 0.6], crop: 0.5 },
-  { cue: 'C7', take: 'C6-catch', cut: [1.0, 1.2], crop: 0.5, fade: 0.15 },
+  { cue: 'B5-B6', take: 'B5-switch', cut: [0.2, 5.4], fade: 0.15 },
+  { cue: 'C1', take: 'B5-switch', cut: [7.5, 2.9], fade: 0.2 },
+  { cue: 'C3', take: 'C3-move', cut: [0.7, 4.0], fade: 0.15 },
+  { cue: 'C6', take: 'C6-catch', cut: [0.8, 2.0] },
+  { cue: 'C8', take: 'C6-catch', cut: [7.0, 1.8], fade: 0.2 },
   { cue: 'D5', take: 'D5-first', cut: [0.4, 2.2] },
   { cue: 'D6', take: 'D6-night', cut: [0.3, 1.2] },
   { cue: 'D8', take: 'D8-city', cut: [0.3, 1.2] },
-  { cue: 'D11', take: 'D11-champion', cut: [2.5, 2.0], crop: 0.62, fade: 0.15 },
+  { cue: 'D11', take: 'D11-champion', cut: [1.4, 3.0], fade: 0.15 },
   { cue: 'E1a', take: 'E1-a', cut: [0.9, 0.75], crop: 0.45 },
   { cue: 'E1c', take: 'E1-c', cut: [1.8, 0.8], crop: 0.45 },
   { cue: 'E1e', take: 'E1-e', cut: [3.2, 0.8], crop: 0.42, fade: 0.2 },
   { cue: 'E2', take: 'E2-spear', cut: [0.6, 1.6], warp: 'out', fade: 0.4 },
   { cue: 'E3a', take: 'E3-distortion', cut: [0.4, 4.4], warp: 'in', fade: 0.3 },
-  { cue: 'E3b', take: 'E3-giratina', cut: [0.3, 4.4], crop: 0.55, fade: 0.15 },
+  { cue: 'E3b', take: 'E3-giratina', cut: [0.3, 4.4], fade: 0.15 },
   { cue: 'E4', card: 'white', seconds: 0.5, fade: 0.3 },
   { cue: 'F1', card: 'wordmark', seconds: 2.5, fade: 0.2 },
   { cue: 'F2', card: 'rom', seconds: 4.2, fade: 0.2 },
@@ -118,7 +118,31 @@ const EDIT = SHORT ? SHORTS : MAIN
  * `len` 대신 `until`(큐)과 `untilAt`(초)을 주면 그 시각까지 깐다. 끝까지면 `until: 'end'`.
  * `fadeIn` · `fadeOut`은 그 조각의 앞뒤 페이드, `gain`은 dB. 조각끼리 겹치면 섞인다. 비어 있으면 소리 없이 낸다
  */
-const SCORE = { '16:9': [], '9:16': [] }[ASPECT] ?? []
+// 곡은 BDSP 원곡이다(`Delphis_Main.bnk` 상태 → wem, `.audit/reels/music/`에 wav로 풀어 둔다).
+//   B_OTH001  오프닝 데모 — DS `SEQ_TITLE00`과 길이로 맞췄다. 19초에 한 박 쉬고 21초에 오케스트라가 터진다
+//   BA001     야생 배틀 — 루프 57.40초가 DS `SEQ_BA_POKE`와 같다
+//   BA008     챔피언 배틀 — `SEQ_BA_CHANP`와 같다
+//   BA015     기라티나(오리진폼) — `FieldEncountTable` 487 form1, `SEQ_PL_BA_GIRA`와 같다
+//   B_OTH002  타이틀 — `SEQ_TITLE01`과 같다
+// 게임 화면이 처음 서는 순간(B1)에 오프닝의 오케스트라가 터지게 앞을 당긴다. 조우 컷인에 야생 배틀 곡이 들어온다
+const SCORE = {
+  '16:9': [
+    { src: 'B_OTH001', cue: 'B1', at: -21, from: 0, until: 'B5-B6', untilAt: 4.3, fadeOut: 0.4 },
+    { src: 'BA001', cue: 'B5-B6', at: 4.0, from: 0, until: 'D1', untilAt: 0.6, fadeOut: 1.0 },
+    { src: 'B_OTH001', cue: 'D1', from: 31, until: 'D11', untilAt: 0.4, fadeIn: 0.8, fadeOut: 0.6 },
+    { src: 'BA008', cue: 'D11', from: 0, until: 'E2', untilAt: 0.5, fadeOut: 0.8 },
+    { src: 'BA015', cue: 'E2', from: 0, until: 'E4', untilAt: 0.4, fadeIn: 0.2, fadeOut: 0.4 },
+    { src: 'B_OTH002', cue: 'F1', from: 0, until: 'end', fadeOut: 1.5 },
+  ],
+  '9:16': [
+    { src: 'B_OTH001', cue: 'B1', at: -21, from: 0, until: 'B5-B6', untilAt: 4.3, fadeOut: 0.4 },
+    { src: 'BA001', cue: 'B5-B6', at: 4.0, from: 0, until: 'D5', untilAt: 0.6, fadeOut: 1.0 },
+    { src: 'B_OTH001', cue: 'D5', from: 31, until: 'D11', untilAt: 0.4, fadeIn: 0.8, fadeOut: 0.6 },
+    { src: 'BA008', cue: 'D11', from: 0, until: 'E2', untilAt: 0.5, fadeOut: 0.8 },
+    { src: 'BA015', cue: 'E2', from: 0, until: 'E4', untilAt: 0.4, fadeIn: 0.2, fadeOut: 0.4 },
+    { src: 'B_OTH002', cue: 'F1', from: 0, until: 'end', fadeOut: 1.5 },
+  ],
+}[ASPECT] ?? []
 const MUSIC = resolve(ROOT, '.audit/reels/music')
 const run = (cmd, argv) => execFileSync(cmd, argv, { stdio: ['ignore', 'ignore', 'pipe'], maxBuffer: 1 << 26 })
 const enc = ['-r', String(FPS), '-c:v', 'libx264', '-crf', '14', '-preset', 'slow', '-pix_fmt', 'yuv420p']
