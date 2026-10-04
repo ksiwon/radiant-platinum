@@ -128,7 +128,8 @@ export function App() {
         늘 실린다 — 예전에는 `import.meta.env.DEV`가 상수 `false`라 통째로
         흔들려 나갔지만, 이제 조건이 런타임 값이라 안 흔들린다
       */}
-      {devTools && <PerfOverlayHost />}
+      {/* 이펙트 시험대는 화면 전체가 찍는 판이라 계기판을 안 얹는다 */}
+      {devTools && !window.location.pathname.startsWith('/fxlab') && <PerfOverlayHost />}
       <ZoneBanner />
       {/*
         그래픽이 멈췄을 때의 창 (기획서 RP-03). 3D를 한 조각도 안 잡으므로
@@ -166,6 +167,8 @@ export function App() {
               </ChunkBoundary>
             }
           />
+          {/* 이펙트 시험대 — **개발 서버에서만** 있는 길이다 (`scene/battle/fx/FxLab`) */}
+          {devTools && <Route path="/fxlab" element={<FxLabHost />} />}
         </Routes>
         {/*
           ` — 확인 지점. 라우터 **안**에 두는 이유는 타이틀에서 고르면
@@ -201,6 +204,22 @@ function PerfOverlayHost() {
       .catch((err: unknown) => { console.error('계기판을 못 받았다', err) })
   }, [])
   return Overlay ? <Overlay /> : null
+}
+
+/**
+ * 이펙트 시험대를 **받아서** 붙인다 — 계기판과 같은 수법이다.
+ *
+ * ⚠️ 받는 자리가 빌드 상수 뒤에 있어야 배포물에 three 시험대가 안 실린다
+ */
+function FxLabHost() {
+  const [Lab, setLab] = useState<ComponentType | null>(null)
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    void import('../scene/battle/fx/FxLab')
+      .then((m) => { setLab(() => m.FxLab) })
+      .catch((err: unknown) => { console.error('이펙트 시험대를 못 받았다', err) })
+  }, [])
+  return Lab ? <Lab /> : null
 }
 
 type DevWarp = ComponentType<{ onClose: () => void }>
