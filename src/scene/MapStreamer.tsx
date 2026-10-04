@@ -19,7 +19,7 @@ import { coverScreen, fadeDone, resetFade, startFade } from '../engine/script/fa
 import { restoreRetry } from '../state/restoreStore'
 import { restoreGroundY, startRestore } from './restoreWorld'
 import { beginAsyncPipelines, settleAsyncPipelines } from './asyncPipelines'
-import { bdspShowing, bdspWanted, terrainLanded } from './terrainMark'
+import { bdspDegraded, bdspShowing, bdspWanted, terrainLanded } from './terrainMark'
 import { bdspVersion, expectBdsp, subscribeBdsp } from './bdspReady'
 import { arriveAt } from './pokecenter'
 import { music } from '../engine/audio/music'
@@ -381,10 +381,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   // 서기 표(`bdspReady`)가 바뀔 때마다 다시 그린다 — 아래가 그 표를 읽는다
   useSyncExternalStore(subscribeBdsp, bdspVersion)
   /**
-   * BDSP가 그림을 쥐는가 — 원하는 층 중 하나라도 **실제로 서서 그려졌을 때만** 참이다 (`bdspShowing`). 받는 동안은 원작 그림이
-   * 그대로 선다 — 이름만 정해졌을 때 숨기면 205번도로가 하늘과 사람만 남았다
+   * BDSP가 그림을 쥐는가 — **맨 앞 열쇠**(방 · 던전, 야외면 가장 가까운 지역)가 **실제로 서서 그려졌을 때만** 참이다
+   * (`bdspShowing`). 받는 동안은 원작 그림이 그대로 선다 — 이름만 정해졌을 때 숨기면 205번도로가 하늘과 사람만 남았다.
+   * 열쇠 하나라도 실패했으면 거짓이고 BDSP 지역은 접힌다(`bdspDegraded`) — 원작 땅과 이웃 BDSP가 겹쳐 그려지지 않는다
    */
   const bdspDraws = bdspShowing(bdspKeys)
+  const bdspDown = bdspDegraded(bdspKeys)
 
   /** 맵 헤더 id → 표시용 지역명. 집 내부는 그 마을 이름을 그대로 쓴다 */
   /** 이 맵의 텍스처 묶음. 영역 표가 아직 없으면 0번으로 뜬다 */
@@ -1431,7 +1433,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         dsHidden={bdspDraws}
       />
       {/* 바깥은 BDSP 지역이 선다 — 원작 좌표 그대로다 (`BdspField`) */}
-      {outdoor && <BdspField near={fieldsNear} />}
+      {outdoor && <BdspField near={fieldsNear} hidden={bdspDown} />}
       {/* 실내는 BDSP 방이 있으면 그것이 선다 — 원작 칸 좌표 그대로다 (`BdspRoom`) */}
       {room !== null && <BdspRoom key={`${room}@${String(mapId)}`} name={room} mapId={mapId} />}
       {/* 던전(호수 · 숲 · 동굴 · 탑)도 BDSP가 있으면 그것이 선다 — 방과 같은 자리다 (`BdspDungeon`) */}

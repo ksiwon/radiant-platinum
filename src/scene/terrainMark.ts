@@ -15,7 +15,7 @@ import { cameraSystem } from '../engine/actor/camera'
 import { world } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import { perfSnapshot } from './sceneRefs'
-import { bdspReady, bdspSettled } from './bdspReady'
+import { bdspFailed, bdspReady, bdspSettled } from './bdspReady'
 
 /**
  * 마지막으로 **씬에 반영된** 청크 한 벌. `ChunkModels`가 커밋 뒤에 적는다.
@@ -146,7 +146,8 @@ export function bdspWanted(room: string | null, dungeon: string | null, fields: 
 
 /**
  * **BDSP가 지금 그림을 쥐는가** — **맨 앞 열쇠**가 실제로 서서 그려졌을 때만 참이다. 참이면 원작 지형을 숨긴다
- * (`ChunkModels`의 `dsHidden`). 맨 앞이 방 · 던전이고 야외면 플레이어에 가장 가까운 지역이다(`nearestFirst`).
+ * (`ChunkModels`의 `dsHidden`). 맨 앞이 방 · 던전이고 야외면 플레이어에 가장 가까운 지역이다 — `useBdspFields`가 반 초마다
+ * 지역 집합이 같아도 거리순으로 다시 줄 세우므로 「맨 앞」은 걷는 동안에도 가장 가까운 지역을 따라간다.
  *
  * ⚠️ **아무 지역 하나로 숨기면 발밑이 빈다.** 둘레의 작은 지역이 먼저 서자 꽃향기마을 첫 2.4초가 하늘과 사람뿐이었다
  * (트레일러 B4) — 발밑 큰 지역은 아직 받는 중이었다.
@@ -154,9 +155,18 @@ export function bdspWanted(room: string | null, dungeon: string | null, fields: 
  * ⚠️ **이름이 정해진 것만으로 숨기면 허공이 보인다.** 예전에는 둘레 지역 이름 목록이 서자마자 원작 땅을 숨겼는데, 지역 glb는
  * 받고 풀어서 늦게 온다 — 영원의 숲에서 205번도로로 나선 첫 화면이 하늘과 사람뿐이었다(story `20-forest`).
  * 실패한 열쇠는 안 선 것으로 센다 — 그때는 원작 그림이 그대로 남는다
+ *
+ * ⚠️ **열쇠 하나라도 실패했으면 거짓이다** (`bdspDegraded`). 맨 앞이 서 있고 먼 지역 하나만 못 받았을 때 원작 땅을 숨기면 그
+ * 지역이 구멍이고, 맨 앞이 실패했는데 이웃 지역이 서 있으면 원작 땅과 이웃 BDSP가 겹쳐 그려진다. 그래서 하나라도 실패하면
+ * 원작 땅이 서고 BDSP 지역은 모두 접는다 (`BdspField`의 `hidden`) — 어느 쪽이든 한 층만 그려진다
  */
 export function bdspShowing(keys: readonly string[]): boolean {
-  return keys.length > 0 && bdspReady(keys[0]!)
+  return keys.length > 0 && !bdspDegraded(keys) && bdspReady(keys[0]!)
+}
+
+/** 원하는 열쇠 중 못 세운 것이 있는가 — 있으면 BDSP 층을 접고 원작 그림으로 간다 */
+export function bdspDegraded(keys: readonly string[]): boolean {
+  return keys.some(bdspFailed)
 }
 
 /** 카메라가 「닿았다」고 볼 잔여 거리 (월드 단위 = 타일) */

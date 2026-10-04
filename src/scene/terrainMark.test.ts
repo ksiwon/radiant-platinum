@@ -7,7 +7,7 @@ import { world } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import { expectBdsp, markBdspFailed, markBdspReady, resetBdspReady } from './bdspReady'
 import { perfSnapshot } from './sceneRefs'
-import { bdspShowing, bdspWanted, markTerrain, openTerrainRequest, terrainLanded } from './terrainMark'
+import { bdspDegraded, bdspShowing, bdspWanted, markTerrain, openTerrainRequest, terrainLanded } from './terrainMark'
 
 describe('BDSP 열쇠 (`bdspWanted` · `bdspShowing`)', () => {
   afterEach(() => { resetBdspReady() })
@@ -32,6 +32,28 @@ describe('BDSP 열쇠 (`bdspWanted` · `bdspShowing`)', () => {
   it('못 세운 층은 안 선 것으로 센다 — 원작 그림이 그대로 남는다', () => {
     markBdspFailed('c01r0101')
     expect(bdspShowing(['c01r0101'])).toBe(false)
+  })
+
+  it('맨 앞이 실패했는데 이웃이 섰으면 원작 땅이 서고 BDSP는 접힌다 — 두 층이 겹쳐 그려지지 않는다', () => {
+    const keys = ['area002', 'area003']
+    markBdspFailed('area002')
+    markBdspReady('area003')
+    expect(bdspShowing(keys)).toBe(false)
+    expect(bdspDegraded(keys)).toBe(true)
+  })
+
+  it('먼 지역 하나가 실패해도 원작 땅이 선다 — 숨기면 그 지역이 구멍이다', () => {
+    const keys = ['area002', 'area003']
+    markBdspReady('area002')
+    markBdspFailed('area003')
+    expect(bdspShowing(keys)).toBe(false)
+  })
+
+  it('실패가 없으면 맨 앞이 서야만 숨긴다 — 순서가 바뀌면 보는 열쇠도 바뀐다', () => {
+    markBdspReady('area003')
+    expect(bdspDegraded(['area003', 'area002'])).toBe(false)
+    expect(bdspShowing(['area003', 'area002'])).toBe(true)
+    expect(bdspShowing(['area002', 'area003'])).toBe(false)
   })
 })
 

@@ -68,6 +68,11 @@ export function bdspReady(key: string): boolean {
   return status.get(key) === 'ready'
 }
 
+/** 이 열쇠의 씬을 못 세웠는가 — 받기 · 풀기가 실패해 그 자리가 비어 있다 */
+export function bdspFailed(key: string): boolean {
+  return status.get(key) === 'failed'
+}
+
 /** 표가 바뀔 때마다 부른다 — `useSyncExternalStore`의 구독 자리 */
 export function subscribeBdsp(listener: () => void): () => void {
   listeners.add(listener)

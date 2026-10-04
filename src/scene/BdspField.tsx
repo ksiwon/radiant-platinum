@@ -121,9 +121,11 @@ export function useBdspFields(outdoor: boolean): { fields: readonly FieldEntry[]
       const reach = reachFor(fog?.far ?? DAY.fogFar)
       setNear((was) => {
         const want = pickFields(fields, p.x, p.z, reach, was)
-        if ([...was].sort().join() === want.join()) return was
-        // 가까운 지역부터 붙인다 — 먼저 붙인 것이 먼저 풀린다
-        return nearestFirst(fields, want, p.x, p.z)
+        // 가까운 지역부터 붙인다 — 먼저 붙인 것이 먼저 풀린다.
+        // ⚠️ **집합이 같아도 거리순은 다시 맞춘다.** 맨 앞(`bdspShowing`이 보는 열쇠)이 「가장 가까운 지역」이어야 하는데, 집합이 안
+        // 바뀌면 처음 줄 세운 채 남아 걷다가 이웃 지역이 더 가까워져도 앞이 안 바뀌었다. 순서가 같으면 같은 배열을 돌려준다
+        const sorted = nearestFirst(fields, want, p.x, p.z)
+        return sorted.join() === was.join() ? was : sorted
       })
     }
     pick()
@@ -406,7 +408,7 @@ function build(scene: Group): Built {
   return { scene, fade, lights, low: lowestGround(scene) }
 }
 
-function FieldArea({ name }: { name: string }) {
+function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
   const [built, setBuilt] = useState<Built | null>(null)
   const [failed, setFailed] = useState(false)
   /**
@@ -475,7 +477,7 @@ function FieldArea({ name }: { name: string }) {
       if (mine) holdField(name, mine)
     }
   }, [name])
-  return built ? <primitive object={built.scene} /> : null
+  return built ? <primitive object={built.scene} visible={!hidden} /> : null
 }
 
 // ── 안개 바닥 ────────────────────────────────────────────────────────────────────────────────────────────
@@ -546,10 +548,13 @@ function FogFloor() {
   return <primitive object={mesh} />
 }
 
-/** 걷는 동안 지역이 바뀌면 그 자리에서 갈아 끼운다 — 목록이 곧 세울 것이다 (`useBdspFields`) */
-export function BdspField({ near }: { near: readonly string[] }) {
+/**
+ * 걷는 동안 지역이 바뀌면 그 자리에서 갈아 끼운다 — 목록이 곧 세울 것이다 (`useBdspFields`).
+ * `hidden`이면 선 지역을 다 접는다 — 한 지역이 실패해 원작 땅이 서는 동안(`bdspDegraded`) 이웃 BDSP와 겹쳐 그려지지 않게
+ */
+export function BdspField({ near, hidden = false }: { near: readonly string[], hidden?: boolean }) {
   return <>
-    {near.map((n) => <FieldArea key={n} name={n} />)}
+    {near.map((n) => <FieldArea key={n} name={n} hidden={hidden} />)}
     {near.length > 0 && <FogFloor />}
   </>
 }
