@@ -38,17 +38,16 @@ export const TAKES = [
     move: { type: 'dolly', rel: true, from: { eye: [8, 9, 16], gaze: [-6, 0, 0] }, to: { eye: [-6, 9, 16], gaze: [-14, 0, -2] } },
   },
   {
-    // B5 → B6 한 컷 — 3인칭으로 뒤따르며 풀숲에 들어가다가 V, 그대로 1인칭으로 걷는다 (문서 「시점」 첫 번째 전환)
-    id: 'B5-switch', what: '201번도로 — 풀숲을 따라 걷다가 3인칭 → 1인칭 → 두리번 → 꼬링크 조우', cp: 'grass',
-    // 풀숲은 북으로 몇 칸뿐이고 그 뒤가 숲 벽이다 — 한 칸 들어가 서쪽으로 풀숲 줄을 따라 걷는다. 더 들어가면 숲 가장자리를
-    // 스쳐 걸어서 V를 누른 순간 눈이 나무 속에 들었다
-    steps: [{ do: 'hour', hour: 15 }, { do: 'walk', key: 'ArrowRight', ms: 500 }, { do: 'walk', key: 'ArrowUp', ms: 600 }],
-    // 1인칭으로 풀숲을 두리번거리다 꼬링크를 만난다 — 조우 컷인 → 배틀 → 「나타났다!」 → 모부기 내보내기까지 한 컷
-    seconds: 12, hold: 'ArrowLeft', holdFor: 1.5, recKeys: [{ at: 0.9, key: 'KeyV' },
-      { at: 7.0, key: 'z' }, { at: 7.8, key: 'z' }, { at: 8.6, key: 'z' }],
-    recEval: [{ at: 3.9, js: 'void globalThis.pt.encounterWild(403, 5)' }],
-    move: { type: 'yaw', at: 1.7, seconds: 2.2, from: 270, to: 205, pitch: -12 },
+    id: 'B5-switch', what: '202번도로 — 빛나가 풀숲을 서성이다 걸음 조우로 꼬링크를 만난다', cp: 'grass',
+    // 202번도로 풀숲에 선다. 그 맵 풀숲 표의 첫 칸이 꼬링크다(`encounters.json` 141 · 슬롯 0 = 403)
+    steps: [{ do: 'hour', hour: 15 }, { do: 'warp', map: 343, spot: { kind: 'grass' }, after: 6000 }],
+    // 풀숲을 오가다 — 걸음 조우 판정 하나만 고정한다(`encounters.rng`의 다음 두 번 = 통과 · 슬롯 0). 판정 · 풀 흔들림 · 컷인은 게임 그대로다
+    seconds: 13, hold: 'ArrowLeft', holdFor: 1.3, recKeys: [{ at: 1.5, key: 'ArrowRight', act: 'down' }, { at: 2.9, key: 'ArrowRight', act: 'up' },
+      { at: 3.1, key: 'ArrowLeft', act: 'down' }, { at: 4.6, key: 'ArrowLeft', act: 'up' },
+      { at: 8.0, key: 'z' }, { at: 8.8, key: 'z' }, { at: 9.6, key: 'z' }],
+    recEval: [{ at: 3.0, js: "void (async()=>{const e=(await import('/src/engine/battle/encounterSystem.ts')).encounters;const r=e.rng;let n=0;e.rng=()=>{if(n++<2)return 0;e.rng=r;return r()}})()" }],
   },
+
 
   // ── C. 배틀 ── (키: 명령은 세로 목록 FIGHT·BAG·POKEMON·RUN, 기술도 세로 — ui/battle/BattleScreen.tsx)
   {
@@ -76,10 +75,12 @@ export const TAKES = [
   },
   {
     id: 'C6-catch', what: '볼 던지기 → 빨려 듦 → 흔들림 → 잡힘', cp: 'grass',
-    // 몬스터볼은 판마다 빠져나왔다(네 판 다) — 꼭 잡히는 마스터볼을 넣어 둔다. 보라 BDSP `eb001_capture`도 그대로 보인다.
-    // ⚠️ **볼 주머니를 비우고 넣는다.** 주머니 첫 칸이 던져지는데 몬스터볼이 앞에 있으면 그것이 날아가 빠져나왔다
+    // 몬스터볼로 잡는다(사용자 요청). 그냥 던지면 판마다 빠져나와서 포획 판정만 고정한다(아래 eval).
+    // ⚠️ **볼 주머니를 비우고 넣는다.** 주머니 첫 칸이 던져진다
     steps: [{ do: 'hour', hour: 15 },
-      { do: 'eval', js: `(async () => { const { useSaveStore } = await import('/src/state/saveStore.ts'); const { loadItems } = await import('/src/data/gameData.ts'); const bank = await loadItems(); const p = bank.get(1).pocket ?? 0; const s = useSaveStore.getState(); for (const e of [...(s.bag[p] ?? [])]) useSaveStore.getState().removeItem(p, e.item, e.count); useSaveStore.getState().addItem(p, 1, 1); return useSaveStore.getState().bag[p].map((e) => e.item) })()` },
+      { do: 'eval', js: `(async () => { const { useSaveStore } = await import('/src/state/saveStore.ts'); const { loadItems } = await import('/src/data/gameData.ts'); const bank = await loadItems(); const p = bank.get(4).pocket ?? 0; const s = useSaveStore.getState(); for (const e of [...(s.bag[p] ?? [])]) useSaveStore.getState().removeItem(p, e.item, e.count); useSaveStore.getState().addItem(p, 4, 5); return useSaveStore.getState().bag[p].map((e) => e.item) })()` },
+      // 포획 판정만 고정한다 — 부르는 자리에 `throwBall`이 있을 때만 0을 낸다(흔들림 넷 다 통과). 입자 · AI는 그대로다
+      { do: 'eval', js: "(()=>{const r=Math.random;Math.random=function(){const st=new Error().stack??'';return st.includes('throwBall')?0:r()};return 'ok'})()" },
       { do: 'wild', species: 399, level: 2, after: 100 }, { do: 'menu' },
       // 가방이 다 열리기 전에 누른 → 는 먹지 않는다(첫 판은 회복 주머니에서 상처약을 썼다) — 열고 한참 기다린다
       { do: 'keys', keys: ['ArrowDown', 'z'], gap: 900 }, { do: 'wait', ms: 1500 },
@@ -143,8 +144,23 @@ export const TAKES = [
     recEval: [{ at: 0.3, js: 'void globalThis.pt.encounter(1)' }],
     seconds: 10, recKeys: [{ at: 3.6, key: 'z' }, { at: 4.8, key: 'z' }, { at: 6.0, key: 'z' }] },
   // 확인 지점이 무대를 세우는 동안(4초 남짓) 자리표시자가 보인다 — 무대가 선 뒤부터 찍고, 줄을 넘겨 미카루게 · 토대부기가 나오게 한다
-  { id: 'D11-champion', what: '챔피언 난천 — 볼이 날아와 선다', cp: 'champion', steps: [], settle: 6000, seconds: 8,
-    recKeys: [{ at: 0.8, key: 'z' }, { at: 2.0, key: 'z' }, { at: 3.2, key: 'z' }, { at: 4.4, key: 'z' }] },
+  // ── D11~13. 챔피언 — 방에 들어가 난천을 만나고(대사 → 컷인) 화강돌 → 루카리오 → 한카리아스 ──
+  // 확인 지점 `champion`은 뛰어들자마자 배틀을 연다 — 배지 8 파티만 빌리고(`mart8`) 챔피언의 방 입구로 옮겨 걸어 들어간다
+  {
+    id: 'D11-champion', what: '챔피언의 방 — 난천에게 걸어가 말을 건다 → 컷인 → 화강돌', cp: 'mart8',
+    steps: [{ do: 'warp', map: 185, spot: { kind: 'warp', index: 1 }, after: 6000 }],
+    seconds: 16, hold: 'ArrowUp', holdFor: 3.0,
+    recKeys: [{ at: 3.4, key: 'z' }, { at: 4.6, key: 'z' }, { at: 5.8, key: 'z' }, { at: 7.0, key: 'z' }, { at: 8.2, key: 'z' },
+      { at: 9.4, key: 'z' }, { at: 10.6, key: 'z' }, { at: 11.8, key: 'z' }],
+  },
+  ...[[448, 'D12-lucario', '루카리오'], [445, 'D13-garchomp', '한카리아스']].map(([sp, id, name]) => ({
+    id, what: `챔피언전 — 난천의 ${name} 기술`, cp: 'mart8',
+    // 난천의 파티 순서만 메모리에서 바꾼다 — 그 포켓몬이 먼저 나온다. 기술 · AI는 그대로
+    steps: [{ do: 'warp', map: 185, spot: { kind: 'warp', index: 1 }, after: 4000 },
+      { do: 'eval', js: `(async()=>{const {loadTrainers}=await import('/src/data/gameData.ts');const t=(await loadTrainers()).get(267);const i=t.party.findIndex((m)=>m.species===${String(sp)});if(i>0){const [m]=t.party.splice(i,1);t.party.unshift(m)}return t.party.map((m)=>m.species)})()` },
+      { do: 'trainer', id: 267, after: 1000 }, { do: 'menu' }, { do: 'keys', keys: ['z'], gap: 500 }],
+    settle: 200, seconds: 9, recKeys: [{ at: 0.2, key: 'z' }],
+  })),
   // ── E1. 기술 연타 — 챔피언전 파티(배지 8 · 토대부기 L55 앞)의 기술 넷과 사천왕전 하나 ──
   ...[0, 1, 2, 3].map((n) => ({
     id: `E1-${'abcd'[n]}`, what: `기술 연타 ${String(n + 1)}`, cp: 'champion',
@@ -176,8 +192,22 @@ export const TAKES = [
     seconds: 6, hold: 'ArrowUp', holdFor: 2.0, recKeys: [{ at: 2.2, key: 'KeyV' },
       { at: 2.8, key: 'ArrowDown', act: 'down' }, { at: 5.2, key: 'ArrowDown', act: 'up' }],
   },
-  { id: 'E3-giratina', what: '기라티나 — 깨어진 세계에서 만남', cp: 'giratina',
-    // 배틀 배경은 배틀이 설 때의 world.mapId로 한 번 정해진다 — 582에 내려앉기 전에 열면 시작 맵(풀숲) 배경이 박혔다
-    // 필드에서 그대로 만난다 — 전설 전용 조우 컷인 → 배틀 → 기라티나 등장까지 한 컷
-    steps: [{ do: 'map', map: 582 }], seconds: 10, recEval: [{ at: 0.8, js: 'void globalThis.pt.encounterWild(487, 47)' }] },
+  ...[['E3-b3f', 'distortion-b3f', 'B3F'], ['E3-b4f', 'distortion-b4f', 'B4F']].map(([id, cp, floor]) => ({
+    id, what: `깨어진 세계 ${floor} — 1인칭으로 둘러보다 3인칭으로 걷는다`, cp,
+    steps: [{ do: 'first' }],
+    seconds: 6, hold: 'ArrowUp', holdFor: 2.0, move: { type: 'yaw', at: 0.2, seconds: 1.8, from: 0, to: 70, pitch: 6 },
+    recKeys: [{ at: 2.4, key: 'KeyV' }, { at: 2.9, key: 'ArrowLeft', act: 'down' }, { at: 5.6, key: 'ArrowLeft', act: 'up' }],
+  })),
+  {
+    // 원작 그대로 — 기라티나가 서 있고, 다가가 A를 누르면 울음 → 대사 → 배틀 (`DistortionWorldGiratinaRoom_Giratina`)
+    // 진행도를 「기라티나가 왔다」(13)로 두고 방을 다시 열면 기라티나가 선다. 그 앞 세 칸에 세운다
+    id: 'E3-giratina', what: '기라티나의 방 — 서 있는 기라티나에게 다가가 A → 배틀', cp: 'giratina',
+    steps: [
+      { do: 'eval', js: "(async()=>{const f=await import('/src/engine/script/field.ts');f.fieldScripts.vars.set(16469,13);return f.fieldScripts.vars.get(16469)})()" },
+      { do: 'warp', map: 582, spot: { kind: 'open' }, after: 6000 },
+      { do: 'eval', js: "(async()=>{const {npcActors}=await import('/src/engine/actor/npcs.ts');const w=(await import('/src/state/worldState.ts')).worldState;const g=npcActors.list[0];if(!g)return 'no actor';w.player.position.x=g.position.x;w.player.position.z=g.position.z+3;w.player.facing=Math.PI;return [npcActors.list.map((a)=>[a.gfx,a.position.x,a.position.z]),w.player.position.x,w.player.position.z]})()" },
+      { do: 'wait', ms: 2000 }],
+    seconds: 12, hold: 'ArrowUp', holdFor: 0.8,
+    recKeys: [{ at: 1.3, key: 'z' }, { at: 2.8, key: 'z' }, { at: 4.0, key: 'z' }, { at: 5.2, key: 'z' }],
+  },
 ]

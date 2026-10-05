@@ -105,12 +105,13 @@ async function step(page, s, cp) {
       }, s.hour)
       return
     case 'warp':
-      await page.evaluate(async ([c, m]) => {
+      // `spot`을 주면 그 자리 종류로 선다(`grass` · `open` · `tile` — 확인 지점 표와 같은 꼴). 없으면 그 맵의 첫 워프
+      await page.evaluate(async ([c, m, spot]) => {
         const { CHECKPOINTS } = await import('/src/engine/dev/checkpoints.ts')
         const { warpTo } = await import('/src/app/devWarp.ts')
         const base = CHECKPOINTS.find((x) => x.id === c)
-        await warpTo({ ...base, id: `${c}>${String(m)}`, map: m, spot: { kind: 'warp', index: 0 } })
-      }, [cp, s.map])
+        await warpTo({ ...base, id: `${c}>${String(m)}`, map: m, spot: spot ?? { kind: 'warp', index: 0 } })
+      }, [cp, s.map, s.spot ?? null])
       await page.waitForFunction(async (w) => (await import('/src/engine/map/world.ts')).world.mapId === w, s.map, { timeout: 120_000 })
       await page.waitForTimeout(s.after ?? 8000)
       return

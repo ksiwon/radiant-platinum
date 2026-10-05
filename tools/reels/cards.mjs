@@ -172,16 +172,17 @@ const x=(t-0.9)/1.1;sw.style.left=(-40+170*clamp(x))+'%';sw.style.opacity=(x>0&&
   }
 
   if (kind === 'promo') {
-    const shot = (img, name, link) => `<div style="display:flex;flex-direction:column;align-items:center;margin:${portrait ? `${28 * u}px 0` : `0 ${30 * u}px`}">
+    const shot = (img, name, what, link) => `<div style="display:flex;flex-direction:column;align-items:center;margin:${portrait ? `${28 * u}px 0` : `0 ${30 * u}px`}">
 <div style="width:${portrait ? 820 : 720}px;height:${(portrait ? 820 : 720) * 9 / 16}px;background:url('${url(img)}') center/cover;border-radius:${14 * u}px;box-shadow:0 0 ${40 * u}px rgba(110,160,255,0.35)"></div>
 <div style="font-size:${40 * u}px;font-weight:700;margin-top:${22 * u}px;color:#eef3ff">${name}</div>
+<div style="font-size:${30 * u}px;font-weight:500;color:#c9d3e6;margin-top:${8 * u}px">${what}</div>
 <div style="font-size:${28 * u}px;color:#9cc4ff;margin-top:${6 * u}px">${link}</div></div>`
     return `${head}<div class="c" id="box">
 <div style="font-size:${30 * u}px;color:#8b93a3;letter-spacing:${3 * u}px">만든 사람의 다른 작업</div>
 <div style="font-size:${56 * u}px;font-weight:700;color:#eef3ff;margin:${10 * u}px 0 ${portrait ? 40 : 54}px">siwon.it.kr</div>
 <div style="display:flex;flex-direction:${portrait ? 'column' : 'row'}">
-${shot('.audit/reels/assets/pokerhythm.png', 'PokeRhythm', 'pokerhythm.siwon.it.kr')}
-${shot('.audit/reels/assets/pokemon-aegis.png', 'Pokemon Aegis', 'aegis.siwon.it.kr')}</div></div>
+${shot('.audit/reels/assets/pokerhythm.png', 'PokeRhythm', '포켓몬 리듬 게임', 'pokerhythm.siwon.it.kr')}
+${shot('.audit/reels/assets/pokemon-aegis.png', 'Pokemon Aegis', '포켓몬 타워 디펜스 × TFT', 'aegis.siwon.it.kr')}</div></div>
 <script>${common}const b=document.getElementById('box');window.draw=(t)=>{b.style.opacity=(ease(t/0.6)*(1-ease((t-4.3)/0.7))).toFixed(3)}</script>`
   }
   throw new Error(`모르는 카드: ${kind}`)
