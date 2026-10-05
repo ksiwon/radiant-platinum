@@ -51,6 +51,9 @@ const WALK_FRAMES = 16
  * 둘 중 하나만 하므로, 유형이 동작을 걸어 둔 프레임은 그대로 지나간다
  */
 const STEP_FRAMES = WALK_FRAMES + 1
+/** 방향을 바꾸면 걷기 전에 제자리걸음으로 돌아선다 — 90°는 `WALK_ON_SPOT_NORMAL`(8), 180°는 `_SLOW`(16) */
+const TURN_FRAMES = 8
+const TURN_BACK_FRAMES = 16
 
 /**
  * 벽으로 두른 방 하나.
@@ -215,8 +218,8 @@ maybe('혼자 하는 짓', () => {
     npcActors.list = [npc]
     run(STEP_FRAMES * 2)
     expect({ z: npc.z, dir: npc.dir }).toEqual({ z: 1, dir: 0 })
-    // 벽을 만나 돌아선다
-    run(STEP_FRAMES * 2)
+    // 벽을 만나 돌아선다 — 뒤로 도는 데 제자리걸음 16프레임을 먼저 쓴다 (`startWalk`)
+    run(STEP_FRAMES * 2 + TURN_BACK_FRAMES)
     expect({ z: npc.z, dir: npc.dir }).toEqual({ z: 3, dir: 1 })
     // 시작 칸에 닿았으니 다시 북쪽이다 — 오가는 구간이 시작 칸과 벽 사이다
     run(1)
@@ -231,7 +234,7 @@ maybe('혼자 하는 짓', () => {
     expect({ x: npc.x, z: npc.z, dir: npc.dir }).toEqual({ x: 3, z: 1, dir: 0 })
     // ⚠️ 벽에서 **돌아서는 게 아니라 고리의 다음 방향**으로 간다. 왔다 갔다와
     // 갈리는 자리다 — 반대쪽으로 보내면 이 사람도 왔다 갔다가 된다
-    run(STEP_FRAMES)
+    run(STEP_FRAMES + TURN_FRAMES)
     expect({ x: npc.x, z: npc.z, dir: npc.dir }).toEqual({ x: 4, z: 1, dir: 3 })
   })
 

@@ -17,10 +17,12 @@ import {
   Group,
   Mesh,
   type CanvasTexture,
+  type Object3D,
   type Texture,
 } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import { warmBeforeShow } from '../warmPipelines'
+import { beginAsyncPipelines, settleAsyncPipelines } from '../asyncPipelines'
 import { Arena, Flat, GROUND } from './BattleArena'
 import { preloadSplPack, SPL_WAZA } from './splPack'
 import { worldState } from '../../state/worldState'
@@ -47,6 +49,9 @@ import { loadMonModel, makeBody, motionClipSeconds, play, type MonBody, type Mot
 import { glow, ownMaterials, releaseMaterials, seqMotionLive } from './seqBody'
 import { spriteKey } from '../../engine/pokemon/form'
 import { MoveVfx } from './MoveVfx'
+import { warmFxEffects } from './fx/BdspEffect'
+import { cloneBall, loadBallModel } from './fx/ballModel'
+import { ballPrefabs } from './fx/moveSeq'
 import type { SeqCamera } from '../../engine/battle/fx/sequence'
 import { clampShot, type Box } from '../../engine/battle/fx/cameraClamp'
 import { bigSwing, NO_RETURN, stepCamera, swingAround, type CameraReturn } from './battleCamera'
@@ -1037,8 +1042,19 @@ const SHOW_SCENE = 0
  * 몸을 여기서 **미리 받아 두는 것**이 요점이다 — 나중에 `Slot`이 같은
  * `loadMonModel`을 부르면 캐시에 걸려 그 프레임에 선다
  */
+/**
+ * 무대 파이프라인을 기다리는 상한(ms). 넘으면 남은 것은 동기로 굽고 막을 걷는다 — 막에 갇히는 것보다 한 번 멎는 편이 낫다.
+ * 우리 값이다: 실측 무대(풀밭 · 나무 서른 벌)가 다 구워지는 데 1초 안쪽이었다
+ */
+const STAGE_COMPILE_CAP_MS = 4000
+/** 막 뒤에서 굽는 몸 · 볼을 세우는 깊이(m) — 땅 밑이다 */
+const WARM_DEPTH = -100
+/** 볼을 안 적은 개체의 볼 — 몬스터볼 (`RosterEntry.ball`) */
+const DEFAULT_BALL = 4
+
 function useSceneReady(): void {
   const ready = useBattleStore((s) => s.sceneReady)
+  const r3fScene = useThree((s) => s.scene)
   /**
    * 앞에 나올 마리들. **문자열 하나로 접어서** 고른다 — 배열을 돌려주면
    * 선택자가 매 프레임 새 값을 내서 무대가 통째로 다시 그려진다
@@ -1067,12 +1083,55 @@ function useSceneReady(): void {
         shiny: shiny === '1',
       }).catch(() => null)
     })
+    /**
+     * 막(「배틀 준비 중」)이 덮은 동안 무대의 파이프라인을 **비동기로** 굽고, 다 구운 뒤에 막을 걷는다 — 맵 워프와 같은 길이다
+     * (`asyncPipelines` · `MapStreamer`). 동기로 두었을 때 막이 걷힌 뒤 무대의 나무 · 밑동 그림자 · 몸이 처음 그려지는 프레임마다
+     * 0.15~0.55초씩 멎었다(`createRenderPipeline` 감시 실측 2026-10-05)
+     */
+    beginAsyncPipelines()
+    let held = true
+    const release = (): Promise<unknown> => {
+      if (!held) return Promise.resolve()
+      held = false
+      return settleAsyncPipelines(() => arenaHere, STAGE_COMPILE_CAP_MS)
+    }
+    /**
+     * 막 뒤에서 같이 굽는 것 — 앞에 나올 몸 · 볼 모델 · 볼 빛과 잡기 이펙트. 셋 다 볼이 열리는 그 프레임에 처음 그려져서
+     * 막이 걷힌 뒤 내보내기마다 0.1~0.2초씩 멎었다(배포판 번들 실측 2026-10-05). 몸은 따로 하나 더 세워 굽는다 —
+     * 셰이더가 같으므로 진짜 몸이 설 때 같은 파이프라인을 탄다
+     */
+    const warm = Promise.all(bodies).then(async (loaded) => {
+      const extras: Object3D[] = []
+      for (const l of loaded) {
+        if (!l) continue
+        const b = makeBody(l)
+        b.root.position.y = WARM_DEPTH
+        extras.push(b.root)
+      }
+      const balls = new Set(Object.values(useBattleStore.getState().roster).map((r) => r.ball || DEFAULT_BALL))
+      if (balls.size === 0) balls.add(DEFAULT_BALL)
+      const names: string[] = []
+      for (const ball of balls) {
+        const model = await loadBallModel(ball)
+        if (model) {
+          const c = cloneBall(model)
+          c.position.y = WARM_DEPTH
+          extras.push(c)
+        }
+        const p = await ballPrefabs(ball)
+        if (p) names.push(p.ballout, p.capture)
+      }
+      if (alive) await warmFxEffects(names, r3fScene, extras)
+    }).catch((e: unknown) => { console.warn('[battle] 막 뒤 미리 굽기 실패', e) })
     /** 무대가 아직 안 왔으면 다음 프레임에 다시 본다 */
     let raf = 0
-    void Promise.all([...bodies, burst]).then(() => {
+    void Promise.all([...bodies, burst, warm]).then(() => {
       const waitArena = (): void => {
         if (!alive) return
-        if (arenaHere) { useBattleStore.setState({ sceneReady: true }); return }
+        if (arenaHere) {
+          void release().then(() => { if (alive) useBattleStore.setState({ sceneReady: true }) })
+          return
+        }
         raf = requestAnimationFrame(waitArena)
       }
       waitArena()
@@ -1080,8 +1139,10 @@ function useSceneReady(): void {
     return () => {
       alive = false
       cancelAnimationFrame(raf)
+      // 못 서고 떠나도 켠 것은 끈다 — 안 끄면 다음 화면이 내내 비동기로 굽는다
+      if (held) { held = false; void settleAsyncPipelines(() => true, 0) }
     }
-  }, [leads, ready])
+  }, [leads, ready, r3fScene])
 }
 
 /**

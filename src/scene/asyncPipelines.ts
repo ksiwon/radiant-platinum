@@ -40,6 +40,21 @@ const state = {
   installed: false,
 }
 
+/**
+ * 재질의 `userData`에 이 깃발이 서 있으면 **언제나** 비동기로 굽는다.
+ *
+ * 배틀 연출(BDSP 이펙트 · 능력치 겹)이 쓴다. 그 재질들은 기술을 쓰는 순간 처음 그려지는데, 동기로 구우면 GPU 프로세스가
+ * 파이프라인 수십 개를 짓는 동안 그 프레임이 0.5~0.8초 멎었다(배포판 번들 · 크로미움 트레이스 실측 2026-10-05). 판이 열릴 때
+ * 미리 굽지만(`warmFxEffects`) 못 맞춘 하나가 남아도 멎지 않게 한다 — 그 하나는 구워질 때까지 몇 프레임 안 보일 뿐이다.
+ * 머리말의 「늘 켜 두지 않는다」는 화면 전체 이야기다. 이 깃발은 미리 굽는 재질에만 건다
+ */
+export const ALWAYS_ASYNC = 'asyncPipeline'
+
+function alwaysAsync(renderObject: unknown): boolean {
+  const m = (renderObject as { material?: { userData?: Record<string, unknown> } }).material
+  return m?.userData?.[ALWAYS_ASYNC] === true
+}
+
 /** 렌더러가 선 뒤에 한 번 (`Stage`) */
 export function installAsyncPipelines(renderer: WebGPURenderer): void {
   const pipelines = (renderer as unknown as { _pipelines?: PipelinesLike })._pipelines
@@ -48,7 +63,9 @@ export function installAsyncPipelines(renderer: WebGPURenderer): void {
     return
   }
   pipelines.updateForRender = function updateForRender(renderObject: unknown): void {
-    this.getForRender(renderObject, state.on ? state.pending : null)
+    if (state.on) { this.getForRender(renderObject, state.pending); return }
+    // 늘 비동기로 굽는 재질 (`ALWAYS_ASYNC`) — 기다리는 이가 없으니 약속은 버린다. three가 다 될 때까지 그 물체만 안 그린다
+    this.getForRender(renderObject, alwaysAsync(renderObject) ? [] : null)
   }
   state.installed = true
 }

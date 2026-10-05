@@ -15,7 +15,7 @@
 // ⚠️ **입자가 서면 도형은 물러난다.** 둘을 겹쳐 그리면 같은 자리에 두 벌이
 // 포개져 무엇이 원작인지 알아볼 수 없다. 무대에 거는 것은 어느 쪽이든 돈다.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import {
   AdditiveBlending, BackSide, Color, Mesh, MeshBasicMaterial,
   type Group, type MeshBasicMaterial as BasicMaterial,
@@ -43,6 +43,7 @@ import { preloadSplPack, splFileFor, splPackReader, SPL_WAZA } from './splPack'
 import { splMetre, type Vec3 } from './splPlace'
 import type { SplCue } from './splDraw'
 import { BdspSequence } from './fx/BdspSequence'
+import { warmFxEffects } from './fx/BdspEffect'
 import { moveSeqPlan, preloadMoveSeqs } from './fx/moveSeq'
 import { planFrames, type SeqPlan } from '../../engine/battle/fx/sequence'
 
@@ -547,14 +548,24 @@ export function MoveVfx({
   // ⚠️ **명부를 구독한다.** 무대가 서는 순간에는 명부가 아직 빌 수 있다 — 그때 한 번만 받으면
   // 아무것도 안 받고 판 내내 DS로 간다(실측: 몸통박치기가 DS 돌진으로 나갔다)
   const roster = useBattleStore((s) => s.roster)
+  const scene = useThree((s) => s.scene)
   useEffect(() => {
     let alive = true
     const moves = new Set<number>()
     for (const r of Object.values(roster)) for (const m of r.moves ?? []) moves.add(m)
     if (moves.size === 0) return undefined
-    void preloadMoveSeqs(moves).then(() => { if (alive) setSeqReady((n) => n + 1) })
+    void preloadMoveSeqs(moves).then(() => {
+      if (!alive) return
+      setSeqReady((n) => n + 1)
+      // 처음 쓰는 기술도 안 멎게 판이 열리는 동안 파이프라인을 굽는다 (`warmFxEffects`)
+      const prefabs: string[] = []
+      for (const m of moves) {
+        for (const mine of [true, false]) for (const p of moveSeqPlan(m, mine)?.particles ?? []) prefabs.push(p.prefab)
+      }
+      void warmFxEffects(prefabs, scene).catch((e: unknown) => { console.warn('[fx] 미리 굽기 실패', e) })
+    })
     return () => { alive = false }
-  }, [roster])
+  }, [roster, scene])
   useEffect(() => {
     if (anims === null) return undefined
     setMoveFrames((move, mine, doubles) => {

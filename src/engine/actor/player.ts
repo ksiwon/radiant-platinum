@@ -107,6 +107,11 @@ const FACING_STEP = [
   { x: 0, z: -1 },
   { x: -1, z: 0 },
 ] as const
+/** 미는 쪽이 지금 속도와 반대인가 — 뒤로 도는 중이다. 얼음처럼 몸이 실려 가는 동안은 밀어도 안 돈다 */
+export function reversing(push: Vector3, velocity: Vector3): boolean {
+  return !isSliding() && push.lengthSq() > 0.01 && push.dot(velocity) < 0
+}
+
 const quarterOf = (facing: number): number => ((Math.round(facing / (Math.PI / 2)) % 4) + 4) % 4
 
 /**
@@ -951,8 +956,13 @@ export const playerSystem = {
       lookFacing = p.facing
     } else if (p.velocity.lengthSq() > 0.01) {
       // yaw는 **판 위의 로컬 좌표**로 둔다 — 세계 속도를 판의 기저로 되돌리면
-      // 벽에서도 천장에서도 같은 식이 된다 (`surfaceHeading`)
-      p.facing = surfaceHeading(frame, p.velocity.x, p.velocity.y, p.velocity.z, p.facing)
+      // 벽에서도 천장에서도 같은 식이 된다 (`surfaceHeading`).
+      //
+      // ⚠️ **뒤로 돌 때는 밀고 있는 쪽을 본다** (`reversing`). 속도는 가감속(`lerp`)으로 줄었다가 반대로 붙는데,
+      // 속도만 따르면 얼굴이 0을 지나는 순간에야 뒤집히고 몸이 다 돌기 전에 새 방향으로 붙은 속도를 타고
+      // 뒤로 미끄러졌다. 미는 쪽을 보면 줄어드는 동안(약 0.06초) 몸이 먼저 돈다 — 사람이 멈춰 서며 도는 박자다
+      const v = reversing(desired, p.velocity) ? desired : p.velocity
+      p.facing = surfaceHeading(frame, v.x, v.y, v.z, p.facing)
     } else if (desired.lengthSq() > 0.01 && !isSliding()) {
       /**
        * **제자리 돌기** (`PlayerAvatar_UpdateMoveState`의 `AVATAR_MOVE_STATE_TURNING`).

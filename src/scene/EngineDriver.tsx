@@ -53,6 +53,19 @@ const WORLD_UP = new Vector3(0, 1, 0)
 const bodyForward = new Vector3()
 /** 흔들린 바라볼 점 — 프레임마다 새로 안 만든다 */
 const quakeTarget = new Vector3()
+/**
+ * 주인공 몸이 도는 빠르기(rad/s) — 180°를 0.15초에 돈다. 우리 값이다: 원작은 한 칸 걸음 하나(`WALK_ON_SPOT_FASTER` 2프레임)에
+ * 장을 바꿀 뿐이라 각속도가 없다. 사람이 걷다 뒤로 도는 데 한 발(조깅 걸음 0.36초의 절반)을 넘기지 않게 잡았다 —
+ * 엔진의 감속이 0을 지나는 데 0.06초라(`actor/player`의 `lerp` 12) 몸이 70°쯤 돈 뒤에 새 방향으로 나간다
+ */
+const PLAYER_TURN_RATE = Math.PI / 0.15
+
+/** 두 yaw의 차 (−π, π] */
+function angleBetween(a: number, b: number): number {
+  let d = a - b
+  d -= Math.round(d / (Math.PI * 2)) * Math.PI * 2
+  return d
+}
 
 export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
   const { gl, scene, camera } = useThree()
@@ -254,7 +267,11 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       // (`distortionBridge.groundLift`). 다른 곳은 0이다
       sceneRefs.player.position.y += distortionBridge.groundLift?.() ?? 0
       const frame = distortionBridge.frame?.() ?? null
-      const heading = surfaceHeading(frame, p.velocity.x, p.velocity.y, p.velocity.z, p.facing)
+      const along = surfaceHeading(frame, p.velocity.x, p.velocity.y, p.velocity.z, p.facing)
+      // 뒤로 도는 중이면 엔진이 미는 쪽으로 돌려 둔 얼굴을 따른다 (`actor/player`의 `reversing`). 속도를 따르면
+      // 줄어드는 동안 옛 방향을 보다가 반대로 붙는 순간에야 돌기 시작해 뒷걸음으로 미끄러진다
+      const pushing = worldState.input.move.lengthSq() > 0.0001
+      const heading = pushing && Math.abs(angleBetween(along, p.facing)) > Math.PI / 2 ? p.facing : along
       surfaceQuaternion(frame, heading, playerRotation)
       // 폭포를 타는 동안은 **물살에 눕는다** (`RotateMapObject`) — 몸이 앞뒤 축
       // 둘레로 돌고, 다 눕고 나면 물살에 좌우로 흔들린다(`InitBobbing`).
@@ -265,7 +282,10 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
         playerRotation.multiply(cascadeRoll)
         sceneRefs.player.position.x += pose.bob
       }
-      sceneRefs.player.quaternion.slerp(playerRotation, Math.min(1, delta * 12))
+      // ⚠️ **일정한 빠르기로 돈다** (`PLAYER_TURN_RATE`). 예전의 `slerp(…, delta · 12)`는 지수로 다가가서 처음은 빠르고
+      // 끝이 길게 늘어졌다 — 90%까지 0.19초, 나머지가 꼬리로 남아 몸이 새 방향으로 「흘러」 들어갔다
+      const left = sceneRefs.player.quaternion.angleTo(playerRotation)
+      sceneRefs.player.quaternion.slerp(playerRotation, left < 1e-4 ? 1 : Math.min(1, (PLAYER_TURN_RATE * delta) / left))
       // 1인칭에서는 자기 몸이 화면을 가린다. 눈이 머리 안쪽에 있어서
       // 안 끄면 얼굴 텍스처가 통째로 보인다.
       //

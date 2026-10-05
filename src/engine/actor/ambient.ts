@@ -211,10 +211,23 @@ function someoneAt(self: NpcActor, x: number, z: number): boolean {
  */
 const WALK_SLOW_NORTH = 8
 
-/** 한 칸 걷기 시작한다. 프레임 수는 이동 동작 표가 정한다 (`WALK_SLOW_NORTH`) */
-function startWalk(actor: NpcActor, state: AmbientState, dir: number): void {
+/** `MOVEMENT_ACTION_WALK_ON_SPOT_NORMAL_NORTH`(8프레임) · `_SLOW_NORTH`(16프레임) */
+const ON_SPOT_NORMAL_NORTH = 32
+const ON_SPOT_SLOW_NORTH = 28
+
+/**
+ * 한 칸 걷기 시작한다. 프레임 수는 이동 동작 표가 정한다 (`WALK_SLOW_NORTH`).
+ *
+ * ⚠️ **방향을 바꿨으면 먼저 제자리에서 돌아선다.** 원작은 2D 장이라 방향이 한 프레임에 바뀌지만, 몸이 있는
+ * 화면에서는 몸이 `TURN_RATE`(90°에 8프레임)로 감긴다 — 바로 걸으면 뒤로 도는 첫 칸 내내 몸이 반쯤 뒤를 본
+ * 채 미끄러진다(뒷걸음질). 그래서 원작 동작표의 제자리걸음을 그 각만큼 앞에 붙인다: 90°는 8프레임,
+ * 180°는 16프레임이라 몸이 다 돈 다음에 첫 발이 나간다
+ */
+function startWalk(actor: NpcActor, state: AmbientState, dir: number, from: number): void {
+  const reverse = DIR_STEP[from]!.x === -DIR_STEP[dir]!.x && DIR_STEP[from]!.z === -DIR_STEP[dir]!.z
+  const turn = from === dir ? [] : [{ action: (reverse ? ON_SPOT_SLOW_NORTH : ON_SPOT_NORMAL_NORTH) + dir, count: 1 }]
   state.runner = new MovementRunner(
-    actor, [{ action: WALK_SLOW_NORTH + dir, count: 1 }], npcAmbient.movements,
+    actor, [...turn, { action: WALK_SLOW_NORTH + dir, count: 1 }], npcAmbient.movements,
   )
 }
 
@@ -399,6 +412,7 @@ function stepWander(actor: NpcActor, state: AmbientState, dirs: readonly number[
   state.wait = pick(npcAmbient.delays) ?? 16
   const dir = pick(dirs)
   if (dir === undefined) return
+  const from = actor.dir
   actor.dir = dir
   const step = DIR_STEP[dir]
   if (step === undefined) return
@@ -407,7 +421,7 @@ function stepWander(actor: NpcActor, state: AmbientState, dirs: readonly number[
   // 막히면 **돌아보기만 한다**. 원작도 걸음을 접고 처음 상태로 돌아간다 —
   // 그래서 벽에 붙은 사람은 벽 쪽으로 고개만 돌린다
   if (terrainBlocks(x, z) || someoneAt(actor, x, z)) return
-  startWalk(actor, state, dir)
+  startWalk(actor, state, dir, from)
 }
 
 /**
@@ -467,6 +481,7 @@ function walkOrTurn(
     dir = onBlocked(dir)
     step = DIR_STEP[dir]!
   }
+  const from = actor.dir
   actor.dir = dir
   const x = actor.x + step.x
   const z = actor.z + step.z
@@ -474,7 +489,7 @@ function walkOrTurn(
     state.wait = WALK_ON_SPOT_FRAMES
     return
   }
-  startWalk(actor, state, dir)
+  startWalk(actor, state, dir, from)
 }
 
 /** 게임 루프에 다는 자리. 스크립트 다음 · 주인공 이동 앞이다 */

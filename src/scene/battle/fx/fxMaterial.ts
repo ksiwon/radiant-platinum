@@ -34,6 +34,7 @@ import {
   positionGeometry, sin, sRGBTransferEOTF, texture, uniform, uv, varying, vec2, vec3, vec4,
 } from 'three/tsl'
 import type { FxMaterialSpec } from '../../../engine/battle/fx/material'
+import { ALWAYS_ASYNC } from '../../asyncPipelines'
 
 /** 선형 작업 흐름인가 (머리말) */
 const LINEAR = true
@@ -220,6 +221,12 @@ export function buildFxMaterial(spec: FxMaterialSpec, maps: readonly Texture[], 
   material.depthTest = spec.ztest !== 0 && spec.ztest !== 8
   material.depthFunc = depthFunc(spec.ztest)
   material.side = billboard || spec.cull === 0 ? DoubleSide : spec.cull === 2 ? FrontSide : BackSide
+  // ⚠️ **양면도 한 번에 그린다.** three는 반투명 양면 재질을 뒷면 · 앞면 두 번으로 나눠 그려서 재질 하나에 파이프라인이
+  // 둘 선다 — 미리 굽기(`warmFxEffects`)는 한 벌만 구우니 기술마다 나머지가 그 자리에서 동기로 섰다. 유니티 `Cull Off`도
+  // 한 번에 그린다(입자는 깊이를 안 쓰므로 면 차례가 그림을 안 바꾼다)
+  material.forceSinglePass = true
+  // 처음 그리는 프레임에 동기로 굽지 않는다 (`asyncPipelines`의 `ALWAYS_ASYNC`)
+  material.userData[ALWAYS_ASYNC] = true
   material.fog = false
   material.toneMapped = false
   return material

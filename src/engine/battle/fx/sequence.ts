@@ -130,20 +130,33 @@ export const THROW_FRAMES = 12
 const THROW_ARC = 1.3
 
 /**
- * 내보낸 몸이 `PokemonIntroMotion height`에서 땅에 닿기까지(프레임). 롬에 값이 없다 — **그 몸을 따라 내려가는 카메라에
- * 맞춘다**: `ee400`은 f41에 `PokemonIntroMotion`을 걸고 f45~85에 카메라를 1m 내린다(`CameraMovePosition relative`),
- * `ee406`은 f51 · f55~95다. 둘 다 40프레임이고, 그 뒤(f88 · f98)에 착지한 몸 머리 앞으로 다가간다. 더 빨리 떨어지면
- * 몸이 카메라보다 먼저 화면 아래로 빠진다(13프레임으로 두었을 때 실측). 내려가는 모양도 그 카메라와 같은 곡선이다
+ * 내보낸 몸이 `PokemonIntroMotion height`에서 땅에 닿기까지(프레임). 롬에 값이 없다(그 명령이 하는 일은 코드 쪽이다) —
+ * **BDSP 공개 영상에서 잰다**(`.audit/reels/ref-bdsp-reveal.mp4` 49.8초~ · 30fps · 포챠코 내보내기): 볼 빛이 터진 뒤 몸이 서서
+ * 땅에 닿기까지 14프레임이다. 그 사이 몸은 나타난 자리에서 조금 솟았다가(f14~20) 떨어진다(f24~28) — 내려앉는 것이 아니라
+ * 던져진 것처럼 떨어진다(`introLift`).
+ *
+ * ⚠️ 예전 값 40은 몸을 따라 내려가는 카메라(`ee400` f45~85 · 1m)에 맞춘 것이었다. 몸이 1.33초 동안 감속하며 둥둥 떠내려와서
+ * 「나와서 떠내려온다」로 보였다. 카메라는 시퀀스 그대로 그 뒤에도 내려간다
  */
-export const INTRO_FALL = 40
+export const INTRO_FALL = 14
 
 /**
- * 내보낸 몸이 나타나는 모양 — **`ee106`(볼에서 튀어나옴)의 값을 빌린다.** `PokemonIntroMotion`이 무엇을 하는지는 코드
- * 쪽이라 롬에 없다. 같은 「볼에서 나온다」를 시퀀스로 적어 둔 것이 `ee106`이다: 크기 0.001 → 1을 11프레임(쉬움 8) ·
- * 몸 빛 10 → 1을 22프레임
+ * 내보낸 몸이 나타나는 모양 — 같은 영상에서 잰다. 볼 빛이 커지는 동안(f8~13) 몸은 없고, 나타나는 프레임(f14)에 **이미 제
+ * 크기**다(커지는 것은 그 사이 두세 프레임에 빛 속에서 끝난다). 몸 빛은 f16에 거의 빠진다 — 세 프레임.
+ * 몸 빛의 세기(10 → 1)는 `ee106`(볼에서 튀어나옴)의 값이다
  */
-const INTRO_GROW = 11
-const INTRO_GLOW = 22
+const INTRO_GROW = 3
+const INTRO_GLOW = 4
+
+/**
+ * 떨어지는 높이 배율 (0~1 → 시작 높이에 곱한다) — 쏘아 올린 것처럼 처음엔 솟고 끝에 빨라진다. 꼭대기가 시작 높이의 1.25배
+ * (영상에서 몸 키의 반쯤 솟는다), 끝(1)에서 땅이다: `1 + v·k − (v + 1)·k²`, `v = (1 + √5)/2`이면 꼭대기가 `1 + v²/4(v+1) = 1.25`
+ */
+export function introLift(k: number): number {
+  const v = (1 + Math.sqrt(5)) / 2
+  const x = Math.min(1, Math.max(0, k))
+  return Math.max(0, 1 + v * x - (v + 1) * x * x)
+}
 
 /** 입자 칸 하나 */
 interface SeqParticle {
@@ -1277,8 +1290,7 @@ export function bodyAt(plan: SeqPlan, role: Role, f: number, ctx: SeqContext): B
       }
       const h = num(intro.values.height) / 100
       if (h > 0 && age < INTRO_FALL) {
-        const k = ease(15, age / INTRO_FALL)
-        out.offset = [0, h * (1 - k), 0]
+        out.offset = [0, h * introLift(age / INTRO_FALL), 0]
         out.motion = { name: 'landB', at: intro.start }
       } else if (h > 0) {
         out.offset = [0, 0, 0]

@@ -25,6 +25,7 @@ import {
   SkinnedMesh, SRGBColorSpace, type Group, type Material, type Object3D,
 } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
+import { ALWAYS_ASYNC } from '../asyncPipelines'
 import { float, screenCoordinate, screenSize, step, texture, uniform, uv, vec2, vec3 } from 'three/tsl'
 import { loadParticles } from '../../data/gameData'
 import { music } from '../../engine/audio/music'
@@ -102,6 +103,8 @@ function overlayMaterial(
   alpha: FloatUniform, offset: FloatUniform,
 ): MeshBasicNodeMaterial {
   const mat = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false })
+  // 처음 그리는 프레임에 몸 조각 일곱 개를 동기로 굽지 않는다 (`asyncPipelines`의 `ALWAYS_ASYNC`)
+  mat.userData[ALWAYS_ASYNC] = true
   mat.depthFunc = LessEqualDepth
   // 같은 정점을 같은 뼈로 두 번 그린다 — 깊이가 같아도 겹이 이기게 한 칸 당긴다
   mat.polygonOffset = true
@@ -123,6 +126,39 @@ function overlayMaterial(
     mat.opacityNode = alpha
   }
   return mat
+}
+
+/** 다 쓴 겹 재질 — 유니폼까지 제 것을 든다 */
+interface Overlay { mat: MeshBasicNodeMaterial; alpha: FloatUniform; offset: FloatUniform }
+
+/**
+ * 겹 재질을 **버리지 않고** 몸 재질 · 색 · 무늬별 통에 넣어 다음 연출이 꺼내 쓴다.
+ *
+ * ⚠️ **버리면 파이프라인도 같이 버려진다.** three(WebGPU)는 파이프라인을 쓰는 렌더 물체 수로 세고, 재질의 `dispose`가
+ * 그 물체를 지운다. 능력치가 바뀔 때마다 몸 조각 일곱 개의 파이프라인을 GPU 프로세스가 다시 지어서 그 프레임이
+ * 0.5초 넘게 멎었다(`.audit/reels/lag-after3.log` · `createRenderPipeline` 감시 실측 2026-10-05). 몸 재질이 그대로인 한
+ * 같은 키가 다시 오므로 통은 판에 나온 마리 수만큼만 큰다
+ */
+const overlayPool = new Map<string, Overlay[]>()
+
+function overlayKey(source: Material, colour: Color | null, pattern: DataTexture | null): string {
+  return `${source.uuid}|${colour?.getHexString() ?? '-'}|${pattern?.uuid ?? '-'}`
+}
+
+function takeOverlay(source: Material, colour: Color | null, pattern: DataTexture | null): Overlay {
+  const got = overlayPool.get(overlayKey(source, colour, pattern))?.pop()
+  if (got) return got
+  const alpha = floatUniform()
+  const offset = floatUniform()
+  return { mat: overlayMaterial(source, colour, pattern, alpha, offset), alpha, offset }
+}
+
+function giveBackOverlay(source: Material, colour: Color | null, pattern: DataTexture | null, o: Overlay): void {
+  o.alpha.value = 0
+  const key = overlayKey(source, colour, pattern)
+  const pool = overlayPool.get(key) ?? []
+  pool.push(o)
+  overlayPool.set(key, pool)
 }
 
 /** 그 메시와 같은 뼈 · 같은 정점으로 한 겹 */
@@ -187,8 +223,10 @@ function StatusShot({ shot, stage, done }: {
   const camera = useThree((s) => s.camera)
   const total = useMemo(() => statusAnimFrames(shot.key), [shot.key])
   const fade = useMemo(() => (anim.fade === null ? null : spriteFadeTrack(anim.fade).alpha), [anim])
-  const alpha = useMemo(floatUniform, [])
-  const offset = useMemo(floatUniform, [])
+  // 이 연출이 지금 쥔 겹들 — 값은 여기서 한 번 셈해 그 겹들의 유니폼에 나눠 넣는다
+  const alpha = useMemo(() => ({ value: 0 }), [])
+  const offset = useMemo(() => ({ value: 0 }), [])
+  const taken = useRef<Overlay[]>([])
   const sounds = useMemo(() => statusSoundFrames(anim.sound), [anim])
   const played = useRef(0)
   const ended = useRef(false)
@@ -202,23 +240,26 @@ function StatusShot({ shot, stage, done }: {
       ...(bgr555(anim.fade.color).map((v) => v / 255) as [number, number, number]), SRGBColorSpace,
     )
     const pattern = anim.statChange === null ? null : shot.pattern
-    const made: { mesh: Mesh; mats: MeshBasicNodeMaterial[] }[] = []
+    const made: { mesh: Mesh; sources: Material[]; overlays: Overlay[] }[] = []
     for (const src of bodyMeshes(parent, shot.floor, self)) {
       if (src.parent === null) continue
       const sources = Array.isArray(src.material) ? src.material : [src.material]
-      const mats = sources.map((m) => overlayMaterial(m, colour, pattern, alpha, offset))
+      const overlays = sources.map((m) => takeOverlay(m, colour, pattern))
+      const mats = overlays.map((o) => o.mat)
       const mesh = overlayMesh(src, Array.isArray(src.material) ? mats : mats[0]!)
       src.parent.add(mesh)
-      made.push({ mesh, mats })
+      made.push({ mesh, sources, overlays })
     }
+    taken.current = made.flatMap((m) => m.overlays)
     return () => {
-      for (const { mesh, mats } of made) {
+      taken.current = []
+      for (const { mesh, sources, overlays } of made) {
         mesh.removeFromParent()
-        // 정점·뼈는 몸의 것이라 안 버린다 — 재질만 우리 것이다
-        for (const m of mats) m.dispose()
+        // 정점·뼈는 몸의 것이라 안 버린다 — 재질은 통에 돌려준다 (`overlayPool`)
+        overlays.forEach((o, i) => { giveBackOverlay(sources[i]!, colour, pattern, o) })
       }
     }
-  }, [anim, shot, stage, alpha, offset])
+  }, [anim, shot, stage])
 
   // 입자. 그 자리 몸통에 붙인다 (`EMITTER_CB_SET_POS_TO_ATTACKER` — 원작 `WORLD_POS_TYPE_NORMAL`이
   // 스프라이트 한가운데다). 혼란만 오프셋만큼 올린다
@@ -262,6 +303,7 @@ function StatusShot({ shot, stage, done }: {
       alpha.value = 0
       done(shot.seq)
     }
+    for (const o of taken.current) { o.alpha.value = alpha.value; o.offset.value = offset.value }
   })
 
   if (particles === null) return null

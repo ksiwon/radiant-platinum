@@ -15,7 +15,7 @@
 // 가져가면 판때기도 안 서고 모델도 아직 없어서 그 자리가 **빈다**
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Color, Group, Mesh, SRGBColorSpace, type Material } from 'three'
+import { Box3, Color, Group, Mesh, SRGBColorSpace, type Material } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import type { MapGrid } from '../engine/map/grid'
 import { npcActors, type NpcActor } from '../engine/actor/npcs'
@@ -39,8 +39,23 @@ const MAX = 24
  * (먼 포켓몬이 「판으로 튄다」 · docs/orders/BATTLE_FX_20261004.md §8)
  */
 const RANGE = 48
-/** 오버월드에 세울 때의 키 상한(m). 이보다 크면 줄여서 길을 안 막는다 */
+/**
+ * 오버월드에 세울 때의 키 상한(m). 이보다 크면 줄여서 길을 안 막는다.
+ *
+ * ⚠️ **모델의 날 키(`entry.height`)로 잰다.** `posedHeight`는 배틀 배율(`BattleScale`)을 곱한 값인데
+ * glb 정점에는 그 배율이 안 구워져 있다 — 그 값으로 나누면 배율만큼 덜 줄어서, 오리진폼이 2.6m가 아니라
+ * 5.2m로 서서 바로 앞 칸의 주인공을 몸 안에 삼켰다 (날 키 6.40m · 배율 0.5, glb 접근자 실측)
+ */
 const TALL_CAP = 2.6
+/**
+ * 마리별 키 상한(m). 원작 그림이 다른 마리보다 훨씬 큰 것만.
+ *
+ * 기라티나 오리진폼은 원작 그림이 128×64텍셀 = **8×4칸**이다(`npcSprites.json`, `TEXELS_PER_TILE`).
+ * 3.5m는 그 압도감을 남기려고 사용자가 고른 우리 값이다(2026-10-05)
+ */
+const TALL_CAP_OF: Readonly<Record<string, number>> = { '487/1': 3.5 }
+/** 몸 앞끝이 칸 가운데서 이만큼(m)을 넘으면 그만큼 뒤로 물린다 — 앞 칸은 말을 거는 자리다 */
+const FRONT_REACH = 0.5
 
 interface Slot {
   outer: Group
@@ -155,7 +170,12 @@ export function NpcMonModels({ grid, layer, taken, onStanding }: Props) {
         void loadMonModel(ref[0], ref[1]).then((loaded) => {
           if (mine.disposed || loaded === null) return
           const body = makeBody(loaded)
-          if (body.tall > TALL_CAP) body.root.scale.setScalar(TALL_CAP / body.tall)
+          const cap = TALL_CAP_OF[kind] ?? TALL_CAP
+          if (loaded.entry.height > cap) body.root.scale.setScalar(cap / loaded.entry.height)
+          // 모델은 +z를 본다. 줄인 뒤의 앞끝이 앞 칸으로 넘어가면 몸을 뒤로 민다
+          body.root.updateMatrixWorld(true)
+          const front = new Box3().setFromObject(body.root).max.z
+          if (front > FRONT_REACH) body.root.position.z -= front - FRONT_REACH
           mine.body = body
           // 걸어도 서기 동작이다 — 구운 모델에 걷는 클립이 없다. 557벌 전부가
           // 배틀 클립(ba01·02·10·20·21·30)뿐이라 걸음을 갈아 끼울 것이 없다
@@ -180,7 +200,9 @@ export function NpcMonModels({ grid, layer, taken, onStanding }: Props) {
         y + (actor.offsetY ?? 0),
         actor.z + 0.5 + (actor.offsetZ ?? 0),
       )
-      const step = DIR_STEP[actor.dir & 3]!
+      // 방향 그림이 없는 마리(한 장짜리 앞모습)는 원작에서 늘 카메라 쪽, 곧 남쪽을 본다.
+      // 배치표 방향(대개 북0)을 따르면 기라티나처럼 주인공에게 등을 보인다
+      const step = DIR_STEP[sprite.directional ? actor.dir & 3 : 1]!
       const want = Math.atan2(step.x, step.z)
       // ⚠️ **몸을 즉시 돌려세우지 않는다.** 방향 번호는 네 값뿐이라 그대로 넣으면
       // 90°가 한 프레임에 튄다. 사람 모델과 같은 빠르기로 최단 호를 감는다 (`NpcModels`)

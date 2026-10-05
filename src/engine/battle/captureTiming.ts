@@ -81,8 +81,8 @@ export function captureTailFrames(shakes: number, caught: boolean): number {
  * 두 시퀀스가 같은 27이다
  */
 export const SEND_OUT_INTRO = 27
-/** 나타난 몸이 땅에 닿기까지 (`fx/sequence`의 `INTRO_FALL` — 몸을 따라 내려가는 카메라 f45~85) */
-const SEND_OUT_FALL = 40
+/** 나타난 몸이 땅에 닿기까지 (`fx/sequence`의 `INTRO_FALL` — BDSP 공개 영상에서 잰 14프레임) */
+const SEND_OUT_FALL = 14
 /**
  * 착지 동작(`ba01_landC`)을 기다리는 프레임 — **우리 값.** 클립 길이가 종마다 다르고(피카츄 0.667초) 박자는 종을
  * 모르므로 그 한 값을 둔다. 떠 있는 종(착지 클립이 없다)은 그만큼 일찍 서 있을 뿐이다
