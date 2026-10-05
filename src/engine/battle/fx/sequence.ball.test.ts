@@ -141,6 +141,20 @@ describe('내보내기 · 대상 잇기 · 다른 몸 감추기', () => {
     expect(planSequence(SEND, { targets: { 3: 1 }, options: { 14: 121 } }).body[1].commands.at(-1)!.values.height).toEqual(['0'])
   })
 
+  it('cameraFlipZ — 세계축 몸 기준 카메라가 몸 뒤(내 쪽 끝)에 선다 · isRot 카메라는 그대로', () => {
+    const base = { pos: [2.7, 1.5, 5] as V3, target: [0, 0.05, 0] as V3, fov: 30, roll: 0 }
+    const cctx = { ...ctx, scale: () => 1 }
+    const mon = ctx.anchor(1, 0)!.pos
+    const plain = planSequence(SEND, { targets: { 3: 1 }, options: { 14: 120 }, camera: true })
+    const flipped = planSequence(SEND, { targets: { 3: 1 }, options: { 14: 120 }, cameraFlipZ: true })
+    // 상대 몸(역할 1 = z −2.2)을 쓰는 이 시험의 맞춤 맥락에서, 뒤집기 전은 몸의 앞(−Z 쪽)이고 뒤집으면 몸의 뒤(+Z 쪽)다
+    expect(cameraAt(plain, 26, cctx, base)!.pos[2] - mon[2]).toBeCloseTo(-5.8, 6)
+    expect(cameraAt(flipped, 26, cctx, base)!.pos[2] - mon[2]).toBeCloseTo(5.8, 6)
+    // 가로 · 높이는 그대로
+    expect(cameraAt(flipped, 26, cctx, base)!.pos[0]).toBeCloseTo(cameraAt(plain, 26, cctx, base)!.pos[0], 6)
+    expect(cameraAt(flipped, 26, cctx, base)!.pos[1]).toBeCloseTo(cameraAt(plain, 26, cctx, base)!.pos[1], 6)
+  })
+
   it('나타나기 전에는 몸이 없고, 나타나면 빛 속에 자라나며 1.6m에서 내려와 착지 동작으로 잇는다', () => {
     const plan = planSequence(SEND, { targets: { 3: 1 }, options: { 14: 120 }, shaderBase: 1 })
     const before = bodyAt(plan, 1, 30, ctx)

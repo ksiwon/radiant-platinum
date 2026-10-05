@@ -73,7 +73,9 @@ export function sendOutPlan(seq: SeqData, o: {
     attackerMine: o.side === 'p1',
     // 내 쪽 내보내기는 카메라가 상대 쪽에서 내 몸을 보므로 그 사이에 선 상대를 감춘다(`ee400` `PokemonVisible trg=4` f26~110) —
     // 감추지 않으면 상대 몸이 화면을 가린다(실측). 상대 쪽(`ee406`)은 감추는 명령이 없다. 카메라가 없는 더블은 안 감춘다
-    targets: o.side === 'p1' ? (o.doubles ? { 3: 1 } : { 3: 1, 4: 0 }) : { 4: 1 },
+    // 카메라를 내 몸 뒤로 뒤집으면(`cameraFlipZ`) 상대 뒤에 서지 않으므로 상대를 안 감춘다(감추는 명령 대상 4를 버린다)
+    targets: o.side === 'p1' ? { 3: 1 } : { 4: 1 },
+    cameraFlipZ: o.side === 'p1',
     options: { 14: 120 + Math.max(0, Math.min(2, o.moveType)), 12: o.doubles ? 101 : 100 },
     camera: !o.doubles,
   }

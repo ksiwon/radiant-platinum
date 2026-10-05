@@ -227,6 +227,12 @@ export interface PlanOptions {
    * 카메라가 서는 동안 맞은편 둘을 감추는 `PokemonVisible`(`ee404` f51~116 trg 4 · 6)을 여기로 받는다
    */
   away?: readonly number[]
+  /**
+   * 몸 기준 카메라(`CameraMoveRelativePoke`)의 **세계축 오프셋**(`isRot` 아님)에서 깊이(Z)를 뒤집는다. 내 쪽 내보내기(`ee400`)의 샷은
+   * 내 몸에서 `z=−580`(상대 쪽 끝)에 서서 내 몸의 앞을 본다 — 상대 내보내기(`ee406`, `z=+580`)와 거울이라 두 샷이 같은 구도(몸 앞 클로즈업)로
+   * 읽혀 어느 쪽 등판인지 안 가려진다. 뒤집으면 카메라가 내 몸 **뒤**(우리 기본 카메라 쪽)에 서서 내 몸의 등을 보고, 상대는 멀리 서 있다 (우리 값)
+   */
+  cameraFlipZ?: boolean
   /** 둘째 볼 번호 — `DprParticleCreateSeal index=1`의 빛과 그 볼 모델(`ModelTrack.ball`). 더블 내보내기에서 두 마리의 볼이 다를 때 */
   ballSecond?: number
   /** 이 프레임부터 튼다 — 앞은 잘라 낸다(배틀에 서지 않는 트레이너의 몸짓). 그 앞에서 정한 상태는 0프레임에 선다 */
@@ -482,7 +488,7 @@ export function planSequence(seq: SeqData, opts: PlanOptions = {}): SeqPlan {
         if (c.start <= trainerUntil) continue
         if (trainerCam && num(c.values.relative) === 1) continue
         if (trainerCam && n === 'DprCameraRotate') continue
-        plan.camera.push(c)
+        plan.camera.push(opts.cameraFlipZ ? flipCameraZ(c) : c)
         continue
       }
       if (n === 'EffSpBackColSet' || n === 'EffSpBackColFlg') { plan.back.push(c); continue }
@@ -527,6 +533,13 @@ export function planSequence(seq: SeqData, opts: PlanOptions = {}): SeqPlan {
   for (const p of plan.particles) p.commands = [...p.commands].sort((x, y) => x.start - y.start)
   if (plan.scaleParticles) for (const p of plan.particles) p.sized = true
   return plan
+}
+
+/** 세계축 몸 기준 카메라의 깊이를 뒤집는다 (`PlanOptions.cameraFlipZ`) */
+function flipCameraZ(c: SeqCommand): SeqCommand {
+  if (c.name !== 'CameraMoveRelativePoke' || num(c.values.isRot) === 1) return c
+  const flip = (v: readonly string[] | undefined): string[] | undefined => v && v.length === 3 ? [v[0]!, v[1]!, String(-num(v, 2))] : undefined
+  return { ...c, values: { ...c.values, pos: flip(c.values.pos) ?? c.values.pos ?? [], trg: flip(c.values.trg) ?? c.values.trg ?? [] } }
 }
 
 const CAMERA_CMDS = new Set([

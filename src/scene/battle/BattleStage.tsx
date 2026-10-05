@@ -49,7 +49,7 @@ import { spriteKey } from '../../engine/pokemon/form'
 import { MoveVfx } from './MoveVfx'
 import type { SeqCamera } from '../../engine/battle/fx/sequence'
 import { clampShot, type Box } from '../../engine/battle/fx/cameraClamp'
-import { NO_RETURN, stepCamera, type CameraReturn } from './battleCamera'
+import { bigSwing, NO_RETURN, stepCamera, swingAround, type CameraReturn } from './battleCamera'
 import { BattleAtmosphere } from './BattleAtmosphere'
 import { MOVE_FRAMES, moveFramesOf } from '../../engine/battle/vfx'
 import { BATTLE_FOV, CAMERA, FIGHT_LOOK_Y, PAIR_DIR, pairOffset, SLOT } from '../../engine/battle/shots'
@@ -395,6 +395,10 @@ function Slot({
   const flinch = useRef(0)
   // ⚠️ **쪽이 아니라 자리로 본다.** 더블에서 쪽으로 보면 한 마리가 때릴 때
   // 옆의 짝도 같이 앞으로 나간다
+  // ⚠️ **야생은 「등장」하지 않는다** — 배틀이 열릴 때 이미 필드에 서 있다. BDSP는 야생 쪽에 내보내기 시퀀스가 없다(`intro` 표 열여섯 중
+  // 상대 쪽 `PokemonIntroMotion trg=4`는 트레이너가 던지는 `ee406` · `ee410` · `ee411` · `ee401` · `ee402` · `ee407` · `ee409`뿐이다).
+  // 땅에서 솟는 페이드(`shown` 0→1 · `sink`)를 건너뛰고 처음부터 서 있게 한다
+  const standing = useBattleStore((s) => !mine && (s.kind === 'wild' || s.kind === 'safari'))
   const cast = useBattleStore((s) => s.view?.lastMove ?? null)
   const struck = useBattleStore((s) => s.view?.lastHit ?? null)
   useEffect(() => {
@@ -503,6 +507,7 @@ function Slot({
     shown.current +=
       Math.sign(want - shown.current) * Math.min(delta / FADE, Math.abs(want - shown.current))
     // 시퀀스가 등판을 쥐었다(`PokemonIntroMotion`) — 볼 빛 속에 자라나며 떨어지는 것이 시퀀스 몫이라 제 페이드를 안 건다
+    if (standing && want === 1) shown.current = 1
     const seqNow = seqStage.body[slot] ?? null
     if (seqNow?.intro && seqNow.visible && want === 1) shown.current = 1
     const t = shown.current
@@ -802,7 +807,9 @@ export function BattleStage() {
   // ⚠️ **더블에서는 한 걸음 물러난다.** 무대에 넷이 서므로 싱글 화각 그대로면
   // 바깥 둘이 화면 밖으로 나간다. 짝을 벌린 만큼만 물러난다
   const doubles = useBattleStore((s) => s.doubles)
-  useBattleCamera(cameraFit(arena, Math.max(...Object.values(tall))) * (doubles ? 1.35 : 1), arena.radius)
+  // ⚠️ **큰 몸이 내 쪽에 서면 카메라가 옆으로도 돌아간다** (`battleCamera.bigSwing`) — 뒤의 상대가 몸에 안 가리게. 더블은 짝을 벌린 배치가 따로 있다
+  const ownFit = doubles ? 1 : cameraFit(arena, Math.max(tall.p1a, tall.p1b))
+  useBattleCamera(cameraFit(arena, Math.max(...Object.values(tall))) * (doubles ? 1.35 : 1), arena.radius, ownFit)
 
   /** 그 개체의 폼. 명단이 임자다 — 뷰는 폼을 안 들고 있다 */
   const formOf = (mon: ViewMon | null): number =>
@@ -941,9 +948,11 @@ export function BattleStage() {
 const QUAKE_PERIOD_MS = 11
 const SEQ_QUAKE_PERIOD_MS = 23
 
-function useBattleCamera(fit: number, arenaRadius: number): void {
+function useBattleCamera(fit: number, arenaRadius: number, ownFit: number): void {
   /** 지금 카메라가 선 거리 배율. 첫 프레임에는 목표 그대로 선다 */
   const shownFit = useRef<number | null>(null)
+  /** 지금 서 있는 내 몸 배율 (`ownFit`) — 옆으로 도는 각이 이것을 따른다. 같은 감쇠 */
+  const shownOwn = useRef<number | null>(null)
   /** 시퀀스 카메라의 마지막 자리 · 놓은 시각 — 돌아오는 길을 잇는다 */
   const back = useRef<CameraReturn>(NO_RETURN)
   const time = useRef(new ClockReader())
@@ -956,6 +965,9 @@ function useBattleCamera(fit: number, arenaRadius: number): void {
     const was = shownFit.current
     const at = was === null || fit >= was ? fit : fit + (was - fit) * Math.exp(-dt / CAMERA_EASE)
     shownFit.current = at
+    const wasOwn = shownOwn.current
+    const atOwn = wasOwn === null || ownFit >= wasOwn ? ownFit : ownFit + (wasOwn - ownFit) * Math.exp(-dt / CAMERA_EASE)
+    shownOwn.current = atOwn
     // ⚠️ 대본이 배경을 흔들라고 적은 기술만 흔든다 (`Func_ShakeBg`, 30개).
     // 지진·땅가르기가 그것이고, 번개는 안 흔든다 — 위력이 아니라 대본이
     // 정한다. 연출이 끝나면 `t`가 1이라 0이 곱해진다
@@ -970,7 +982,9 @@ function useBattleCamera(fit: number, arenaRadius: number): void {
     const [lx, , lz] = CAMERA.look
     const ly = aim
     const base: SeqCamera = {
-      pos: [lx + (CAMERA.position[0] - lx) * at, ly + (CAMERA.position[1] - ly) * at, lz + (CAMERA.position[2] - lz) * at],
+      pos: swingAround(
+        [lx + (CAMERA.position[0] - lx) * at, ly + (CAMERA.position[1] - ly) * at, lz + (CAMERA.position[2] - lz) * at],
+        [lx, ly, lz], bigSwing(atOwn)),
       target: [lx, ly, lz],
       fov: BATTLE_FOV,
       roll: 0,

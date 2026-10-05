@@ -46,6 +46,20 @@ maybe('볼 연출 박자 = BDSP 시퀀스', () => {
     }
   })
 
+  it('상대 쪽 내보내기(`PokemonIntroMotion trg=4 · 6`)는 전부 트레이너가 볼을 던지는 시퀀스다 — 야생 쪽 등장 시퀀스는 없다', () => {
+    const idx = JSON.parse(readFileSync(resolve(DATA, 'fx/index.json'), 'utf8')) as { intro: Record<string, string> }
+    const foeIntro: string[] = []
+    for (const name of new Set(Object.values(idx.intro))) {
+      const data = seq(name) as SeqData & { groups: { commands: { name: string; values: Record<string, string[]> }[] }[] }
+      const cmds = data.groups.flatMap((g) => g.commands)
+      if (!cmds.some((c) => c.name === 'PokemonIntroMotion' && ['4', '6'].includes(c.values.trg?.[0] ?? ''))) continue
+      foeIntro.push(name)
+      // 볼이 트레이너 손에서 떠난다(`DprModelAttachTrainer trg=1 · 3`)
+      expect(cmds.some((c) => c.name === 'DprModelAttachTrainer' && ['1', '3'].includes(c.values.trg?.[0] ?? ''))).toBe(true)
+    }
+    expect(foeIntro.sort()).toEqual(['ee401', 'ee402', 'ee406', 'ee407', 'ee409', 'ee410', 'ee411'])
+  })
+
   it('거두기 · 기절 — 사라지는 프레임 · 카메라 끝', () => {
     expect(vanishFrame(returnPlan(seq('ee610'), { mine: true, camera: false }))).toBe(CAPTURE_SEQ_FRAMES.RECALL_VANISH)
     for (const wild of [false, true]) {

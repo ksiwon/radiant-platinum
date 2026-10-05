@@ -1,5 +1,5 @@
 // 싱글 · 더블 갈래(`GroupOption 0`)와 범위 기술의 맞는 쪽 입자 (BATTLE_FX §4 · PARITY §2.13)
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { DATA, withData } from '../../../data/romData.testkit'
@@ -71,5 +71,30 @@ maybe('실제 시퀀스 — 파도타기 · 지진 · 암석봉인', () => {
 
   it('더블 갈래는 싱글과 다른 벌이다', () => {
     for (const n of ['ew057', 'ew089', 'ew157']) expect(count(n, true)).not.toBe(count(n, false))
+  })
+})
+
+const maybeAll = withData('fx/seq/ew071.json')
+
+maybeAll('쓴 쪽 감추기(`PokemonVisible trg=0`) — 흡수 `ew071`은 몸을 안 감추고, 감추는 시퀀스는 안 돌려놓으면 끝까지 감춘 채인 여섯뿐이다', () => {
+  it('목록', () => {
+  const dir = resolve(DATA, 'fx/seq')
+  const names = readdirSync(dir).filter((f) => /^ew\d+\.json$/.test(f)).map((f) => f.slice(0, -5))
+  const endsHidden: string[] = []
+  let hiders = 0
+  for (const n of names) {
+    const s = JSON.parse(readFileSync(resolve(dir, `${n}.json`), 'utf8')) as SeqData
+    const ev = s.groups.flatMap((g) => g.commands).filter((c) => c.name === 'PokemonVisible' && c.values.trg?.[0] === '0')
+      .sort((a, b) => a.start - b.start)
+    if (ev.length === 0) continue
+    if (ev.some((c) => c.values.visible?.[0] === '0')) hiders++
+    if (ev.at(-1)!.values.visible?.[0] === '0') endsHidden.push(n)
+  }
+  // 파도타기 `ew057` · 흙탕물 `ew330` 등 여섯은 몸을 감추고 되돌리는 명령이 없다 — 우리는 `vanish`(공중날기 · 구멍파기)가 아니면 늘 보이게 둔다 (`BdspSequence`)
+  expect(endsHidden).toEqual(['ew057', 'ew330', 'ew375', 'ew399', 'ew413', 'ew467'])
+  expect(hiders).toBe(138)
+  const absorb = planSequence(JSON.parse(readFileSync(resolve(dir, 'ew071.json'), 'utf8')) as SeqData, { attackerMine: true, options: battleOptions(false) })
+  expect(absorb.body[0].commands.some((c) => c.name === 'PokemonVisible')).toBe(false)
+  expect(absorb.camera.some((c) => c.name !== 'CameraReset' && c.name !== 'CameraResetFieldAll')).toBe(false)
   })
 })
