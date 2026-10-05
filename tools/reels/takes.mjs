@@ -56,6 +56,7 @@ export const TAKES = [
     // 「나타났다!」 줄이 키를 기다린다 — 넘겨야 모부기가 나온다
     settle: 0, seconds: 8, recKeys: [{ at: 2.6, key: 'z' }, { at: 3.4, key: 'z' }, { at: 4.2, key: 'z' }],
   },
+
   {
     id: 'C3-move', what: '기술 — 모부기 흡수', cp: 'grass',
     steps: [{ do: 'hour', hour: 15 }, { do: 'wild', species: 403, level: 5, after: 100 }, { do: 'menu' }, { do: 'keys', keys: ['z', 'ArrowDown', 'ArrowDown'], gap: 500 }],

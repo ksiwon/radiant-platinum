@@ -344,6 +344,7 @@ async function recordVirtual(page, dir, take) {
   if (take.hold) await page.keyboard.down(take.hold)
   // `holdFor`초에 키를 뗀다 — 풀숲 속에서 멈춰 서는 컷(계속 걸으면 숲 벽에 박힌다)
   const release = take.holdFor === undefined ? -1 : Math.round(take.holdFor * FPS)
+  const probes = []
   for (let i = 0; i < total; i++) {
     if (i === release && take.hold) await page.keyboard.up(take.hold)
     // `act`가 'down' · 'up'이면 누르고 있다가 뗀다 — 한 장면에서 두 번 걷는 컷(1인칭으로 걷고 3인칭으로 또 걷는다)
@@ -355,9 +356,12 @@ async function recordVirtual(page, dir, take) {
     const name = `f-${String(i + 1).padStart(5, '0')}.jpg`
     writeFileSync(resolve(dir, name), Buffer.from(shot.data, 'base64'))
     frames.push({ name, t: i / FPS })
+    // `probe` — 진단용. 프레임마다 그 식의 값을 `probe.json`에 적는다(찍은 그림과 같은 프레임의 상태)
+    if (take.probe) probes.push([i, await page.evaluate(take.probe).catch((e) => `오류 ${String(e.message ?? e)}`)])
   }
   if (take.hold) await page.keyboard.up(take.hold)
   page.off('request', onReq); page.off('requestfinished', onDone); page.off('requestfailed', onDone)
+  if (take.probe) writeFileSync(resolve(dir, 'probe.json'), JSON.stringify(probes))
   writeFileSync(resolve(dir, 'frames.json'), JSON.stringify({ seconds: take.seconds, virtual: true, frames }, null, 1))
   return frames.length
 }
