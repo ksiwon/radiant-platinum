@@ -68,6 +68,7 @@ describe('뗀 지역 쥐기', () => {
     fade: {} as FieldFade,
     lights: {} as BdspLights,
     low: null,
+    variants: [],
   })
   afterEach(() => { for (const n of heldFields()) takeField(n) })
 
@@ -103,6 +104,17 @@ describe('안개 바닥 (HANDOFF_20261003 §3-2)', () => {
     root.add(slab('M_C_001_Ground_01_01', 5), slab('M_C_001_Cliff_01_01', 2), slab('M_T_001_House_01', -20))
     // 절벽 판(가운데 2 · 두께 1)의 밑이 1.5다. 땅 밑 깊은 곳의 집은 땅이 아니다
     expect(lowestGround(root)).toBeCloseTo(1.5, 6)
+  })
+
+  it('접어 둔 땅(판 `R224b`의 땅)은 안 센다 — 노드가 접혀도, 그 부모가 접혀도', () => {
+    const root = new Group()
+    const folded = slab('M_C_001_Ground_01_01', -9)
+    folded.visible = false
+    const parent = new Group()
+    parent.visible = false
+    parent.add(slab('M_C_001_Ground_01_01', -30))
+    root.add(slab('M_C_001_Ground_01_01', 5), folded, parent)
+    expect(lowestGround(root)).toBeCloseTo(4.5, 6)
   })
 
   it('땅이 없으면 모른다', () => {

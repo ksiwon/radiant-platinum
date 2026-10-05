@@ -159,7 +159,13 @@ interface Looks {
  *   glow     발광 세기 (`emissiveFactor`는 0~1이라 5.8을 못 싣는다)
  *   emitOn   발광이 켜지는 어둠 (`_EmissionOnTime`)
  *
- * ⚠️ **야외만 켠다.** 무대 · 방은 노드 굽는 쪽(`bdspArena.py`)과 바이트가 같아야 한다 — 그쪽에 없는 것을 이쪽에서만 쓰면 둘이 갈린다
+ * 발광은 **그림 있는 재질에도** 싣는다 — 창(`WindowOuter_01`) · 아파트 · 교회 · 가로등 · 센터 · 가게 · 가짜 실내(`RoomInner`)는 `_MainTex`에 `_EmissionTex`가
+ * 같이 물려 있다(요스가시티 `C05`가 쓰는 `M_T_007_Apart_01` · `Church_01` · `Stadium_01` · `StreetLight_01_01` · `M_C_001_WindowOuter_01`이 다 그렇다). 재질 `emissiveTexture`(마스크) · `emissiveFactor`(`_EmissionColor` 원작 값) ·
+ * `extras.glow` · `extras.emitOn`을 싣는다. ⚠️ **`emissiveFactor`가 없으면 안 켜진다** — glTF 기본 발광색은 검정이고 three도 그대로라, 그림이
+ * 있어도 `emissiveIntensity`를 올려 봐야 검정 × 그림이다. 더하는 재질(입구 빛)은 그림 없는 길이 맡고, 높이 안개 판(`_DEPTHDENSITY`)은 안 켠다.
+ *
+ * ⚠️ **빛 재질은 `lights`일 때만 싣는다** (`field.ts` — 야외 · 던전). 무대 · 방은 노드 굽는 쪽(`bdspArena.py`)과 바이트가 같아야 한다 —
+ * 그쪽에 없는 것을 이쪽에서만 쓰면 둘이 갈린다
  */
 const ADD_SRC = 5
 const ADD_DST = 1
@@ -301,7 +307,7 @@ export async function bakeLooks(
   /** 더해서 그리는 재질 (`ADD_SRC` · `ADD_DST`). 더하기 · 발광을 싣는 것은 빛 재질을 싣는 쪽만이다 */
   const additive = new Set<string>()
   /** 재질마다 색 · 수 · 물린 그림 칸 */
-  const looks = new Map<string, { floats: Map<string, UnityValue>, colors: Map<string, UnityValue>, slots: Set<string> }>()
+  const looks = new Map<string, { floats: Map<string, UnityValue>, colors: Map<string, UnityValue>, slots: Set<string>, emission: number, keywords: string }>()
   /** 나무열매만 — 재질마다 색 입히는 길 */
   const plantOf = new Map<string, 'blend' | 'mask' | 'plain'>()
   for (const e of env.ofType('Material')) {
@@ -314,7 +320,7 @@ export async function bakeLooks(
     for (const [k, raw] of pairs(saved.m_TexEnvs)) {
       if (num(((raw as Props).m_Texture as Props | undefined)?.m_PathID) !== 0) slots.add(k)
     }
-    looks.set(mat, { floats, colors: pairs(saved.m_Colors), slots })
+    looks.set(mat, { floats, colors: pairs(saved.m_Colors), slots, emission: texturePid(pairs(saved.m_TexEnvs), '_EmissionTex'), keywords: String(v.m_ShaderKeywords ?? '') })
     if (plant) {
       const te = pairs(saved.m_TexEnvs)
       plantOf.set(mat, plantKind(String(v.m_ShaderKeywords ?? ''), texturePid(te, '_MainTex'), texturePid(te, '_LayerTex')))
@@ -340,7 +346,15 @@ export async function bakeLooks(
   const textureAt = new Map<number, { entry: ReturnType<Environment['ofType']>[number], read: Texture | null }>()
   for (const e of env.ofType('Texture2D')) textureAt.set(e.object.pathId, { entry: e, read: null })
   /** 발광 그림 — 그대로 읽어 줄이기만 한다. 레이어 색 · 마스크를 곱하는 `bakeAlbedo`의 틀이 아니다 */
+  const emissionAt = new Map<number, number | null>()
   const emissionImage = async (pid: number): Promise<number | null> => {
+    const had = emissionAt.get(pid)
+    if (had !== undefined) return had
+    const index = await bakeEmission(pid)
+    emissionAt.set(pid, index)
+    return index
+  }
+  const bakeEmission = async (pid: number): Promise<number | null> => {
     const at = textureAt.get(pid)
     if (!at) return null
     at.read ??= readTexture(env.read(pid) as Props, at.entry.bundle)
@@ -358,6 +372,25 @@ export async function bakeLooks(
     if (sampler < 0) { samplers.push({ wrapS: wrap, wrapT: wrap }); sampler = samplers.length - 1 }
     textures.push({ source: images.length - 1, sampler })
     return textures.length - 1
+  }
+  /**
+   * 스스로 빛나는 재질의 발광 (빛 재질을 싣는 쪽만) — 발광 그림 · `_EmissionColor` · 세기(`_EmissionColorIntensity`) · 켜지는 어둠.
+   * 빛낼 것이 없으면 `null`. 색은 원작 값 그대로 싣는다 — glTF `emissiveFactor`가 없으면 로더(three)의 발광색이 검정이라 그림이 있어도
+   * `emissiveIntensity`가 아무 일도 못 한다
+   */
+  const glowOf = async (look: { floats: Map<string, UnityValue>, colors: Map<string, UnityValue>, emission: number }): Promise<{
+    index: number, factor: number[], extras: { glow: number, emitOn: number },
+  } | null> => {
+    const color = look.colors.get('_EmissionColor') as Props | undefined
+    const strength = num(look.floats.get('_EmissionColorIntensity'))
+    if (!color || strength <= 0 || look.emission === 0) return null
+    const index = await emissionImage(look.emission)
+    if (index === null) return null
+    return {
+      index,
+      factor: [num(color.r), num(color.g), num(color.b)],
+      extras: { glow: strength, emitOn: num(look.floats.get('_EmissionOnTime')) },
+    }
   }
 
   /**
@@ -433,6 +466,7 @@ export async function bakeLooks(
     let sampler = samplers.findIndex((s) => s.wrapS === want.wrapS && s.wrapT === want.wrapT)
     if (sampler < 0) { samplers.push(want); sampler = samplers.length - 1 }
     textures.push({ source: images.length - 1, sampler })
+    const baseTexture = textures.length - 1
     const look = looks.get(m.name)
     const lay = layered.has(m.name)
     const add = additive.has(m.name)
@@ -453,11 +487,15 @@ export async function bakeLooks(
     const cell = lay || !look ? null
       : flipbookCell(num(look.floats.get('_PatternH'), 1), num(look.floats.get('_PatternV'), 1), num(look.floats.get('_StartFrameIndex')))
     if (cell) transformed = true
+    // ⚠️ **그림 있는 재질도 빛난다** — 창 · 집 · 센터 · 가로등은 `_MainTex`에 `_EmissionTex`가 같이 물렸다. 한동안 발광은 그림 없는 재질만
+    // 실어서 이 재질들의 밤 창이 안 켜졌다. 더하는 재질(입구 빛)은 아래 그림 없는 길이 맡는다.
+    // ⚠️ **높이 안개 판(`_DEPTHDENSITY` — `HeightFog_01`)은 빛이 아니다** — 안개 빛깔을 발광으로 들고 있어 켜면 밤에 안개 판이 스스로 빛난다. 전처럼 안 켠다
+    const glow = lights && look && !add && !look.keywords.includes('_DEPTHDENSITY') ? await glowOf(look) : null
     materials.push({
       name: m.name,
       pbrMetallicRoughness: {
         baseColorTexture: {
-          index: textures.length - 1,
+          index: baseTexture,
           ...(cell ? { extensions: { KHR_texture_transform: cell } } : {}),
         },
         ...(tint ? { baseColorFactor: tint } : {}),
@@ -467,6 +505,7 @@ export async function bakeLooks(
       ...alphaOf(renderType.get(m.name) ?? 'Opaque'),
       doubleSided: true,
       ...(lights && add ? { alphaMode: 'BLEND', extras: { add: true } } : {}),
+      ...(glow ? { emissiveTexture: { index: glow.index }, emissiveFactor: glow.factor, extras: glow.extras } : {}),
     })
     slotOf.set(m.name, materials.length - 1)
     // ⚠️ **재질이 적어 둔 UV 배율을 먹여야 한다.** 무대 바닥이 배율 (11, 11)로
@@ -520,15 +559,11 @@ export async function bakeLooks(
     if (lights) {
       const extras: Record<string, unknown> = {}
       if (additive.has(mat)) { plain.alphaMode = 'BLEND'; extras.add = true }
-      const tex = pairs(saved.m_TexEnvs).get('_EmissionTex') as Props | undefined
-      const pid = num((tex?.m_Texture as Props | undefined)?.m_PathID)
-      if (glow && strength > 0 && pid !== 0) {
-        const index = await emissionImage(pid)
-        if (index !== null) {
-          plain.emissiveTexture = { index }
-          extras.glow = strength
-          extras.emitOn = num(floats.get('_EmissionOnTime'))
-        }
+      const lit = await glowOf(looks.get(mat)!)
+      if (lit) {
+        plain.emissiveTexture = { index: lit.index }
+        plain.emissiveFactor = lit.factor
+        Object.assign(extras, lit.extras)
       }
       if (Object.keys(extras).length > 0) plain.extras = extras
     }

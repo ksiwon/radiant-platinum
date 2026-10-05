@@ -92,6 +92,14 @@ export const VAR_HALL_OF_ORIGIN_STATE = 0x4118
  */
 export const FLAG_DISTORTION_WORLD_PUZZLE_FINISHED = 2477
 /**
+ * 224번도로 비석에 이름을 적었는가 (`FLAG_WROTE_ON_ROUTE_224_TABLET` = 301 · `vars_flags.txt` 열거 값 — `FLAG_DISTORTION_WORLD_PUZZLE_FINISHED`
+ * 2477 · `FLAG_VILLA_FURNITURE_START` 2455와 같은 셈으로 맞춘다).
+ *
+ * 쉐이미 사건(오박사의 편지 → 비석 → 이름 짓기)이 끝났다는 뜻이다. BDSP 지역 `area008`의 꺼진 뿌리 `R224b`를 켜는 깃발로 쓴다
+ * (`scene/fieldVariants`) — ⚠️ **BDSP가 정말 이 깃발로 켜는지는 증명하지 못했다** (켜는 쪽이 번들 밖 코드다)
+ */
+export const FLAG_WROTE_ON_ROUTE_224_TABLET = 301
+/**
  * B4F의 기라티나 그림자를 봤는가 (`FLAG_DISTORTION_WORLD_GIRATINA_SHADOW_1` = 2478, `_2` = 2479).
  *
  * 사건 명령 8(`SetGiratinaAnimationFlag`)이 `SystemFlag_HandleGiratinaAnimation(SET, anim)`으로 이 둘 중

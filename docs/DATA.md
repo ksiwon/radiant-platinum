@@ -2772,9 +2772,19 @@ BDSP 땅이 칸 안에서 매끄럽게 기우는 몫). 충돌 · 높이 · 워�
 `activeInHierarchy`를 따른다 — 꺼진 뿌리 아래는 안 세우되 `ACTIVE_ROOTS`만 예외다. 꺼진 뿌리는 area008에만 셋 있다(다른 지역 0, 배치 변화 0):
 `D18`(418) = 꽃의 낙원 · `W231`(772) = 바다갈림길은 `MapInfo`(`Dpr/scriptableobjects/gamesettings`)의 존 285 `はなのらくえん` · 490 `うみわれのみち`이
 `AssetBundleName fields/area008`이고 플래티넘에도 있는 맵(우리 274 · 472)이며 이 판이 BDSP 그림의 유일한 사본이라 세운다(이야기가 열기 전엔 못 가는 곳).
-`R224b`(909)는 켜진 `R224/R224`(774)와 같은 길의 다른 판이라 안 세운다 — 메시 · 자리가 909개 중 768개 같고 땅 · 절벽 · 못만 `_224` ↔ `_224b`로
-갈려, 둘 다 세우면 같은 풀 · 바위가 두 번 그려진다. `R224b`를 언제 켜는지는 증명하지 못했다(번들 안 스크립트 중 이 뿌리를 참조하는 것 없음).
-area008 배치 4,464 → 3,555.
+`R224b`(909)는 켜진 `R224/R224`(774)와 같은 길의 다른 판이다 — 안 세우면 사라지고 둘 다 세우면 같은 풀 · 바위가 두 번 그려지므로 **접어 둔 채 같은 glb에 싣는다**
+(`ROOT_VARIANTS` · 아래 「이야기가 갈아 끼우는 판」). area008 배치(안 켠 상태) 4,464 → 3,555.**이야기가 갈아 끼우는 판 (`R224b`).** 굽는 쪽이 꺼진 뿌리와 그 켜진 짝(`R224/R224`)의 배치를 메시 · 재질 · 자리(이동 · 회전 · 배율 0.01 안)로 하나씩 맞춘다:
+909개 중 908개가 서고(내장 메시 `P_C_001_InOut_01` 하나는 물 평면이 아니라 안 세운다) **766개는 짝과 같아 표식 없이 한 번만** 선다. 142개는 글 노드 `extras { variant: 'r224b', mode: 'show' }`
+(판이 켜질 때만 보임 — 꽃 `M_T_005_Flower_01~04` 131 · 계단 `OutStair` · 땅 · 못 · 절벽 · 바위 `Rock_01b` · 풀 둘), 짝에만 있는 7개는 `mode: 'hide'`
+(땅 · 못 · 절벽 · 바위 `Rock_01` · 풀 둘 — 켜지면 사라진다)다. 안 켠 기본 상태의 장면과 지역 상자(`index.json`)는 전과 같다.
+`scene/fieldVariants`가 `VARIANT_FLAGS`(`r224b` → `FLAG_WROTE_ON_ROUTE_224_TABLET` = 301)로 깃발을 읽어 보이기를 맞춘다 — 지역을 다시 받지 않고,
+판 노드가 접힌 동안은 안개 바닥 높이(`lowestGround`)에도 안 센다. 굽는 바이트는 area008이 +3.04MB(26,963,364 → 30,003,784 — 땅 · 못 · 절벽 기하)다.
+
+⚠️ **언제 켜는지는 증명하지 못했다.** 지역 번들(MonoBehaviour 다섯 종 — `AudioAmbient` · `EmissionColorChanger` · `FieldEventDoorEntity` · `FieldEffect` · `FieldEventEntity` — 은 `R224b` 밑에 하나도 없다), `ev_script`(1,272개), `masterdatas`, `gamesettings`(`MapInfo` 존 411)
+어디에도 `R224b`를 가리키는 것이 없다 — 켜는 쪽은 번들 밖 코드다(`D18` · `W231`이 꺼진 채 번들에 들어 있는 것과 같다). 224번도로 스크립트 `r224`가 읽는 것은
+`SYS_WORK_SYEIMI`(쉐이미 사건 상태 1 → 2)와 오박사 · 비석 깃발이고(`ev_r224_flag_change`), 지형을 켜는 명령이 아니라 오박사 개체를 켜는 `ev_r224_obj_change`다.
+판의 모습만이 단서다 — 꽃이 131개 늘고 계단이 서며, 켜진 짝에 있는 `FieldEffect` 57(메시 없는 효과 표식)이 꺼진 뿌리에는 없다. 그래서 쉐이미 사건이 끝난 뒤(플래티넘 `FLAG_WROTE_ON_ROUTE_224_TABLET` —
+비석에 이름을 적은 깃발)로 짐작해 걸었다. 틀렸다면 `VARIANT_FLAGS` 한 줄이다.
 
 **지역은 이웃 구역의 사본을 품는다 — 한 지역에만 남긴다.** BDSP는 구역마다 지역 하나만 띄우고(`MapInfo.ZoneData[].AssetBundleName`)
 경계 너머가 비지 않게 이웃 구역(`Offset` 밑의 뿌리 `C04` · `R206` …)을 사본으로 품는다. 우리는 가까운 지역을 여럿 한꺼번에 세우므로
@@ -2795,7 +2805,15 @@ area004의 `R208`과 같다).
 **빛 재질은 더하고, 어두워져야 켠다.** 포켓몬센터 · 프렌들리숍 · 체육관 입구의 `PokeCenLight`는 `_SrcBlend 5 · _DstBlend 1`(더하기)에
 `_ColorIntensity 0`이라 낮에는 안 보이고, `_EmissionTex` × `_EmissionColor` × `_EmissionColorIntensity`(5.8)로 `_EmissionOnTime`(0.4)부터
 빛난다. `RenderType`만 보면 흰 반투명 판(가로 3.6 · 높이 1.8 · 깊이 4칸)이 입구를 막는다. 굽는 쪽이 재질 `extras`에 `add` · `glow` ·
-`emitOn`을 싣고(`bakeLooks`의 `lights` — 야외 · 던전만) `scene/bdspLights`가 편다. 어둠은 아침 · 낮 0, 해질녘 0.5, 밤 · 심야 1로 잰다 —
+`emitOn`을 싣고(`bakeLooks`의 `lights` — 야외 · 던전만) `scene/bdspLights`가 편다.
+
+**창 · 집의 발광도 싣는다 (그림 있는 재질).** 밤 창은 `PokeCenLight`처럼 그림 없는 재질이 아니라 **`_MainTex`가 있는 재질**의 `_EmissionTex`가 낸다 —
+요스가시티(`C05` · 존 74 · `fields/area004`)가 쓰는 `M_T_007_Apart_01` · `Church_01` · `Stadium_01` · `StreetLight_01_01` · `M_C_001_WindowOuter_01`(11곳) ·
+`PokeCen_01` · `Shop_01`과 가짜 실내 `RoomInner_*`가 다 그렇다. 굽는 쪽은 발광을 **그림 없는 재질에만** 실어서 이들의 밤 창이 안 켜졌다(area004 발광 재질 3벌 → 24벌).
+이제 그림 있는 재질도 `emissiveTexture`(`_EmissionTex` — 해상도 · UV 배율이 `_MainTex`와 같다) · `emissiveFactor`(`_EmissionColor` 원작 값) ·
+`extras.glow`(`_EmissionColorIntensity`) · `extras.emitOn`(`_EmissionOnTime`)을 싣는다. ⚠️ **`emissiveFactor`가 없으면 그림 있는 재질도 안 켜진다** — glTF 기본 발광색은 검정이고
+three(`GLTFLoader`)도 그대로라 `emissiveIntensity`를 올려도 검정 × 그림이다. 한동안 `PokeCenLight`의 `extras.glow`도 이 때문에 아무것도 못 켰다(빛 재질 3벌에 `emissiveFactor` 0).
+높이 안개 판(`M_R_208_HeightFog_01` — `_DEPTHDENSITY`)과 더하는 재질은 그림 있는 길로 안 켠다. 발광 그림은 그림마다 한 번만 싣는다(area004 발광 그림 3장 → 13장 +131KB, glb 27,260,288 → 27,395,804). 어둠은 아침 · 낮 0, 해질녘 0.5, 밤 · 심야 1로 잰다 —
 ⚠️ BDSP의 곡선을 읽은 값이 아니다. 번들의 문턱들(문 0.3 · 입구 빛 0.4 · 바깥 등 0.5 · 간판 글씨 0.6)이 해질녘에 차례로 켜지는 순서라서다.
 
 **야외 · 던전은 재질 색을 더 읽는다** (`bakeLooks`의 `lights` — 방 · 무대는 노드 굽는 쪽과 바이트가 같아야 해서 안 쓴다):

@@ -38,6 +38,15 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
   moves: 1,
   marts: 1,
   /**
+   * 6 — **① 그림 있는 재질도 발광을 싣는다** (`import/bdsp/arena.ts`의 `glowOf` — `emissiveTexture` · `emissiveFactor` · `extras.glow` · `extras.emitOn`).
+   * 창 · 집 · 센터 · 가로등은 `_MainTex`에 `_EmissionTex`가 물려 있는데 발광은 그림 없는 재질에만 실어서 밤 창이 안 켜졌고, 그림 없는 입구 빛도
+   * `emissiveFactor`가 없어(glTF 기본 발광색 검정) 켜져도 검정이었다. 요스가시티(area004)에서 발광 재질 3벌 → 24벌 · 발광 그림 3장 → 13장.
+   * **② 이야기가 갈아 끼우는 판을 접어 둔 채 싣는다** (`field.ts`의 `ROOT_VARIANTS` — area008 `R224b`): 꺼진 뿌리의 909개 중 908개가 서고 766개는 켜진 짝과 같아
+   * 한 번만 서며 142개는 노드 `extras { variant, mode: 'show' }`(켜질 때만 보임), 짝에만 있는 7개는 `mode: 'hide'`다. 안 켠 상태의 배치는 3,555 그대로다.
+   * 실측으로(개발 산출물 `public/models/field` 대비) 지역 14벌이 전부 갈리고 합이 277,877,357 → **282,303,249**(+4.43MB)다 — area008이 26,963,364 → 30,003,784
+   * (+3.04MB · `R224b`의 땅 · 못 · 절벽 기하), area004가 27,260,288 → 27,395,804(+135KB · 발광 그림), 나머지는 발광 그림만큼(+15~252KB)이다.
+   * ⚠️ **5는 안 쓴다**(`GROUP_ACCEPTS`에 없다) — 옛 glb는 밤 창이 안 켜지고 224번도로가 판을 못 바꾼다
+   *
    * 5 — **꺼 둔 물체를 굽지 않는다** (`import/bdsp/field.ts`의 `m_IsActive` · 꺼진 부모 검사 · 유니티 내장 Plane 물). 번들이 꺼 둔 물체를
    * 불리언으로 안 읽어 그대로 구웠다. 실측으로(개발 산출물 `public/models/field` 대비) 지역 14벌 중 area009의 `P_T_013_SnowCover_10` 둘이 빠지고
    * area008은 `R224b` 909개(4,464 → 3,555)가 빠진다 — 다른 지역은 0이다.
@@ -56,7 +65,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * ⚠️ **이미 깔린 것을 그냥 두면 안 된다.** 옛 지역 glb는 그 재질을 흰 반투명 판으로 들고 있어서 포켓몬센터 · 프렌들리숍 ·
    * 체육관 입구가 하얀 상자로 막힌 채 남는다
    */
-  fields: 5,
+  fields: 6,
   /**
    * 2 — **방 재질의 색 · 층 그림 · TV 칸을 싣는다** (`import/bdsp/arena.ts` · 노드 쪽 `bdspArena.py --rooms`와 같은 바이트).
    *
@@ -81,12 +90,16 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    */
   arenas: 3,
   /**
+   * 3 — **그림 있는 재질도 발광을 싣는다** (`import/bdsp/arena.ts`의 `glowOf` — 던전도 지역과 같은 `exportField`를 쓴다). 던전 번들 138벌을 새로 구워 개발 산출물과
+   * 맞대면 glb 합이 117,726,512 → **117,796,924**(+70KB)이고, 던전이 나눠 쓰는 그림 자리(`share`)가 551 → 625개 파일 · 158,601,664 → **160,264,908**바이트(+1.66MB —
+   * 발광 그림 73장이 새로 붙는다)다. 입구 빛 `emissiveFactor`도 붙는다 (DATA.md §2.17.6)
+   *
    * 2 — **던전도 꺼 둔 물체를 안 굽는다** (`import/bdsp/field.ts` — 던전도 같은 굽기를 쓴다). 던전 번들 138벌을 새로 구워 개발 산출물
    * (`public/models/dungeon`)과 맞대면 glb 139벌 중 21벌의 바이트가 갈린다(합 117,709,252 → 117,726,512 바이트) —
    * 그림 · 기하가 갈리는 것이 대부분이고 재질 JSON이 갈리는 것은 TV 화면 `M_C_001_Video_03` 둘(`d26r0102` · `d31r0201`)이다.
    * 마스크로 섞는 재질(`cascadeMix`)은 던전 · 지역 번들 모두 0벌이라 그 고침과는 상관없다 (재질 2,434 · 1,500 실측)
    */
-  dungeons: 2,
+  dungeons: 3,
   /**
    * 2 — **능력 변화 무늬 묶음(`statChange.bin`)이 붙는다** (`import/platinum/particles.ts`의 `STAT_CHANGE_BG`). 능력이 오르고
    * 내릴 때 몸 실루엣 안에서 흐르는 배경 무늬 넷(`pl_batt_bg.narc` 멤버 열둘)이다. 옛 판에는 그 묶음이 없다

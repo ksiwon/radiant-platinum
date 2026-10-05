@@ -33,6 +33,8 @@ import { useBdspMark } from './bdspReady'
 import { beginAsyncPipelines, settleAsyncPipelines } from './asyncPipelines'
 import { holdBdspDoors } from './DoorAnimations'
 import { holdBdspSigns } from './ObjectProps'
+import { applyVariants, variantNodes, type VariantNode } from './fieldVariants'
+import { fieldScripts } from '../engine/script/field'
 import { DAY } from './fx/sky'
 
 const loader = new GLTFLoader()
@@ -353,7 +355,12 @@ interface Built {
   lights: BdspLights
   /** 가장 낮은 땅 (`lowestGround`) — 안개 바닥이 쓴다 */
   low: number | null
+  /** 이야기가 갈아 끼우는 물체 (`fieldVariants`) — 224번도로 `R224b` */
+  variants: VariantNode[]
 }
+
+/** 이야기 깃발 하나를 읽는다 — 판 표식(`fieldVariants`)이 쓴다 */
+const storyFlag = (id: number): boolean => fieldScripts.vars.checkFlag(id)
 
 /** 뗀 지역을 이만큼(벌) 쥐고 있는다 — 집 한 채 드나드는 사이 둘레 지역(대개 1~2벌)이 남는다 */
 export const HELD = 2
@@ -402,10 +409,13 @@ function build(scene: Group): Built {
   })
   liveWater(scene)
   liveFoliage(scene)
+  // ⚠️ **판은 `lowestGround`보다 먼저 맞춘다** — 접어 둔 땅(`R224b`의 땅)이 안개 바닥 높이를 끌어내리지 않게
+  const variants = variantNodes(scene)
+  applyVariants(variants, storyFlag)
   // ⚠️ **흐림이 먼저다.** `fieldFade`가 건물 재질을 복제해 갈아 끼우므로, 빛을 먼저 펴면 발광을 맞추는 쪽이 버려진 재질을 쥔다
   const fade = fieldFade(scene)
   const lights = bdspLights(scene)
-  return { scene, fade, lights, low: lowestGround(scene) }
+  return { scene, fade, lights, low: lowestGround(scene), variants }
 }
 
 function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
@@ -426,6 +436,8 @@ function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
     // 목표는 세 프레임에 한 번 — 인스턴스가 지역 하나에 수천이다. 따라가기는 매 프레임이다 (`fieldFade`)
     if ((tick.current++ % 3) === 0) {
       b.lights.update(worldState.time.gameHour)
+      // 이야기 깃발이 바뀌면 판을 갈아 끼운다 — 지역을 다시 받지 않는다
+      applyVariants(b.variants, storyFlag)
       const p = worldState.player.position
       camera.getWorldPosition(cam.current)
       aim.current.set(p.x, p.y + AIM, p.z)
@@ -440,6 +452,7 @@ function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
     let release: (() => void)[] = []
     const attach = (b: Built): void => {
       b.lights.update(worldState.time.gameHour)
+      applyVariants(b.variants, storyFlag)
       release = [holdBdspDoors(b.scene), holdBdspSigns(b.scene)]
       if (b.low !== null) standingGround.set(name, b.low)
       setBuilt(b)
@@ -506,14 +519,23 @@ export function fogFloorY(lows: Iterable<number> = standingGround.values()): num
   return Number.isFinite(low) ? low - FOG_FLOOR_DROP : null
 }
 
-/** `root` 아래 땅 재질 메시의 월드 최저 높이 — 없으면 `null` */
+/** `o`에서 `root`까지 접힌(`visible` false) 것이 없는가 */
+function shownWithin(o: Object3D, root: Object3D): boolean {
+  for (let p: Object3D | null = o; p !== null; p = p.parent) {
+    if (!p.visible) return false
+    if (p === root) break
+  }
+  return true
+}
+
+/** `root` 아래 땅 재질 메시의 월드 최저 높이 — 접어 둔 것은 안 센다. 없으면 `null` */
 export function lowestGround(root: Object3D): number | null {
   root.updateMatrixWorld(true)
   const box = new Box3()
   root.traverse((o) => {
     if (!(o instanceof Mesh)) return
     const mats = (Array.isArray(o.material) ? o.material : [o.material]) as Material[]
-    if (isGround(mats)) box.expandByObject(o)
+    if (isGround(mats) && shownWithin(o, root)) box.expandByObject(o)
   })
   return box.isEmpty() ? null : box.min.y
 }

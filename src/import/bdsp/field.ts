@@ -58,15 +58,49 @@ const ACTIVE_IN_PLAY: readonly { area: string, name: RegExp, material?: RegExp }
  *  - `W231` (772개 · x 896~912 · z 224~480) = 바다갈림길. 존 490 `うみわれのみち`이 `fields/area008`이다
  *  둘은 플래티넘에도 있는 맵이고(우리 맵 274 `D18` · 472 `W231`) 이 판이 BDSP 그림의 **유일한 사본**이다(다른 지역에 같은 뿌리 없음).
  *  이야기가 열기 전엔 못 가는 곳이라 늘 세워도 보일 일이 없다. 안 세우면 열린 뒤에 BDSP 그림이 없다
- * 안 세우는 꺼진 뿌리:
+ * 이야기가 켜는 꺼진 뿌리 (`ROOT_VARIANTS`):
  *  - `R224b` (909개 · 224번도로 아래 · x 864~926 · z 481~576): 켜진 `R224/R224`(774개)와 **같은 길의 다른 판**이다 — 메시 이름 · 자리가 같고
- *    (909개 중 768개가 켜진 쪽 배치와 0.01칸 안에서 일치) 땅 · 절벽 · 못만 `_224` ↔ `_224b`로 갈린다. 둘 다 세우면 같은 풀 · 바위 · 땅이 두 번 그려진다.
- *    켜진 쪽이 기본 상태다. `R224b`를 언제 켜는지는 증명하지 못했다 (이야기 진행에 따른 바뀐 모습으로 짐작하나 번들에 근거 없음)
+ *    (909개 중 766개가 켜진 쪽 배치와 이동 · 회전 · 배율 0.01 안에서 일치) 땅 · 절벽 · 못만 `_224` ↔ `_224b`로 갈린다. 둘 다 세우면 같은 풀 · 바위 · 땅이
+ *    두 번 그려진다. 켜진 쪽이 기본 상태다. **언제 켜는지는 번들 · 데이터 어디에도 없다** (아래 `ROOT_VARIANTS`)
  */
 const ACTIVE_ROOTS: readonly { area: string, name: string }[] = [
   { area: 'area008', name: 'D18' },
   { area: 'area008', name: 'W231' },
 ]
+
+/** 이야기가 켜는 꺼진 뿌리 — 켜진 짝(`base`)을 갈아 끼우는 판 */
+interface RootVariant {
+  area: string
+  /** 꺼진 뿌리 이름 */
+  root: string
+  /** 짝 — 꺼진 뿌리와 한 부모 밑에 선 켜진 뿌리 이름 */
+  base: string
+  /** glb 노드 `extras.variant`로 싣는 이름 — 실행 쪽(`scene/BdspField`의 `VARIANT_FLAGS`)이 깃발과 맺는다 */
+  id: string
+}
+
+/**
+ * **꺼진 뿌리를 따로 굽는다** — 안 세우지 않고 glb 안에 **접어 둔 채** 싣는다. 노드 `extras`가
+ *  - `{ variant, mode: 'show' }`: 판이 켜질 때만 보이는 것 (꺼진 뿌리에만 있는 물체)
+ *  - `{ variant, mode: 'hide' }`: 판이 켜지면 사라지는 것 (켜진 짝에만 있는 물체)
+ * 를 가른다. 양쪽에 있는 물체(메시 · 재질 · 자리가 0.01칸 안에서 같다)는 표식 없이 한 번만 선다 — 판이 안 켜진 기본 상태는 전과 같은 장면이다.
+ *
+ * `R224b` (area008): 909개 중 908개가 서고(내장 메시 `P_C_001_InOut_01` 하나는 안 세운다) 766개가 `R224/R224`와 같아 표식 없이 한 번만 선다.
+ * 142개가 `show`(꽃 `M_T_005_Flower_01~04` 131 · 계단 `OutStair` · 땅 · 못 · 절벽 · 바위 · 풀)이고 짝에만 있는 7개가 `hide`(땅 · 못 · 절벽 ·
+ * 바위 `Rock_01` · 풀)다 (실측은 `field.test`)
+ *
+ * ⚠️ **언제 켜는지는 증명하지 못했다.** 번들 안에는 이 뿌리를 켜는 것이 없다 — `ev_script`(1,272개) · `masterdatas` · `gamesettings` · 지역 번들의
+ * MonoBehaviour 어디에도 `R224b`가 없고, `MapInfo.ZoneData`(zone 411)에는 판 칸이 없다. 켜는 쪽은 번들 밖 코드다. `D18` · `W231`도 꺼져 있는 것이
+ * 같은 길이다. 224번도로 스크립트(`ev_r224_flag_change`)는 `SYS_WORK_SYEIMI`(쉐이미 사건 상태)와 오박사 · 비석 깃발을 읽지만 물체를 켜는 명령은 오박사 몫이다
+ * (`ev_r224_obj_change`). 판의 모습(꽃이 131 늘고 계단이 선다)만 쉐이미 사건 뒤로 읽힌다 — 어느 깃발로 켤지는 실행 쪽이 정한다. 이 표는 어느 물체가
+ * 어느 판인지만 쥔다
+ */
+export const ROOT_VARIANTS: readonly RootVariant[] = [
+  { area: 'area008', root: 'R224b', base: 'R224', id: 'r224b' },
+]
+
+/** 판 표식 — 노드 `extras`로 실린다 */
+interface VariantMark { variant: string, mode: 'show' | 'hide' }
 
 interface FieldStat {
   /** 세운 메시 (사본 포함) */
@@ -86,8 +120,10 @@ interface FieldStat {
   carved: number
   /** 꺼 둔 물체라 안 세운 것 (`ACTIVE_IN_PLAY` 예외 빼고) */
   inactive: number
-  /** 부모가 꺼져 있어(`activeInHierarchy` false) 안 세운 것 (`ACTIVE_ROOTS` 빼고) */
+  /** 부모가 꺼져 있어(`activeInHierarchy` false) 안 세운 것 (`ACTIVE_ROOTS` · `ROOT_VARIANTS` 빼고) */
   inactiveByParent: number
+  /** 판(`ROOT_VARIANTS`)마다 — 접어 둔 채 실은 것(`shown` 켜질 때 보임 · `hidden` 켜지면 사라짐)과 짝과 같아 한 번만 세운 것(`shared`)의 배치 수 */
+  variants: Record<string, { shown: number, hidden: number, shared: number }>
   problems: string[]
 }
 
@@ -140,6 +176,8 @@ interface Group {
   worlds: Mat4[]
   /** 남의 구역에서 한 줄만 빌려 온 조각이면 그 줄의 z 범위(원작 칸) — 그 안의 삼각형만 남긴다 (`ZONE_SEAMS`) */
   seam?: readonly [number, number]
+  /** 판 표식 (`ROOT_VARIANTS`) — 있으면 노드 `extras`에 싣는다 */
+  mark?: VariantMark
 }
 
 /**
@@ -222,6 +260,14 @@ function zoneOf(env: Environment, transformPid: number, memo: Map<number, string
   else if (chain.length >= 2) zone = goName(chain[chain.length - 2]!)
   memo.set(transformPid, zone)
   return zone
+}
+
+const markKey = (m: VariantMark | undefined): string => (m ? `${m.variant}:${m.mode}` : '')
+
+/** 두 월드 행렬이 같은 자리인가 — 이동 · 회전 · 배율 열이 0.01 안에서 같다 (`ROOT_VARIANTS`) */
+function sameSpot(a: Mat4, b: Mat4): boolean {
+  for (let i = 0; i < 12; i++) if (Math.abs(a[i]! - b[i]!) > COPLANAR) return false
+  return true
 }
 
 /** Unity 월드 행렬 → 원작 좌표(x 뒤집기)의 행렬. `F·W·F` (F = diag(−1, 1, 1)) */
@@ -550,12 +596,43 @@ export async function exportField(
       const fgo = env.read(num((ft?.m_GameObject as Props | undefined)?.m_PathID)) as Props | null
       const fname = typeof fgo?.m_Name === 'string' ? fgo.m_Name : ''
       const off = fgo !== null && !flag(fgo.m_IsActive)
-      const kept = off && ACTIVE_ROOTS.some((r) => r.area === area && r.name === fname)
+      const kept = off && (ACTIVE_ROOTS.some((r) => r.area === area && r.name === fname)
+        || ROOT_VARIANTS.some((v) => v.area === area && v.root === fname))
       hidden = (off && !kept) || inactiveAncestor(father, area, memo)
     }
     memo.set(tp, hidden)
     return hidden
   }
+  // ── 판 (`ROOT_VARIANTS`) — 꺼진 뿌리 밑이면 `variant`, 그 켜진 짝 밑이면 `base`. 부모 쪽에서 아래로 물려받는다 ──
+  const variants = ROOT_VARIANTS.filter((v) => v.area === name)
+  const lineageMemo = new Map<number, { variant: string | null, base: string | null }>()
+  const goNameOf = (tp: number): string => {
+    const t = env.read(tp) as Props | null
+    const go = env.read(num((t?.m_GameObject as Props | undefined)?.m_PathID)) as Props | null
+    return typeof go?.m_Name === 'string' ? go.m_Name : ''
+  }
+  const lineage = (tp: number): { variant: string | null, base: string | null } => {
+    const had = lineageMemo.get(tp)
+    if (had) return had
+    const t = env.read(tp) as Props | null
+    const father = num((t?.m_Father as Props | undefined)?.m_PathID)
+    const up = father !== 0 && father !== tp ? lineage(father) : { variant: null, base: null }
+    let { variant, base } = up
+    const own = goNameOf(tp)
+    for (const v of variants) {
+      if (own === v.root && variant === null) variant = v.id
+      // 짝: 꺼진 뿌리와 한 부모 밑에 선 같은 이름 아닌 켜진 뿌리 (`R224/R224` — 구역 뿌리 `R224`와 이름이 같아도 부모가 꺼진 뿌리를 품은 쪽이다)
+      if (own === v.base && base === null && father !== 0) {
+        const kids = ((env.read(father) as Props | null)?.m_Children as Props[] | undefined) ?? []
+        if (kids.some((c) => goNameOf(num(c.m_PathID)) === v.root)) base = v.id
+      }
+    }
+    const out = { variant, base }
+    lineageMemo.set(tp, out)
+    return out
+  }
+  /** 판의 배치 — 짝과 맞춘 뒤(아래) 노드가 된다 */
+  const pending: { id: string, side: 'variant' | 'base', key: string, group: Omit<Group, 'worlds' | 'mark'>, world: Mat4, triangles: number }[] = []
   for (const filter of filters) {
     const mf = env.readEntry(filter) as Props | null
     if (!mf) continue
@@ -627,11 +704,49 @@ export async function exportField(
     }
     const key = `${String(meshPid)}:${slots.join(',')}${seam ? ':seam' : ''}`
     const world = worldOf(env, transformPid, cache)
+    const triangleCount = got.mesh.subMeshes.reduce((a, s) => a + Math.floor(s.indexCount / 3), 0)
+    const kin = variants.length > 0 ? lineage(transformPid) : { variant: null, base: null }
+    if (kin.variant !== null || kin.base !== null) {
+      // 판에 걸린 배치는 짝과 맞춰 본 뒤에 세운다 (아래)
+      pending.push({
+        id: (kin.variant ?? kin.base)!, side: kin.variant !== null ? 'variant' : 'base', key,
+        group: { meshPid, mesh: got.mesh, wide: got.wide, slots, ...(seam ? { seam } : {}) }, world, triangles: triangleCount,
+      })
+      continue
+    }
     const g = groups.get(key)
     if (g) g.worlds.push(world)
     else groups.set(key, { meshPid, mesh: got.mesh, wide: got.wide, slots, worlds: [world], ...(seam ? { seam } : {}) })
     placed++
-    placedTriangles += got.mesh.subMeshes.reduce((a, s) => a + Math.floor(s.indexCount / 3), 0)
+    placedTriangles += triangleCount
+  }
+  // ── 판마다 켜진 짝과 꺼진 뿌리의 배치를 하나씩 맞춘다 — 메시 · 재질 · 자리(0.01칸)가 같으면 양쪽 상태에 한 번만 선다 ──
+  const variantStat: FieldStat['variants'] = {}
+  const putGroup = (key: string, p: (typeof pending)[number], mark?: VariantMark): void => {
+    const tagged = mark ? `${key}:${mark.variant}:${mark.mode}` : key
+    const g = groups.get(tagged)
+    if (g) g.worlds.push(p.world)
+    else groups.set(tagged, { ...p.group, worlds: [p.world], ...(mark ? { mark } : {}) })
+  }
+  for (const v of variants) {
+    const stat = { shown: 0, hidden: 0, shared: 0 }
+    variantStat[v.id] = stat
+    const bases = pending.filter((p) => p.id === v.id && p.side === 'base')
+    const kept = pending.filter((p) => p.id === v.id && p.side === 'variant')
+    const taken = new Set<(typeof pending)[number]>()
+    const matched = new Set<(typeof pending)[number]>()
+    for (const k of kept) {
+      const twin = bases.find((b) => !taken.has(b) && b.key === k.key && sameSpot(b.world, k.world))
+      if (twin) { taken.add(twin); matched.add(k) }
+    }
+    for (const b of bases) {
+      if (taken.has(b)) { putGroup(b.key, b); stat.shared++; placed++; placedTriangles += b.triangles; continue }
+      putGroup(b.key, b, { variant: v.id, mode: 'hide' }); stat.hidden++; placed++; placedTriangles += b.triangles
+    }
+    for (const k of kept) {
+      if (matched.has(k)) continue
+      putGroup(k.key, k, { variant: v.id, mode: 'show' }); stat.shown++
+    }
   }
   if (groups.size === 0) throw new FieldError('세울 메시가 하나도 없다')
 
@@ -642,7 +757,8 @@ export async function exportField(
   let instanced = 0
   let lowX = Infinity, highX = -Infinity, lowZ = Infinity, highZ = -Infinity
   const ordered = [...groups.values()].sort((a, b) => a.meshPid - b.meshPid || a.slots.join().localeCompare(b.slots.join())
-    || Number(a.seam !== undefined) - Number(b.seam !== undefined))
+    || Number(a.seam !== undefined) - Number(b.seam !== undefined)
+    || markKey(a.mark).localeCompare(markKey(b.mark)))
   const subsOf = (g: Group): Uint32Array[] => g.mesh.subMeshes.map((sub) => {
     const first = Math.floor(sub.firstByte / (g.wide ? 4 : 2))
     return g.mesh.indices.subarray(first, first + sub.indexCount)
@@ -760,14 +876,16 @@ export async function exportField(
     const mesh = meshes.length - 1
     const worlds = g.worlds.map(flipped)
     // 빌려 온 이음매의 뿌리는 남의 구역 한가운데다 — 지역 상자를 거기까지 늘리지 않는다
-    for (const w of g.seam ? [] : worlds) {
+    // 켜질 때만 보이는 판의 배치도 상자에 안 넣는다 — 안 켠 기본 상태의 상자가 그대로다
+    for (const w of g.seam || g.mark?.mode === 'show' ? [] : worlds) {
       if (w[3]! < lowX) lowX = w[3]!
       if (w[3]! > highX) highX = w[3]!
       if (w[11]! < lowZ) lowZ = w[11]!
       if (w[11]! > highZ) highZ = w[11]!
     }
+    const extras = g.mark ? { extras: { ...g.mark } } : {}
     if (worlds.length === 1) {
-      nodes.push({ mesh, matrix: columnMajor(worlds[0]!) })
+      nodes.push({ mesh, matrix: columnMajor(worlds[0]!), ...extras })
       continue
     }
     instanced++
@@ -778,6 +896,7 @@ export async function exportField(
     })
     nodes.push({
       mesh,
+      ...extras,
       extensions: {
         EXT_mesh_gpu_instancing: {
           attributes: {
@@ -817,6 +936,7 @@ export async function exportField(
       carved,
       inactive,
       inactiveByParent,
+      variants: variantStat,
       problems: verifyGlb(glb),
     },
   }

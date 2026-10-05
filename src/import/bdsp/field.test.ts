@@ -271,6 +271,38 @@ withLocal('BDSP 야외', area001)('야외 지역 — 원본 자료', () => {
   }, 300_000)
 
   // area002는 영원시티 · 206번도로 사본을 한 칸 남쪽에 품는다 — 안 굽고, 207번도로와의 이음매 한 줄만 빌린다
+  // 연고시티 옆 요스가(헬스홈)시티 `C05`(존 74 · `fields/area004`)의 밤 창 — 그림 있는 재질도 발광을 싣는다
+  it('area004 — 요스가시티 창 · 집 재질이 발광 그림 · 색 · 세기 · 켜지는 어둠을 싣는다 (밤 창이 안 켜지던 것)', async () => {
+    const env = openEnvironment([new Uint8Array(readFileSync(area004!))])
+    const { glb, stat } = await exportField(env, encodePng, { name: 'area004', maxSize: 64 })
+    expect(stat.problems).toEqual([])
+    const view = new DataView(glb.buffer, glb.byteOffset, glb.byteLength)
+    const gltf = JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + view.getUint32(12, true)))) as {
+      materials: { name: string, pbrMetallicRoughness: { baseColorTexture?: unknown }, emissiveTexture?: { index: number }, emissiveFactor?: number[], extras?: { add?: boolean, glow?: number, emitOn?: number } }[]
+    }
+    const mat = (name: string): (typeof gltf.materials)[number] => {
+      const m = gltf.materials.find((x) => x.name === name)
+      if (!m) throw new Error(`${name}이 없다`)
+      return m
+    }
+    // 아파트(`Apart_01` — `_EmissionColor` (0.99, 0.86, 0.54) × 2 · 0.5부터) · 바깥 창 `WindowOuter_01`(× 2 · 0.5부터)은 `_MainTex`도 같이 물려 있다
+    for (const [name, color] of [['M_T_007_Apart_01', [0.9882, 0.8627, 0.5373]], ['M_C_001_WindowOuter_01', [0.9623, 0.8311, 0.6945]]] as const) {
+      const m = mat(name)
+      expect(m.pbrMetallicRoughness.baseColorTexture, name).toBeDefined()
+      expect(m.emissiveTexture, name).toBeDefined()
+      // ⚠️ `emissiveFactor`가 없으면 발광색이 검정이라 그림이 있어도 `emissiveIntensity`가 아무것도 못 켠다
+      color.forEach((c, i) => { expect(m.emissiveFactor![i]!, name).toBeCloseTo(c, 3) })
+      expect(m.extras, name).toEqual({ glow: 2, emitOn: 0.5 })
+    }
+    // 입구 빛(`PokeCenLight` — 그림 없는 재질)도 같은 길로 발광색을 싣는다 + 더하기
+    const light = mat('M_C_001_PokeCenLight_01')
+    expect(light.emissiveFactor).toBeDefined()
+    expect(light.extras?.add).toBe(true)
+    expect(light.extras?.glow).toBeCloseTo(5.8, 5)
+    // 높이 안개 판(`_DEPTHDENSITY`)은 빛이 아니다
+    expect(mat('M_R_208_HeightFog_01').emissiveTexture).toBeUndefined()
+  }, 300_000)
+
   const area002 = AREA ? join(AREA, 'fields', 'area002') : null
   it('area002 — 어긋난 영원시티 사본이 없고, 206번도로 끝 한 줄만 남는다', async () => {
     const env = openEnvironment([new Uint8Array(readFileSync(area002!))])
@@ -301,18 +333,58 @@ withLocal('BDSP 야외', area001)('야외 지역 — 원본 자료', () => {
     expect(readPlaced(glb).some((p) => /RoomInner/.test(p.material))).toBe(true)
   }, 300_000)
 
-  // area008의 꺼진 뿌리 — `R224b`(켜진 224번도로의 다른 판)는 안 서고, 꽃의 낙원 `D18` · 바다갈림길 `W231`은 선다 (`ACTIVE_ROOTS`)
+  // area008의 꺼진 뿌리 — `R224b`(224번도로의 다른 판)는 접어 둔 채 굽고(`ROOT_VARIANTS`), 꽃의 낙원 `D18` · 바다갈림길 `W231`은 늘 선다 (`ACTIVE_ROOTS`)
   const area008 = AREA ? join(AREA, 'fields', 'area008') : null
-  it('area008 — 224번도로 다른 판(R224b)은 안 서고, 꽃의 낙원 · 바다갈림길 뿌리는 선다', async () => {
+  /** glb JSON — 노드 · 메시 · 재질 이름 */
+  const readJson = (glb: Uint8Array): {
+    nodes: { mesh: number, extras?: { variant: string, mode: string }, extensions?: { EXT_mesh_gpu_instancing: { attributes: { TRANSLATION: number } } } }[]
+    meshes: { primitives: { material?: number }[] }[]
+    materials: { name: string }[]
+    accessors: { count: number }[]
+  } => {
+    const view = new DataView(glb.buffer, glb.byteOffset, glb.byteLength)
+    return JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + view.getUint32(12, true)))) as ReturnType<typeof readJson>
+  }
+  it('area008 — 224번도로 다른 판(R224b)은 접어 둔 채 서고, 꽃의 낙원 · 바다갈림길 뿌리는 늘 선다', async () => {
     const env = openEnvironment([new Uint8Array(readFileSync(area008!))])
     const { glb, stat } = await exportField(env, encodePng, { name: 'area008', maxSize: 64 })
     expect(stat.problems).toEqual([])
-    expect(stat.inactiveByParent).toBe(909)
+    // 꺼진 뿌리 밑이라 못 세운 것은 없다 — `R224b`는 판으로, `D18` · `W231`은 `ACTIVE_ROOTS`로 선다
+    expect(stat.inactiveByParent).toBe(0)
     expect(stat.inactive).toBe(0)
+    // 안 켠 기본 상태의 배치는 전과 같다: 켜진 `R224/R224`의 것까지 3,555 (판을 안 굽던 때의 값)
+    expect(stat.placed).toBe(3555)
+    // 909개 중(`R224b`) 766개는 켜진 짝과 메시 · 재질 · 자리(0.01칸)가 같아 표식 없이 한 번만 서고, 142개가 켜질 때만 보인다.
+    // 짝에만 있는 배치 7개는 켜지면 사라진다. (나머지 한 개는 유니티 내장 메시 `P_C_001_InOut_01`이라 안 세운다 — 물 평면만 세운다)
+    expect(stat.variants.r224b).toEqual({ shown: 142, hidden: 7, shared: 766 })
     // 꽃의 낙원(x 896~924 · z 192~224) · 바다갈림길(x 896~912 · z 224~480)이 상자 안에 든다
     const [, z0, x1] = stat.box
     expect(z0).toBeLessThanOrEqual(192)
     expect(x1).toBeGreaterThanOrEqual(924)
     expect(readPlaced(glb).length).toBeGreaterThan(0)
+
+    // 판 표식 — 노드 `extras`가 `show`(꺼진 뿌리에만) · `hide`(켜진 짝에만)를 가른다
+    const json = readJson(glb)
+    const count = (n: (typeof json.nodes)[number]): number => {
+      const t = n.extensions?.EXT_mesh_gpu_instancing.attributes.TRANSLATION
+      return t === undefined ? 1 : json.accessors[t]!.count
+    }
+    const mats = (n: (typeof json.nodes)[number]): string[] => json.meshes[n.mesh]!.primitives
+      .flatMap((p) => (p.material === undefined ? [] : [json.materials[p.material]!.name]))
+    const marked = json.nodes.filter((n) => n.extras !== undefined)
+    expect(marked.every((n) => n.extras!.variant === 'r224b' && (n.extras!.mode === 'show' || n.extras!.mode === 'hide'))).toBe(true)
+    const placed = (mode: string): number => marked.filter((n) => n.extras!.mode === mode).reduce((a, n) => a + count(n), 0)
+    expect(placed('show')).toBe(142)
+    expect(placed('hide')).toBe(7)
+    // 늘어난 것은 꽃(`P_T_005_Flower_01~04` 131개)과 계단이고, 사라지는 것은 땅 · 못 · 바위 · 풀이다
+    const showMats = marked.filter((n) => n.extras!.mode === 'show').flatMap((n) => mats(n).map((m) => [m, count(n)] as const))
+    const flowers = showMats.filter(([m]) => /^M_T_005_Flower_0[1-4]$/.test(m)).reduce((a, [, c]) => a + c, 0)
+    expect(flowers).toBe(131)
+    expect(showMats.some(([m]) => /OutStair/.test(m))).toBe(true)
+    expect(marked.filter((n) => n.extras!.mode === 'hide').some((n) => mats(n).includes('M_R_224_Rock_01'))).toBe(true)
+    // 짝과 같은 배치는 표식이 없다 — 풀 · 나무가 두 번 서지 않는다
+    expect(json.nodes.length - marked.length).toBeGreaterThan(90)
+    // 지역 상자는 켜질 때만 보이는 판의 배치를 안 센다 — 안 켠 상태의 상자가 그대로다
+    expect(stat.box).toEqual([736, 192, 926, 800])
   }, 300_000)
 })
