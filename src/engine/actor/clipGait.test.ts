@@ -1,4 +1,4 @@
-// 원작 동작으로 걷기 (`engine/actor/clipGait`)
+﻿// 원작 동작으로 걷기 (`engine/actor/clipGait`)
 //
 // 여기서 잡으려는 것은 셋이다:
 //  ① **한 바퀴 거리를 디딘 구간에서 재는가.** 이 값이 어긋나면 그만큼 그대로
@@ -225,7 +225,7 @@ describe('섞기와 위상', () => {
     const steps = Math.max(1, Math.round(seconds * 60))
     const dt = seconds / steps
     let s = from
-    for (let i = 0; i < steps; i++) s = stepGait(s, set, dt, speed, 4.5, 8)
+    for (let i = 0; i < steps; i++) s = stepGait(s, set, dt, speed)
     return s
   }
 
@@ -233,25 +233,49 @@ describe('섞기와 위상', () => {
     expect(run(0, 1).moving).toBeLessThan(0.01)
   })
 
-  it('걷는 속도면 걷기만, 뛰는 속도면 뛰기까지 간다', () => {
-    const walking = run(4.5, 1)
+  it('사람이 걷는 빠르기면 걷기만, 걷기를 그만두는 빠르기(2m/s 언저리)부터 뛰기다', () => {
+    const walking = run(1.4, 1)
     expect(walking.moving).toBeGreaterThan(0.99)
     expect(walking.run).toBeLessThan(0.01)
+    // 우리 걷기 4.5m/s는 조깅, 달리기 8m/s는 질주다 — 둘 다 뛰기 클립이다
+    expect(run(4.5, 1).run).toBeGreaterThan(0.99)
     expect(run(8, 1).run).toBeGreaterThan(0.99)
   })
 
+  it('걸음 빈도 — 4.5m/s는 조깅, 8m/s는 질주의 걸음 수다 (주인공 `run_b` 3.79m 실측)', () => {
+    const hero = { walk: { distance: 1.53, leftForward: 0 }, run: { distance: 3.79, leftForward: 0 } }
+    /** 1초 동안 위상이 돈 바퀴 수 × 2 = 초당 걸음 */
+    const stepsPerSecond = (speed: number) => {
+      let s = { phase: 0, moving: 1, run: 1 }
+      let turns = 0
+      for (let i = 0; i < 60; i++) {
+        const next = stepGait(s, hero, 1 / 60, speed)
+        if (next.phase < s.phase) turns++
+        s = next
+      }
+      return (turns + s.phase) * 2
+    }
+    // 사람: 조깅 2.6~2.8 · 8m/s 3.6~4.2걸음/초. 걷기 클립을 걸던 때는 4.5m/s에서 5.9걸음이었다
+    expect(stepsPerSecond(4.5)).toBeGreaterThan(2.2)
+    expect(stepsPerSecond(4.5)).toBeLessThan(3.0)
+    expect(stepsPerSecond(8)).toBeGreaterThan(3.6)
+    expect(stepsPerSecond(8)).toBeLessThan(4.6)
+  })
+
   it('한 프레임에 안 튄다 — 0.1초쯤에 걸쳐 섞인다', () => {
-    const one = stepGait(GAIT_REST, set, 1 / 60, 4.5, 4.5, 8)
+    const one = stepGait(GAIT_REST, set, 1 / 60, 4.5)
     expect(one.moving).toBeLessThan(0.3)
     expect(run(4.5, 0.1).moving).toBeGreaterThan(0.6)
   })
 
   it('위상은 **걸은 거리**를 한 바퀴 거리로 나눈 만큼 간다', () => {
     // 걷기로 1.6m를 가면 딱 한 바퀴다
-    const s = run(4.5, 1.6 / 4.5, { phase: 0, moving: 1, run: 0 })
-    expect(s.phase).toBeLessThan(0.02)
+    // 걷기 클립만 걸리는 빠르기에서 잰다 — 4.5m/s는 뛰기와 섞인다
+    const s = run(1.2, 1.6 / 1.2, { phase: 0, moving: 1, run: 0 })
+    // 한 바퀴를 딱 돌면 0이다 — 부동소수로 1 바로 밑에 설 수도 있어 고리 거리로 본다
+    expect(Math.min(s.phase, 1 - s.phase)).toBeLessThan(0.02)
     // 절반이면 반 바퀴
-    const half = run(4.5, 0.8 / 4.5, { phase: 0, moving: 1, run: 0 })
+    const half = run(1.2, 0.8 / 1.2, { phase: 0, moving: 1, run: 0 })
     expect(half.phase).toBeCloseTo(0.5, 1)
   })
 
@@ -318,7 +342,7 @@ describe('서 있으면 서 있는 클립이 다 받는다', () => {
 
   /** 1초 동안 서 있게 민다 */
   function stand(player: GaitPlayer): void {
-    for (let i = 0; i < 60; i++) player.update(1 / 60, 0, 4.5, 8)
+    for (let i = 0; i < 60; i++) player.update(1 / 60, 0)
   }
 
   it('뛰기가 있든 없든 서 있기 1 · 걷기 0이다', () => {
@@ -344,7 +368,7 @@ describe('서 있으면 서 있는 클립이 다 받는다', () => {
       walk: cycle, run: null,
     })
     for (let i = 0; i < 60; i++) {
-      player.update(1 / 60, 4.5, 4.5, 8)
+      player.update(1 / 60, 4.5)
       const w = player.weights()
       expect(w.wait + w.walk + w.run).toBeCloseTo(1, 6)
     }

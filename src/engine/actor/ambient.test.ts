@@ -1,4 +1,4 @@
-// 혼자 하는 짓 (`ambient.ts`)
+﻿// 혼자 하는 짓 (`ambient.ts`)
 //
 // 조용히 틀릴 자리가 넷이다:
 //
@@ -9,7 +9,7 @@
 //      깃발을 세웠는데 계속 걸어 다니면 대화 중에 상대가 도망간다.
 //   ③ **벽을 뚫는다.** 배회는 범위가 아니라 벽이 가둔다(원작도 그렇다) —
 //      벽 판정이 빠지면 사람이 집 밖으로 걸어 나간다.
-//   ④ **칸 사이에 멈춘다.** 걸음이 8프레임인데 그 도중에 다음 걸음을 걸면
+//   ④ **칸 사이에 멈춘다.** 걸음이 16프레임인데 그 도중에 다음 걸음을 걸면
 //      좌표가 정수로 안 떨어지고, 그러면 말을 거는 칸 판정이 어긋난다.
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -40,8 +40,8 @@ const TYPE = {
   disguiseGrass: 54,
 } as const
 
-/** `MOVEMENT_ACTION_WALK_NORMAL_*` — 한 칸에 8프레임 */
-const WALK_FRAMES = 8
+/** `MOVEMENT_ACTION_WALK_SLOW_*` — 한 칸에 16프레임. 혼자 다니는 걸음이다 (`ambient.ts`의 `WALK_SLOW_NORTH`) */
+const WALK_FRAMES = 16
 
 /**
  * 걸음 하나가 실제로 먹는 프레임.
@@ -146,7 +146,7 @@ maybe('혼자 하는 짓', () => {
     expect({ x: npc.x, z: npc.z }).toEqual({ x: 3, z: 3 })
   })
 
-  it('배회하는 사람은 8프레임에 딱 한 칸 간다', () => {
+  it('배회하는 사람은 16프레임에 딱 한 칸 간다', () => {
     // 북(0)을 고르게 두고 방 가운데 세운다
     const npc = actor(TYPE.wanderAround, 3, 3)
     npcActors.list = [npc]
@@ -402,8 +402,8 @@ maybe('걷는 빠르기', () => {
     npcActors.paused = false
   })
 
-  it('한 칸 걷는 동안 원작 걸음의 빠르기가 나온다', () => {
-    // `WALK_NORMAL`은 한 칸 8프레임이다 (`scripts.json`) = 7.5타일/초
+  it('한 칸 걷는 동안 혼자 다니는 걸음의 빠르기가 나온다 — 조깅', () => {
+    // `WALK_SLOW`는 한 칸 16프레임이다 (`scripts.json`) = 3.75타일/초. 원작 배회는 `WALK_NORMAL`(7.5)이다
     const walker = actor(TYPE.wanderAround, 10, 10)
     npcActors.list = [walker]
     npcActors.byLocalID = new Map([[1, walker]])
@@ -413,7 +413,7 @@ maybe('걷는 빠르기', () => {
       seen.push(walker.speed)
     }
     const top = Math.max(...seen)
-    expect(top).toBeCloseTo(7.5, 3)
+    expect(top).toBeCloseTo(3.75, 3)
     // 서 있는 프레임도 있어야 한다 — 배회는 걷다 쉰다
     expect(Math.min(...seen)).toBe(0)
   })

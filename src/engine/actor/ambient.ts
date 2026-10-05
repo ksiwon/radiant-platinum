@@ -1,4 +1,4 @@
-// 사람이 혼자 하는 짓 (`MapObject_Move`의 이동 유형, DATA.md §2.3)
+﻿// 사람이 혼자 하는 짓 (`MapObject_Move`의 이동 유형, DATA.md §2.3)
 //
 // 배치표의 `move`는 "이 사람은 평소에 무엇을 하는가"다. 스크립트가 거는 걸음
 // (`ApplyMovement`)과 **다른 표**이고, 말을 안 걸어도 매 프레임 돈다.
@@ -197,10 +197,24 @@ function someoneAt(self: NpcActor, x: number, z: number): boolean {
   return false
 }
 
-/** 한 칸 걷기 시작한다. 프레임 수는 이동 동작 표가 정한다 (보통 걸음 8프레임) */
+/**
+ * 혼자 다니는 걸음 — `MOVEMENT_ACTION_WALK_SLOW_*`(한 칸 16프레임 · 3.75타일/초).
+ *
+ * ⚠️ **원작 값이 아니다. 원작은 보통 걸음(`WALK_NORMAL` 8프레임 · 7.5타일/초)이다.** 우리 한 칸은 사람 키에
+ * 맞춘 1m라 7.5타일/초는 시속 27km고, 등신 몸이 그 속도를 걸은 거리로 따라가면 초당 5.6걸음이다
+ * (`.audit/probe/gait/view.mjs` · 트레이너 몸 `run_b` 한 바퀴 2.67m). 단거리 선수보다 빠른 발놀림이다.
+ * 주인공을 4.5타일/초로 늦춘 것과 같은 갈래의 판단이다(`actor/player`의 `WALK_SPEED`).
+ * 이 걸음이면 사람 조깅의 걸음 수(초당 2.8)가 된다(`actor/clipGait`의 `GAIT_RUN_FROM`).
+ *
+ * ⚠️ **스크립트가 시키는 걸음은 원작 그대로다**(`ApplyMovement`). 장면 속 사람이 달려오는 것은 원작
+ * 프레임 길이를 지키고, 걸음걸이가 속도를 따라 질주가 된다. 늦춘 것은 혼자 배회하는 이 걸음 하나다
+ */
+const WALK_SLOW_NORTH = 8
+
+/** 한 칸 걷기 시작한다. 프레임 수는 이동 동작 표가 정한다 (`WALK_SLOW_NORTH`) */
 function startWalk(actor: NpcActor, state: AmbientState, dir: number): void {
   state.runner = new MovementRunner(
-    actor, [{ action: WALK_NORMAL_NORTH + dir, count: 1 }], npcAmbient.movements,
+    actor, [{ action: WALK_SLOW_NORTH + dir, count: 1 }], npcAmbient.movements,
   )
 }
 

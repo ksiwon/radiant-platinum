@@ -1,4 +1,4 @@
-// useFrame → 게임 루프 → 씬 동기화 → 렌더 (priority 1: 렌더를 우리가 소유)
+﻿// useFrame → 게임 루프 → 씬 동기화 → 렌더 (priority 1: 렌더를 우리가 소유)
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useRef } from 'react'
 import { Quaternion, Vector2, Vector3, type PerspectiveCamera } from 'three'
@@ -50,6 +50,7 @@ const playerRotation = new Quaternion()
 const cascadeRoll = new Quaternion()
 const FORWARD_AXIS = new Vector3(0, 0, 1)
 const WORLD_UP = new Vector3(0, 1, 0)
+const bodyForward = new Vector3()
 /** 흔들린 바라볼 점 — 프레임마다 새로 안 만든다 */
 const quakeTarget = new Vector3()
 
@@ -300,7 +301,11 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       // 손가락과 골반 자리가 걷던 자세로 굳는다
       const byClip = sceneRefs.playerGait !== null && !hop.active && !p.cycling
       if (byClip) {
-        sceneRefs.playerGait!.player.update(delta, going, WALK_SPEED, RUN_SPEED)
+        // 위상은 **몸이 향한 쪽으로 간 거리**로 민다. 돌아서는 동안 몸은 아직 옛 방향을 보고 속도는
+        // 새 방향으로 가 있다 — 속도 크기 그대로 밀면 옆으로 미끄러지는 몸이 제 빠르기로 발을 굴린다
+        bodyForward.copy(FORWARD_AXIS).applyQuaternion(sceneRefs.player?.quaternion ?? playerRotation)
+        const ahead = going === 0 ? 0 : Math.max(0, p.velocity.dot(bodyForward))
+        sceneRefs.playerGait!.player.update(delta, ahead)
       } else {
         if (gaitWasClip.current && sceneRefs.playerGait) restorePose(sceneRefs.playerGait.rest)
         updateLocomotion(
