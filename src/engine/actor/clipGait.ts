@@ -6,7 +6,7 @@
 //
 // ⚠️ **클립을 제 빠르기로 돌리지 않는다. 걸은 거리로 돌린다.** 클립은 한 가지
 // 빠르기로 짜여 있는데 우리 사람은 속도가 이어져 있다 (걷기 4.5 · 달리기 8m/s,
-// NPC는 원작 이동 표). 제 빠르기로 돌리면 발이 땅에서 미끄러진다. 그래서 몸마다
+// NPC는 원작 이동 표). 어느 속도에 어느 클립을 거는지는 사람 걸음을 따른다 (`GAIT_RUN_FROM`). 제 빠르기로 돌리면 발이 땅에서 미끄러진다. 그래서 몸마다
 // **클립 한 바퀴에 발이 딛는 거리**를 재 두고(`measureCycle`), 움직인 거리만큼
 // 위상을 민다 — 절차형이 보폭에서 위상을 유도하던 것과 같은 약속이다.
 //
@@ -461,22 +461,47 @@ interface GaitState {
 export const GAIT_REST: GaitState = { phase: 0, moving: 0, run: 0 }
 
 /**
+ * 걸음걸이를 가르는 빠르기 (m/s) — **사람 보행 역학을 따른다.** 우리 몸은 등신이다.
+ *
+ * 사람은 2m/s 언저리에서 걷기를 그만두고 뛴다. 걷기에서 뛰기로 넘어가는 프루드 수
+ * `v²/(g·L)` 0.5(Alexander 1989)를 다리 길이 0.85m에 넣으면 2.04m/s다. 실측으로는
+ * 2.0~2.1m/s다(Thorstensson & Roberthson 1987).
+ *
+ * 우리 이동은 걷기 4.5 · 달리기 8m/s다(`player.ts`의 `WALK_SPEED` 머리말). 그 속도에
+ * 걷기 클립을 걸면 초당 5.4걸음이 된다. 사람은 걸을 때 1.8~2.0걸음이라 종종걸음으로
+ * 읽혔다(2026-10-05 조사). 그래서 **속도는 두고 걸음걸이를 속도에 맞춘다.** 4.5m/s는
+ * 조깅, 8m/s는 질주다. 걷기 클립은 출발 · 정지와 느린 걸음에만 남는다.
+ *
+ * 주인공 `run_b` 한 바퀴는 3.79m다(`.audit/probe/gait/view.mjs` 실측). 걸은 거리로 돌리면 4.5m/s에서
+ * 초당 2.4걸음(조깅), 8m/s에서 4.2걸음(질주)이다. 사람은 각각 2.6~2.8 · 3.6~4.2걸음이다. 발은 디딘 동안
+ * 6cm 안에서 땅에 붙어 있다. 시험 「걸음 빈도」가 이 범위를 잡는다.
+ *
+ * BDSP 필드 값은 기준이 못 된다. 필드 몸이 2등신 치비(`fc*`)라 같은 속도가 다른 걸음이다.
+ */
+export const GAIT_RUN_FROM = 1.7
+export const GAIT_RUN_FULL = 2.3
+/** 이 빠르기면 발이 다 움직인다. 사람의 아주 느린 걸음(0.5m/s)이다 — 그 밑은 서기와 섞인다 */
+export const GAIT_MOVE_FULL = 0.5
+
+const smooth01 = (v: number) => { const t = clamp01(v); return t * t * (3 - 2 * t) }
+
+/**
  * 한 프레임을 민다. 렌더러 없이 시험이 재는 자리다.
  *
- * - 서고 걷는 비중은 절차형과 같은 문턱을 쓴다 — 걷기 빠르기의 55% 밑에서는
- *   발이 제자리에서 떠는 것처럼 보인다 (`actor/locomotion`).
+ * - 서고 걷는 비중은 `GAIT_MOVE_FULL`까지 오른다. 위상이 걸은 거리에 묶여 있어 느려도
+ *   발이 제자리에서 떨지 않는다.
+ * - 뛰는 비중은 사람이 걷기를 그만두는 빠르기(`GAIT_RUN_FROM` ~ `GAIT_RUN_FULL`)에서 오른다.
  * - 위상은 **걸은 거리 ÷ 한 바퀴 거리**만큼 민다. 한 바퀴 거리는 걷기와 뛰기를
  *   섞은 비중대로 섞는다 — 두 클립이 같은 위상을 공유하므로 섞는 중에도 발이
  *   땅에 붙는다.
  */
 export function stepGait(
-  s: GaitState, set: Pick<GaitSet, 'walk' | 'run'>, dt: number,
-  speed: number, walkSpeed: number, runSpeed: number,
+  s: GaitState, set: Pick<GaitSet, 'walk' | 'run'>, dt: number, speed: number,
 ): GaitState {
-  const wantMove = clamp01(speed / (walkSpeed * 0.55))
+  const wantMove = clamp01(speed / GAIT_MOVE_FULL)
   const wantRun = set.run === null
     ? 0
-    : clamp01((speed - walkSpeed) / Math.max(1e-3, runSpeed - walkSpeed))
+    : smooth01((speed - GAIT_RUN_FROM) / (GAIT_RUN_FULL - GAIT_RUN_FROM))
   const k = 1 - Math.exp(-BLEND_RATE * dt)
   const moving = s.moving + (wantMove - s.moving) * k
   const run = s.run + (wantRun - s.run) * k
@@ -530,8 +555,8 @@ export class GaitPlayer {
     }
   }
 
-  update(dt: number, speed: number, walkSpeed: number, runSpeed: number): void {
-    this.state = stepGait(this.state, this.set, dt, speed, walkSpeed, runSpeed)
+  update(dt: number, speed: number): void {
+    this.state = stepGait(this.state, this.set, dt, speed)
     const { phase, moving, run } = this.state
     this.wait.setEffectiveWeight(1 - moving)
     this.walk.setEffectiveWeight(this.run ? moving * (1 - run) : moving)

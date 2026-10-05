@@ -1,4 +1,4 @@
-// 추적 카메라 (PLAN §6.2 필드 프리셋) — 3인칭과 1인칭.
+﻿// 추적 카메라 (PLAN §6.2 필드 프리셋) — 3인칭과 1인칭.
 //
 // **조작이 갈린다.** 3인칭은 원작 그대로다: 카메라가 북쪽에 고정이고 방향키가
 // 월드 축을 가리킨다. 1인칭은 마우스가 시선을 돌리고 그 시선이 이동의 기준이 된다
@@ -386,6 +386,7 @@ function eyeAhead(head: Vector3, ahead: Vector3, yaw: number, delta: number): nu
 
 const goal = new Vector3()
 const look = new Vector3()
+const smoothed = new Vector3()
 const free = new Vector3()
 const offset = new Vector3()
 const view = new Vector3()
@@ -557,14 +558,18 @@ export const cameraSystem = {
     eyeMemo.ready = false
   },
 
-  update(delta: number) {
+  update(delta: number, alpha = 1) {
     const cam = worldState.camera
     const at = cameraSystem.free
     // 설정이 아니라 **지금 렌즈**다 — 스크립트가 카메라를 쥐면 1인칭도 3인칭으로 본다
     const first = firstPersonView()
+    // ⚠️ **몸이 그려지는 자리를 본다** — 고정 스텝 위치(`position`)가 아니라 보간한 자리다.
+    // 몸은 `prevPosition → position`을 `alpha`로 보간해 그린다(`scene/EngineDriver`). 카메라만 스텝
+    // 위치를 쫓으면 60Hz가 아닌 화면에서 몸과 배경이 프레임마다 서로 어긋나 떨린다. 1인칭은 눈이 그 자리라 더 보인다
+    const drawn = smoothed.copy(worldState.player.prevPosition).lerp(worldState.player.position, alpha)
     const p = at === null || first
-      ? worldState.player.position
-      : free.set(at.x, worldState.player.position.y, at.z)
+      ? drawn
+      : free.set(at.x, drawn.y, at.z)
     /**
      * ⚠️ **렌즈가 갈리는 프레임에는 미끄러지지 않고 앉는다.**
      *

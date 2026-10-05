@@ -1,4 +1,4 @@
-// 살아 있는 NPC (DATA.md §2.3)
+﻿// 살아 있는 NPC (DATA.md §2.3)
 //
 // `events.json`의 NPC는 **배치표**다 — 어디에 서서 어느 쪽을 보고 시작하는지.
 // 스크립트가 걸어 다니게 만들려면 그것과 별개로 **지금 어디 있는가**를 들고
@@ -96,6 +96,13 @@ export interface NpcActor extends Movable {
   /** 지난 고정 스텝의 자리. `speed`를 여기서 낸다 */
   tickX: number
   tickZ: number
+  /**
+   * 그 앞 고정 스텝의 자리 — 그리는 쪽이 여기서 지금 자리까지 `alpha`로 보간한다(`scene/NpcModels`).
+   * 주인공(`prevPosition`)과 같은 약속이다. 안 하면 60Hz가 아닌 화면에서 걸음이 계단처럼 끊긴다.
+   * 옮겨 놓은 스텝(`TELEPORT_TILES`)에는 지금 자리와 같다. 아직 한 번도 안 쟀으면 없다
+   */
+  fromX?: number
+  fromZ?: number
 }
 
 /**
@@ -110,9 +117,11 @@ export function measureNpcSpeeds(dt: number): void {
   if (dt <= 0) return
   for (const actor of npcActors.list) {
     const dx = actor.x - actor.tickX, dz = actor.z - actor.tickZ
+    const moved = Math.sqrt(dx * dx + dz * dz)
+    actor.fromX = moved > TELEPORT_TILES ? actor.x : actor.tickX
+    actor.fromZ = moved > TELEPORT_TILES ? actor.z : actor.tickZ
     actor.tickX = actor.x
     actor.tickZ = actor.z
-    const moved = Math.sqrt(dx * dx + dz * dz)
     // ⚠️ **옮겨 놓은 것은 걸은 것이 아니다.** `SetObjectPos`와 맵을 옮기는 자리는
     // 한 스텝에 몇십 칸을 건너뛴다 — 그것을 속도로 읽으면 그 프레임에 다리가
     // 한 번 홱 돈다. 제일 빠른 걸음이 한 스텝에 한 칸이라(`WALK_FASTEST`)

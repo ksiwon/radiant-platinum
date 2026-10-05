@@ -1,4 +1,4 @@
-// 플레이어 이동 — fixedUpdate에서 적분, 렌더는 prev/current 보간
+﻿// 플레이어 이동 — fixedUpdate에서 적분, 렌더는 prev/current 보간
 import { Vector3 } from 'three'
 import { worldState } from '../../state/worldState'
 import {
@@ -46,9 +46,11 @@ import { scriptCameraActive } from './camera'
  * 원작은 두 칸을 16프레임(0.267초)에 넘는데, 걷기와 같은 비율로 늘려 두었다.
  * 한쪽만 고치면 뛰는 것이 걷는 것보다 빨라 보인다.
  *
- * ⚠️ **NPC는 원작 값 그대로다** — 그쪽은 이동 동작 표가 프레임을 정하고
- * (`actor/ambient`), 한 칸 가고 서는 짓이라 빨라도 안 어색하다. 따라다니는
- * 동행만 이 값을 보고 걸음을 고른다 (`followAction`)
+ * ⚠️ **NPC는 스크립트 걸음만 원작 값이다.** 장면 속 이동(`ApplyMovement`)은 이동 동작 표가 프레임을
+ * 정하고 원작 그대로라, 등신 몸이 달려오는 질주로 보인다. 혼자 배회하는 걸음만 `WALK_SLOW`(3.75타일/초)로
+ * 늦췄다 — 조깅이다 (`actor/ambient`의 `WALK_SLOW_NORTH`). 따라다니는 동행만 이 값을 보고 걸음을 고른다 (`followAction`)
+ *
+ * 걸음걸이는 속도를 따른다 — 이 걷기 속도는 조깅, 달리기는 질주다 (`actor/clipGait`의 `GAIT_RUN_FROM`)
  */
 export const WALK_SPEED = 4.5
 export const RUN_SPEED = 8

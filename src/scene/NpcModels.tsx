@@ -1,4 +1,4 @@
-// 오버월드 NPC를 입체로 세운다 (DATA.md §2.16)
+﻿// 오버월드 NPC를 입체로 세운다 (DATA.md §2.16)
 //
 // 원작 NPC는 판때기 그림이다(`NpcSprites`). 1인칭으로 옆에 서면 종잇장이 되고,
 // 주인공만 등신 모델이라 같은 화면에서 사람 둘이 다른 세계에서 온 것으로 보인다.
@@ -32,6 +32,7 @@ import {
 import { bodyGfx, NPC_BUNDLE, nearestFirst } from '../engine/actor/npcModels'
 import { RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { DIR_STEP } from '../engine/script/movement'
+import { gameLoop } from '../engine/loop/GameLoop'
 import { BDSP_TO_WORLD, normalizeModel } from '../engine/model/normalize'
 import { isChibi, shapeChibi } from '../engine/model/chibi'
 import { isAltOutfit } from './personModel'
@@ -399,12 +400,17 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
       seen.add(actor)
       bodyHeights.set(actor, slot.height)
 
-      const y = groundYAt(grid, world.mapId, actor.x + 0.5, actor.z + 0.5, layer, actor.y, actor)
+      // 고정 스텝 사이를 보간한 자리에 세운다 (`NpcActor.fromX`) — 주인공과 같은 `alpha`다
+      const blend = gameLoop.alpha
+      const fromX = actor.fromX ?? actor.x, fromZ = actor.fromZ ?? actor.z
+      const x = fromX + (actor.x - fromX) * blend
+      const z = fromZ + (actor.z - fromZ) * blend
+      const y = groundYAt(grid, world.mapId, x + 0.5, z + 0.5, layer, actor.y, actor)
       // 연출이 걸려 있으면 그림만 그만큼 어긋난다 (`MapObject_SetSpritePosOffset`)
       slot.outer.position.set(
-        actor.x + 0.5 + (actor.offsetX ?? 0),
+        x + 0.5 + (actor.offsetX ?? 0),
         y + (actor.offsetY ?? 0),
-        actor.z + 0.5 + (actor.offsetZ ?? 0),
+        z + 0.5 + (actor.offsetZ ?? 0),
       )
       // 모델 정면이 +Z다. `DIR_STEP`이 그 방향의 걸음이라 그대로 각이 된다
       const step = DIR_STEP[actor.dir & 3]!
@@ -443,7 +449,7 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
         // 늦게 오므로 **매 프레임 한 번 물어본다** — 오는 순간부터 바뀐다
         slot.gaits[i] ??= makeGait(slot, i)
         const gait = slot.gaits[i]
-        if (gait) { gait.update(dt, going, WALK_SPEED, RUN_SPEED); continue }
+        if (gait) { gait.update(dt, going); continue }
         // 서 있는 사람도 돌려야 한다 — 안 돌리면 바인드 포즈로 굳는다
         const rig = slot.rigs[i]
         if (rig) updateLocomotion(rig, dt, going, WALK_SPEED, RUN_SPEED)
