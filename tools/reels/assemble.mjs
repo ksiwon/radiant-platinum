@@ -33,7 +33,7 @@ const overlap = (e) => (e.trans === 'cut' ? 0 : Math.max(e.fade ?? 0, MIN_FADE))
  * 본편 — 큐 시트 그대로. `take`는 찍은 장면, `card`는 글 카드. `cut`은 [장면 안 시작, 큐 길이](초).
  * `fade`는 다음 조각과 겹치는 길이, `trans`는 그 겹침의 모양(xfade 이름 · 기본 fade · `cut`은 하드컷),
  * `warp`는 화면 뒤틀림(`out` 끝으로 갈수록 · `in` 처음에서 풀림), `sfx`는 이 큐에만 얹는 소리(`TAKE_SFX` 머리말),
- * `caption`은 화면 위에 작게 얹는 글.
+ * `caption`은 화면 위에 작게 얹는 글, `snap: false`는 그 컷을 곡의 타격으로 옮기지 않는다.
  *
  * 편집 문법은 BDSP 공개 영상에서 잰 것이다(`.audit/reels/ref-grammar.json`) — 마을 · 배틀 · 여정 · 기술 연타는 **하드컷**이
  * 89~92%이고 컷 하나가 1초 안팎이다(C 평균 1.08초 · D 1.09초 · E 0.92초). 디졸브는 길 부감 → 풀숲(14프레임)과 E 끝 한 번뿐이고,
@@ -52,19 +52,20 @@ const MAIN = [
   { cue: 'B3', take: 'B3-jubilife', cut: [0.5, 1.6], trans: 'cut' },
   // 길이는 오프닝 곡의 프레이즈가 정한다(`SCORE`의 `fit`) — 원본도 길 부감 → 풀숲만 디졸브다
   { cue: 'B4', take: 'B4-floaroma', cut: [0.25, 1.6], fade: 0.23 },
-  // 한 장면으로 잇는다 — 풀숲을 달리다(1.6초) 조우 컷인(3.23초) · 배틀 무대(3.53초) · 야생 비버니(3.73초)
-  { cue: 'B5-B6', take: 'B5-switch', cut: [0.2, 5.0], trans: 'cut' },
-  // 같은 장면의 뒤 — 볼이 들어와(8.5초) 열리고(8.9초) 모부기가 내려앉는다(9.5초)
+  // 한 장면으로 잇는다 — 풀숲에 섰다가 달려(1.7초) 조우 컷인(3.73초) · 배틀 무대(4.0초) · 야생 꼬링크(4.23초). 컷인이 큐 3.03초에
+  // 와야 오프닝 곡이 마디에서 끝난다 — 더 늦추면 앞 부감 컷이 늘 수 있는 만큼을 넘는다
+  { cue: 'B5-B6', take: 'B5-switch', cut: [0.7, 5.0], trans: 'cut' },
+  // 같은 장면의 뒤 — 볼이 들어와(8.47초) 열리고(8.9초) 모부기가 내려앉는다(9.6초)
   { cue: 'C1', take: 'B5-switch', cut: [8.3, 1.5], trans: 'cut' },
-  // 흡수가 맞는다(1.4~1.9초)
-  { cue: 'C3', take: 'C3-move', cut: [1.0, 1.1], trans: 'cut' },
-  // 밤 — 몸통박치기 먼지(1.43초) · 맞는다(1.73초)
+  // 흡수가 날아가(5.43초) 맞는다(5.53초)
+  { cue: 'C3', take: 'C3-move', cut: [5.1, 1.1], trans: 'cut' },
+  // 밤 — 몸통박치기 먼지(1.47초) · 맞는다(1.77초)
   { cue: 'C4', take: 'C4-night', cut: [1.2, 1.0], trans: 'cut' },
-  // 무쇠게이트 굴 무대 — 꼬마돌이 맞는다(5.03초)
-  { cue: 'C5', take: 'C5-cave', cut: [4.6, 1.0], trans: 'cut' },
-  // 포획 — 던지고(0.6초) 맞고(0.87초) 빨려 들어(0.93초) 닫힌다(1.53초)
+  // 무쇠게이트 굴 무대 — 꼬마돌 가까이(3.33초)에서 웅크리기의 고리가 감싼다(3.77초). 몸통박치기는 바로 앞 밤 컷이 맡았다
+  { cue: 'C5', take: 'C5-cave', cut: [3.5, 1.0], trans: 'cut' },
+  // 포획 — 던지고(0.6초) 맞고(0.9초) 빨려 들어(0.93초) 닫힌다(1.53초)
   { cue: 'C6', take: 'C6-catch', cut: [0.5, 1.4], trans: 'cut' },
-  // 셋째 흔들림(5.63초)
+  // 셋째 흔들림(5.6초)
   { cue: 'C7', take: 'C6-catch', cut: [5.4, 1.0], trans: 'cut' },
   // 잡힘(7.37초). 길이는 야생 배틀 곡의 프레이즈가 정한다(`fit`)
   { cue: 'C8', take: 'C6-catch', cut: [7.1, 1.6], trans: 'cut' },
@@ -78,14 +79,14 @@ const MAIN = [
   { cue: 'D8', take: 'D8-city', cut: [0.35, 1.8], trans: 'cut' },
   // 난천 앞 VS 컷인(9.83초) → 띠가 빠진다(10.93초). 챔피언 배틀 곡은 컷인에 들어온다
   { cue: 'D11', take: 'D11-champion', cut: [9.5, 1.7], trans: 'cut' },
-  // 같은 장면의 뒤 — 볼이 열리고(12.73초) 화강돌이 솟아 화면을 채운다(14.77초)
+  // 같은 장면의 뒤 — 볼이 열리고(12.7초) 화강돌이 솟아 화면을 채운다(14.87초)
   { cue: 'D11b', take: 'D11-champion', cut: [12.3, 2.6], trans: 'cut' },
-  // 루카리오가 기를 모아(2.1초) 쏘고(2.6초) 맞는다(3.33초)
+  // 루카리오가 기를 모으다(1.47초~) 쏘고(2.3초) 맞는다(3.3초). 챔피언 곡 4마디에 D11~D13b가 다 들어가도록 모으는 중간에서 연다
   { cue: 'D12', take: 'D12-lucario', cut: [2.0, 1.6], trans: 'cut' },
-  // 한카리아스가 빛을 모아(1.8초) 돌진이 지나간다(2.87초)
-  { cue: 'D13', take: 'D13-garchomp', cut: [1.7, 1.4], trans: 'cut' },
-  // 같은 장면의 뒤 — 땅이 터진다(4.9초). 길이는 챔피언 곡의 프레이즈가 정한다(`fit`)
-  { cue: 'D13b', take: 'D13-garchomp', cut: [4.7, 1.4], trans: 'cut' },
+  // 한카리아스가 빛을 모아(1.13초) 부딪고(1.73초) 지나간다(2.23초)
+  { cue: 'D13', take: 'D13-garchomp', cut: [1.05, 1.25], trans: 'cut' },
+  // 같은 장면의 뒤 — 땅이 터진다(4.17초). 길이는 챔피언 곡의 프레이즈가 정한다(`fit`)
+  { cue: 'D13b', take: 'D13-garchomp', cut: [3.95, 1.4], trans: 'cut' },
   { cue: 'E2', take: 'E2-spear', cut: [0.6, 2.1], warp: 'out', fade: 0.4 },
   // 깨어진 세계 — 1인칭으로 판 위를 걷다 V(2.0초)로 3인칭 내려다보기, 발판을 따라 더 걷는다
   { cue: 'E3a', take: 'E3-distortion', cut: [0.3, 4.0], warp: 'in', trans: 'cut' },
@@ -102,23 +103,31 @@ const MAIN = [
 ]
 
 /**
- * 쇼츠 — 세로로 다시 찍은 장면을 쓴다(문서 「쇼츠 · 릴스」). 첫 1~2초에 머물지 떠날지가 갈리므로 **기라티나의 울음으로 연다**
- * (`H1`). 팬 게임 고지는 그 위에 작게 얹고(`caption` — 첫 화면에 적는다), 연표 터널 · 문구는 짧게 돈다
+ * 쇼츠 — 세로로 다시 찍은 장면을 쓴다(문서 「쇼츠 · 릴스」). 첫 1~2초에 머물지 떠날지가 갈리므로 **기라티나로 연다**(`H1`).
+ * 기라티나가 빛을 두르는 순간(대사창이 서기 전) → 섬광 · 울음 → 조우 소용돌이가 한창일 때 하드컷으로 터널에 든다. 터널은
+ * 소용돌이의 속도 · 빛을 이어받아 가라앉고(`cards.mjs`), 소용돌이 소리가 컷을 건너 울린다. 흰 화면으로 넘기면 파랑 → 흰 → 검정으로
+ * 밝기가 두 번 뒤집혀 앞뒤가 따로 놀았다. 팬 게임 고지는 터널 위에 작게 얹는다(`caption` — 기라티나의 얼굴을 가렸다)
  */
 const SHORTS = [
-  { cue: 'H1', take: 'E3-giratina', cut: [2.2, 1.6], caption: '본 게임은 팬 게임이며, 수익을 창출하지 않습니다.', trans: 'fadewhite', fade: 0.3 },
-  { cue: 'A2-A4', card: 'tunnel', seconds: 5.0 },
+  // 빛을 두른다(0.6초~ · 대사창이 1.03초에 선다) → 대사창이 닫힌 뒤(2.9초)로 건너뛴다 — 카메라 · 두 몸이 그대로라 이음매가 안 보이고
+  // 바로 섬광이 덮는다. 곡의 타격으로 옮기면(`snap`) 대사창이 걸린다
+  { cue: 'H1', take: 'E3-giratina', cut: [0.4, 0.6], trans: 'cut', snap: false },
+  // 섬광 · 울음(3.0초) → 소용돌이(3.3초)가 한창일 때 끊는다
+  { cue: 'H1b', take: 'E3-giratina', cut: [2.95, 0.9], trans: 'cut' },
+  { cue: 'A2-A4', card: 'tunnel', seconds: 5.0, caption: '본 게임은 팬 게임이며, 수익을 창출하지 않습니다.' },
   { cue: 'A5', card: 'sink' },
   // 3.6초면 첫 줄이 또렷해지기 전에 다음 줄이 온다
   { cue: 'A6', card: 'tagline', seconds: 4.5 },
   { cue: 'A7', card: 'white', fade: 0.5 },
   { cue: 'B1', take: 'B1-room', cut: [0.3, 3.0], trans: 'cut' },
+  { cue: 'B2', take: 'B2-twinleaf', cut: [0.8, 1.9], trans: 'cut' },
+  // 마을이 두 컷이면 오프닝 곡이 마디보다 1.4초 앞에서 끊긴다 — 가로판 잔디마을 부감의 방송국 자리(가로 38%)를 잘라 한 컷 더 둔다.
   // 길이는 오프닝 곡의 마디가 정한다(`fit`)
-  { cue: 'B2', take: 'B2-twinleaf', cut: [0.8, 2.0], fade: 0.23 },
-  { cue: 'B5-B6', take: 'B5-switch', cut: [0.2, 5.0], trans: 'cut' },
+  { cue: 'B3', take: 'B3-jubilife', cut: [0.5, 1.4], crop: 0.38, fade: 0.23 },
+  { cue: 'B5-B6', take: 'B5-switch', cut: [0.7, 5.0], trans: 'cut' },
   { cue: 'C1', take: 'B5-switch', cut: [8.3, 1.5], trans: 'cut' },
-  // 세로판은 흡수가 맞는 자리가 다르다(5.37초 — 같은 기술이 4초마다 돈다)
-  { cue: 'C3', take: 'C3-move', cut: [5.0, 1.1], trans: 'cut' },
+  // 세로판은 흡수가 맞는 자리가 다르다(1.5초 — 찍을 때마다 배틀의 차례가 달라진다)
+  { cue: 'C3', take: 'C3-move', cut: [1.0, 1.1], trans: 'cut' },
   { cue: 'C6', take: 'C6-catch', cut: [0.5, 1.4], trans: 'cut' },
   // 길이는 야생 배틀 곡의 프레이즈가 정한다(`fit`)
   { cue: 'C8', take: 'C6-catch', cut: [7.1, 1.6], trans: 'cut' },
@@ -130,9 +139,9 @@ const SHORTS = [
   // 세로 카메라는 볼이 늦게 열리고 화강돌이 오른쪽 아래 모서리에 선다 — 가로판에서 화강돌 자리(가로 55%)를 잘라 쓴다
   { cue: 'D11b', take: 'D11-champion', cut: [12.3, 2.6], crop: 0.55, trans: 'cut' },
   { cue: 'D12', take: 'D12-lucario', cut: [2.0, 1.6], crop: 0.5, trans: 'cut' },
-  { cue: 'D13', take: 'D13-garchomp', cut: [1.7, 1.4], crop: 0.5, trans: 'cut' },
+  { cue: 'D13', take: 'D13-garchomp', cut: [1.05, 1.25], crop: 0.5, trans: 'cut' },
   // 길이는 챔피언 곡의 프레이즈가 정한다(`fit`)
-  { cue: 'D13b', take: 'D13-garchomp', cut: [4.7, 1.4], crop: 0.5, trans: 'cut' },
+  { cue: 'D13b', take: 'D13-garchomp', cut: [3.95, 1.4], crop: 0.5, trans: 'cut' },
   { cue: 'E2', take: 'E2-spear', cut: [0.6, 1.6], warp: 'out', fade: 0.4 },
   { cue: 'E3a', take: 'E3-distortion', cut: [0.3, 3.6], warp: 'in', trans: 'cut' },
   { cue: 'E3w', take: 'E3-wall', cut: [0.4, 1.5], crop: 0.45, trans: 'cut' },
@@ -151,24 +160,25 @@ const EDIT = SHORT ? SHORTS : MAIN
  * `<장면>@9:16`이 있으면 세로판은 그것을 쓴다. BDSP 공개 영상은 울음을 곡 아래 낮게 깐다 — 소리는 곡을 넘지 않는다
  */
 const TAKE_SFX = {
-  'B5-switch': [[3.23, 'UI_COMMON_PM_ENCOUNT_GRASS', -4], [3.73, 'PV_399_00_00', -2], [8.5, 'BA_SYS_BALL_THROW_NORMAL', -6],
-    [8.9, 'BA_SYS_BALL_OPEN', -3], [9.2, 'PV_387_00_00', -2]],
-  // 세로판은 조우가 14프레임 늦다. 볼부터는 같다
-  'B5-switch@9:16': [[3.70, 'UI_COMMON_PM_ENCOUNT_GRASS', -4], [4.2, 'PV_399_00_00', -2], [8.5, 'BA_SYS_BALL_THROW_NORMAL', -6],
-    [8.9, 'BA_SYS_BALL_OPEN', -3], [9.2, 'PV_387_00_00', -2]],
-  'C3-move': [[1.40, 'EW071_01', -2]],
-  'C3-move@9:16': [[5.37, 'EW071_01', -2]],
-  'C4-night': [[1.43, 'EW033_01', -4], [1.73, 'BA_SYS_HIT_NOMAL', -3]],
-  'C5-cave': [[5.03, 'EW033_01', -4], [5.03, 'BA_SYS_HIT_NOMAL', -3]],
-  'C6-catch': [[0.6, 'BA_SYS_BALL_THROW_NORMAL', -6], [0.87, 'BA_SYS_BALL_HIT', -5], [0.93, 'BA_SYS_ABSORPTION', -4],
+  'B5-switch': [[3.73, 'UI_COMMON_PM_ENCOUNT_GRASS', -4], [4.23, 'PV_403_00_00', -2], [8.47, 'BA_SYS_BALL_THROW_NORMAL', -6],
+    [8.9, 'BA_SYS_BALL_OPEN', -3], [9.23, 'PV_387_00_00', -2]],
+  // 세로판은 야생이 비버니다(찍을 때마다 풀숲의 조우가 다르다)
+  'B5-switch@9:16': [[3.73, 'UI_COMMON_PM_ENCOUNT_GRASS', -4], [4.2, 'PV_399_00_00', -2], [8.43, 'BA_SYS_BALL_THROW_NORMAL', -6],
+    [8.9, 'BA_SYS_BALL_OPEN', -3], [9.1, 'PV_387_00_00', -2]],
+  'C3-move': [[5.53, 'EW071_01', -2]],
+  'C3-move@9:16': [[1.5, 'EW071_01', -2]],
+  'C4-night': [[1.47, 'EW033_01', -4], [1.77, 'BA_SYS_HIT_NOMAL', -3]],
+  // 웅크리기(기술 111)
+  'C5-cave': [[3.77, 'EW111', -4]],
+  'C6-catch': [[0.6, 'BA_SYS_BALL_THROW_NORMAL', -6], [0.9, 'BA_SYS_BALL_HIT', -5], [0.93, 'BA_SYS_ABSORPTION', -4],
     [1.53, 'BA_SYS_BALL_CLOSE', -4], [2.03, 'BA_SYS_BALL_DROP', -6], [2.3, 'BA_SYS_BALL_DROP', -9], [2.5, 'BA_SYS_BALL_DROP', -12],
-    [3.03, 'BA_SYS_BALL_SPIN', -5], [4.37, 'BA_SYS_BALL_SPIN', -5], [5.63, 'BA_SYS_BALL_SPIN', -5], [7.37, 'BA_SYS_POKE_BALL', -2]],
-  'D11-champion': [[9.83, 'UI_COMMON_PM_ENCOUNT_YARI_a', -4], [12.73, 'BA_SYS_BALL_OPEN', -3], [14.77, 'PV_442_00_00', -1]],
-  // 난천의 루카리오 — 파동탄(기술 396)
-  'D12-lucario': [[2.1, 'EW396_EM', -3], [3.33, 'BA_SYS_HIT_H', -2]],
-  'D13-garchomp': [[1.8, 'EW407_2D', -3], [2.87, 'BA_SYS_HIT_H', -2], [4.9, 'EW089_01', -1]],
+    [3.03, 'BA_SYS_BALL_SPIN', -5], [4.33, 'BA_SYS_BALL_SPIN', -5], [5.6, 'BA_SYS_BALL_SPIN', -5], [7.37, 'BA_SYS_POKE_BALL', -2]],
+  'D11-champion': [[9.83, 'UI_COMMON_PM_ENCOUNT_YARI_a', -4], [12.7, 'BA_SYS_BALL_OPEN', -3], [14.87, 'PV_442_00_00', -1]],
+  // 난천의 루카리오 — 파동탄(기술 396). 모으는 소리는 컷 머리에 선다
+  'D12-lucario': [[2.0, 'EW396_EM', -3], [3.3, 'BA_SYS_HIT_H', -2]],
+  'D13-garchomp': [[1.13, 'EW407_2D', -3], [1.73, 'BA_SYS_HIT_H', -2], [4.17, 'EW089_01', -1]],
   // 오리진폼의 울음 — 이 영상의 주인공이라 다른 소리보다 앞에 둔다
-  'E3-giratina': [[3.0, 'PV_487_01_00', 3]],
+  'E3-giratina': [[3.0, 'PV_487_01_00', 3], [3.3, 'UI_COMMON_PM_BATTLEIN_FX', -4]],
 }
 
 /**
@@ -178,7 +188,8 @@ const TAKE_SFX = {
  * (BA008은 Wwise 박자표, 나머지는 소리에서 잰 것 — 곡을 꺼낸 작업의 실측). 맞춘 만큼 다음 조각이 이어 받는다.
  * `fit`(마디 수)은 반대로 **영상을 곡에 맞춘다** — `until` 큐 바로 앞 조각의 길이를 늘리거나 줄여, 곡이 그 마디 경계에서
  * 끝나는 순간에 컷이 오게 한다(`fitEdit`). 곡이 프레이즈 한가운데서 끊기지 않는다. 늘릴 수 있는 만큼은 찍은 장면 길이가 정한다
- * `fadeIn` · `fadeOut`은 그 조각의 앞뒤 페이드, `gain`은 dB. 조각끼리 겹치면 섞인다. 비어 있으면 소리 없이 낸다
+ * `fadeIn` · `fadeOut`은 그 조각의 앞뒤 페이드, `gain`은 dB, `tail`은 다음 곡과 겹쳐 더 흐르는 길이(초 · 기본 `XFADE.tail`).
+ * 기라티나 곡 → 로고는 겹치지 않는다 — 원본도 로고 스팅어 앞에서 곡을 비운다(81.5~83.9초). 조각끼리 겹치면 섞인다. 비어 있으면 소리 없이 낸다
  */
 // 곡은 BDSP 원곡이다(`Delphis_Main.bnk` 상태 → wem, `.audit/reels/music/`에 wav로 풀어 둔다).
 //   B_OTH001  오프닝 데모 — DS `SEQ_TITLE00`과 길이로 맞췄다. 19초에 한 박 쉬고 21초에 오케스트라가 터진다
@@ -190,29 +201,38 @@ const TAKE_SFX = {
 const SCORE = {
   '16:9': [
     // 마디 경계는 `music/bars/<곡>.json`의 4마디 프레이즈다(`fit: 4`). 오프닝은 21.5초(오케스트라가 터지는 박)에 B1이 선다
-    { src: 'B_OTH001', cue: 'B1', at: -21.5, from: 0, until: 'B5-B6', untilAt: 3.03, fit: 4, fadeOut: 0.3 },
-    { src: 'BA001', cue: 'B5-B6', at: 3.03, from: 0, until: 'D1', fit: 4, fadeOut: 0.25 },
-    { src: 'B_OTH001', cue: 'D1', from: 33.94, until: 'D11', untilAt: 0.33, fit: 4, fadeIn: 0.15, fadeOut: 0.3 },
-    { src: 'BA008', cue: 'D11', at: 0.33, from: 0, until: 'E2', fit: 4, fadeOut: 0.25 },
-    { src: 'BA015', cue: 'E2', from: 0, until: 'E4', fit: 4, fadeIn: 0.1, fadeOut: 0.4 },
-    { src: 'B_OTH002', cue: 'F1', from: 0, until: 'end', fadeOut: 1.5 },
+    // 배틀 곡은 첫 박이 「배틀이다」의 한 방이다(곡 머리 50ms가 바로 -6~-13dB) — 겹치지 않고, 앞 곡은 프레이즈 끝에서 빠르게 뺀다
+    { src: 'B_OTH001', cue: 'B1', at: -21.5, from: 0, until: 'B5-B6', untilAt: 3.03, fit: 4, fadeOut: 0.25 },
+    // 배틀 → 여정은 곡 한가운데(33.94초 · 마디 첫 박)로 들어간다 — 겹쳐 넘긴다
+    { src: 'BA001', cue: 'B5-B6', at: 3.03, from: 0, until: 'D1', fit: 4, tail: 0.7 },
+    { src: 'B_OTH001', cue: 'D1', from: 33.94, until: 'D11', untilAt: 0.33, fit: 4, fadeIn: 0.4, fadeOut: 0.25 },
+    // 챔피언 → 기라티나는 창기둥이 뒤틀리며 녹는 자리 — 화면의 디졸브와 같이 겹친다
+    { src: 'BA008', cue: 'D11', at: 0.33, from: 0, until: 'E2', fit: 4, tail: 0.8 },
+    { src: 'BA015', cue: 'E2', from: 0, until: 'E4', fit: 4, fadeIn: 0.5, fadeOut: 0.4 },
+    // 타이틀 곡 파일은 머리 0.45초가 무음이다 — 그 뒤부터 깔고 로고보다 조금 앞서 들어온다. 원본은 곡을 0.2초 비우고 스팅어를 넣는다
+    { src: 'B_OTH002', cue: 'F1', at: -0.15, from: 0.45, until: 'end', fadeOut: 1.5 },
   ],
   '9:16': [
     // 기라티나의 울음으로 연다 — 곡도 기라티나 곡의 머리. 오프닝 곡은 터널부터다(`notBefore`)
-    { src: 'BA015', cue: 'H1', from: 0, until: 'A2-A4', untilAt: 0.3, fadeOut: 0.3 },
+    { src: 'BA015', cue: 'H1', from: 0, until: 'A2-A4', untilAt: 0.3, tail: 0.8 },
     // 마을이 두 컷뿐이라 4마디까지 못 간다 — 한 마디에 맞춘다
-    { src: 'B_OTH001', cue: 'B1', at: -21.5, notBefore: 'A2-A4', from: 0, until: 'B5-B6', untilAt: 3.5, fit: 1, fadeIn: 0.2, fadeOut: 0.3 },
-    // 세로판은 조우가 14프레임 늦다(3.70초 — 걸음 위치가 다르다)
-    { src: 'BA001', cue: 'B5-B6', at: 3.5, from: 0, until: 'D5', fit: 4, fadeOut: 0.25 },
-    { src: 'B_OTH001', cue: 'D5', from: 33.94, until: 'D11', untilAt: 0.33, fit: 1, fadeIn: 0.15, fadeOut: 0.3 },
-    { src: 'BA008', cue: 'D11', at: 0.33, from: 0, until: 'E2', fit: 4, fadeOut: 0.25 },
-    { src: 'BA015', cue: 'E2', from: 0, until: 'E4', fit: 4, fadeIn: 0.1, fadeOut: 0.4 },
-    { src: 'B_OTH002', cue: 'F1', from: 0, until: 'end', fadeOut: 1.5 },
+    { src: 'B_OTH001', cue: 'B1', at: -21.5, notBefore: 'A2-A4', from: 0, until: 'B5-B6', untilAt: 3.03, fit: 1, fadeIn: 0.5, fadeOut: 0.25 },
+    { src: 'BA001', cue: 'B5-B6', at: 3.03, from: 0, until: 'D5', fit: 4, tail: 0.7 },
+    { src: 'B_OTH001', cue: 'D5', from: 33.94, until: 'D11', untilAt: 0.33, fit: 1, fadeIn: 0.4, fadeOut: 0.25 },
+    { src: 'BA008', cue: 'D11', at: 0.33, from: 0, until: 'E2', fit: 4, tail: 0.8 },
+    { src: 'BA015', cue: 'E2', from: 0, until: 'E4', fit: 4, fadeIn: 0.5, fadeOut: 0.4 },
+    // 타이틀 곡 파일은 머리 0.45초가 무음이다 — 그 뒤부터 깔고 로고보다 조금 앞서 들어온다. 원본은 곡을 0.2초 비우고 스팅어를 넣는다
+    { src: 'B_OTH002', cue: 'F1', at: -0.15, from: 0.45, until: 'end', fadeOut: 1.5 },
   ],
 }[ASPECT] ?? []
 const MUSIC = resolve(ROOT, '.audit/reels/music')
 /** 효과음은 BDSP 원본이다(Wwise 이벤트 → wem, `.audit/reels/sfx/` · `index.json`, 깃에 없다) */
 const SFX = resolve(ROOT, '.audit/reels/sfx')
+/**
+ * 곡이 바뀌는 자리의 기본 — 겹치지 않고(`tail` 0) 뒤 곡은 딸깍 소리만 막는다(10ms). 겹쳐 넘길 자리는 `SCORE`가 `tail` · `fadeIn`을 적는다.
+ * 넘기는 페이드는 등전력(사인 4분의 1) 곡선이다 — 직선으로 겹치면 겹치는 가운데에서 소리가 3dB 꺼진다
+ */
+const XFADE = { tail: 0, in: 0.01 }
 /** 컷을 얹을 온셋 — 세기(0~1) 이상만, 컷에서 이만큼(초) 안의 것만 */
 const SNAP = { strength: 0.5, reach: 0.2 }
 /** `fitEdit`이 나눠 늘릴 때 한 컷의 최장(초) */
@@ -235,12 +255,12 @@ function warpFilter(kind, len) {
  */
 const takeDir = (e) => resolve(e.crop === undefined ? TAKE : resolve(ROOT, '.audit/reels/take/16x9'), e.take)
 
-/** 화면 위에 작은 글 한 줄 — 0.3초에 걸쳐 떠오른다. 글은 파일로 넘긴다(쉼표가 필터 구분자와 겹친다) */
-function captionFilter(e) {
+/** 화면 위에 작은 글 한 줄 — 0.3초에 걸쳐 떠오르고 조각 끝 0.4초에 걸쳐 진다. 글은 파일로 넘긴다(쉼표가 필터 구분자와 겹친다) */
+function captionFilter(e, len) {
   const file = resolve(WORK, `${e.cue}.caption.txt`)
   writeFileSync(file, e.caption)
   const esc = (p) => p.replace(/\\/g, '/').replace(/:/g, '\\:')
-  return `drawtext=fontfile='${esc('C:/Windows/Fonts/malgun.ttf')}':textfile='${esc(file)}':fontsize=${String(Math.round(Math.min(W, H) * 0.03))}:fontcolor=white:alpha='min(1\\,t/0.3)*0.8':shadowcolor=black@0.6:shadowx=2:shadowy=2:x=(w-tw)/2:y=h*0.07`
+  return `drawtext=fontfile='${esc('C:/Windows/Fonts/malgun.ttf')}':textfile='${esc(file)}':fontsize=${String(Math.round(Math.min(W, H) * 0.03))}:fontcolor=white:alpha='min(1\\,t/0.3)*min(1\\,(${len.toFixed(3)}-t)/0.4)*0.8':shadowcolor=black@0.6:shadowx=2:shadowy=2:x=(w-tw)/2:y=h*0.07`
 }
 
 /** 장면 하나 → 30fps mp4 (길이 = 큐 길이 + 겹침) */
@@ -267,7 +287,7 @@ function takeClip(e, file) {
   }
   vf.push(`scale=${W}:${H}:flags=lanczos`)
   if (e.warp) vf.push(...warpFilter(e.warp, len))
-  if (e.caption) vf.push(captionFilter(e))
+  if (e.caption) vf.push(captionFilter(e, len))
   vf.push('format=yuv420p')
   run('ffmpeg', ['-y', '-v', 'error', '-safe', '0', '-f', 'concat', '-i', list, '-vf', vf.join(','), ...enc, file])
 }
@@ -289,7 +309,7 @@ async function cardClip(page, e, file) {
     writeFileSync(resolve(dir, `c-${String(i).padStart(4, '0')}.png`), await page.screenshot())
   }
   // 장 수를 못 박는다 — 폴더에 지난번(더 긴) 카드의 장이 남아 있으면 그것까지 읽었다(쇼츠 터널이 5초 대신 8.4초)
-  run('ffmpeg', ['-y', '-v', 'error', '-framerate', String(FPS), '-i', resolve(dir, 'c-%04d.png'), '-frames:v', String(n), ...enc, file])
+  run('ffmpeg', ['-y', '-v', 'error', '-framerate', String(FPS), '-i', resolve(dir, 'c-%04d.png'), '-frames:v', String(n), ...(e.caption ? ['-vf', `${captionFilter(e, len)},format=yuv420p`] : []), ...enc, file])
 }
 
 function duration(file) {
@@ -381,7 +401,7 @@ function snapCuts(edit) {
   }
   for (let k = 0; k < out.length - 1; k++) {
     const e = out[k]
-    if (e.trans !== 'cut' || !e.take || ends.has(out[k + 1].cue)) continue
+    if (e.trans !== 'cut' || !e.take || e.snap === false || ends.has(out[k + 1].cue)) continue
     const at = cueStarts(out)
     const T = at[out[k + 1].cue]
     const piece = SCORE.find((p) => {
@@ -479,10 +499,15 @@ function mixScore(video, final, cueAt, hits = []) {
       console.log(`  곡 ${p.src} 끝 ${(p.from + p.len).toFixed(2)} → 마디 ${end.toFixed(2)} (${(end - p.from - p.len >= 0 ? '+' : '')}${(end - p.from - p.len).toFixed(2)}초)`)
       p = { ...p, len: Math.max(0.1, end - p.from) }
     }
+    // 곡끼리 겹쳐 넘긴다 — 앞 곡은 넘어가는 자리에서 `tail`초 더 흐르며 빠지고, 뒤 곡은 `XFADE.in`초에 걸쳐 들어온다.
+    // 딱 잘라 바꾸니 곡이 바뀌는 자리마다 소리가 툭 끊겼다
+    const tail = p.until === 'end' ? 0 : p.tail ?? XFADE.tail
+    if (tail > 0) p = { ...p, len: p.len + tail, fadeOut: tail + (p.fadeOut ?? 0) }
+    if (i > 0 && p.fadeIn === undefined) p = { ...p, fadeIn: XFADE.in }
     const k = srcs.indexOf(p.src) + 1
     const f = [`atrim=start=${p.from.toFixed(3)}:duration=${p.len.toFixed(3)}`, 'asetpts=PTS-STARTPTS', 'aformat=sample_rates=48000:channel_layouts=stereo']
-    if (p.fadeIn) f.push(`afade=t=in:d=${p.fadeIn}`)
-    if (p.fadeOut) f.push(`afade=t=out:st=${(p.len - p.fadeOut).toFixed(3)}:d=${p.fadeOut}`)
+    if (p.fadeIn) f.push(`afade=t=in:d=${p.fadeIn}:curve=qsin`)
+    if (p.fadeOut) f.push(`afade=t=out:st=${(p.len - p.fadeOut).toFixed(3)}:d=${p.fadeOut}:curve=qsin`)
     if (p.gain) f.push(`volume=${p.gain}dB`)
     f.push(`adelay=${Math.round(Math.max(0, start) * 1000)}:all=1`)
     return `[${String(k)}:a]${f.join(',')}[m${String(i)}]`

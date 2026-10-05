@@ -83,7 +83,9 @@ const g=document.getElementById('cv').getContext('2d'),tt=document.getElementByI
 // 빛줄기 — 각도 · 깊이를 씨앗으로 정해 두고, 나아간 거리 s만큼 깊이를 줄인다
 let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647};
 const N=520,ST=[];for(let i=0;i<N;i++)ST.push({a:rnd()*Math.PI*2,z:rnd(),w:0.4+rnd()*1.6,h:0.55+rnd()*0.45,c:rnd()});
-const speed=(t)=>t<A2?0.55+0.6*(t/A2):t<A2+REW?-2.6*Math.sin(Math.PI*(t-A2)/REW)-0.1:0.4+5*((t-A2-REW)/FL);
+// 쇼츠는 기라티나의 조우 소용돌이에서 하드컷으로 들어온다 — 소용돌이의 속도 · 빛을 이어받아 0.4초에 걸쳐 가라앉는다
+const carry=(t)=>${short ? 1 : 0}*Math.exp(-t/0.4);
+const speed=(t)=>t<A2?0.55+0.6*(t/A2)+3.2*carry(t):t<A2+REW?-2.6*Math.sin(Math.PI*(t-A2)/REW)-0.1:0.4+5*((t-A2-REW)/FL);
 const travel=(t)=>{let s=0;const dt=1/240;for(let x=0;x<t;x+=dt)s+=speed(x)*dt;return s};
 const R=Math.hypot(W,H)/2;
 function streaks(t,glow){const s=travel(t),v=speed(t);g.fillStyle='#000';g.fillRect(0,0,W,H);
@@ -103,7 +105,7 @@ let sc,al;if(dir>0){const a=easeOut(k/0.35),b=ease((k-0.8)/0.2);sc=0.25+0.75*a+2
 sc*=1+(extra||0)*0.06;box.style.transform='scale('+sc.toFixed(4)+')';box.style.opacity=clamp(al).toFixed(3);
 const gl=(i===P?1:0.35)+(extra||0)*2;box.style.filter='drop-shadow(0 0 '+(10*gl*U)+'px rgba(140,190,255,0.9)) drop-shadow(0 0 '+(36*gl*U)+'px rgba(90,140,255,'+(0.4+0.3*(extra||0))+'))'}
 window.draw=(t)=>{wash.style.opacity=0;
-if(t<A2){streaks(t,0);let i=starts.findIndex((a,j)=>t>=a&&t<a+SL[j]);if(i<0)i=L.length-1;
+if(t<A2){streaks(t,0.8*carry(t));let i=starts.findIndex((a,j)=>t>=a&&t<a+SL[j]);if(i<0)i=L.length-1;
 // 플래티넘은 처음 지날 때도 한 박자 머문다 — 칸 안에서 사라지는 끝을 늦춘다
 let k=(t-starts[i])/SL[i];if(i===L.length-1)k=Math.min(k,0.6);show(i,k,1,i===P?0.3:0);return}
 if(t<A2+REW){streaks(t,0.2);const x=(t-A2)/REW;const span=L.length-1-P;const f=(L.length-1)-span*easeOut(x*1.08);
