@@ -171,6 +171,8 @@ interface BodyTrack {
 interface ModelTrack {
   no: number
   kind: 'ball' | 'locator'
+  /** 둘째 볼(더블 내보내기 `PlanOptions.ballSecond`)의 모델이다. 없으면 `PlanOptions.ball` 그대로 */
+  ball?: number
   commands: SeqCommand[]
 }
 
@@ -182,6 +184,8 @@ export interface SeqPlan {
   models: ModelTrack[]
   /** 다른 몸 감추기 (`PokemonVisibleOther` · `PokemonVisibleAll`) */
   others: SeqCommand[]
+  /** 역할이 없는 대상(`PlanOptions.away`)의 보이기·감추기 (`PokemonVisible`) — 더블 내보내기 카메라가 지나는 맞은편 둘 */
+  away: SeqCommand[]
   /** 화면 흔들림 */
   shakes: SeqCommand[]
   /** 카메라 명령 (`CameraMoveRelativePoke` · `CameraMovePosition` · `CameraTwist` · `CameraReset*` · `DprCamera*`) */
@@ -212,12 +216,19 @@ export interface PlanOptions {
   /** 쓴 쪽이 내 쪽인가 (조건부 묶음 `(1, n)`) */
   attackerMine?: boolean
   /** 그 밖의 조건부 묶음 값 — `GroupOption`의 옵션 번호 → 이 판의 값. 적은 옵션만 맞춰 본다 */
-  options?: Readonly<Record<number, number>>
+  options?: Readonly<Record<number, number | readonly number[]>>
   /**
    * 원본 대상 번호 → 우리 역할. 주면 **여기 없는 대상을 겨눈 명령은 버린다**(내보내기의 상대 감추기 등).
    * 안 주면 0 · 1을 그대로 쓴다(기술)
    */
   targets?: Readonly<Record<number, Role>>
+  /**
+   * 역할을 안 주고 **보이기·감추기만** 받는 대상 번호 (`plan.away`). 더블 내보내기는 역할 둘을 내 쪽 두 마리가 쓰므로
+   * 카메라가 서는 동안 맞은편 둘을 감추는 `PokemonVisible`(`ee404` f51~116 trg 4 · 6)을 여기로 받는다
+   */
+  away?: readonly number[]
+  /** 둘째 볼 번호 — `DprParticleCreateSeal index=1`의 빛과 그 볼 모델(`ModelTrack.ball`). 더블 내보내기에서 두 마리의 볼이 다를 때 */
+  ballSecond?: number
   /** 이 프레임부터 튼다 — 앞은 잘라 낸다(배틀에 서지 않는 트레이너의 몸짓). 그 앞에서 정한 상태는 0프레임에 선다 */
   startAt?: number
   /** 카메라 명령을 받는가 (기본 참) */
@@ -262,6 +273,22 @@ export function prefabOfFile(file: string): string | null {
   return m ? m[1]! : null
 }
 
+/**
+ * 기술 시퀀스의 판 갈래 — `GroupOption 0`이 싱글 1 · 더블 2 · 「싱글 이외」 4다(묶음 이름 `シングル分岐` · `ダブル` · `シングル以外`).
+ * 싱글은 1만, 더블은 2와 4가 같이 선다. 갈래를 안 주면 이 묶음들은 통째로 빠진다 — 싱글에서도 맞는 쪽에 입자를 붙이는
+ * `ParticleMoveRelativePoke`가 `[0,1]` 묶음에만 있는 기술(파도타기 `ew057` 등 30개)이 있다
+ */
+export const BATTLE_OPTION = 0
+export const battleOptions = (doubles: boolean): PlanOptions['options'] => ({ [BATTLE_OPTION]: doubles ? [2, 4] : 1 })
+
+/** 이 입자가 맞는 쪽(역할 1)에 붙는 명령을 가졌는가 — 범위 기술에서 맞은 자리마다 한 벌 더 세운다 */
+export function touchesTarget(p: { commands: readonly SeqCommand[] }): boolean {
+  return p.commands.some((c) => {
+    const keys: readonly string[] = c.name === 'ParticleFollowPoke' ? [...ROLE_KEYS, 'pos'] : ROLE_KEYS
+    return keys.some((k) => c.values[k]?.length === 1 && num(c.values[k]) === 1)
+  })
+}
+
 /** 조건부 묶음을 이 판에서 쓰는가 */
 function groupApplies(options: SeqGroup['options'], attackerMine: boolean, given: PlanOptions['options']): boolean {
   for (const [opt, value] of options) {
@@ -269,7 +296,8 @@ function groupApplies(options: SeqGroup['options'], attackerMine: boolean, given
       if ((value % 2 === 1) !== attackerMine) return false
       continue
     }
-    if (given?.[opt] === value) continue
+    const want = given?.[opt]
+    if (want === value || (Array.isArray(want) && want.includes(value))) continue
     return false
   }
   return true
@@ -307,6 +335,7 @@ export function planSequence(seq: SeqData, opts: PlanOptions = {}): SeqPlan {
     body: [{ commands: [] }, { commands: [] }],
     models: [],
     others: [],
+    away: [],
     shakes: [],
     camera: [],
     back: [],
@@ -319,19 +348,40 @@ export function planSequence(seq: SeqData, opts: PlanOptions = {}): SeqPlan {
     cameraAtRest: opts.cameraAtRest ?? false,
     ignored: new Set(),
   }
+  const pad = (n: number): string => String(Math.max(1, Math.min(16, n))).padStart(3, '0')
+  /** 둘째 볼이 담긴 묶음 번호 — `DprParticleCreateSeal index=1 grpNo` */
+  const secondGroups = new Set<number>()
+  if (opts.ballSecond !== undefined) {
+    for (const g of seq.groups) {
+      for (const c of g.commands) {
+        if (c.name === 'DprParticleCreateSeal' && num(c.values.index) === 1) secondGroups.add(num(c.values.grpNo))
+      }
+    }
+  }
   const modelOf = (no: number): ModelTrack => {
     let m = plan.models.find((x) => x.no === no)
-    if (!m) { m = { no, kind: 'ball', commands: [] }; plan.models.push(m) }
+    if (!m) {
+      m = { no, kind: 'ball', commands: [] }
+      if (opts.ballSecond !== undefined && secondGroups.has(no)) m.ball = Math.max(1, Math.min(16, opts.ballSecond))
+      plan.models.push(m)
+    }
     return m
   }
   const ballOut = `eb${ball}_ballout`
+  const ballOutSecond = `eb${pad(opts.ballSecond ?? opts.ball ?? 4)}_ballout`
   /** 구운 카메라 애니메이션(`CameraAnimationPoke`)이 서는 프레임들 — 아래에서 대신 선다 */
   const animCams: number[] = []
+  /**
+   * 묶음 번호(`no`) → 그 번호로 마지막에 세운 입자 칸. ⚠️ **조건 묶음은 같은 번호의 기본 묶음 입자를 이어 받는다** — 파도타기 `ew057`은
+   * `ParticleCreate`가 든 묶음 `no=15` 뒤에 `シングル分岐`(`[0,1]`) · `[0,4]` 묶음이 같은 `no=15`로 서서 맞는 쪽 자리
+   * (`ParticleMoveRelativePoke`)를 준다. 자기 묶음 안에서만 찾으면 그 명령이 갈 데가 없어 버려진다. `no=0`은 번호 없음이다
+   */
+  const slotOfNo = new Map<number, Omit<SeqParticle, 'commands'> & { commands: SeqCommand[] }>()
   seq.groups.forEach((g, gi) => {
     if (g.name === DEBUG_GROUP) return
     if (!groupApplies(g.options, mine, opts.options)) return
     const cmds = [...g.commands].sort((a, b) => a.start - b.start)
-    let current: { key: string; prefab: string; start: number; stop: number; remove: number | null; commands: SeqCommand[] } | null = null
+    let current: (Omit<SeqParticle, 'commands'> & { commands: SeqCommand[] }) | null = g.no !== 0 ? slotOfNo.get(g.no) ?? null : null
     let seen = 0
     /** 이 묶음의 카메라가 트레이너에 붙어 있다 — 뒤따르는 상대 이동 · 돌기도 그 카메라 몫이라 같이 버린다 */
     let trainerCam = false
@@ -341,6 +391,7 @@ export function planSequence(seq: SeqData, opts: PlanOptions = {}): SeqPlan {
     let trainerBound = false
     const startParticle = (c: SeqCommand, prefab: string): void => {
       current = { key: `${gi}:${seen++}`, prefab, start: c.start, stop: Math.max(c.start, c.end), remove: null, commands: [] }
+      if (g.no !== 0) slotOfNo.set(g.no, current)
       trainerBound = false
       plan.particles.push(current)
     }
@@ -348,6 +399,11 @@ export function planSequence(seq: SeqData, opts: PlanOptions = {}): SeqPlan {
       const shifted: SeqCommand = cut > 0
         ? { ...raw, start: Math.max(0, raw.start - cut), end: Math.max(0, raw.end - cut) }
         : raw
+      if (shifted.name === 'PokemonVisible' && opts.away?.includes(num(shifted.values.trg))) {
+        plan.away.push(shifted)
+        plan.frames = Math.max(plan.frames, shifted.end)
+        continue
+      }
       const c = retarget(shifted, opts.targets)
       if (c === null) continue
       plan.frames = Math.max(plan.frames, c.end)
@@ -365,7 +421,7 @@ export function planSequence(seq: SeqData, opts: PlanOptions = {}): SeqPlan {
         continue
       }
       // 실(seal)을 붙인 볼의 등장 이펙트 — 실을 안 붙였으면 그 볼의 기본 등장 빛이다(`ee400_seal`이 같은 자리에 `eb004_ballout`을 적어 둔다)
-      if (n === 'DprParticleCreateSeal') { startParticle(c, ballOut); continue }
+      if (n === 'DprParticleCreateSeal') { startParticle(c, num(c.values.index) === 1 ? ballOutSecond : ballOut); continue }
       if (n === 'DprModelParticlePlay') {
         // 볼 모델에 붙은 이펙트를 튼다 — 그 노드를 따라간다
         const index = num(c.values.particleIndex)
@@ -464,8 +520,11 @@ export function planSequence(seq: SeqData, opts: PlanOptions = {}): SeqPlan {
   for (const t of plan.body) t.commands.sort((a, b) => a.start - b.start)
   for (const m of plan.models) m.commands.sort((a, b) => a.start - b.start)
   plan.others.sort((a, b) => a.start - b.start)
+  plan.away.sort((a, b) => a.start - b.start)
   plan.camera.sort((a, b) => a.start - b.start)
   plan.back.sort((a, b) => a.start - b.start)
+  // 조건 묶음이 이어 준 명령이 뒤에 붙었다 — 시작 프레임 차례로 (같은 프레임은 묶음 차례를 지킨다)
+  for (const p of plan.particles) p.commands = [...p.commands].sort((x, y) => x.start - y.start)
   if (plan.scaleParticles) for (const p of plan.particles) p.sized = true
   return plan
 }
@@ -506,7 +565,7 @@ const shiftCmd = (c: SeqCommand, by: number): SeqCommand => ({ ...c, start: c.st
  */
 export function chainPlans(name: string, plans: readonly (readonly [SeqPlan, number])[]): SeqPlan {
   const out: SeqPlan = {
-    name, particles: [], body: [{ commands: [] }, { commands: [] }], models: [], others: [], shakes: [], camera: [],
+    name, particles: [], body: [{ commands: [] }, { commands: [] }], models: [], others: [], away: [], shakes: [], camera: [],
     back: [], hit: null, message: null, frames: 0, shaderBase: plans[0]?.[0].shaderBase ?? 0,
     clipSeconds: plans[0]?.[0].clipSeconds ?? [], scaleParticles: plans[0]?.[0].scaleParticles ?? false,
     cameraAtRest: plans[0]?.[0].cameraAtRest ?? false, ignored: new Set(),
@@ -522,10 +581,11 @@ export function chainPlans(name: string, plans: readonly (readonly [SeqPlan, num
     for (const r of [0, 1] as const) out.body[r].commands.push(...p.body[r].commands.map(s))
     for (const m of p.models) {
       let to = out.models.find((x) => x.no === m.no)
-      if (!to) { to = { no: m.no, kind: m.kind, commands: [] }; out.models.push(to) }
+      if (!to) { to = { no: m.no, kind: m.kind, ball: m.ball, commands: [] }; out.models.push(to) }
       to.commands.push(...m.commands.map(s))
     }
     out.others.push(...p.others.map(s))
+    out.away.push(...p.away.map(s))
     out.shakes.push(...p.shakes.map(s))
     out.camera.push(...p.camera.map(s))
     out.back.push(...p.back.map(s))
@@ -537,6 +597,7 @@ export function chainPlans(name: string, plans: readonly (readonly [SeqPlan, num
   for (const t of out.body) t.commands.sort((a, b) => a.start - b.start)
   for (const m of out.models) m.commands.sort((a, b) => a.start - b.start)
   out.others.sort((a, b) => a.start - b.start)
+  out.away.sort((a, b) => a.start - b.start)
   out.camera.sort((a, b) => a.start - b.start)
   out.back.sort((a, b) => a.start - b.start)
   return out
@@ -612,6 +673,26 @@ export function worldAround(home: V3, bdspHome: V3 = [0, 0, 0]): (cm: V3) => V3 
   return (cm) => {
     const d = offsetOf([cm[0] - bdspHome[0], cm[1] - bdspHome[1], cm[2] - bdspHome[2]], null)
     return [home[0] + d[0], home[1] + d[1], home[2] + d[2]]
+  }
+}
+
+/**
+ * 더블 내보내기(`ee401` · `ee402` · `ee404` · `ee405`)의 `world` — BDSP 절대 자리(cm)를 **우리 두 발판**에 맞춰 옮긴다.
+ *
+ * 그 시퀀스는 두 마리가 BDSP 자리(옆으로 ±2.5m)에 서는 것으로 적혀 있다: 볼이 `ModelMovePosition ±250/160/250`으로 거기 날아가
+ * 열리고 카메라가 두 마리 가운데를 본다. 우리 두 발판은 그만큼 벌어지지 않으므로(`shots.pairOffset` — 내 쪽 0.9m · 상대 1.7m)
+ * 옆(`x`)은 **두 발판 사이를 그 비율로** 옮기고(볼이 몸 위에서 열린다), 깊이 · 높이는 BDSP 그대로(카메라 거리)다.
+ *
+ * @param a · b 첫째 · 둘째 발판 (무대 좌표 x · z)
+ * @param aX 시퀀스에서 첫째가 서는 BDSP x (cm) — 내 쪽 −250 · 상대 +250. 둘째는 그 반대다
+ * @param z BDSP에서 두 마리가 선 깊이 (cm) — 내 쪽 250 · 상대 −250. 우리 두 발판의 가운데 깊이가 이 깊이다
+ */
+export function worldPair(a: readonly [number, number], b: readonly [number, number], aX: number, z: number): (cm: V3) => V3 {
+  const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+  return (cm) => {
+    // t: 0 둘째 · 1 첫째 · 0.5 가운데
+    const t = aX === 0 ? 0.5 : 0.5 + cm[0] / (2 * aX)
+    return [b[0] + (a[0] - b[0]) * t, cm[1] / 100, mid[1] + (cm[2] - z) / 100 + (b[1] + (a[1] - b[1]) * t - mid[1])]
   }
 }
 
@@ -1203,6 +1284,16 @@ export function othersHidden(plan: SeqPlan, f: number): boolean {
   for (const c of plan.others) {
     if (f < c.start) break
     hidden = c.name === 'PokemonVisibleAll' ? false : num(c.values.visible, 0, 1) !== 1
+  }
+  return hidden
+}
+
+/** 그 프레임에 역할 없는 대상(`plan.away`)이 감춰져 있는가 — 마지막 `PokemonVisible`이 0이면 감춘 것 */
+export function awayHidden(plan: SeqPlan, f: number): boolean {
+  let hidden = false
+  for (const c of plan.away) {
+    if (f < c.start) break
+    hidden = num(c.values.visible, 0, 1) !== 1
   }
   return hidden
 }

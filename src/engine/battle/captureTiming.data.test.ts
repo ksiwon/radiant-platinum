@@ -6,7 +6,7 @@ import { expect, it } from 'vitest'
 import { DATA, withData } from '../../data/romData.testkit'
 import { CAPTURE_SEQ_FRAMES, captureDuration, captureResolveAt } from './captureTiming'
 import {
-  capturePlan, faintSeqName, introFrame, returnPlan, sendOutPlan, sendOutSeqName, vanishFrame, type BallMeta,
+  capturePlan, faintSeqName, introFrame, returnPlan, sendOutPairPlan, sendOutPairSeqName, sendOutPlan, sendOutSeqName, vanishFrame, type BallMeta,
 } from './fx/ballPlans'
 import { cameraEnd, type SeqData } from './fx/sequence'
 
@@ -33,6 +33,16 @@ maybe('볼 연출 박자 = BDSP 시퀀스', () => {
     for (const side of ['p1', 'p2'] as const) {
       const plan = sendOutPlan(seq(sendOutSeqName(side)), { side, ball: 4, moveType: 0, doubles: false, meta })
       expect(introFrame(plan)).toBe(CAPTURE_SEQ_FRAMES.SEND_OUT_INTRO)
+    }
+  })
+
+  it('쌍 내보내기 — 첫째 · 둘째 몸이 나타나는 프레임이 PAIR_INTRO와 같다 (4개 시퀀스)', () => {
+    for (const side of ['p1', 'p2'] as const) {
+      for (const tag of [false, true]) {
+        const plan = sendOutPairPlan(seq(sendOutPairSeqName(side, tag)), { side, balls: [4, 3], moveTypes: [0, 0], meta })
+        const at = (r: 0 | 1): number => plan.body[r].commands.find((x) => x.name === 'PokemonIntroMotion')!.start
+        expect([at(0), at(1)]).toEqual([...CAPTURE_SEQ_FRAMES.PAIR_INTRO[side]])
+      }
     }
   })
 

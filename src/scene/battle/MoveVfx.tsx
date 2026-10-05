@@ -54,6 +54,13 @@ interface Shot {
   /** 때린 쪽·맞은 쪽의 자리. 몸에 거는 것은 이 둘로 가른다 */
   by: SlotId
   at: SlotId
+  /**
+   * 범위 기술에서 `at` 말고 같이 맞은 자리들 (`lastMove.spread`). BDSP 시퀀스는 한 번만 돌고 맞는 쪽 명령은 한 몸(`trg=1`)만 겨누므로
+   * 이 자리들에는 **맞는 쪽의 몸 반응 · 입자를 한 벌씩 더** 건다 (`BdspSequence`의 `reactors`)
+   */
+  also: readonly SlotId[]
+  /** 더블 판인가 — 시퀀스의 싱글 · 더블 갈래 */
+  doubles: boolean
   family: ElementFamily
   color: string
   signature: MoveVisualSignature
@@ -550,8 +557,8 @@ export function MoveVfx({
   }, [roster])
   useEffect(() => {
     if (anims === null) return undefined
-    setMoveFrames((move, mine) => {
-      const plan = moveSeqPlan(move, mine)
+    setMoveFrames((move, mine, doubles) => {
+      const plan = moveSeqPlan(move, mine, doubles)
       if (plan) return 2 * (plan.hit ?? planFrames(plan))
       return moveAnimFrames(anims[move ?? -1] ?? null, wazaFile)
     })
@@ -561,6 +568,7 @@ export function MoveVfx({
   }, [anims, seqReady])
 
   const cast = view?.lastMove ?? null
+  const doubles = view?.active.p1b != null || view?.active.p2b != null
   useEffect(() => {
     if (!cast) return
     // 같은 기술이 이어서 나올 수 있으므로 순번으로 가른다
@@ -570,11 +578,13 @@ export function MoveVfx({
     const move = cast.move === null ? null : (table?.byId.get(cast.move) ?? null)
     const attacker = spotAt(cast.by)
     // 대상이 없는 줄(전체기·자기 강화)은 맞은편 첫 자리를 겨눈다
-    const target = spotAt(cast.to ?? (cast.by.startsWith('p1') ? 'p2a' : 'p1a'))
+    // 범위 기술은 `to`가 대표 대상 하나다 — 맞은 자리 전체가 `spread`에 있다. 대표 대상이 없으면 그 첫째다
+    const at = cast.to ?? cast.spread[0] ?? (cast.by.startsWith('p1') ? 'p2a' : 'p1a')
+    const also = cast.spread.filter((s) => s !== at && s !== cast.by)
+    const target = spotAt(at)
     const kind = archetypeFor(move)
-    const at = cast.to ?? (cast.by.startsWith('p1') ? 'p2a' : 'p1a')
     const anim = anims?.[cast.move ?? 0] ?? null
-    const seq = moveSeqPlan(cast.move, cast.by.startsWith('p1'))
+    const seq = moveSeqPlan(cast.move, cast.by.startsWith('p1'), doubles)
     // 판 도중 배운 기술처럼 미리 못 받은 것은 이번엔 DS로 가고 다음부터 BDSP다
     if (seq === null && cast.move !== null) void preloadMoveSeqs([cast.move])
     setShot({
@@ -582,6 +592,8 @@ export function MoveVfx({
       kind,
       by: cast.by,
       at,
+      also,
+      doubles,
       family: elementFamilyForType(move?.type ?? 0),
       color: typeColor(move?.type ?? 0),
       signature: moveVisualSignature(anim),
@@ -605,7 +617,7 @@ export function MoveVfx({
         ? MOVE_FRAMES
         : anim.frames),
     })
-  }, [cast, table, anims, spotAt])
+  }, [cast, table, anims, spotAt, doubles])
 
   return (
     <>
@@ -632,6 +644,7 @@ function MoveShot({ shot, setShot, spotAt }: {
         key={shot.seed}
         plan={shot.seq}
         roles={[shot.by, shot.at]}
+        reactors={shot.also}
         spotAt={spotAt as (slot: string) => [number, number]}
         startedAt={shot.startedAt}
         vanish={shot.signature.vanish}

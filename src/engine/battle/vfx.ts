@@ -83,16 +83,19 @@ export const MOVE_FRAMES = 40
  * ⚠️ **쓴 쪽을 같이 묻는다.** BDSP 시퀀스는 `GroupOption`(짝 · 홀) 묶음을 쪽마다 다르게 타서, 같은
  * 기술도 내 쪽과 상대 쪽의 계획(맞는 프레임 · 길이)이 다를 수 있다 (`scene/battle/fx/moveSeq`)
  */
-let framesOf: ((move: number | null, mine: boolean) => number) | null = null
+let framesOf: ((move: number | null, mine: boolean, doubles: boolean) => number) | null = null
 
 /** 배틀에 들어설 때 한 번. 나갈 때 `null`로 되돌린다 */
-export function setMoveFrames(fn: ((move: number | null, mine: boolean) => number) | null): void {
+export function setMoveFrames(fn: ((move: number | null, mine: boolean, doubles: boolean) => number) | null): void {
   framesOf = fn
 }
 
-/** 이 기술의 연출이 도는 프레임. `mine`은 쓴 쪽이 플레이어 편(`p1`)인가 */
-export function moveFramesOf(move: number | null, mine = true): number {
-  return framesOf?.(move, mine) ?? MOVE_FRAMES
+/**
+ * 이 기술의 연출이 도는 프레임. `mine`은 쓴 쪽이 플레이어 편(`p1`)인가, `doubles`는 더블 판인가
+ * (시퀀스가 `GroupOption 0`으로 싱글 · 더블 갈래를 타서 길이가 다를 수 있다)
+ */
+export function moveFramesOf(move: number | null, mine = true, doubles = false): number {
+  return framesOf?.(move, mine, doubles) ?? MOVE_FRAMES
 }
 
 // ── 상태 이상·능력 변화 연출 (원작 「부분 연출」) ─────────────────────────────

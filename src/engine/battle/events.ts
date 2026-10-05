@@ -339,6 +339,11 @@ export type BattleEvent =
       target: Actor | null
       /** `[miss]` — 빗나간 기술도 `|move|`는 나온다 */
       miss: boolean
+      /**
+       * `[spread] p2a,p2b` — 범위 기술(파도타기 · 지진 · 암석봉인 …)이 **실제로 맞은** 자리들. 범위 기술이 아니면 없거나 빈 배열이다.
+       * `target`은 그 중 첫째(쇼다운이 주는 대표 대상)다
+       */
+      spread?: SlotId[]
       /** `[from] ability: Magic Bounce` 같은 유래 */
       from: Cause | null
     }

@@ -4,6 +4,7 @@
 // 계획을 틀기만 하고, 박자(`captureTiming`)는 같은 계획에서 잰 프레임을 상수로 든다(시험이 둘을 맞대 본다).
 //
 //   내보내기  내 쪽 `ee400` · 상대 `ee406` (트레이너가 볼을 던지는 몸짓 앞부분은 잘라 낸다 — `throwStart`)
+//   둘이 함께(더블 · 태그의 첫 등판)  내 쪽 `ee404`(혼자 둘을 던진다) · `ee405`(편이 둘째를 던진다) · 상대 `ee401`(한 사람이 둘) · `ee402`(둘이 하나씩)
 //   포획      `ee101`(던지기 · 빨아들이기 · 떨어짐) → `ee102~104`(흔들림 하나씩) → `ee105`(성공) / `ee106~109`(흔들림 0~3번 뒤 튀어나옴)
 //   거두기    `ee610` — 서 있던 마리를 바꿔 낼 때
 //   기절      트레이너의 포켓몬 `ee620`(볼로 돌아간다) · 야생 `ee621`(쓰러져 사라진다)
@@ -75,6 +76,40 @@ export function sendOutPlan(seq: SeqData, o: {
     targets: o.side === 'p1' ? (o.doubles ? { 3: 1 } : { 3: 1, 4: 0 }) : { 4: 1 },
     options: { 14: 120 + Math.max(0, Math.min(2, o.moveType)), 12: o.doubles ? 101 : 100 },
     camera: !o.doubles,
+  }
+  return planSequence(seq, { ...opts, startAt: throwStart(seq, opts) })
+}
+
+/** `MoveType`을 착지 갈래 0~2로 */
+const clampType = (t: number): number => Math.max(0, Math.min(2, t))
+
+/** 한 쪽의 두 마리가 함께 나오는 시퀀스 이름 — 내 쪽 혼자 `ee404` · 편이 있으면 `ee405`, 상대 한 사람 `ee401` · 둘이면 `ee402` */
+export function sendOutPairSeqName(side: 'p1' | 'p2', tag: boolean): string {
+  if (side === 'p1') return tag ? 'ee405' : 'ee404'
+  return tag ? 'ee402' : 'ee401'
+}
+
+/**
+ * 두 마리가 **함께** 나오는 내보내기 (더블 · 태그의 첫 등판).
+ *
+ * - 역할 0 = 첫째 자리(`a`) · 역할 1 = 둘째 자리(`b`). 내 쪽은 대상 3 · 5, 상대 쪽은 4 · 6이 그 둘이다(`ee404`의 `PokemonIntroMotion trg=3 · 5` ·
+ *   `ee401`의 `trg=4 · 6`). 볼 모델은 첫째가 묶음 `no=5`(상대 `6`), 둘째가 `no=15`(`16`)이고 둘째 볼은 `DprParticleCreateSeal index=1`이 쓴다
+ * - 내 쪽은 카메라가 상대 쪽 가운데에 서므로(`ee404` f51 `CameraMovePosition 0/180/−190`) 맞은편 둘(대상 4 · 6)을 감춘다 — `away`
+ * - 카메라는 BDSP 것이다: 두 마리 가운데를 보는 절대 자리 컷(`worldPair`로 우리 두 발판 사이에 얹는다). 싱글(`ee400`)처럼 몸 기준 컷이 아니다
+ * - 둘째가 첫째보다 3프레임 늦게 열린다(`PokemonIntroMotion` 둘째 +3) — 박자(`captureTiming.PAIR_INTRO`)가 그 값을 들고 있다
+ */
+export function sendOutPairPlan(seq: SeqData, o: {
+  side: 'p1' | 'p2'; balls: readonly [number, number]; moveTypes: readonly [number, number]; meta: BallMeta | null
+}): SeqPlan {
+  const mine = o.side === 'p1'
+  const opts: PlanOptions = {
+    ...common(o.balls[0], o.meta),
+    ballSecond: o.balls[1],
+    attackerMine: mine,
+    targets: mine ? { 3: 0, 5: 1 } : { 4: 0, 6: 1 },
+    away: mine ? [4, 6] : [],
+    // 착지 갈래: 첫째는 `GroupOption 14 = 120 + MoveType`, 둘째는 `128 + MoveType`다(`ee404` 묶음 `no=10`~`31`). 카메라 갈래는 첫째 것(120~122)만 있다
+    options: { 14: [120 + clampType(o.moveTypes[0]), 128 + clampType(o.moveTypes[1])], 12: 101 },
   }
   return planSequence(seq, { ...opts, startAt: throwStart(seq, opts) })
 }

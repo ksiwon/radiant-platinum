@@ -4,7 +4,7 @@
 // 화면에서만 티가 나고 어떤 계산도 안 틀리므로, 순서 자체를 못박아 둔다.
 import { describe, expect, it } from 'vitest'
 import type { Actor, BattleEvent } from './events'
-import { recallSeconds, sendOutSettledAt } from './captureTiming'
+import { pairSettledAt, recallSeconds, sendOutSettledAt } from './captureTiming'
 import { buildBeats, drainFrames } from './playback'
 import { parseLines } from './sim/protocol'
 import { MOVE_FRAMES, statusAnimFrames } from './vfx'
@@ -274,6 +274,26 @@ describe('박자 순서', () => {
     expect(outs.map((b) => b.hold)).toEqual([122, Math.max(96, send), Math.max(72, Math.ceil((recallSeconds() + sendOutSettledAt()) * 60))])
   })
 
+  it('한 쪽 첫 등판 둘(a · b)은 한 박자로 — 두 볼이 한 시퀀스로 같이 나온다 (`ee404` 등). 쉼은 둘째가 서기까지', () => {
+    const p1b: Actor = { slot: 'p1b', side: 'p1', name: 'party-1' }
+    const p2b: Actor = { slot: 'p2b', side: 'p2', name: 'foe-1' }
+    const beats = buildBeats([enter(p1, 20), enter(p1b, 20), enter(p2, 20), enter(p2b, 20)], say, { foeOnStage: false })
+    const outs = beats.filter((b) => b.events.some((e) => e.kind === 'switch'))
+    // 쪽마다 한 박자 · 사건은 둘씩
+    expect(outs.map((b) => b.events.map((e) => (e.kind === 'switch' ? e.actor.slot : '')))).toEqual([['p1a', 'p1b'], ['p2a', 'p2b']])
+    expect(outs[0]!.hold).toBe(Math.max(96, Math.ceil(pairSettledAt('p1') * 60)))
+    expect(outs[1]!.hold).toBe(Math.max(112, Math.ceil(pairSettledAt('p2') * 60)))
+    // 글은 둘 다 남는다
+    expect(beats.filter((b) => b.text?.startsWith('가라!')).map((b) => b.text)).toEqual(['가라! party-0!', '가라! party-1!', '가라! foe-0!', '가라! foe-1!'])
+  })
+
+  it('둘째만 따로 나오는 판 도중 교체는 묶지 않는다', () => {
+    const p1b: Actor = { slot: 'p1b', side: 'p1', name: 'party-1' }
+    const beats = buildBeats([enter(p1, 20), enter(p1b, 20), swap({ ...p1b, name: 'party-2' }, 405, 'Luxray')], say)
+    const outs = beats.filter((b) => b.events.some((e) => e.kind === 'switch'))
+    expect(outs.map((b) => b.events.length)).toEqual([2, 1])
+  })
+
   it('빈 줄로 갈린 글은 창이 갈리고, 줄바꿈 하나는 한 창에 남는다', () => {
     // ⚠️ **줄바꿈 하나로 창을 가르면 안 된다.** 롬의 배틀 글은 거의 다 두 줄이고
     // 그 줄바꿈은 한 창 안의 것이다 — 가르면 화면에 반 문장씩 뜬다
@@ -338,7 +358,7 @@ describe('기술 연출 자리', () => {
   it('뷰가 기술을 내밀고, 같은 기술이 이어져도 순번이 는다', () => {
     // 순번이 없으면 몸통박치기를 두 턴 연속 쓸 때 두 번째 연출이 안 돈다
     const one = applyEvents(emptyView(), [move(p1, '몸통박치기')])
-    expect(one.lastMove).toEqual({ by: 'p1a', to: null, move: 33, seq: 1 })
+    expect(one.lastMove).toEqual({ by: 'p1a', to: null, move: 33, seq: 1, spread: [] })
     const two = applyEvents(one, [move(p1, '몸통박치기')])
     expect(two.lastMove?.seq).toBe(2)
   })

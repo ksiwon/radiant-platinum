@@ -1,8 +1,8 @@
 // 볼 · 내보내기 · 기절 시퀀스의 접기 — 모델 궤적 · 클립 시각 · 대상 잇기 · 등판 · 카메라 (BATTLE_FX §4)
 import { describe, expect, it } from 'vitest'
 import {
-  bodyAt, cameraAt, chainPlans, INTRO_FALL, modelAt, othersHidden, particleAt, planSequence,
-  seqLength, THROW_FRAMES, type SeqContext, type SeqData, type V3,
+  awayHidden, bodyAt, cameraAt, chainPlans, INTRO_FALL, modelAt, othersHidden, particleAt, planSequence,
+  seqLength, THROW_FRAMES, worldPair, type SeqContext, type SeqData, type V3,
 } from './sequence'
 
 /** 쓴 쪽 (0,0,2.2)이 −Z를, 맞는 쪽 (0,0,−2.2)이 +Z를 본다. 로케이터는 0(발밑) 말고는 0.5m 높이 */
@@ -215,5 +215,75 @@ describe('시퀀스 카메라 — 자리만 · 길 따라 보기 · 구운 애�
     const at64 = cameraAt(plan, 64, cctx, base)!
     const d = (cam: { pos: V3, target: V3 }): number => Math.hypot(cam.pos[0] - cam.target[0], cam.pos[2] - cam.target[2])
     expect(d(at0) / d(at64)).toBeCloseTo(0.6, 6)
+  })
+})
+
+describe('쌍 내보내기 — 역할 · 볼 · 맞은편 감추기 · 두 발판', () => {
+  // `ee404`를 줄인 것 — 3 · 5가 내 쪽 첫째 · 둘째, 4 · 6이 상대. 볼 묶음 5(첫째) · 15(둘째)
+  const PAIR: SeqData = { name: 'ee404', groups: [
+    { name: 'vis', no: 0, options: [], commands: [
+      c(51, 51, 'PokemonVisible', { trg: ['4'], visible: ['0'] }), c(51, 51, 'PokemonVisible', { trg: ['6'], visible: ['0'] }),
+      c(116, 116, 'PokemonVisible', { trg: ['4'], visible: ['1'] }),
+    ] },
+    { name: 'a', no: 10, options: [[14, 120]], commands: [c(65, 65, 'PokemonIntroMotion', { trg: ['3'], height: ['160'] })] },
+    { name: 'b', no: 11, options: [[14, 129]], commands: [c(68, 68, 'PokemonIntroMotion', { trg: ['5'], height: ['0'] })] },
+    { name: 'b-other', no: 11, options: [[14, 128]], commands: [c(68, 68, 'PokemonIntroMotion', { trg: ['5'], height: ['160'] })] },
+    { name: 'ball1', no: 5, options: [[14, 120]], commands: [
+      c(0, 0, 'DprModelAttachTrainer', { trg: ['0'], isEnable: ['1'] }), c(51, 51, 'DprModelAttachTrainer', { trg: ['0'], isEnable: ['0'] }),
+      c(52, 59, 'ModelMoveRelativePoke', { trg: ['3'], node: ['15'], pos: ['0', '0', '0'], rate: ['100'], enableElem: ['1', '1', '1'] }),
+    ] },
+    { name: 'ball2', no: 15, options: [[14, 129]], commands: [
+      c(0, 0, 'DprModelAttachTrainer', { trg: ['0'], isEnable: ['1'] }), c(51, 51, 'DprModelAttachTrainer', { trg: ['0'], isEnable: ['0'] }),
+      c(52, 59, 'ModelMoveRelativePoke', { trg: ['5'], node: ['15'], pos: ['0', '0', '0'], rate: ['100'], enableElem: ['1', '1', '1'] }),
+    ] },
+    { name: 'fx', no: 51, options: [], commands: [c(67, 87, 'DprParticleCreateSeal', { index: ['1'], grpNo: ['15'], trg: ['5'] })] },
+    { name: 'fx', no: 50, options: [], commands: [c(64, 84, 'DprParticleCreateSeal', { index: ['0'], grpNo: ['5'], trg: ['3'] })] },
+  ] }
+  const opts = { targets: { 3: 0, 5: 1 } as const, away: [4, 6], ball: 4, ballSecond: 1, options: { 14: [120, 129] } }
+
+  it('대상 3 · 5가 역할 0 · 1(첫째 · 둘째)이다 — 첫째는 f65 · 둘째는 f68에 나타난다', () => {
+    const plan = planSequence(PAIR, opts)
+    expect(plan.body[0].commands.map((x) => x.start)).toEqual([65])
+    expect(plan.body[1].commands.map((x) => x.start)).toEqual([68])
+    // 둘째의 갈래는 둘째 몸 종류(129)로 고른다 — 128 갈래(height 160)가 아니다
+    expect(plan.body[1].commands[0]!.values.height).toEqual(['0'])
+  })
+
+  it('볼 모델 둘 — 묶음 5는 첫째 볼 · 묶음 15는 둘째 볼(ModelTrack.ball) · 빛도 갈린다', () => {
+    const plan = planSequence(PAIR, opts)
+    expect(plan.models.map((m) => [m.no, m.ball])).toEqual([[5, undefined], [15, 1]])
+    expect(plan.particles.map((p) => p.prefab)).toEqual(['eb001_ballout', 'eb004_ballout'])
+  })
+
+  it('두 볼이 각자 제 몸 로케이터로 놓인다 (ModelMoveRelativePoke trg 3 → 역할 0 · 5 → 역할 1)', () => {
+    const plan = planSequence(PAIR, opts)
+    const spot = (r: number): V3 => [r === 0 ? 0.5 : -0.5, 0, 4]
+    const pctx: SeqContext = {
+      ...ctx, trainer: () => [0, 0, 20],
+      rest: (role) => ({ pos: spot(role), yaw: Math.PI }),
+    }
+    expect(modelAt(plan, 5, 60, pctx)!.pos[0]).toBeCloseTo(0.5, 6)
+    expect(modelAt(plan, 15, 60, pctx)!.pos[0]).toBeCloseTo(-0.5, 6)
+  })
+
+  it('맞은편(4 · 6)은 역할 없이 away로만 받고 f51~116 감춘다', () => {
+    const plan = planSequence(PAIR, opts)
+    expect(plan.away.length).toBe(3)
+    expect(awayHidden(plan, 50)).toBe(false)
+    expect(awayHidden(plan, 60)).toBe(true)
+    expect(awayHidden(plan, 120)).toBe(false)
+    expect(plan.body[0].commands.some((x) => x.name === 'PokemonVisible')).toBe(false)
+  })
+
+  it('worldPair — 옆은 두 발판 사이로, 깊이는 BDSP 그대로', () => {
+    const A: [number, number] = [-0.4, 2.0], B: [number, number] = [0.5, 2.4]
+    const w = worldPair(A, B, -250, 250)
+    expect(w([-250, 160, 250])).toEqual([-0.4, 1.6, 2.0])
+    expect(w([250, 0, 250])[0]).toBeCloseTo(0.5, 6)
+    expect(w([250, 0, 250])[2]).toBeCloseTo(2.4, 6)
+    const mid = w([0, 180, -190])
+    expect(mid[0]).toBeCloseTo(0.05, 6)
+    expect(mid[1]).toBeCloseTo(1.8, 6)
+    expect(mid[2]).toBeCloseTo(2.2 + (-190 - 250) / 100, 6)
   })
 })

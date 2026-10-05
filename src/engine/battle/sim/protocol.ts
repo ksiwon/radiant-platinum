@@ -6,9 +6,9 @@
 // ⚠️ 지연 로딩 경계 (bridge.ts 주석 참고).
 import { Protocol } from '@pkmn/protocol'
 import type {
-  Actor, BattleEvent, BattleRequest, BoostStat, Cause, EffectExtra, EffectRef, Effectiveness, ItemRef,
+  Actor, BattleEvent, BattleRequest, BoostStat, Cause, EffectExtra, EffectRef, Effectiveness, ItemRef, SlotId,
 } from '../events'
-import { conditionId, parseActor, parseCondition, parseDetails, parseSide } from '../events'
+import { SLOTS, conditionId, parseActor, parseCondition, parseDetails, parseSide } from '../events'
 import type { Status } from '../../pokemon/instance'
 import { ITEM_IDS } from '../dex/vendor/names.gen'
 import { romAbility, romMove, romSpeciesForm } from './bridge'
@@ -147,6 +147,12 @@ const EFFECTIVENESS: Record<string, Effectiveness> = {
   '-immune': 'immune',
 }
 
+/** `|move|`의 `[spread] p2a,p2b` → 자리들. 모르는 표기는 버린다 */
+function spreadOf(raw: unknown): SlotId[] {
+  if (typeof raw !== 'string') return []
+  return raw.split(',').map((s) => s.trim()).filter((s): s is SlotId => SLOTS.includes(s as SlotId))
+}
+
 /**
  * 한 줄을 이벤트로. 배틀과 무관한 줄(`|t:|`, `|debug|`, 빈 줄)이면 null.
  *
@@ -237,6 +243,7 @@ export function parseLine(line: string): BattleEvent | null {
         moveName,
         target: who(2),
         miss: 'miss' in kw,
+        spread: spreadOf(kw['spread']),
         from: from(kw),
       }
     }

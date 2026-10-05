@@ -4,6 +4,7 @@
 // `engine/battle/fx/ballPlans`가 쥐고, 박자(`captureTiming`)는 같은 시퀀스에서 잰 상수다 — 글과 연출이 안 어긋난다.
 //
 //   자리의 마리가 바뀐다     앞 마리가 서 있었으면 `ee610`(거둔다) → `ee400`/`ee406`(볼이 날아와 열리고 몸이 떨어져 착지)
+//   한 쪽 두 자리가 같이 선다  (더블 · 태그의 첫 등판) 한 시퀀스로 둘 다 — `ee404`/`ee405`(내 쪽) · `ee401`/`ee402`(상대 쪽)
 //   볼을 던졌다(`lastBall`)  `ee101` → `ee102~104` → `ee105`/`ee106~109`를 한 계획으로
 //   쓰러졌다(`presence`)    트레이너의 포켓몬 `ee620` · 야생 `ee621`
 //
@@ -14,12 +15,12 @@ import { SLOTS, type SlotId } from '../../engine/battle/events'
 import { battleClock } from '../../engine/battle/presentationClock'
 import type { BattleView } from '../../engine/battle/view'
 import {
-  faintVanishAt, recallSeconds, sendOutAppearAt,
+  faintVanishAt, pairAppearAt, recallSeconds, sendOutAppearAt,
 } from '../../engine/battle/captureTiming'
 import {
-  captureSeqNames, capturePlan, faintSeqName, returnPlan, sendOutHome, sendOutPlan, sendOutSeqName,
+  captureSeqNames, capturePlan, faintSeqName, returnPlan, sendOutHome, sendOutPairPlan, sendOutPairSeqName, sendOutPlan, sendOutSeqName,
 } from '../../engine/battle/fx/ballPlans'
-import { worldAround, type SeqData, type SeqPlan, type V3 } from '../../engine/battle/fx/sequence'
+import { worldAround, worldPair, type SeqData, type SeqPlan, type V3 } from '../../engine/battle/fx/sequence'
 import { ballOpen, bodyGone, clearBallOpen } from './stageRefs'
 import { BdspSequence } from './fx/BdspSequence'
 import { ballMeta, moveTypeOf } from './fx/ballModel'
@@ -31,8 +32,17 @@ import { recallsBody } from './battleBallMotion'
 /** 포획 볼이 몸을 빨아들여 몸이 사라지는 프레임 — `ee101` `PokemonVisible visible=0` f45, 트레이너 몸짓 9프레임을 자른 뒤 */
 const CAPTURE_VANISH = 36
 
+/** 쌍으로 나오는 둘째 자리 (`Cue.mate`) */
+interface Mate { slot: SlotId; ball: number; species: number }
+
 type Cue =
-  | { id: number; kind: 'send'; slot: SlotId; ball: number; species: number; started: number; doubles: boolean }
+  | {
+    id: number; kind: 'send'; slot: SlotId; ball: number; species: number; started: number; doubles: boolean
+    /** 같은 쪽 둘째 자리가 **같이** 나온다 — 한 시퀀스로 둘을 튼다 (`sendOutPairPlan`) */
+    mate?: Mate
+    /** 한 쪽에 트레이너가 둘이다 (태그 — `ee405` · `ee402`) */
+    tag?: boolean
+  }
   | { id: number; kind: 'recall'; slot: SlotId; started: number }
   | { id: number; kind: 'capture'; slot: SlotId; ball: number; shakes: number; caught: boolean; started: number }
   | { id: number; kind: 'faint'; slot: SlotId; wild: boolean; started: number }
@@ -40,7 +50,7 @@ type Cue =
 let nextCueId = 1
 
 /** 무대가 쓰는 시퀀스 — 판이 열리면 미리 받는다 */
-const PRELOAD = ['ee101', 'ee102', 'ee103', 'ee104', 'ee105', 'ee106', 'ee107', 'ee108', 'ee109', 'ee400', 'ee406', 'ee610', 'ee620', 'ee621']
+const PRELOAD = ['ee101', 'ee102', 'ee103', 'ee104', 'ee105', 'ee106', 'ee107', 'ee108', 'ee109', 'ee400', 'ee406', 'ee401', 'ee402', 'ee404', 'ee405', 'ee610', 'ee620', 'ee621']
 
 export function BattleBallEffects({
   view,
@@ -87,7 +97,7 @@ export function BattleBallEffects({
     standing.current = now
     // 볼은 **그 개체가 든 볼**이다 (`RosterEntry.ball`). 명부는 판이 열릴 때 한 번 서므로
     // 값으로 읽는다 — 구독하면 이 효과가 명부 때문에 한 번 더 돈다
-    const { roster } = useBattleStore.getState()
+    const { roster, partner, foes } = useBattleStore.getState()
     const started = battleClock.now()
     const doubles = current.p1b !== null || current.p2b !== null
     const added: Cue[] = []
@@ -116,11 +126,24 @@ export function BattleBallEffects({
       const mon = view.active[slot]
       added.push({
         id: nextCueId++, kind: 'send', slot, ball: roster[key]?.ball ?? Ball.POKE, species: mon?.species ?? 0,
-        started: begin, doubles,
+        started: begin, doubles, tag: slot.startsWith('p1') ? partner !== null : foes.length > 1,
       })
-      // **몸은 볼이 열려 나타나는 프레임까지 기다린다** (`ee400`의 `PokemonIntroMotion`). 안 적으면
-      // 포켓몬이 먼저 서 있고 그 뒤에 볼이 날아온다
-      ballOpen[slot] = begin + sendOutAppearAt()
+    }
+    // 한 쪽 두 자리가 같은 순간(앞 마리 없이)에 서면 한 시퀀스로 묶는다 — BDSP가 두 볼을 같이 던진다 (`ee404` 등)
+    for (const side of ['p1', 'p2'] as const) {
+      const a = added.find((c) => c.kind === 'send' && c.slot === `${side}a`)
+      const b = added.find((c) => c.kind === 'send' && c.slot === `${side}b`)
+      if (a?.kind !== 'send' || b?.kind !== 'send' || a.started !== b.started || a.mate) continue
+      a.mate = { slot: b.slot, ball: b.ball, species: b.species }
+      added.splice(added.indexOf(b), 1)
+    }
+    // **몸은 볼이 열려 나타나는 프레임까지 기다린다** (`ee400`의 `PokemonIntroMotion`). 안 적으면
+    // 포켓몬이 먼저 서 있고 그 뒤에 볼이 날아온다
+    for (const c of added) {
+      if (c.kind !== 'send') continue
+      const side = c.slot.startsWith('p1') ? 'p1' : 'p2'
+      ballOpen[c.slot] = c.started + (c.mate ? pairAppearAt(side, false) : sendOutAppearAt())
+      if (c.mate) ballOpen[c.mate.slot] = c.started + pairAppearAt(side, true)
     }
     if (added.length > 0) setCues((old) => [...old, ...added].slice(-16))
   }, [view, wildFoe])
@@ -163,6 +186,9 @@ function opponentOf(slot: SlotId, view: BattleView | null): SlotId | null {
   return null
 }
 
+/** 맞은편 두 자리 */
+const OPPOSITE = { p1: ['p2a', 'p2b'] } as const
+
 /** 시퀀스를 받아 계획을 펴고 튼다 */
 function CueSequence({ cue, spotAt, opponent, onDone }: {
   cue: Cue
@@ -172,7 +198,10 @@ function CueSequence({ cue, spotAt, opponent, onDone }: {
 }) {
   const [plan, setPlan] = useState<SeqPlan | null | undefined>(undefined)
   // 자리는 그 순간 값으로 묶는다 — 연출 도중 상대가 바뀌어도 한 연출은 한 무대다
-  const roles = useRef<readonly [SlotId | null, SlotId]>([cue.kind === 'capture' ? opponent : opponent, cue.slot])
+  // 쌍으로 나오는 내보내기는 역할 0이 첫째 자리 · 1이 둘째 자리다 (`sendOutPairPlan`)
+  const roles = useRef<readonly [SlotId | null, SlotId]>(
+    cue.kind === 'send' && cue.mate ? [cue.slot, cue.mate.slot] : [opponent, cue.slot],
+  )
 
   useEffect(() => {
     let ok = true
@@ -181,6 +210,14 @@ function CueSequence({ cue, spotAt, opponent, onDone }: {
       const meta = await ballMeta()
       switch (cue.kind) {
         case 'send': {
+          if (cue.mate) {
+            const pair = await loadSeq(sendOutPairSeqName(side, cue.tag === true))
+            if (!pair) return null
+            return sendOutPairPlan(pair, {
+              side, balls: [cue.ball, cue.mate.ball], meta,
+              moveTypes: [await moveTypeOf(cue.species), await moveTypeOf(cue.mate.species)],
+            })
+          }
           const seq = await loadSeq(sendOutSeqName(side))
           if (!seq) return null
           return sendOutPlan(seq, { side, ball: cue.ball, moveType: await moveTypeOf(cue.species), doubles: cue.doubles, meta })
@@ -216,6 +253,7 @@ function CueSequence({ cue, spotAt, opponent, onDone }: {
   const [x, z] = spotAt(cue.slot)
   const home: V3 = [x, 0, z]
   const side = cue.slot.startsWith('p1') ? 'p1' : 'p2'
+  const pair = cue.kind === 'send' && cue.mate ? cue.mate : null
   return (
     <BdspSequence
       plan={plan}
@@ -224,11 +262,16 @@ function CueSequence({ cue, spotAt, opponent, onDone }: {
       startedAt={cue.started}
       vanish
       // 맞은편 몸은 내 쪽 내보내기 카메라가 그 몸 너머를 볼 때 감추는 것만 받는다(`sendOutPlan`) — 다른 시퀀스는 이 몸만 쥔다
-      bodies={[cue.kind === 'send' && !cue.doubles && side === 'p1', true]}
+      bodies={[pair !== null || (cue.kind === 'send' && !cue.doubles && side === 'p1'), true]}
+      // 쌍으로 나올 때 맞은편 둘은 카메라가 그 사이를 지나는 동안 감춘다 (`sendOutPairPlan`)
+      away={pair && side === 'p1' ? [...OPPOSITE.p1] : undefined}
       ball={cue.kind === 'send' || cue.kind === 'capture' ? cue.ball : undefined}
-      // 내보내기는 BDSP 무대 좌표(내 쪽 0/0/250)로, 그 밖은 그 몸 발밑 기준으로 적혀 있다 (`worldAround`)
-      world={worldAround(home, cue.kind === 'send' ? sendOutHome(side) : [0, 0, 0])}
-      // 거두기는 교체 한가운데라 고정 카메라로 · 더블 내보내기도(시퀀스가 따로다 — `sendOutPlan`) 계획이 카메라를 안 싣는다
+      // 내보내기는 BDSP 무대 좌표(내 쪽 0/0/250)로, 그 밖은 그 몸 발밑 기준으로 적혀 있다 (`worldAround`).
+      // 쌍은 두 발판 사이로 옮긴다 — 볼이 몸 위에서 열리고 카메라는 두 마리 가운데를 본다 (`worldPair`)
+      world={pair
+        ? worldPair(spotAt(cue.slot), spotAt(pair.slot), side === 'p1' ? -250 : 250, side === 'p1' ? 250 : -250)
+        : worldAround(home, cue.kind === 'send' ? sendOutHome(side) : [0, 0, 0])}
+      // 거두기는 교체 한가운데라 고정 카메라로 · 혼자 나오는 더블 내보내기는(`sendOutPlan`) 계획이 카메라를 안 싣는다
       camera={cue.kind !== 'recall'}
       hideOthers={cue.kind === 'capture' || cue.kind === 'faint'}
       others={SLOTS}

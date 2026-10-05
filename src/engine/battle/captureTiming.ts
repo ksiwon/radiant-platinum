@@ -89,6 +89,22 @@ const SEND_OUT_FALL = 40
  */
 const SEND_OUT_LAND = 20
 
+/**
+ * 두 마리가 함께 나오는 내보내기(`ee404` · `ee405` 내 쪽 · `ee401` · `ee402` 상대 쪽)에서 첫째 · 둘째 몸이 나타나는 프레임 —
+ * `PokemonIntroMotion`이 손을 떠나기 `THROW_FRAMES` 앞부터 센 값이다(내 쪽 f65 · f68 − 39 · 상대 f113 · f116 − 88). 둘째가 3프레임 늦다
+ */
+export const PAIR_INTRO = { p1: [26, 29], p2: [25, 28] } as const
+
+/** 쌍으로 나오는 몸이 **나타나는** 시각(초) — 시퀀스 시작부터 */
+export function pairAppearAt(side: 'p1' | 'p2', second: boolean): number {
+  return PAIR_INTRO[side][second ? 1 : 0] / SEQ
+}
+
+/** 쌍으로 나온 둘째 몸까지 땅에 서서 착지를 마치는 시각(초) */
+export function pairSettledAt(side: 'p1' | 'p2'): number {
+  return (PAIR_INTRO[side][1] + SEND_OUT_FALL + SEND_OUT_LAND) / SEQ
+}
+
 /** 내보낸 몸이 **나타나는** 시각(초) — 시퀀스 시작부터 */
 export function sendOutAppearAt(): number {
   return SEND_OUT_INTRO / SEQ
@@ -127,4 +143,4 @@ export function faintVanishAt(wild: boolean): number {
 }
 
 /** 시험이 시퀀스와 맞대 보는 값 */
-export const CAPTURE_SEQ_FRAMES = { THROW, WOBBLES, SUCCESS_MESSAGE, BREAK_MESSAGE, BREAK_FRAMES, FAINT, RECALL_VANISH, SEND_OUT_INTRO } as const
+export const CAPTURE_SEQ_FRAMES = { THROW, WOBBLES, SUCCESS_MESSAGE, BREAK_MESSAGE, BREAK_FRAMES, FAINT, RECALL_VANISH, SEND_OUT_INTRO, PAIR_INTRO } as const

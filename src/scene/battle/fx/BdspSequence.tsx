@@ -15,8 +15,8 @@ import { useFrame } from '@react-three/fiber'
 import { AnimationMixer, LoopOnce, LoopRepeat, Vector3, type AnimationAction, type Group, type Object3D } from 'three'
 import { battleClock } from '../../../engine/battle/presentationClock'
 import {
-  backAt, bodyAt, cameraAt, modelAt, othersHidden, particleAt, planFrames, shakeAt, SEQ_FPS,
-  type Role, type SeqCamera, type SeqContext, type SeqPlan, type V3,
+  awayHidden, backAt, bodyAt, cameraAt, modelAt, othersHidden, particleAt, planFrames, shakeAt, SEQ_FPS,
+  touchesTarget, type Role, type SeqCamera, type SeqContext, type SeqPlan, type V3,
 } from '../../../engine/battle/fx/sequence'
 import { claimSeq, releaseSeq, seqStage, tallOf } from '../stageRefs'
 import { trainerThrowOrigin } from '../battleBallMotion'
@@ -47,7 +47,7 @@ const tmpB = new Vector3()
 
 export function BdspSequence({
   plan, roles, spotAt, startedAt, vanish = false, onDone, ball, world, camera = true, hideOthers = false,
-  bodies = [true, true], others = [], ballScale = 1, minScale = 0.6,
+  bodies = [true, true], others = [], away: awaySlots = [], reactors = [], ballScale = 1, minScale = 0.6,
 }: {
   plan: SeqPlan
   /** 0 쓴 쪽 · 1 맞는 쪽 자리. 쓴 쪽이 없는 시퀀스(내보내기 · 기절)는 0이 `null`이어도 된다 */
@@ -74,6 +74,14 @@ export function BdspSequence({
   bodies?: readonly [boolean, boolean]
   /** 감출 수 있는 다른 자리들 */
   others?: readonly string[]
+  /**
+   * 범위 기술에서 `roles[1]` 말고 같이 맞은 자리들. 시퀀스는 한 번만 돌고 맞는 쪽 명령(`trg=1`)은 한 몸만 겨누므로, 이 자리들에는
+   * 맞는 쪽의 **몸 반응**(피격 동작 · 떨림 · 밀림 · 감추기)과 **맞는 쪽에 붙는 입자**(맞은 표시 · 기술 입자)를 한 벌씩 더 건다.
+   * 쓴 쪽에만 붙는 입자 · 카메라 · 체력은 그대로다 (체력은 박자가 맞은 자리마다 따로 깎는다)
+   */
+  reactors?: readonly string[]
+  /** 계획의 `away`(역할 없는 대상의 감추기)가 감추는 자리들 — 시퀀스 카메라가 선 동안만 (더블 내보내기의 맞은편 둘) */
+  away?: readonly string[]
   /** 볼 모델 배율 — BDSP 실제 크기가 1 */
   ballScale?: number
   /**
@@ -103,6 +111,18 @@ export function BdspSequence({
       return [pose.pos[0] + tmpA.x - tmpB.x, pose.pos[1] + tmpA.y - tmpB.y, pose.pos[2] + tmpA.z - tmpB.z]
     },
   }
+  // 같이 맞은 자리마다 따로 읽는 맥락 — 역할 1이 그 자리다
+  const reactorKey = reactors.join(',')
+  const extra = useMemo(() => reactors.map((slot) => {
+    const rs: readonly [string | null, string | null] = [roles[0], slot]
+    const c: SeqContext = {
+      ...ctx.current,
+      ...roleContext(rs, spotAt, (s) => (seqStage.bodyOwner[s] === owner ? seqStage.body[s]?.offset : undefined)),
+      scale: (role: Role) => bodyScale(rs[role] ?? null, minScale),
+    }
+    return { slot, ctx: c }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 한 시퀀스 안에서 자리가 안 바뀐다
+  }), [reactorKey, owner])
   // 카메라는 무대(`BattleStage`의 `useBattleCamera`)가 제 기본 카메라를 넘겨 부른다 — 그 프레임 시각으로 다시 접는다
   const cameraFn = useMemo(() => (base: SeqCamera): SeqCamera | null => {
     const f = (battleClock.now() - startedAt) * SEQ_FPS
@@ -114,7 +134,8 @@ export function BdspSequence({
   const released = useRef(false)
   /** 칸마다 살아 있는 입자 수 (진단) */
   const alive = useRef<Record<string, number>>({})
-  const [model, setModel] = useState<BallModel | null>(null)
+  /** 볼 번호 → 모델. 모델마다 볼이 다를 수 있다(더블 내보내기 — `ModelTrack.ball`) */
+  const [models, setModels] = useState<ReadonlyMap<number, BallModel>>(new Map())
 
   useEffect(() => {
     // 진단 알림 — 개발 서버에서만. 설치본(제품)의 콘솔에는 안 낸다
@@ -129,7 +150,13 @@ export function BdspSequence({
   useEffect(() => {
     if (ball === undefined || !plan.models.some((m) => m.kind === 'ball')) return undefined
     let ok = true
-    void loadBallModel(ball).then((m) => { if (ok) setModel(m) })
+    const wanted = [...new Set(plan.models.filter((m) => m.kind === 'ball').map((m) => m.ball ?? ball))]
+    void Promise.all(wanted.map(async (b) => [b, await loadBallModel(b)] as const)).then((got) => {
+      if (!ok) return
+      const next = new Map<number, BallModel>()
+      for (const [b, m] of got) if (m) next.set(b, m)
+      setModels(next)
+    })
     return () => { ok = false }
   }, [ball, plan])
 
@@ -168,6 +195,14 @@ export function BdspSequence({
         const was = written.get(slot)
         written.set(slot, was ? mergePose(was, pose) : pose)
       }
+      // 같이 맞은 자리 — 맞는 쪽(역할 1)의 몸 반응을 그 몸 기준으로 다시 접는다
+      for (const r of extra) {
+        if (!bodies[1]) continue
+        const pose = bodyAt(plan, 1, f, r.ctx)
+        if (!vanish) pose.visible = true
+        const was = written.get(r.slot)
+        written.set(r.slot, was ? mergePose(was, pose) : pose)
+      }
       for (const [slot, pose] of written) {
         seqStage.body[slot] = { ...pose, frame: f }
         seqStage.bodyOwner[slot] = owner
@@ -177,6 +212,12 @@ export function BdspSequence({
       for (const slot of others) {
         if (slot === roles[1]) continue
         if (hide) seqStage.hide[slot] = owner
+        else if (seqStage.hide[slot] === owner) delete seqStage.hide[slot]
+      }
+      // 역할 없는 대상의 감추기 — 시퀀스 카메라가 서 있는 동안만 (카메라가 지나는 맞은편 몸)
+      const away = camNow && awayHidden(plan, f)
+      for (const slot of awaySlots) {
+        if (away) seqStage.hide[slot] = owner
         else if (seqStage.hide[slot] === owner) delete seqStage.hide[slot]
       }
       if (ownsScreen) {
@@ -201,21 +242,35 @@ export function BdspSequence({
 
   return (
     <group>
-      {model && plan.models.filter((m) => m.kind === 'ball').map((m) => (
-        <SeqBallModel
-          key={m.no}
-          no={m.no}
-          plan={plan}
-          model={model}
-          ctx={ctx}
-          startedAt={startedAt}
-          scale={ballScale}
-          register={(lm) => {
-            if (lm) live.current.set(m.no, lm)
-            else live.current.delete(m.no)
-          }}
+      {plan.models.filter((m) => m.kind === 'ball').map((m) => {
+        const model = ball === undefined ? undefined : models.get(m.ball ?? ball)
+        if (!model) return null
+        return (
+          <SeqBallModel
+            key={m.no}
+            no={m.no}
+            plan={plan}
+            model={model}
+            ctx={ctx}
+            startedAt={startedAt}
+            scale={ballScale}
+            register={(lm) => {
+              if (lm) live.current.set(m.no, lm)
+              else live.current.delete(m.no)
+            }}
+          />
+        )
+      })}
+      {extra.flatMap((r) => plan.particles.filter((p) => !gone.has(p.key) && touchesTarget(p)).map((p) => (
+        <BdspEffect
+          key={`${r.slot}/${p.key}`}
+          name={p.prefab}
+          seed={hash(`${r.slot}/${p.key}`)}
+          clock={() => battleClock.now() - startedAt - p.start / SEQ_FPS}
+          stopAt={(p.stop - p.start) / SEQ_FPS}
+          pose={() => particleAt(p, (battleClock.now() - startedAt) * SEQ_FPS, r.ctx)}
         />
-      ))}
+      )))}
       {plan.particles.filter((p) => !gone.has(p.key)).map((p) => (
         <BdspEffect
           key={p.key}

@@ -22,7 +22,7 @@
 // 도는 동안 게이지가 기다린다. 그 자리를 박자 하나로 낸다(`hold`) — 그동안
 // 무대의 `MoveVfx`가 틀 하나를 돌린다(`battle/vfx`). 길이는 틀과 위력이 정한다.
 import type { Stats } from '../../data/schema'
-import { captureFrames, captureTailFrames, faintSeconds, recallSeconds, sendOutSettledAt } from './captureTiming'
+import { captureFrames, captureTailFrames, faintSeconds, pairSettledAt, recallSeconds, sendOutSettledAt } from './captureTiming'
 import type { Actor, BattleEvent, CuredBy, LevelStep, SlotId } from './events'
 import { rewardSteps } from './events'
 import { FRAME_SECONDS } from './presentationClock'
@@ -170,6 +170,14 @@ function holdFaint(wild: boolean): number {
  */
 function holdSendOut(ds: number, recall: boolean): number {
   return Math.max(ds, Math.ceil(((recall ? recallSeconds() : 0) + sendOutSettledAt()) / FRAME_SECONDS))
+}
+
+/**
+ * 한 쪽 두 마리가 함께 나오는 등판(`ee404` · `ee405` · `ee401` · `ee402`)의 쉼 — 둘째 몸이 땅에 서기까지.
+ * 둘이 한 시퀀스라 쉼도 하나다 (자리마다 따로 쉬면 두 번째 볼이 첫째가 끝난 뒤 날아온다)
+ */
+function holdSendOutPair(ds: number, side: 'p1' | 'p2'): number {
+  return Math.max(ds, Math.ceil(pairSettledAt(side) / FRAME_SECONDS))
 }
 
 /**
@@ -510,6 +518,22 @@ export function buildBeats(
         // 쉼 길이는 원작 값 그대로다 — 여는 등판 `WaitTime 96`/`112` · 야생 조우 `WaitTime 122` · 판 도중 `WaitTime 72`
         const first = !sentOut.has(e.actor.side)
         sentOut.add(e.actor.side)
+        // 한 쪽의 첫 등판이 첫째 · 둘째 자리 연달아면 **한 박자로** 낸다 — BDSP가 두 볼을 한 시퀀스로 던진다 (`ee404` 등)
+        const mate = events[at + 1]
+        if (first && e.actor.slot.endsWith('a') && !e.forced && mate?.kind === 'switch' && mate.actor.side === e.actor.side
+          && mate.actor.slot.endsWith('b') && !mate.forced) {
+          at++
+          const hold = e.actor.side === 'p2' && foeOnStage ? HOLD_ENCOUNTER
+            : holdSendOutPair(HOLD_FIRST_SEND_OUT[e.actor.side], e.actor.side)
+          show([e, mate], hold, 'presentation')
+          foeMark = view.active.p2a?.hp ?? foeMark
+          out[out.length - 1]!.clear = true
+          lastLine = null
+          say(text(e), HOLD_MESSAGE, pressSendOut)
+          doubles = true
+          say(text(mate), HOLD_MESSAGE, pressSendOut)
+          break
+        }
         if (e.actor.slot.endsWith('b')) doubles = true
         const foe = view.active.p2a
         // 앞 마리를 **먼저** 거둔다 — 회수 글이 등판보다 앞이다 (`subscript_switch_pokemon`).
@@ -551,7 +575,7 @@ export function buildBeats(
         // 연출이 도는 만큼 쉰다. 이 자리가 0이면 기술 이름이 뜨자마자 게이지가
         // 닳아서, 무엇이 무엇을 때렸는지가 화면에서 안 이어진다.
         // **기술마다 길이가 다르다** — 무대도 같은 자리에 물어본다 (`vfx`)
-        show([e], moveFramesOf(e.move, e.actor.slot.startsWith('p1')), 'presentation')
+        show([e], moveFramesOf(e.move, e.actor.slot.startsWith('p1'), doubles), 'presentation')
         break
 
       case 'ball':
