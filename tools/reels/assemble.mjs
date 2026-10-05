@@ -116,6 +116,8 @@ const EDIT = SHORT ? SHORTS : MAIN
 /**
  * 곡 — 큐에 붙인다. `at`은 그 큐가 시작하는 시각에서 몇 초 뒤인가, `from`은 곡 안 시작(초), `len`은 까는 길이(초).
  * `len` 대신 `until`(큐)과 `untilAt`(초)을 주면 그 시각까지 깐다. 끝까지면 `until: 'end'`.
+ * `snap`(마디 수 — 1 · 4 · 8)을 주면 끝을 곡 안의 그 마디 경계로 맞춘다(가장 가까운 것). 마디표는 `music/bars/<곡>.json`
+ * (BA008은 Wwise 박자표, 나머지는 소리에서 잰 것 — 곡을 꺼낸 작업의 실측). 맞춘 만큼 다음 조각이 이어 받는다.
  * `fadeIn` · `fadeOut`은 그 조각의 앞뒤 페이드, `gain`은 dB. 조각끼리 겹치면 섞인다. 비어 있으면 소리 없이 낸다
  */
 // 곡은 BDSP 원곡이다(`Delphis_Main.bnk` 상태 → wem, `.audit/reels/music/`에 wav로 풀어 둔다).
@@ -214,6 +216,17 @@ function duration(file) {
 }
 
 /** 곡 조각을 큐 시각에 놓고 섞어 영상에 붙인다. 끝은 영상 길이에서 자른다 */
+/** 곡 안 시각 `t`에 가장 가까운 마디 경계(초). `every`마디마다 — 4면 `phrases4` */
+function snapToBar(src, t, every) {
+  const file = resolve(MUSIC, 'bars', `${src}.json`)
+  if (!existsSync(file)) return t
+  const bars = JSON.parse(readFileSync(file, 'utf8'))
+  const grid = every >= 8 ? bars.phrases8 : every >= 4 ? bars.phrases4 : bars.downbeats
+  let best = t
+  for (const g of grid ?? []) if (Math.abs(g - t) < Math.abs(best - t) || best === t) best = g
+  return best
+}
+
 function mixScore(video, final, cueAt) {
   const total = duration(video)
   const srcs = [...new Set(SCORE.map((p) => p.src))]
@@ -227,6 +240,11 @@ function mixScore(video, final, cueAt) {
     // 영상 앞으로 넘친 만큼은 곡 안에서 앞당겨 자른다
     const lead = Math.max(0, -start)
     p = { ...p, len: Math.max(0.1, stop - start - lead), from: p.from + lead }
+    if (p.snap) {
+      const end = snapToBar(p.src, p.from + p.len, p.snap)
+      console.log(`  곡 ${p.src} 끝 ${(p.from + p.len).toFixed(2)} → 마디 ${end.toFixed(2)} (${(end - p.from - p.len >= 0 ? '+' : '')}${(end - p.from - p.len).toFixed(2)}초)`)
+      p = { ...p, len: Math.max(0.1, end - p.from) }
+    }
     const k = srcs.indexOf(p.src) + 1
     const f = [`atrim=start=${p.from.toFixed(3)}:duration=${p.len.toFixed(3)}`, 'asetpts=PTS-STARTPTS', 'aformat=sample_rates=48000:channel_layouts=stereo']
     if (p.fadeIn) f.push(`afade=t=in:d=${p.fadeIn}`)
