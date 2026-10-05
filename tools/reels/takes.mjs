@@ -98,7 +98,8 @@ export const TAKES = [
   // ── D. 여정 몽타주 ──
   {
     id: 'D1-lake', what: '호수와 숲 높은 부감 — 엄격호수', cp: 'valor', steps: [{ do: 'hour', hour: 10 }, { do: 'hideText' }], seconds: 2.5,
-    move: { type: 'dolly', rel: true, from: { eye: [-6, 22, 14], gaze: [0, 0, -20] }, to: { eye: [4, 20, 8], gaze: [2, 0, -24] } },
+    // 높이 22에서는 맵 끝이 회색 허공 위 섬처럼 보였다(rec-22) — 낮게 깔아 맞은편 숲이 지평선을 막게 한다
+    move: { type: 'dolly', rel: true, from: { eye: [-6, 7, 10], gaze: [0, 2, -24] }, to: { eye: [4, 6.5, 6], gaze: [2, 2, -28] } },
   },
   {
     id: 'D2-windworks', what: '바닷가 도시 — 해변시티 부감 · 바다 쪽 팬', cp: 'sunyshore', steps: [{ do: 'hour', hour: 13 }], seconds: 2.5,
@@ -157,9 +158,10 @@ export const TAKES = [
   ...[[448, 'D12-lucario', '루카리오'], [445, 'D13-garchomp', '한카리아스']].map(([sp, id, name]) => ({
     id, what: `챔피언전 — 난천의 ${name} 기술`, cp: 'mart8',
     // 난천의 파티 순서만 메모리에서 바꾼다 — 그 포켓몬이 먼저 나온다. 기술 · AI는 그대로
-    steps: [{ do: 'warp', map: 185, spot: { kind: 'warp', index: 1 }, after: 4000 },
+    steps: [{ do: 'warp', map: 185, spot: { kind: 'warp', index: 1 }, after: 6000 },
       { do: 'eval', js: `(async()=>{const {loadTrainers}=await import('/src/data/gameData.ts');const t=(await loadTrainers()).get(267);const i=t.party.findIndex((m)=>m.species===${String(sp)});if(i>0){const [m]=t.party.splice(i,1);t.party.unshift(m)}return t.party.map((m)=>m.species)})()` },
-      { do: 'trainer', id: 267, after: 1000 }, { do: 'menu' }, { do: 'keys', keys: ['z'], gap: 500 }],
+      // `pt.trainer`로 바로 열면 무대가 숲으로 섰다(rec-22) — D11처럼 걸어가 말을 걸어 연다. 컷인 · 화강돌 대사는 `menu`가 넘긴다
+      { do: 'walk', key: 'ArrowUp', ms: 3000 }, { do: 'menu' }, { do: 'keys', keys: ['z'], gap: 500 }],
     settle: 200, seconds: 9, recKeys: [{ at: 0.2, key: 'z' }],
   })),
   // ── E1. 기술 연타 — 챔피언전 파티(배지 8 · 토대부기 L55 앞)의 기술 넷과 사천왕전 하나 ──
@@ -193,7 +195,20 @@ export const TAKES = [
     seconds: 6, hold: 'ArrowUp', holdFor: 2.0, recKeys: [{ at: 2.2, key: 'KeyV' },
       { at: 2.8, key: 'ArrowDown', act: 'down' }, { at: 5.2, key: 'ArrowDown', act: 'up' }],
   },
-  ...[['E3-b3f', 'distortion-b3f', 'B3F'], ['E3-b4f', 'distortion-b4f', 'B4F']].map(([id, cp, floor]) => ({
+  // B3F는 확인 지점이 좁은 판 끝이다 — 북쪽은 아래층으로 떨어지는 구멍이고(맵 576 → 577 → 579) 옆은 막혔다.
+  // 걸어 들어가면 빈 하늘을 떨어지는 그림이 된다(rec-22). 1인칭으로 떠 있는 판들을 둘러보기만 한다
+  {
+    id: 'E3-b3f', what: '깨어진 세계 B3F — 1인칭으로 떠 있는 판을 둘러본다', cp: 'distortion-b3f',
+    steps: [{ do: 'first' }], seconds: 3, move: { type: 'yaw', at: 0.1, seconds: 2.8, from: -30, to: 60, pitch: 4 },
+  },
+  {
+    // 깨어진 세계의 벽 걸음 — 판 끝에서 서쪽으로 걸어 벽으로 뛰어오르면 몸과 카메라가 90° 돌고 벽 위를 걷는다
+    // (`.audit/probe/distortionWalk.mjs` ① · 지역 (10,1,28) → 서쪽 벽 (8,2,28)). 뛰어든 직후의 첫 `at`은 맵이 덮어써서 두 번 준다
+    id: 'E3-wall', what: '깨어진 세계 B3F — 벽으로 뛰어올라 벽 위를 걷는다', cp: 'distortion-b3f',
+    steps: [{ do: 'at', x: 12, z: 28 }, { do: 'at', x: 12, z: 28, after: 3000 }],
+    seconds: 3.5, recKeys: [{ at: 0.3, key: 'ArrowLeft', act: 'down' }, { at: 3.3, key: 'ArrowLeft', act: 'up' }],
+  },
+  ...[['E3-b4f', 'distortion-b4f', 'B4F']].map(([id, cp, floor]) => ({
     id, what: `깨어진 세계 ${floor} — 1인칭으로 둘러보다 3인칭으로 걷는다`, cp,
     steps: [{ do: 'first' }],
     seconds: 6, hold: 'ArrowUp', holdFor: 2.0, move: { type: 'yaw', at: 0.2, seconds: 1.8, from: 0, to: 70, pitch: 6 },
@@ -201,12 +216,12 @@ export const TAKES = [
   })),
   {
     // 원작 그대로 — 기라티나가 서 있고, 다가가 A를 누르면 울음 → 대사 → 배틀 (`DistortionWorldGiratinaRoom_Giratina`)
-    // 진행도를 「기라티나가 왔다」(13)로 두고 방을 다시 열면 기라티나가 선다. 그 앞 세 칸에 세운다
+    // 진행도를 「기라티나가 왔다」(13)로 두고 방을 다시 열면 기라티나가 선다. 몸이 커서 네 칸 앞에 세운다 (NPC는 `position`이 아니라 칸 좌표 `x` · `z`)
     id: 'E3-giratina', what: '기라티나의 방 — 서 있는 기라티나에게 다가가 A → 배틀', cp: 'giratina',
     steps: [
       { do: 'eval', js: "(async()=>{const f=await import('/src/engine/script/field.ts');f.fieldScripts.vars.set(16469,13);return f.fieldScripts.vars.get(16469)})()" },
       { do: 'warp', map: 582, spot: { kind: 'open' }, after: 6000 },
-      { do: 'eval', js: "(async()=>{const {npcActors}=await import('/src/engine/actor/npcs.ts');const w=(await import('/src/state/worldState.ts')).worldState;const g=npcActors.list[0];if(!g)return 'no actor';w.player.position.x=g.position.x;w.player.position.z=g.position.z+3;w.player.facing=Math.PI;return [npcActors.list.map((a)=>[a.gfx,a.position.x,a.position.z]),w.player.position.x,w.player.position.z]})()" },
+      { do: 'eval', js: "(async()=>{const {npcActors}=await import('/src/engine/actor/npcs.ts');const w=(await import('/src/state/worldState.ts')).worldState;const g=npcActors.list[0];if(!g)return 'no actor';w.player.position.x=g.x+0.5;w.player.position.z=g.z+0.5+4;w.player.prevPosition.copy(w.player.position);w.player.facing=Math.PI;return [npcActors.list.map((a)=>[a.gfx,a.x,a.z]),w.player.position.x,w.player.position.z]})()" },
       { do: 'wait', ms: 2000 }],
     seconds: 12, hold: 'ArrowUp', holdFor: 0.8,
     recKeys: [{ at: 1.3, key: 'z' }, { at: 2.8, key: 'z' }, { at: 4.0, key: 'z' }, { at: 5.2, key: 'z' }],

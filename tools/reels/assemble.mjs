@@ -38,43 +38,49 @@ const MAIN = [
   { cue: 'A6', card: 'tagline' },
   { cue: 'A7', card: 'white', fade: 0.25 },
   { cue: 'B1', take: 'B1-room', cut: [0.9, 3.5], fade: 0.25 },
-  { cue: 'B2', take: 'B2-twinleaf', cut: [0.3, 1.6], fade: 0.25 },
+  // 떡잎마을 부감은 앞쪽 왼편 위로 맵 밖 흰 허공이 걸린다 — 팬이 오른쪽으로 간 뒤를 쓴다
+  { cue: 'B2', take: 'B2-twinleaf', cut: [1.4, 1.3], fade: 0.25 },
   { cue: 'B3', take: 'B3-jubilife', cut: [0.5, 1.8], fade: 0.25 },
-  { cue: 'B4', take: 'B4-floaroma', cut: [0.3, 1.6], fade: 0.25 },
-  // 한 장면으로 잇는다 — 3인칭으로 걷다 1인칭으로 두리번(1.0~3.8초) · 꼬링크 조우 컷인(4.4초) · 꼬링크가 선다(5.0초)
-  { cue: 'B5-B6', take: 'B5-switch', cut: [0.2, 5.4], fade: 0.15 },
-  // 같은 장면의 뒤 — 내보내기 카메라(7.6초) · 볼이 열리고(8.0초) · 모부기가 내려앉아 선다(10.2초)
-  { cue: 'C1', take: 'B5-switch', cut: [7.5, 2.9], fade: 0.2 },
-  // 기술은 끝까지 — 흡수 0.8~4.6초(꼬링크 쪽 클로즈업 → 모부기가 빛나며 회복)
-  { cue: 'C3', take: 'C3-move', cut: [0.7, 4.0], fade: 0.15 },
-  // 밤 — 모부기 몸통박치기와 비버니 몸통박치기 둘
-  { cue: 'C4', take: 'C4-night', cut: [1.3, 2.7], fade: 0.15 },
-  // 무쇠게이트 굴 무대 — 모부기 몸통박치기(1.6초)와 꼬마돌 몸통박치기(4.2초)
-  { cue: 'C5', take: 'C5-cave', cut: [1.4, 3.4], fade: 0.15 },
-  // 포획 — 던지기 · 빨아들이기 · 떨어짐(0.8~2.8초) → 흔들림 하나(카메라가 다가간다) → 별(7.2초)
-  { cue: 'C6', take: 'C6-catch', cut: [0.8, 2.0] },
-  { cue: 'C7', take: 'C6-catch', cut: [5.0, 1.2], fade: 0.15 },
-  { cue: 'C8', take: 'C6-catch', cut: [7.0, 1.8], fade: 0.2 },
-  { cue: 'D1', take: 'D1-lake', cut: [0.3, 1.3], fade: 0.15 },
-  { cue: 'D2', take: 'D2-windworks', cut: [0.5, 0.8] },
-  { cue: 'D3', take: 'D3-flowers', cut: [0.6, 1.0] },
-  { cue: 'D4', take: 'D4-snow', cut: [0.5, 0.9] },
-  { cue: 'D5', take: 'D5-first', cut: [0.4, 1.9] }, // 0.9초에 V
-  { cue: 'D6', take: 'D6-night', cut: [0.3, 1.4] },
-  { cue: 'D7', take: 'D7-forest', cut: [0.3, 1.0] },
-  { cue: 'D8', take: 'D8-city', cut: [0.8, 1.7] },
-  { cue: 'D11', take: 'D11-champion', cut: [1.4, 3.0], fade: 0.15 }, // 내보내기 카메라 → 볼이 열리고 토대부기가 선다
-  { cue: 'E1a', take: 'E1-a', cut: [0.9, 0.75] },
-  { cue: 'E1b', take: 'E1-b', cut: [0.9, 0.9] },
-  { cue: 'E1c', take: 'E1-c', cut: [1.8, 1.0] },
-  { cue: 'E1d', take: 'E1-d', cut: [0.9, 0.8] },
-  { cue: 'E1e', take: 'E1-e', cut: [3.2, 1.0] },
-  { cue: 'E1f', take: 'E1-a', cut: [3.4, 0.43] },
-  { cue: 'E1g', take: 'E1-c', cut: [2.4, 0.43] },
-  { cue: 'E1h', take: 'E1-e', cut: [3.5, 0.44], fade: 0.2 },
+  // 길이는 오프닝 곡의 프레이즈가 정한다(`SCORE`의 `fit`) — 야생 배틀 곡이 조우 컷인에 들어온다
+  { cue: 'B4', take: 'B4-floaroma', cut: [0.25, 1.6], fade: 0.25 },
+  // 한 장면으로 잇는다 — 풀숲을 걷다(0~3.6초) 걸음 조우 컷인(3.6초) · 야생 비버니가 이미 서 있다(4.0초)
+  { cue: 'B5-B6', take: 'B5-switch', cut: [0.2, 5.0], fade: 0.15 },
+  // 같은 장면의 뒤 — 내 쪽에서 볼이 날아가(8.6초) 열리고(9.0초) 모부기가 내려앉아 선다(11.5초)
+  { cue: 'C1', take: 'B5-switch', cut: [8.4, 3.3], fade: 0.2 },
+  // 기술은 끝까지 — 모부기 쪽 클로즈업(1.0초) · 꼬링크 몸통박치기(2.0~2.5초)
+  { cue: 'C3', take: 'C3-move', cut: [0.9, 2.2], fade: 0.15 },
+  // 밤 — 모부기 몸통박치기가 비버니에 맞는다(2.0초)
+  { cue: 'C4', take: 'C4-night', cut: [1.6, 1.8], fade: 0.15 },
+  // 무쇠게이트 굴 무대 — 꼬마돌 웅크리기 클로즈업(3.5~5.5초)
+  { cue: 'C5', take: 'C5-cave', cut: [3.4, 2.4], fade: 0.15 },
+  // 포획 — 몬스터볼을 던지고 빨아들이고 떨어진다(0.6~2.6초) → 흔들림 → 별(7.5초)
+  { cue: 'C6', take: 'C6-catch', cut: [0.6, 2.0] },
+  { cue: 'C7', take: 'C6-catch', cut: [5.6, 1.0], fade: 0.15 },
+  // 길이는 야생 배틀 곡의 프레이즈가 정한다(`fit`)
+  { cue: 'C8', take: 'C6-catch', cut: [7.1, 1.6], fade: 0.2 },
+  { cue: 'D1', take: 'D1-lake', cut: [0.4, 1.8], fade: 0.15 },
+  { cue: 'D2', take: 'D2-windworks', cut: [0.5, 1.3] },
+  { cue: 'D4', take: 'D4-snow', cut: [0.5, 1.3] },
+  { cue: 'D5', take: 'D5-first', cut: [0.4, 2.4] }, // 0.9초에 V
+  { cue: 'D6', take: 'D6-night', cut: [0.3, 1.8] },
+  { cue: 'D7', take: 'D7-forest', cut: [0.3, 1.3] },
+  // 길이는 오프닝 곡의 프레이즈가 정한다(`fit`) — 챔피언의 방으로 넘어간다
+  { cue: 'D8', take: 'D8-city', cut: [0.35, 1.8], fade: 0.2 },
+  // 난천을 마주 보고 선다 → VS 컷인(10.0초) → 화강돌이 나온다(15.5초). 챔피언 배틀 곡은 컷인에 들어온다
+  { cue: 'D11', take: 'D11-champion', cut: [8.7, 7.0], fade: 0.15 },
+  // 난천의 루카리오 — 기술 클로즈업(2.0초) · 맞는다(3.0~3.5초)
+  { cue: 'D12', take: 'D12-lucario', cut: [1.3, 2.8], fade: 0.15 },
+  // 한카리아스의 기술(2.0~3.0초) → 토대부기의 땅 기술(4.5~6.0초). 길이는 챔피언 곡의 프레이즈가 정한다(`fit`)
+  { cue: 'D13', take: 'D13-garchomp', cut: [1.8, 4.6], fade: 0.2 },
   { cue: 'E2', take: 'E2-spear', cut: [0.6, 2.1], warp: 'out', fade: 0.4 },
-  { cue: 'E3a', take: 'E3-distortion', cut: [0.4, 4.4], warp: 'in', fade: 0.3 }, // 2.2초에 V — 1인칭 → 3인칭으로 발판을 따라 더 걷는다
-  { cue: 'E3b', take: 'E3-giratina', cut: [0.3, 4.4], fade: 0.15 },
+  // 깨어진 세계 — 1인칭으로 판 위를 걷다(0~2.2초) V로 3인칭 내려다보기, 발판을 따라 더 걷는다
+  { cue: 'E3a', take: 'E3-distortion', cut: [0.3, 5.0], warp: 'in', fade: 0.2 },
+  // 벽으로 뛰어오르면 몸과 카메라가 90° 돈다(0.6~1.5초)
+  { cue: 'E3w', take: 'E3-wall', cut: [0.1, 1.5], fade: 0.15 },
+  // B4F 숲 — 3인칭으로 나무 사이를 걷는다
+  { cue: 'E3c', take: 'E3-b4f', cut: [2.3, 2.8], fade: 0.15 },
+  // 기라티나가 서 있다 → 다가가 A → 울음 → 배틀. 길이는 기라티나 곡의 프레이즈가 정한다(`fit`)
+  { cue: 'E3b', take: 'E3-giratina', cut: [0.3, 5.0], fade: 0.15 },
   { cue: 'E4', card: 'white', seconds: 0.5, fade: 0.3 },
   { cue: 'F1', card: 'wordmark', fade: 0.2 },
   { cue: 'F2', card: 'rom', fade: 0.2 },
@@ -89,21 +95,26 @@ const SHORTS = [
   { cue: 'A6', card: 'tagline', seconds: 4.8 },
   { cue: 'A7', card: 'white', fade: 0.25 },
   { cue: 'B1', take: 'B1-room', cut: [0.3, 2.6], fade: 0.25 },
-  { cue: 'B2', take: 'B2-twinleaf', cut: [0.3, 1.6], fade: 0.25 },
-  { cue: 'B5-B6', take: 'B5-switch', cut: [0.2, 5.4], fade: 0.15 },
-  { cue: 'C1', take: 'B5-switch', cut: [7.5, 2.9], fade: 0.2 },
-  { cue: 'C3', take: 'C3-move', cut: [0.7, 4.0], fade: 0.15 },
-  { cue: 'C6', take: 'C6-catch', cut: [0.8, 2.0] },
-  { cue: 'C8', take: 'C6-catch', cut: [7.0, 1.8], fade: 0.2 },
+  // 길이는 오프닝 곡의 프레이즈가 정한다(`fit`)
+  { cue: 'B2', take: 'B2-twinleaf', cut: [0.8, 1.6], fade: 0.25 },
+  { cue: 'B5-B6', take: 'B5-switch', cut: [0.2, 5.0], fade: 0.15 },
+  { cue: 'C1', take: 'B5-switch', cut: [8.4, 3.3], fade: 0.2 },
+  { cue: 'C3', take: 'C3-move', cut: [0.9, 2.2], fade: 0.15 },
+  { cue: 'C6', take: 'C6-catch', cut: [0.6, 2.0] },
+  // 길이는 야생 배틀 곡의 프레이즈가 정한다(`fit`)
+  { cue: 'C8', take: 'C6-catch', cut: [7.1, 1.6], fade: 0.2 },
   { cue: 'D5', take: 'D5-first', cut: [0.4, 2.2] },
-  { cue: 'D6', take: 'D6-night', cut: [0.3, 1.2] },
-  { cue: 'D8', take: 'D8-city', cut: [0.3, 1.2] },
-  { cue: 'D11', take: 'D11-champion', cut: [1.4, 3.0], fade: 0.15 },
-  { cue: 'E1a', take: 'E1-a', cut: [0.9, 0.75], crop: 0.45 },
-  { cue: 'E1c', take: 'E1-c', cut: [1.8, 0.8], crop: 0.45 },
-  { cue: 'E1e', take: 'E1-e', cut: [3.2, 0.8], crop: 0.42, fade: 0.2 },
+  { cue: 'D6', take: 'D6-night', cut: [0.3, 1.4] },
+  // 길이는 오프닝 곡의 프레이즈가 정한다(`fit`)
+  { cue: 'D8', take: 'D8-city', cut: [0.35, 1.6], fade: 0.2 },
+  { cue: 'D11', take: 'D11-champion', cut: [8.7, 7.0], fade: 0.15 },
+  { cue: 'D12', take: 'D12-lucario', cut: [1.3, 2.8], crop: 0.5, fade: 0.15 },
+  // 길이는 챔피언 곡의 프레이즈가 정한다(`fit`)
+  { cue: 'D13', take: 'D13-garchomp', cut: [1.8, 4.6], crop: 0.5, fade: 0.2 },
   { cue: 'E2', take: 'E2-spear', cut: [0.6, 1.6], warp: 'out', fade: 0.4 },
-  { cue: 'E3a', take: 'E3-distortion', cut: [0.4, 4.4], warp: 'in', fade: 0.3 },
+  { cue: 'E3a', take: 'E3-distortion', cut: [0.3, 4.4], warp: 'in', fade: 0.2 },
+  { cue: 'E3w', take: 'E3-wall', cut: [0.1, 1.5], crop: 0.45, fade: 0.15 },
+  // 길이는 기라티나 곡의 프레이즈가 정한다(`fit`)
   { cue: 'E3b', take: 'E3-giratina', cut: [0.3, 4.4], fade: 0.15 },
   { cue: 'E4', card: 'white', seconds: 0.5, fade: 0.3 },
   { cue: 'F1', card: 'wordmark', seconds: 2.5, fade: 0.2 },
@@ -118,6 +129,8 @@ const EDIT = SHORT ? SHORTS : MAIN
  * `len` 대신 `until`(큐)과 `untilAt`(초)을 주면 그 시각까지 깐다. 끝까지면 `until: 'end'`.
  * `snap`(마디 수 — 1 · 4 · 8)을 주면 끝을 곡 안의 그 마디 경계로 맞춘다(가장 가까운 것). 마디표는 `music/bars/<곡>.json`
  * (BA008은 Wwise 박자표, 나머지는 소리에서 잰 것 — 곡을 꺼낸 작업의 실측). 맞춘 만큼 다음 조각이 이어 받는다.
+ * `fit`(마디 수)은 반대로 **영상을 곡에 맞춘다** — `until` 큐 바로 앞 조각의 길이를 늘리거나 줄여, 곡이 그 마디 경계에서
+ * 끝나는 순간에 컷이 오게 한다(`fitEdit`). 곡이 프레이즈 한가운데서 끊기지 않는다. 늘릴 수 있는 만큼은 찍은 장면 길이가 정한다
  * `fadeIn` · `fadeOut`은 그 조각의 앞뒤 페이드, `gain`은 dB. 조각끼리 겹치면 섞인다. 비어 있으면 소리 없이 낸다
  */
 // 곡은 BDSP 원곡이다(`Delphis_Main.bnk` 상태 → wem, `.audit/reels/music/`에 wav로 풀어 둔다).
@@ -129,19 +142,20 @@ const EDIT = SHORT ? SHORTS : MAIN
 // 게임 화면이 처음 서는 순간(B1)에 오프닝의 오케스트라가 터지게 앞을 당긴다. 조우 컷인에 야생 배틀 곡이 들어온다
 const SCORE = {
   '16:9': [
-    { src: 'B_OTH001', cue: 'B1', at: -21, from: 0, until: 'B5-B6', untilAt: 4.3, fadeOut: 0.4 },
-    { src: 'BA001', cue: 'B5-B6', at: 4.0, from: 0, until: 'D1', untilAt: 0.6, fadeOut: 1.0 },
-    { src: 'B_OTH001', cue: 'D1', from: 31, until: 'D11', untilAt: 0.4, fadeIn: 0.8, fadeOut: 0.6 },
-    { src: 'BA008', cue: 'D11', from: 0, until: 'E2', untilAt: 0.5, fadeOut: 0.8 },
-    { src: 'BA015', cue: 'E2', from: 0, until: 'E4', untilAt: 0.4, fadeIn: 0.2, fadeOut: 0.4 },
+    // 마디 경계는 `music/bars/<곡>.json`의 4마디 프레이즈다(`fit: 4`). 오프닝은 21.5초(오케스트라가 터지는 박)에 B1이 선다
+    { src: 'B_OTH001', cue: 'B1', at: -21.5, from: 0, until: 'B5-B6', untilAt: 3.4, fit: 4, fadeOut: 0.3 },
+    { src: 'BA001', cue: 'B5-B6', at: 3.4, from: 0, until: 'D1', fit: 4, fadeOut: 0.25 },
+    { src: 'B_OTH001', cue: 'D1', from: 33.94, until: 'D11', untilAt: 1.3, fit: 4, fadeIn: 0.15, fadeOut: 0.3 },
+    { src: 'BA008', cue: 'D11', at: 1.3, from: 0, until: 'E2', fit: 4, fadeOut: 0.25 },
+    { src: 'BA015', cue: 'E2', from: 0, until: 'E4', fit: 4, fadeIn: 0.1, fadeOut: 0.4 },
     { src: 'B_OTH002', cue: 'F1', from: 0, until: 'end', fadeOut: 1.5 },
   ],
   '9:16': [
-    { src: 'B_OTH001', cue: 'B1', at: -21, from: 0, until: 'B5-B6', untilAt: 4.3, fadeOut: 0.4 },
-    { src: 'BA001', cue: 'B5-B6', at: 4.0, from: 0, until: 'D5', untilAt: 0.6, fadeOut: 1.0 },
-    { src: 'B_OTH001', cue: 'D5', from: 31, until: 'D11', untilAt: 0.4, fadeIn: 0.8, fadeOut: 0.6 },
-    { src: 'BA008', cue: 'D11', from: 0, until: 'E2', untilAt: 0.5, fadeOut: 0.8 },
-    { src: 'BA015', cue: 'E2', from: 0, until: 'E4', untilAt: 0.4, fadeIn: 0.2, fadeOut: 0.4 },
+    { src: 'B_OTH001', cue: 'B1', at: -21.5, from: 0, until: 'B5-B6', untilAt: 3.4, fit: 4, fadeOut: 0.3 },
+    { src: 'BA001', cue: 'B5-B6', at: 3.4, from: 0, until: 'D5', fit: 4, fadeOut: 0.25 },
+    { src: 'B_OTH001', cue: 'D5', from: 33.94, until: 'D11', untilAt: 1.3, fit: 1, fadeIn: 0.15, fadeOut: 0.3 },
+    { src: 'BA008', cue: 'D11', at: 1.3, from: 0, until: 'E2', fit: 4, fadeOut: 0.25 },
+    { src: 'BA015', cue: 'E2', from: 0, until: 'E4', fit: 4, fadeIn: 0.1, fadeOut: 0.4 },
     { src: 'B_OTH002', cue: 'F1', from: 0, until: 'end', fadeOut: 1.5 },
   ],
 }[ASPECT] ?? []
@@ -227,6 +241,54 @@ function snapToBar(src, t, every) {
   return best
 }
 
+/** 찍은 장면의 길이(초) — 마지막 프레임의 시각 */
+function takeSeconds(e) {
+  const file = resolve(takeDir(e), 'frames.json')
+  if (!existsSync(file)) return null
+  const { frames } = JSON.parse(readFileSync(file, 'utf8'))
+  return frames.at(-1).t - frames[0].t
+}
+
+/** 조각의 큐 길이(초) */
+const cueLength = (e) => (e.take ? e.cut[1] : e.seconds ?? CARD_SECONDS[e.card])
+
+/** 큐가 시작하는 시각 — 앞 조각들의 큐 길이를 더한 것이다(겹침은 다음 조각 안으로 들어간다) */
+function cueStarts(edit) {
+  const at = {}
+  let t = 0
+  for (const e of edit) { at[e.cue] = t; t += cueLength(e) }
+  return at
+}
+
+/**
+ * `fit`이 붙은 곡 조각마다 영상 길이를 곡의 마디 경계에 맞춘다 (`SCORE` 머리말).
+ * 끝 큐 바로 앞 조각이 늘거나 준다. 장면은 찍은 길이를 못 넘고 0.5초 밑으로 안 준다. 카드는 그냥 늘린다
+ */
+function fitEdit(edit) {
+  const out = edit.map((e) => ({ ...e, cut: e.cut ? [...e.cut] : undefined }))
+  for (const p of SCORE) {
+    if (!p.fit || p.until === undefined || p.until === 'end') continue
+    const at = cueStarts(out)
+    const start = at[p.cue] + (p.at ?? 0)
+    const stop = at[p.until] + (p.untilAt ?? 0)
+    const end = p.from + (stop - start)
+    const target = snapToBar(p.src, end, p.fit)
+    const k = out.findIndex((e) => e.cue === p.until) - 1
+    const e = out[k]
+    if (!e) continue
+    const want = cueLength(e) + (target - end)
+    let got = want
+    if (e.take) {
+      const room = takeSeconds(e)
+      const most = room === null ? want : room - e.cut[0] - overlap(e)
+      got = Math.min(Math.max(0.5, want), most)
+      e.cut[1] = got
+    } else e.seconds = Math.max(0.5, want)
+    console.log(`  맞춤 ${p.src} → ${p.until}: ${e.cue} ${cueLength(edit[k]).toFixed(2)} → ${got.toFixed(2)}초 (곡 끝 ${end.toFixed(2)} → 마디 ${target.toFixed(2)}${got !== want ? ` · 장면 길이가 모자라 ${(want - got).toFixed(2)}초 어긋남` : ''})`)
+  }
+  return out
+}
+
 function mixScore(video, final, cueAt) {
   const total = duration(video)
   const srcs = [...new Set(SCORE.map((p) => p.src))]
@@ -267,7 +329,7 @@ async function main() {
   const clips = []
   let missing = 0
   try {
-    for (const e of EDIT) {
+    for (const e of fitEdit(EDIT)) {
       const file = resolve(WORK, `${e.cue}.mp4`)
       if (e.take) {
         if (!existsSync(resolve(takeDir(e), 'frames.json'))) { console.log(`  ${e.cue.padEnd(6)} ${e.take} 안 찍었다 — 건너뛴다`); missing++; continue }
