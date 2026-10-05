@@ -95,7 +95,7 @@ interface RootVariant {
  * (`ev_r224_obj_change`). 판의 모습(꽃이 131 늘고 계단이 선다)만 쉐이미 사건 뒤로 읽힌다 — 어느 깃발로 켤지는 실행 쪽이 정한다. 이 표는 어느 물체가
  * 어느 판인지만 쥔다
  */
-export const ROOT_VARIANTS: readonly RootVariant[] = [
+const ROOT_VARIANTS: readonly RootVariant[] = [
   { area: 'area008', root: 'R224b', base: 'R224', id: 'r224b' },
 ]
 

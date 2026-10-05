@@ -121,7 +121,7 @@ export function swingAround(pos: SeqCamera['pos'], target: SeqCamera['target'], 
 }
 
 /** 3D 상자 — 무대 좌표 */
-export interface Box3Like {
+interface Box3Like {
   min: readonly [number, number, number]
   max: readonly [number, number, number]
 }

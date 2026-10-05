@@ -284,7 +284,7 @@ export function prefabOfFile(file: string): string | null {
  * 싱글은 1만, 더블은 2와 4가 같이 선다. 갈래를 안 주면 이 묶음들은 통째로 빠진다 — 싱글에서도 맞는 쪽에 입자를 붙이는
  * `ParticleMoveRelativePoke`가 `[0,1]` 묶음에만 있는 기술(파도타기 `ew057` 등 30개)이 있다
  */
-export const BATTLE_OPTION = 0
+const BATTLE_OPTION = 0
 export const battleOptions = (doubles: boolean): PlanOptions['options'] => ({ [BATTLE_OPTION]: doubles ? [2, 4] : 1 })
 
 /** 이 입자가 맞는 쪽(역할 1)에 붙는 명령을 가졌는가 — 범위 기술에서 맞은 자리마다 한 벌 더 세운다 */

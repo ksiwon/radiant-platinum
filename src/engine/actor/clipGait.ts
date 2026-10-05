@@ -478,10 +478,10 @@ export const GAIT_REST: GaitState = { phase: 0, moving: 0, run: 0 }
  *
  * BDSP 필드 값은 기준이 못 된다. 필드 몸이 2등신 치비(`fc*`)라 같은 속도가 다른 걸음이다.
  */
-export const GAIT_RUN_FROM = 1.7
-export const GAIT_RUN_FULL = 2.3
+const GAIT_RUN_FROM = 1.7
+const GAIT_RUN_FULL = 2.3
 /** 이 빠르기면 발이 다 움직인다. 사람의 아주 느린 걸음(0.5m/s)이다 — 그 밑은 서기와 섞인다 */
-export const GAIT_MOVE_FULL = 0.5
+const GAIT_MOVE_FULL = 0.5
 
 const smooth01 = (v: number) => { const t = clamp01(v); return t * t * (3 - 2 * t) }
 
