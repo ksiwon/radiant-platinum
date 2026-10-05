@@ -96,7 +96,7 @@
 
 **찾은 것.** 기술을 쓸 때마다 한 프레임이 0.8초 멎었다 — 같은 기술을 다시 써도 그랬다. 크로미움 트레이스로 보니 그 프레임에
 GPU 프로세스가 `CommandBuffer::Flush` 하나에 806ms를 썼고 그 안에 `DawnCachingInterface::CacheHit`가 28번이다(렌더러 자바스크립트는
-32ms). `GPUDevice.createRenderPipeline` 감시(`tools/reels/lagProbe.mjs` · 미추적 탐침)로 누가 짓는지 세니 임자가 넷이었다:
+32ms). `GPUDevice.createRenderPipeline` 감시(`tools/reels/lagProbe.mjs`)로 누가 짓는지 세니 임자가 넷이었다:
 
 1. **이펙트가 끝나며 형상을 버렸다.** three는 파이프라인을 쓰는 렌더 물체 수로 세고, 형상의 `dispose`가 그 물체를 지워 수가 0이
    되면 파이프라인도 놓는다. 그래서 매번 다시 지었다 → 형상을 이펙트 이름 + 노드 경로별 통에 넣어 다음 이펙트가 꺼내 쓴다
@@ -113,7 +113,7 @@ GPU 프로세스가 `CommandBuffer::Flush` 하나에 806ms를 썼고 그 안에 
 첨부 · 덮은 정도 MRT)의 열쇠와 안 맞았고, 씬 패스 타깃을 걸고 불러도 노드가 나중에 지어져 MRT 출력이 빠진 채 생성이 실패했다
 (`Color target has no corresponding fragment stage output`). 파이프라인 열쇠를 맞대 본 실측이다(`_getRenderPipeline`의 열쇠 문자열).
 
-**잰 것.** 배포판 번들(최소화 · DEV 훅만 켬, `tools/reels/vite.lag.config.mjs` · `lagProbeProd.mjs` · 미추적) · 헤드리스 WebGPU ·
+**잰 것.** 배포판 번들(최소화 · DEV 훅만 켬, `tools/reels/vite.lag.config.mjs` · `lagProbeProd.mjs`) · 헤드리스 WebGPU ·
 풀밭 · 모부기 5 대 꼬링크(403) 5 · 실제 시계 rAF 간격. 고치기 전은 같은 탐침을 `392a57b` 작업 사본에서 돌렸다.
 
 | 구간 | 고치기 전 | 고친 뒤 |
@@ -144,7 +144,7 @@ GPU 프로세스가 `CommandBuffer::Flush` 하나에 806ms를 썼고 그 안에 
 그때 처음 받아 푸는 값으로 짐작하고 **안 쟀다**.
 
 **연출 카메라가 서너 프레임마다 튀었다** — 프레임은 안 멎는데 화면이 덜컹였다(트레일러에서 배틀 컷이 「치지직」 끊겨 보였다).
-rAF마다 카메라 자리 · BDSP 시퀀스 카메라(보정 전) · 몸 상자를 적어 보니(`tools/reels/camProbe.mjs` · 미추적 · 실시간 60Hz) 시퀀스 카메라는
+rAF마다 카메라 자리 · BDSP 시퀀스 카메라(보정 전) · 몸 상자를 적어 보니(`tools/reels/camProbe.mjs` · 실시간 60Hz) 시퀀스 카메라는
 가만히 있는데 보정(`cameraClamp`의 `clampShot`) 뒤 자리가 0.8 · 1.28 · 2.2m를 오갔다. 화면 검사(`frameSubject`)가 0.5~2.6m 간격의
 후보 격자에서 **매 프레임 처음부터** 골라, 숨결로 몸 상자가 몇 cm만 바뀌어도 다른 칸이 뽑혔다. 튐 크기가 그 격자 간격과 같다.
 → 지난 프레임의 올림 · 비킴이 아직 지키면 그대로 두고(`ClampMemo`), 물리는 거리는 격자 칸이 아니라 지키는 가장 짧은 거리를
