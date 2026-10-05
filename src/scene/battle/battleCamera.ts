@@ -86,7 +86,55 @@ export function stepCamera(
   return { shot: clamp(orbitBlend(st.last, base, e)), state: { last: st.last, leftAt } }
 }
 
-// ── 큰 몸 앞에서 카메라를 옆으로 돌린다 ───────────────────────────────────────────────────────────────────────
+// ── 보정을 부드럽게 ───────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 보정(`clampShot`)이 카메라를 민 양을 따라가는 시간 상수(초) — 우리 값.
+ *
+ * 보정은 몸 상자 · 무대에 맞춰 매 프레임 따로 정해져서, 선택이 바뀌는 프레임에 카메라가 수십 cm씩 건너뛴다. 민 양을
+ * 이 상수로 따라가면 그 건너뜀이 0.2~0.3초의 미끄러짐이 된다. 짧게 둔다 — 길면 그동안 카메라가 몸 상자 속을 지난다
+ */
+const CLAMP_EASE = 0.08
+
+/**
+ * 원래 카메라(보정 전)가 한 프레임에 이만큼(m) 넘게 옮기면 시퀀스가 **일부러 끊은 것**(컷)으로 보고 보정도 곧바로 선다 — 우리 값.
+ * BDSP 샷 사이의 컷은 수 m이고, 이어지는 카메라는 프레임마다 수 cm다
+ */
+export const CLAMP_CUT = 0.6
+
+/** 화면에 선 보정 — 보정 전 카메라 자리와 민 양 */
+export interface ClampFix {
+  /** 화면에 선 민 양 (m). 보정이 안 걸린 프레임은 `null` */
+  pos: [number, number, number] | null
+  /** 지난 프레임의 보정 전 자리 */
+  raw: [number, number, number] | null
+}
+
+/**
+ * 보정 뒤 카메라(`shot`)를 매끄럽게 — 민 양(`shot − raw`)을 `CLAMP_EASE`로 따라간 값으로 바꿔 낸다. `fix`를 고친다.
+ * 보정을 안 거친 프레임(`raw === null` — 기본 카메라)은 그대로 내고 기록을 비운다. 보정 전 카메라가 `CLAMP_CUT`보다 크게
+ * 옮긴 프레임(컷)은 민 양도 곧바로 선다
+ */
+export function smoothClamp(fix: ClampFix, raw: SeqCamera | null, shot: SeqCamera, dt: number): SeqCamera {
+  if (raw === null) {
+    fix.pos = null
+    fix.raw = null
+    return shot
+  }
+  const want: [number, number, number] = [shot.pos[0] - raw.pos[0], shot.pos[1] - raw.pos[1], shot.pos[2] - raw.pos[2]]
+  const cut = fix.raw === null || Math.hypot(raw.pos[0] - fix.raw[0], raw.pos[1] - fix.raw[1], raw.pos[2] - fix.raw[2]) > CLAMP_CUT
+  fix.raw = [raw.pos[0], raw.pos[1], raw.pos[2]]
+  if (cut || fix.pos === null) {
+    fix.pos = want
+    return shot
+  }
+  const k = 1 - Math.exp(-Math.max(0, dt) / CLAMP_EASE)
+  const was = fix.pos
+  fix.pos = [was[0] + (want[0] - was[0]) * k, was[1] + (want[1] - was[1]) * k, was[2] + (want[2] - was[2]) * k]
+  return { ...shot, pos: [raw.pos[0] + fix.pos[0], Math.max(0.15, raw.pos[1] + fix.pos[1]), raw.pos[2] + fix.pos[2]] }
+}
+
+// ── 큰 몸 앞에서 카메라를 옆으로 돌린다───────────────────────────────────────────────────────────────────────
 
 /**
  * 큰 몸(내 쪽)이 설 때 기본 카메라를 보는 곳 둘레로 더 돌리는 각(도)의 상한 — 우리 값.

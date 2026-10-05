@@ -54,11 +54,24 @@ const MAX_STEEPER = 25
 const RAISE_COST = 2
 
 /**
+ * 프레임 사이에 이어 가는 화면 검사의 선택 — 지난 프레임에 고른 비킴(올림 · 비킴, m).
+ *
+ * ⚠️ **매 프레임 처음부터 고르면 카메라가 튄다.** 후보가 0.5~2.6m 간격의 격자라, 숨결 · 동작으로 몸 상자가 조금만
+ * 바뀌어도 다른 칸이 뽑혀 카메라가 그 간격만큼 한 프레임에 건너뛰었다(실측: 내보내기 · 몸통박치기 동안 0.8 · 1.28 · 2.2m를
+ * 서너 프레임마다 오갔다 — 원래 시퀀스 카메라는 가만히 있는데). 지난 선택이 아직 지키면 그대로 두고, 물리는 거리는
+ * 격자가 아니라 지키는 가장 짧은 거리로 잰다
+ */
+export interface ClampMemo {
+  move: readonly [number, number] | null
+}
+
+/**
  * @param aspect 화면 가로/세로. 0이면 화면 넓이 검사를 건너뛴다(시선 막힘은 잰다)
  * @param room 무대 지오메트리. 없으면(받는 중 · 깨어진 세계) 반지름 8m 이하 무대만 천장을 반지름의 반으로 친다
+ * @param memo 프레임 사이에 이어 가는 선택 (`ClampMemo`). 없으면 매번 처음부터 고른다
  */
 export function clampShot<T extends ShotLike>(
-  c: T, radius: number, boxes: readonly Box[], aspect = 0, room: ArenaCollider | null = null,
+  c: T, radius: number, boxes: readonly Box[], aspect = 0, room: ArenaCollider | null = null, memo?: ClampMemo,
 ): T {
   const target: V3 = [c.target[0], Math.max(0.1, c.target[1]), c.target[2]]
   let pos: V3 = [c.pos[0], Math.max(0.15, c.pos[1]), c.pos[2]]
@@ -77,7 +90,8 @@ export function clampShot<T extends ShotLike>(
   const stage: Stage = { target, radius, room, steepest: Math.min(85, pitchOf(c.pos, c.target) + MAX_STEEPER) }
   pos = settle(pos, stage)
   const fov = Math.min(80, Math.max(10, c.fov))
-  if (boxes.length > 0) pos = frameSubject(pos, stage, fov, c.roll, aspect, boxes)
+  if (boxes.length > 0) pos = frameSubject(pos, stage, fov, c.roll, aspect, boxes, memo)
+  else if (memo) memo.move = null
   return { ...c, pos, target, fov }
 }
 
@@ -148,7 +162,7 @@ function core(b: Box): Box {
  * 가장 작은 것이다. 후보마다 `settle`을 거치므로 무대 지오메트리 · 천장 · 가파름 상한을 넘는 후보는 없다
  */
 function frameSubject(
-  pos: V3, s: Stage, fov: number, roll: number, aspect: number, boxes: readonly Box[],
+  pos: V3, s: Stage, fov: number, roll: number, aspect: number, boxes: readonly Box[], memo?: ClampMemo,
 ): V3 {
   const { target } = s
   const subject = nearestBox(target, boxes)
@@ -163,18 +177,50 @@ function frameSubject(
     return over
   }
   let bestOver = score(pos)
-  if (bestOver === 0) return pos
+  if (bestOver === 0) {
+    if (memo) memo.move = null
+    return pos
+  }
   const back = norm(sub(pos, target))
   const right = norm(cross(back, [0, 1, 0]))
+  const at = (b: number, h: number, l: number): V3 => settle(add(add(add(pos, scale(back, b)), [0, h, 0]), scale(right, l)), s)
+  const keeps = (cand: V3): boolean => !boxes.some((x) => inside(cand, grownBox(x))) && score(cand) === 0
+  /** 올림 · 비킴을 둔 채 지키는 가장 짧은 물림 — `most`까지에서 못 지키면 `null` */
+  const shortest = (h: number, l: number, most: number): number | null => {
+    if (!keeps(at(most, h, l))) return null
+    let lo = 0, hi = most
+    if (keeps(at(0, h, l))) return 0
+    for (let i = 0; i < 12; i++) {
+      const mid = (lo + hi) / 2
+      if (keeps(at(mid, h, l))) hi = mid
+      else lo = mid
+    }
+    return hi
+  }
+  // 지난 프레임의 올림 · 비킴이 아직 지키면 그대로 — 물림만 다시 잰다
+  if (memo?.move) {
+    const [h, l] = memo.move
+    const b = shortest(h, l, BACK.at(-1)!)
+    if (b !== null) return at(b, h, l)
+  }
   let best = pos
-  for (const [b, h, l] of MOVES) {
-    const cand = settle(add(add(add(pos, scale(back, b)), [0, h, 0]), scale(right, l)), s)
+  let bestMove: readonly [number, number, number] | null = null
+  for (const m of MOVES) {
+    const cand = at(m[0], m[1], m[2])
     if (boxes.some((x) => inside(cand, grownBox(x)))) continue
     const over = score(cand)
     // 값싼 차례로 돈다 — 지키는 첫 후보가 답이고, 어긴 정도가 같으면 먼저 온 것(더 싼 것)이 남는다
-    if (over < bestOver - 1e-9) { best = cand; bestOver = over }
+    if (over < bestOver - 1e-9) { best = cand; bestOver = over; bestMove = m }
     if (bestOver === 0) break
   }
+  if (bestOver === 0 && bestMove) {
+    const [, h, l] = bestMove
+    if (memo) memo.move = [h, l]
+    // 격자의 물림을 지키는 가장 짧은 거리로 줄인다 — 몸이 다가오는 만큼 매끄럽게 물러난다
+    const b = shortest(h, l, bestMove[0])
+    return b === null ? best : at(b, h, l)
+  }
+  if (memo) memo.move = null
   return best
 }
 

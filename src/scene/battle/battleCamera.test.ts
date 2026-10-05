@@ -4,7 +4,7 @@ import type { SeqCamera } from '../../engine/battle/fx/sequence'
 import { lerp3 } from '../../engine/battle/fx/vec3'
 import {
   BIG_SWING_FULL_FIT, BIG_SWING_MAX, NO_RETURN, SEQ_CAMERA_CUT, SEQ_CAMERA_RETURN, bigSwing, orbitBlend, rectOverlap, screenRect,
-  stepCamera, swing, swingAround,
+  CLAMP_CUT, smoothClamp, stepCamera, swing, swingAround, type ClampFix,
 } from './battleCamera'
 import { BATTLE_FOV, CAMERA, SHOT_REACH } from '../../engine/battle/shots'
 import { cameraFit, ARENA } from '../../engine/battle/arena'
@@ -157,5 +157,35 @@ describe('큰 몸 앞의 옆 돌림 (champion 토대부기 대 화강돌)', () =
     const fit = cameraFit(grass, 2.25)
     const c = base(fit, bigSwing(fit))
     expect(Math.hypot(c.pos[0], c.pos[2])).toBeLessThanOrEqual(grass.radius - 1 + 1e-9)
+  })
+})
+
+describe('보정을 부드럽게 (smoothClamp)', () => {
+  const cam = (x: number, z: number): SeqCamera => ({ pos: [x, 1, z], target: [0, 0.5, 0], fov: 30, roll: 0 })
+
+  it('보정이 건너뛰어도 화면의 카메라는 한 프레임에 다 안 간다', () => {
+    const fix: ClampFix = { pos: null, raw: null }
+    smoothClamp(fix, cam(1, 3), cam(1, 3), 1 / 60)
+    // 원래 카메라는 그대로인데 보정이 1m 뒤로 민다
+    const out = smoothClamp(fix, cam(1, 3), cam(1, 4), 1 / 60)
+    expect(out.pos[2]).toBeGreaterThan(3)
+    expect(out.pos[2]).toBeLessThan(3.3)
+    let last = out
+    for (let i = 0; i < 60; i++) last = smoothClamp(fix, cam(1, 3), cam(1, 4), 1 / 60)
+    expect(last.pos[2]).toBeCloseTo(4, 3)
+  })
+
+  it('원래 카메라가 끊으면(컷) 보정도 곧바로 선다', () => {
+    const fix: ClampFix = { pos: null, raw: null }
+    smoothClamp(fix, cam(1, 3), cam(1, 3), 1 / 60)
+    const out = smoothClamp(fix, cam(-4, 8), cam(-4, 9), 1 / 60)
+    expect(out.pos[2]).toBe(9)
+    expect(CLAMP_CUT).toBeLessThan(5)
+  })
+
+  it('보정을 안 거친 프레임은 그대로 내고 기록을 비운다', () => {
+    const fix: ClampFix = { pos: [0, 0, 1], raw: [1, 1, 3] }
+    expect(smoothClamp(fix, null, cam(2.7, 5), 1 / 60).pos).toEqual([2.7, 1, 5])
+    expect(fix.pos).toBeNull()
   })
 })

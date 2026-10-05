@@ -135,3 +135,39 @@ describe('무대 지오메트리 — 천장 · 벽 (리요 방의 매달린 구�
     expect(pitch(out.pos, out.target)).toBeLessThanOrEqual(pitch(raw.pos, raw.target) + 25 + 1e-6)
   })
 })
+
+describe('프레임 사이 이음 — 몸 상자가 조금 바뀌어도 카메라가 안 건너뛴다', () => {
+  const aspect = 16 / 9
+  const big = { min: [-1.04, 0.02, 0.95] as const, max: [0.92, 2.24, 3.96] as const }
+  const spiritomb = { min: [-0.76, 0, -2.47] as const, max: [0.75, 1.44, -1.68] as const }
+  /** 숨결 — 상자가 프레임마다 ±3cm 출렁이고, 카메라는 몸 쪽으로 천천히 다가간다 (어깨 너머 샷) */
+  const frames = Array.from({ length: 90 }, (_, i) => {
+    const b = 0.03 * Math.sin(i * 0.7)
+    return {
+      raw: shot([1.6 - i * 0.004, 1.2, 1.6 - i * 0.004], [0, 0.7, -2.2]),
+      boxes: [{ min: [big.min[0] - b, big.min[1], big.min[2] - b] as const, max: [big.max[0] + b, big.max[1] + b, big.max[2] + b] as const }, spiritomb],
+    }
+  })
+  const steps = (memo?: { move: readonly [number, number] | null }) => {
+    let worst = 0
+    let was: readonly number[] | null = null
+    for (const f of frames) {
+      const out = clampShot(f.raw, 16, f.boxes, aspect, null, memo)
+      if (was) worst = Math.max(worst, Math.hypot(out.pos[0] - was[0]!, out.pos[1] - was[1]!, out.pos[2] - was[2]!))
+      was = out.pos
+    }
+    return worst
+  }
+
+  it('지난 선택을 이어 가면 한 프레임에 10cm를 안 넘게 옮긴다 (원래 카메라는 프레임마다 0.6cm)', () => {
+    expect(steps({ move: null })).toBeLessThan(0.1)
+  })
+
+  it('이어 가도 화면 검사는 지킨다', () => {
+    const memo = { move: null as readonly [number, number] | null }
+    for (const f of frames) {
+      const out = clampShot(f.raw, 16, f.boxes, aspect, null, memo)
+      expect(screenCover(out.pos, out.target, out.fov, out.roll, aspect, f.boxes[0]!)).toBeLessThanOrEqual(MAX_COVER + 1e-6)
+    }
+  })
+})

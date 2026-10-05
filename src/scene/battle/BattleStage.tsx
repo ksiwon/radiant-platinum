@@ -53,8 +53,8 @@ import { warmFxEffects } from './fx/BdspEffect'
 import { cloneBall, loadBallModel } from './fx/ballModel'
 import { ballPrefabs } from './fx/moveSeq'
 import type { SeqCamera } from '../../engine/battle/fx/sequence'
-import { clampShot, type Box } from '../../engine/battle/fx/cameraClamp'
-import { bigSwing, NO_RETURN, stepCamera, swingAround, type CameraReturn } from './battleCamera'
+import { clampShot, type Box, type ClampMemo } from '../../engine/battle/fx/cameraClamp'
+import { bigSwing, NO_RETURN, smoothClamp, stepCamera, swingAround, type CameraReturn, type ClampFix } from './battleCamera'
 import { BattleAtmosphere } from './BattleAtmosphere'
 import { MOVE_FRAMES, moveFramesOf } from '../../engine/battle/vfx'
 import { BATTLE_FOV, CAMERA, FIGHT_LOOK_Y, PAIR_DIR, pairOffset, SLOT } from '../../engine/battle/shots'
@@ -964,6 +964,10 @@ function useBattleCamera(fit: number, arenaRadius: number, ownFit: number): void
   const shownOwn = useRef<number | null>(null)
   /** 시퀀스 카메라의 마지막 자리 · 놓은 시각 — 돌아오는 길을 잇는다 */
   const back = useRef<CameraReturn>(NO_RETURN)
+  /** 화면 검사가 프레임 사이에 이어 가는 선택 (`clampShot`의 `ClampMemo`) */
+  const clampMemo = useRef<ClampMemo>({ move: null })
+  /** 보정이 카메라를 민 양 — 화면에 선 값 (`smoothClamp`) */
+  const fix = useRef<ClampFix>({ pos: null, raw: null })
   const time = useRef(new ClockReader())
   useFrame((state) => {
     const dt = time.current.read(battleClock.now())
@@ -1008,9 +1012,13 @@ function useBattleCamera(fit: number, arenaRadius: number, ownFit: number): void
     const boxes = (): Box[] => Object.entries(slotBox).filter(([slot]) => slotRig[slot]?.root && slotRig[slot]?.shown).map(([, b]) => b)
     const aspect = state.size.width / Math.max(1, state.size.height)
     // 돌아오는 길과 끊을지는 `battleCamera.stepCamera`가 정한다
-    const step = stepCamera(back.current, want, base, battleClock.now(), (c) => clampShot(c, arenaRadius, boxes(), aspect, arenaRoom.current))
+    let raw: SeqCamera | null = null
+    const step = stepCamera(back.current, want, base, battleClock.now(), (c) => {
+      raw = c
+      return clampShot(c, arenaRadius, boxes(), aspect, arenaRoom.current, clampMemo.current)
+    })
     back.current = step.state
-    const shot = step.shot
+    const shot = smoothClamp(fix.current, raw, step.shot, dt)
     battleStage.position.set(shot.pos[0] + quake, shot.pos[1] + quake * 0.7, shot.pos[2]).add(STAGE_ORIGIN)
     battleStage.target.set(shot.target[0], shot.target[1], shot.target[2]).add(STAGE_ORIGIN)
     battleStage.fov = shot.fov
