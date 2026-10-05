@@ -50,7 +50,7 @@ import { useSaveStore } from '../state/saveStore'
 import { useGameLocale, useOptionsStore } from '../state/optionsStore'
 import { worldState } from '../state/worldState'
 import { useSessionStore } from '../state/sessionStore'
-import { useBattleStore } from '../state/battleStore'
+import { fieldHiddenForBattle, useBattleStore } from '../state/battleStore'
 import { setGameActive } from '../engine/input/keyboard'
 import { exitLook, setMouseActive } from '../engine/input/mouse'
 import { encounters, resetEncounterTile } from '../engine/battle/encounterSystem'
@@ -358,6 +358,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   const publishMap = useSessionStore((s) => s.setMapId)
   const startWild = useBattleStore((s) => s.startWild)
   const startSafari = useBattleStore((s) => s.startSafari)
+  const fieldHidden = useBattleStore(fieldHiddenForBattle)
   const [grid, setGrid] = useState(initial)
   /** 숨은 자리로 청크를 갈아 끼운 횟수 — 격자는 같은 객체라 이것으로 다시 그리게 한다 (`applyMatrixSwaps`) */
   const [gridRevision, setGridRevision] = useState(0)
@@ -1340,15 +1341,17 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       {/*
         깨어진 세계는 하늘 돔 대신 원작 하늘이 화면에 붙는다 — 배경 한 장과 도는 구름 아홉 (§8.6b)
       */}
-      {distortion && (
-        <DistortionSky mapId={mapId} progress={distortionProgress} />
-      )}
+      <group visible={!fieldHidden}>
+        {distortion && (
+          <DistortionSky mapId={mapId} progress={distortionProgress} />
+        )}
       {sky && outdoors && (
         <mesh ref={skyRef} renderOrder={-1}>
           <sphereGeometry args={[190, 32, 20]} />
           <meshBasicMaterial map={sky} side={BackSide} fog={false} depthWrite={false} />
         </mesh>
       )}
+      </group>
       {/*
         조명 셋. 앰비언트 하나로 평평하게 채우면 절벽의 단차가 안 보인다 —
         하늘/지면 두 색을 섞는 반구광이 야외에서는 훨씬 낫다
@@ -1431,6 +1434,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         전부 여기서 나온다 (DATA.md §2.2). 청크 하나가 파일 하나고 창 안의 것만
         받는다. 충돌·높이는 여전히 perm/BDHC가 잡으므로 이 층은 그림만 담당한다
       */}
+      {/* 배틀이 무대를 세우는 동안은 안 그린다 — 위의 빛은 남긴다 (`battleStore`의 `fieldHiddenForBattle`) */}
+      <group visible={!fieldHidden}>
       <ChunkModels
         grid={grid} revision={gridRevision} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet}
         dsHidden={bdspDraws}
@@ -1490,6 +1495,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       {/* 창기둥의 붉은 사슬 (§8.15) */}
       <SpearPillarChain />
       <InteractionPrompt grid={grid} layer={layer} />
+      </group>
     </group>
   )
 }

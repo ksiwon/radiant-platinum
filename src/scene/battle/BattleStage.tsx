@@ -33,7 +33,7 @@ import { BODY_FADE_SECONDS, ClockReader, battleClock } from '../../engine/battle
 import { EncounterBurst } from './EncounterBurst'
 import { DistortionArena } from './DistortionArena'
 import { loadMotionTiming, loadMoves, loadSpecies } from '../../data/gameData'
-import { useBattleStore } from '../../state/battleStore'
+import { fieldHiddenForBattle, useBattleStore } from '../../state/battleStore'
 import type { ViewMon } from '../../engine/battle/view'
 import { SLOTS, type SlotId } from '../../engine/battle/events'
 import {
@@ -741,6 +741,7 @@ function Slot({
 export function BattleStage() {
   const view = useBattleStore((s) => s.view)
   const roster = useBattleStore((s) => s.roster)
+  const lightsOn = useBattleStore(fieldHiddenForBattle)
   useSceneReady()
   usePrefetchBodies()
   /**
@@ -840,6 +841,8 @@ export function BattleStage() {
         </mesh>
       )}
 
+      {/* 빛은 필드를 숨긴 뒤에만 선다 — 조우를 여는 동안 필드가 이 빛을 받으면 이긴 뒤 6초 멎었다 (`fieldHiddenForBattle`) */}
+      {lightsOn && <>
       <hemisphereLight args={[timeLook.skyColor, timeLook.groundColor, timeLook.ambient]} />
       <directionalLight position={[8, 14, 9]} intensity={timeLook.sun} color={timeLook.sunColor} />
       {/* 카메라 쪽 필. 이게 없으면 몸통의 그늘진 쪽이 배경에 묻는다 */}
@@ -857,6 +860,7 @@ export function BattleStage() {
         intensity={backFill(timeLook)}
         color={timeLook.skyColor}
       />
+      </>}
 
       {/*
         무대. 받는 동안은 평평한 땅이 대신 선다 — 배틀은 곧바로 열려야 한다

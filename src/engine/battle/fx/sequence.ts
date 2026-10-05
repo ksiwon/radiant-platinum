@@ -152,7 +152,7 @@ const INTRO_GLOW = 4
  * 떨어지는 높이 배율 (0~1 → 시작 높이에 곱한다) — 쏘아 올린 것처럼 처음엔 솟고 끝에 빨라진다. 꼭대기가 시작 높이의 1.25배
  * (영상에서 몸 키의 반쯤 솟는다), 끝(1)에서 땅이다: `1 + v·k − (v + 1)·k²`, `v = (1 + √5)/2`이면 꼭대기가 `1 + v²/4(v+1) = 1.25`
  */
-export function introLift(k: number): number {
+function introLift(k: number): number {
   const v = (1 + Math.sqrt(5)) / 2
   const x = Math.min(1, Math.max(0, k))
   return Math.max(0, 1 + v * x - (v + 1) * x * x)

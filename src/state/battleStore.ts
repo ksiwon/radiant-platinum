@@ -204,6 +204,19 @@ interface FactoryBout {
 }
 
 /** 키로 찾는 개체 정보. 화면이 이름·모델을 고르는 데 쓴다 */
+/**
+ * 필드(땅 · 지역 · NPC · 주인공)를 안 그리는 동안인가 — 배틀이 무대를 세우기 시작한 뒤(`running` · `over`)부터 닫힐 때까지.
+ * 배틀 무대의 빛(`BattleStage`)도 이때만 선다. 조우를 여는 `loading` 동안은 필드가 화면에 있으므로 둘 다 아니다.
+ *
+ * ⚠️ **둘이 겹치면 이긴 뒤 6초 멎었다.** 배틀 빛 넷이 같은 씬에 붙으면 필드 물체의 빛 목록이 6 → 10이 되고, three는 그 목록을
+ * 재질 노드의 열쇠에 넣는다. 필드가 배틀 빛 아래서 한 번이라도 그려지면(조우 연출 87건 · 기절 연출 카메라) 「빛 10」판으로 다시
+ * 지어지며 원래 판이 버려지고, 필드로 돌아오면 151건을 또 짓고 파이프라인을 동기로 구웠다 — 노드 빌드 감시 · CPU 표본 실측
+ * (2026-10-05 · `.audit/reels/lag-win-builds4.log`). 필드의 빛은 숨기지 않는다 — 배틀 무대도 그 빛을 받는다
+ */
+export function fieldHiddenForBattle(s: { phase: BattlePhase }): boolean {
+  return s.phase === 'running' || s.phase === 'over'
+}
+
 export interface RosterEntry {
   side: SideId
   species: number

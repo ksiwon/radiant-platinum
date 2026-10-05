@@ -108,7 +108,7 @@ const FACING_STEP = [
   { x: -1, z: 0 },
 ] as const
 /** 미는 쪽이 지금 속도와 반대인가 — 뒤로 도는 중이다. 얼음처럼 몸이 실려 가는 동안은 밀어도 안 돈다 */
-export function reversing(push: Vector3, velocity: Vector3): boolean {
+function reversing(push: Vector3, velocity: Vector3): boolean {
   return !isSliding() && push.lengthSq() > 0.01 && push.dot(velocity) < 0
 }
 

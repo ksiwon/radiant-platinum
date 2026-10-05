@@ -20,7 +20,7 @@ import { HallOfFameStage } from './HallOfFameStage'
 import { attachKeyboard } from '../engine/input/keyboard'
 import { IntroStage } from './IntroStage'
 import { attachMouse } from '../engine/input/mouse'
-import { useBattleStore } from '../state/battleStore'
+import { fieldHiddenForBattle, useBattleStore } from '../state/battleStore'
 import { useMenuStore } from '../state/menuStore'
 import { useOptionsStore } from '../state/optionsStore'
 import { backendLabel, useRendererStore } from '../state/rendererStore'
@@ -41,6 +41,8 @@ export function Stage() {
   // 배틀 무대는 배틀이 열려 있는 동안만 씬에 있다. 오버월드를 언마운트하지는
   // 않는다 — 배틀이 끝나면 걷던 자리 그대로 돌아와야 한다
   const inBattle = useBattleStore((s) => s.phase !== 'off')
+  // 배틀이 무대를 세우는 동안은 주인공도 안 그린다 (`fieldHiddenForBattle`)
+  const fieldHidden = useBattleStore(fieldHiddenForBattle)
   // 파트너 고르는 무대도 같은 Canvas에 선다 (`field/StarterStage`) — 화면이
   // 열려 있는 동안만이다
   const choosing = useMenuStore((s) => s.top === 'chooseStarter')
@@ -142,9 +144,11 @@ export function Stage() {
           <Suspense fallback={null}>
             <WorldLoader />
           </Suspense>
-          <Suspense fallback={<PlayerCapsule />}>
-            <PlayerModel />
-          </Suspense>
+          <group visible={!fieldHidden}>
+            <Suspense fallback={<PlayerCapsule />}>
+              <PlayerModel />
+            </Suspense>
+          </group>
           <PokemonPreviewStage />
           {/* 비전기술 컷인의 몸. 띠는 DOM 쪽이다 (`ui/field/HmCutInOverlay`) */}
           <HmCutInStage />
