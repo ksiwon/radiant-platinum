@@ -10,7 +10,10 @@
 //     pnpm shot coronet --warp=220 --at=31,53   확인 지점이 없는 맵의 그 칸으로
 //     pnpm shot forest --crop=180,260,140,90,5   그 구석만 잘라 다섯 배로 키운다
 //     pnpm shot twinleaf --eye=117,6,875 --gaze=117,2,884   건물 뒤로 돌아가 본다
+//     pnpm shot spear --eye=0,26,26 --gaze=0,0,-6 --rel   주인공 자리 기준 상대 좌표로 (릴 촬영과 같은 구도)
 //     pnpm shot wild --tree            배틀 무대 위에 실제로 무엇이 섰는지 늘어놓는다
+//     pnpm shot champion --keys=z,z,z --boxes   배틀 몸 상자가 화면 어디에 서는지 · 둘의 겹침 %를 잰다
+//     pnpm shot giratina --eval=probe.js   화면 안에서 그 파일의 `async () => 값`을 돌려 찍는다
 //     pnpm shot hearthome --bike       자전거에 태워 놓고 찍는다
 //     pnpm shot center --give=479:30:2 --menu=party   파티에 넣고 화면을 연다
 //     pnpm shot center --give=... --hof=3 --menu=pcHallOfFame   전당 기록을 열어 본다
@@ -337,16 +340,18 @@ async function main() {
     // 추적 카메라가 도로 끌고 간다 — 크리티컬 댐프드라 조용히, 몇 프레임에 걸쳐
     const eye = flag('eye')
     if (eye) {
-      await page.evaluate(async ([e, g]) => {
+      await page.evaluate(async ([e, g, rel]) => {
         const loop = (await import('/src/engine/loop/GameLoop.ts')).gameLoop
         const cams = (await import('/src/engine/actor/camera.ts')).cameraSystem
         // `private`은 타입 검사에만 있다. 실행 중에는 그냥 배열이다
         const box = loop
         box.systems = box.systems.filter((s) => s !== cams)
         const w = await import('/src/state/worldState.ts')
-        w.worldState.camera.position.set(e[0], e[1], e[2])
-        w.worldState.camera.target.set(g[0], g[1], g[2])
-      }, [eye.split(',').map(Number), (flag('gaze') ?? '0,0,0').split(',').map(Number)])
+        // `--rel`이면 눈 · 시선이 주인공 자리에서의 차이다 (릴 촬영 `rel`과 같다)
+        const p = rel ? w.worldState.player.position : { x: 0, y: 0, z: 0 }
+        w.worldState.camera.position.set(e[0] + p.x, e[1] + p.y, e[2] + p.z)
+        w.worldState.camera.target.set(g[0] + p.x, g[1] + p.y, g[2] + p.z)
+      }, [eye.split(',').map(Number), (flag('gaze') ?? '0,0,0').split(',').map(Number), args.includes('--rel')])
       await page.waitForTimeout(Number(flag('lookAfter', 1500)))
     }
     // 자전거에 태운다. 가방에서 꺼내 쓰는 길은 맵마다 탈 수 있느냐가 갈려서
@@ -899,6 +904,49 @@ async function main() {
     // ⚠️ **광선으로는 "없는 것"을 못 가린다.** 포켓몬 모델을 처음 세운 날
     // 화면에 아무것도 없었는데, 어디에 쏴도 무대만 맞으니 **안 붙은 것인지
     // 딴 데 선 것인지**를 알 수가 없었다. 이건 씬을 직접 훑는다
+    // 파일의 자바스크립트를 화면 안에서 돌려 그 값을 찍는다 — `--eval=파일`. 파일은 `async () => 값` 꼴 하나다 (탐침용)
+    const evalFile = flag('eval')
+    if (evalFile) {
+      const { readFileSync } = await import('node:fs')
+      const out = await page.evaluate(`(${readFileSync(evalFile, 'utf8')})()`)
+      console.log(typeof out === 'string' ? out : JSON.stringify(out, null, 1))
+    }
+    // 배틀 화면에서 **몸 상자가 화면의 어디에 서는지**를 잰다 — `--boxes`. 겹침(상자 교집합 ÷ 작은 쪽 상자)도 같이 낸다.
+    // 상자는 대기 자세에서 잰 3D 상자의 여덟 꼭짓점을 실제 배틀 카메라로 투영한 것이다 (눈대중이 아니다)
+    if (args.includes('--boxes')) {
+      const rows = await page.evaluate(async ([w, h]) => {
+        const THREE = await import('/node_modules/three/build/three.webgpu.js')
+        const stage = await import('/src/scene/battle/stageRefs.ts')
+        const cam = new THREE.PerspectiveCamera(stage.battleStage.fov, w / h, 0.1, 1000)
+        cam.position.copy(stage.battleStage.position)
+        cam.up.set(0, 1, 0)
+        cam.lookAt(stage.battleStage.target)
+        cam.updateMatrixWorld(true)
+        cam.updateProjectionMatrix()
+        const out = {}
+        for (const [slot, b] of Object.entries(stage.slotBox)) {
+          let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+          for (const x of [b.min[0], b.max[0]]) for (const y of [b.min[1], b.max[1]]) for (const z of [b.min[2], b.max[2]]) {
+            const v = new THREE.Vector3(x, y, z).add(stage.STAGE_ORIGIN).project(cam)
+            x0 = Math.min(x0, (v.x + 1) / 2 * w); x1 = Math.max(x1, (v.x + 1) / 2 * w)
+            y0 = Math.min(y0, (1 - v.y) / 2 * h); y1 = Math.max(y1, (1 - v.y) / 2 * h)
+          }
+          out[slot] = [x0, y0, x1, y1].map((n) => +n.toFixed(1))
+        }
+        const world = Object.fromEntries(Object.entries(stage.slotBox).map(([k, b]) => [k, [...b.min, ...b.max].map((n) => +n.toFixed(2))]))
+        return { out, world, eye: stage.battleStage.position.toArray().map((n) => +n.toFixed(2)), target: stage.battleStage.target.toArray().map((n) => +n.toFixed(2)) }
+      }, [VIEWPORT.width, VIEWPORT.height])
+      const names = Object.keys(rows.out)
+      console.log(`  ${id} 몸 상자(화면 px) 카메라 ${String(rows.eye)} → ${String(rows.target)}`)
+      for (const n of names) console.log(`     ${n} ${String(rows.out[n])}  (3D ${String(rows.world[n])})`)
+      if (names.length >= 2) {
+        const [a, b] = [rows.out[names[0]], rows.out[names[1]]]
+        const iw = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0]))
+        const ih = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]))
+        const area = (r) => (r[2] - r[0]) * (r[3] - r[1])
+        console.log(`     겹침 ${((iw * ih) / Math.min(area(a), area(b)) * 100).toFixed(1)}% (교집합 ÷ 작은 상자)`)
+      }
+    }
     if (args.includes('--tree')) {
       const rows = await page.evaluate(async () => {
         const THREE = await import('/node_modules/three/build/three.webgpu.js')

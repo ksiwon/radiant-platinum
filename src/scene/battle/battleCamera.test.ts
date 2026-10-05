@@ -2,7 +2,12 @@
 import { describe, expect, it } from 'vitest'
 import type { SeqCamera } from '../../engine/battle/fx/sequence'
 import { lerp3 } from '../../engine/battle/fx/vec3'
-import { NO_RETURN, SEQ_CAMERA_CUT, SEQ_CAMERA_RETURN, orbitBlend, stepCamera, swing } from './battleCamera'
+import {
+  BIG_SWING_FULL_FIT, BIG_SWING_MAX, NO_RETURN, SEQ_CAMERA_CUT, SEQ_CAMERA_RETURN, bigSwing, orbitBlend, rectOverlap, screenRect,
+  stepCamera, swing, swingAround,
+} from './battleCamera'
+import { BATTLE_FOV, CAMERA, SHOT_REACH } from '../../engine/battle/shots'
+import { cameraFit, ARENA } from '../../engine/battle/arena'
 
 const cam = (pos: [number, number, number], target: [number, number, number] = [0, 0, 0], fov = 40, roll = 0): SeqCamera =>
   ({ pos, target, fov, roll })
@@ -101,5 +106,56 @@ describe('stepCamera', () => {
     const r = stepCamera({ last: shotNear, leftAt: 10 }, shotBehind, base, 10.1, id)
     expect(r.state.leftAt).toBeNull()
     expect(r.state.last).toBe(r.shot)
+  })
+})
+
+describe('큰 몸 앞의 옆 돌림 (champion 토대부기 대 화강돌)', () => {
+  // 실측 — `pnpm shot champion --keys=z,z,z,z,z --boxes`. 대기 자세 상자(무대 좌표)와 기본 샷의 거리 배율이다
+  const TORTERRA = { min: [-0.53, -0.04, 0.84], max: [1.16, 2.25, 3.68] } as const
+  const SPIRITOMB = { min: [-0.89, 0, -2.31], max: [0.32, 1.43, -1.3] } as const
+  const FIGHT_Y = 0.05
+  /** `BattleStage.useBattleCamera`가 놓는 기본 샷 */
+  const base = (fit: number, swingDeg: number): SeqCamera => {
+    const [lx, , lz] = CAMERA.look
+    const pos: [number, number, number] = [
+      lx + (CAMERA.position[0] - lx) * fit, FIGHT_Y + (CAMERA.position[1] - FIGHT_Y) * fit, lz + (CAMERA.position[2] - lz) * fit,
+    ]
+    return { pos: swingAround(pos, [lx, FIGHT_Y, lz], swingDeg), target: [lx, FIGHT_Y, lz], fov: BATTLE_FOV, roll: 0 }
+  }
+  const overlapAt = (shot: SeqCamera): number =>
+    rectOverlap(screenRect(TORTERRA, shot, 1.5)!, screenRect(SPIRITOMB, shot, 1.5)!)
+  const FIT = 2.25 / 1.2
+
+  it('돌리기 전은 상자가 절반 넘게 겹친다 — 실측 65.7%', () => {
+    expect(overlapAt(base(FIT, 0))).toBeGreaterThan(0.6)
+    expect(overlapAt(base(FIT, 0))).toBeLessThan(0.72)
+  })
+  it('돌린 뒤는 겹침이 10% 아래다', () => {
+    const fit = cameraFit(ARENA.find((a) => a.file === 'g042.glb')!, 2.25)
+    expect(fit).toBeCloseTo(FIT, 2)
+    expect(overlapAt(base(fit, bigSwing(fit)))).toBeLessThan(0.1)
+  })
+  it('기본 샷이 담는 몸(배율 1)은 안 돌고, 상한을 안 넘는다', () => {
+    expect(bigSwing(1)).toBe(0)
+    expect(bigSwing(0.88)).toBe(0)
+    expect(bigSwing(BIG_SWING_FULL_FIT)).toBe(BIG_SWING_MAX)
+    expect(bigSwing(3.5)).toBe(BIG_SWING_MAX)
+    expect(bigSwing(1.4)).toBeCloseTo(BIG_SWING_MAX * 0.5, 6)
+  })
+  it('돌림은 보는 곳과의 수평 거리 · 높이를 안 바꾼다', () => {
+    const a = base(1.5, 0), b = base(1.5, 17)
+    const d = (c: SeqCamera) => Math.hypot(c.pos[0] - c.target[0], c.pos[2] - c.target[2])
+    expect(d(b)).toBeCloseTo(d(a), 9)
+    expect(b.pos[1]).toBe(a.pos[1])
+    expect(d(a)).toBeCloseTo(SHOT_REACH * 1.5, 9)
+    // 방위가 28.4° → 45.4°
+    const az = (c: SeqCamera) => (Math.atan2(c.pos[0] - c.target[0], c.pos[2] - c.target[2]) * 180) / Math.PI
+    expect(az(b) - az(a)).toBeCloseTo(17, 6)
+  })
+  it('돌린 카메라도 풀밭 무대 벽(반지름 − 1) 안이다', () => {
+    const grass = ARENA[0]!
+    const fit = cameraFit(grass, 2.25)
+    const c = base(fit, bigSwing(fit))
+    expect(Math.hypot(c.pos[0], c.pos[2])).toBeLessThanOrEqual(grass.radius - 1 + 1e-9)
   })
 })

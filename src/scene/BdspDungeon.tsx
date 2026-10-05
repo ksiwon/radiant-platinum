@@ -32,7 +32,8 @@ import { bdspLights, type BdspLights } from './bdspLights'
 import { disposeTree } from './disposeTree'
 import { fieldFade, type FieldFade } from './fieldFade'
 import { useBdspMark } from './bdspReady'
-import { liveWater } from './BdspField'
+import { liveWater, lowestGround } from './BdspField'
+import { setDungeonLow } from './OuterFloor'
 import { holdBdspDoors } from './DoorAnimations'
 import { holdBdspSigns } from './ObjectProps'
 
@@ -664,6 +665,8 @@ export function BdspDungeon({ name }: { name: string }) {
         lights.current.update(worldState.time.gameHour)
         for (const c of cover) root.add(c)
         root.updateMatrixWorld(true)
+        // 가장자리 너머를 받치는 원판의 높이 (`OuterFloor`)
+        setDungeonLow(lowestGround(root))
         firstOnly.current = [...ceilings, ...cover]
         for (const c of firstOnly.current) c.visible = firstPersonView()
         release = [holdBdspDoors(root), holdBdspSigns(root)]
@@ -677,6 +680,7 @@ export function BdspDungeon({ name }: { name: string }) {
     // ⚠️ **떼면 버린다** (`disposeTree`) — 나눠 쓰는 그림도 던전마다 새로 풀어 올리므로 그 벌은 이 던전 몫이다
     return () => {
       alive = false
+      setDungeonLow(null)
       for (const r of release) r()
       if (built) disposeTree(built)
     }

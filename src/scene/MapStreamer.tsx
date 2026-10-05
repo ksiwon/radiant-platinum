@@ -101,6 +101,7 @@ import { ChunkModels } from './ChunkModels'
 import { BdspRoom, useBdspRoom } from './BdspRoom'
 import { BdspField, useBdspFields } from './BdspField'
 import { BdspDungeon, openAir, useBdspDungeon } from './BdspDungeon'
+import { OuterFloor } from './OuterFloor'
 import { NpcMonModels } from './NpcMonModels'
 import { NpcSprites } from './NpcSprites'
 import { ItemBalls } from './ItemBalls'
@@ -977,6 +978,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   // 안개와 배경색도 시간대를 탄다. `Stage`가 만들어 둔 것을 여기서 밀어 준다 —
   // 밤에 낮 안개가 남으면 먼 지형만 훤하다
   const scene = useThree((s) => s.scene)
+  const eyeCamera = useThree((s) => s.camera)
   /**
    * **굴·실내에 걸린 날씨 안개** — 동굴과 탑의 안개 · 깊은 안개 · 어둠 (PARITY §8.3).
    *
@@ -1287,9 +1289,10 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     const i = grid.chunkIndexAt(tx, tz)
     if (i >= 0) setChunkIndex((prev) => (prev === i ? prev : i))
 
-    // 하늘 돔을 플레이어 위로 옮긴다. 안 옮기면 오버월드 끝(960타일)에서
-    // 돔 밖으로 걸어 나가 하늘이 사라진다
-    if (skyRef.current) skyRef.current.position.set(p.x, 0, p.z)
+    // 하늘 돔을 **카메라** 자리로 옮긴다. 안 옮기면 오버월드 끝(960타일)에서 돔 밖으로 걸어 나가 하늘이 사라진다.
+    // ⚠️ 주인공 발밑(y 0)에 두면 높은 카메라에서 돔 아래쪽이 먼 평면(200칸)을 넘어 잘리고, 잘린 자리가 배경색(짙은 하늘색)으로
+    // 뚫린다 — 창기둥 · 진실호수 부감에서 파란 원판이 떴다. 카메라가 중심이면 어디를 봐도 돔까지 반지름(190)이다
+    if (skyRef.current) skyRef.current.position.copy(eyeCamera.position)
 
     // 야생이 나왔다. 배틀 청크는 이때 처음 받는다 — 그동안 판정을 멈춰 둔다
     if (encounters.pending) {
@@ -1438,6 +1441,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       {room !== null && <BdspRoom key={`${room}@${String(mapId)}`} name={room} mapId={mapId} />}
       {/* 던전(호수 · 숲 · 동굴 · 탑)도 BDSP가 있으면 그것이 선다 — 방과 같은 자리다 (`BdspDungeon`) */}
       {dungeon !== null && <BdspDungeon key={dungeon} name={dungeon} />}
+      {/* 하늘이 트인 던전은 판 가장자리 너머를 안개색 원판이 받친다 (`OuterFloor`) */}
+      {dungeon !== null && outdoors && <OuterFloor />}
       {/* 턱 — BDSP가 그리는 동안은 BDSP가 턱을 안 그린 칸만 세운다 (`Ledges` 머리말) */}
       <Ledges grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet} bdsp={bdspDraws} />
       {/* 흔들리는 풀 무더기 (PARITY §6.5). 레이더를 켠 동안만 선다 */}

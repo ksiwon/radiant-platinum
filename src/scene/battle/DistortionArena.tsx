@@ -20,9 +20,9 @@ import { VAR_DISTORTION_WORLD_PROGRESS } from '../../engine/script/vars'
 import { world } from '../../engine/map/world'
 
 /** 바닥 섬의 반지름 (m) — 배틀 카메라의 기본 샷이 담는 땅보다 넉넉히. `arena.ts` 17번의 `radius`가 이 안쪽이다 */
-const ISLAND = 24
+const ISLAND = 11
 /** 벼랑 깊이 (m). 발판 소품의 벼랑(6칸)과 같다 */
-const CLIFF = 6
+const CLIFF = 5
 /** 벼랑 그림 한 장이 덮는 길이 (m) — `criffp`는 32×32, 두 칸이다 */
 const CLIFF_TILE = 2
 
@@ -75,8 +75,9 @@ function cliffGeometry(): BufferGeometry {
     run += Math.hypot(x - px, z - pz)
     px = x; pz = z
     const u = run / CLIFF_TILE
-    pos.push(x, 0, z, x * 0.55, -CLIFF, z * 0.55)
-    uv.push(u, 0, u, CLIFF / CLIFF_TILE)
+    pos.push(x, 0, z, x * 0.4, -CLIFF, z * 0.4)
+    // 그림 한 장이 벼랑 전체다 — 위에서부터 붉은 입술 · 푸른 빛 띠 · 검은 몸 · 푸른 끝. 세로로 되풀이하면 필드의 발판과 다른 줄무늬가 된다
+    uv.push(u, 1, u, 0)
   }
   const index: number[] = []
   for (let i = 0; i < SEGMENTS; i++) {
