@@ -69,7 +69,7 @@ gr.addColorStop(0,'rgba(220,235,255,'+k+')');gr.addColorStop(1,'rgba(120,170,255
   if (kind === 'tunnel') {
     // 칸 길이 — 앞 넷 0.8 · 가운데 0.45 · 뒤 여섯 0.3 · 플래티넘 0.9, 합을 A2 길이로 맞춘다
     const raw = LINEUP.map((_, i) => (i === PLATINUM ? 0.9 : i < 4 ? 0.8 : i >= LINEUP.length - 6 ? 0.3 : 0.45))
-    const A2 = short ? 4.5 : 11.0
+    const A2 = short ? 3.0 : 11.0
     const sum = raw.reduce((a, b) => a + b, 0)
     const slots = raw.map((d) => (d * A2) / sum)
     return `${head}<canvas id="cv" width="${W}" height="${H}"></canvas>
@@ -77,7 +77,7 @@ gr.addColorStop(0,'rgba(220,235,255,'+k+')');gr.addColorStop(1,'rgba(120,170,255
 <div id="yy" class="silver" style="font-weight:600;margin-top:${18 * u}px;letter-spacing:${8 * u}px"></div></div>
 <div id="wash" style="position:absolute;inset:0;background:#fff;opacity:0"></div>
 <script>${common}
-const L=${JSON.stringify(LINEUP)},P=${PLATINUM},SL=${JSON.stringify(slots)},A2=${A2},REW=${short ? 1.5 : 2.0},FL=0.8;
+const L=${JSON.stringify(LINEUP)},P=${PLATINUM},SL=${JSON.stringify(slots)},A2=${A2},REW=${short ? 1.2 : 2.0},FL=0.8;
 const starts=[];{let a=0;for(const d of SL){starts.push(a);a+=d}}
 const g=document.getElementById('cv').getContext('2d'),tt=document.getElementById('tt'),yy=document.getElementById('yy'),box=document.getElementById('box'),wash=document.getElementById('wash');
 // 빛줄기 — 각도 · 깊이를 씨앗으로 정해 두고, 나아간 거리 s만큼 깊이를 줄인다
