@@ -80,7 +80,7 @@ const MAIN = [
   // B4F 숲 — 3인칭으로 나무 사이를 걷는다
   { cue: 'E3c', take: 'E3-b4f', cut: [2.3, 2.8], fade: 0.15 },
   // 기라티나가 서 있다 → 다가가 A → 울음 → 배틀. 길이는 기라티나 곡의 프레이즈가 정한다(`fit`)
-  { cue: 'E3b', take: 'E3-giratina', cut: [0.3, 5.0], fade: 0.15 },
+  { cue: 'E3b', take: 'E3-giratina', cut: [1.3, 5.0], fade: 0.15 },
   { cue: 'E4', card: 'white', seconds: 0.5, fade: 0.3 },
   { cue: 'F1', card: 'wordmark', fade: 0.2 },
   { cue: 'F2', card: 'rom', fade: 0.2 },
@@ -115,7 +115,7 @@ const SHORTS = [
   { cue: 'E3a', take: 'E3-distortion', cut: [0.3, 4.4], warp: 'in', fade: 0.2 },
   { cue: 'E3w', take: 'E3-wall', cut: [0.1, 1.5], crop: 0.45, fade: 0.15 },
   // 길이는 기라티나 곡의 프레이즈가 정한다(`fit`)
-  { cue: 'E3b', take: 'E3-giratina', cut: [0.3, 4.4], fade: 0.15 },
+  { cue: 'E3b', take: 'E3-giratina', cut: [2.1, 4.4], fade: 0.15 },
   { cue: 'E4', card: 'white', seconds: 0.5, fade: 0.3 },
   { cue: 'F1', card: 'wordmark', seconds: 2.5, fade: 0.2 },
   { cue: 'F2', card: 'rom', seconds: 4.2, fade: 0.2 },
