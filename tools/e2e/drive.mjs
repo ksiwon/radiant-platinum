@@ -1152,9 +1152,16 @@ export async function driveStory(page, {
     let rawSeen = null
     let rawAt = 0
     let why = 'deadline'
+    /** 잡기 시작한 맵. 문으로 새면 여기가 바뀐다 */
+    let from = null
     while (Date.now() < cap) {
       at = await now()
       if (at.talk || at.scene !== 'overworld') { why = 'scene'; break }
+      // ⚠️ **맵이 바뀌면 손을 뗀다.** 목표는 떠난 맵의 좌표라, 새 방 안에서는 「닿았다 · 지나쳤다」가
+      // 안 서고 쥔 키가 방 안을 계속 민다 — 실측(2026-10-06 ㉖): 샌드젬 상점(187,842)으로 가다 같은 줄의
+      // 연구소 문(168,842)으로 새서, 422의 (26,12)에서 「길을 못 찾았다」로 끝났다
+      if (Number.isFinite(at.map)) from ??= at.map
+      if (from !== null && Number.isFinite(at.map) && at.map !== from) { why = 'map'; break }
       // ⚠️ **정확히 같은 칸만 보면 지나친다.** 나아가는 동안 잡고 있으므로,
       // 폴링 사이에 목표 칸을 건너뛰면 영영 안 멈춘다 — 실측(고친 직후):
       // `ArrowLeft×3`을 부탁했는데 **열한 칸**을 갔다. 미는 축에서
@@ -2303,7 +2310,9 @@ export async function driveStory(page, {
           return done(`계획 입력이 잘못됐다 (${plan.why} · ${String(s.x)},${String(s.z)})`)
         }
         if (lost > 15) {
-          const kind = plan.status === PLAN.budget ? '계획 상한을 소진했다' : '길을 못 찾았다'
+          // 우리 격자로 막힌 칸에 서 있으면 길 찾기가 아니라 **선 자리**가 틀린 것이다 — 갈라 적는다
+          const kind = plan.status === PLAN.budget ? '계획 상한을 소진했다'
+            : grid0(s.map, s.x, s.z) === true ? '길을 못 찾았다 — 우리 격자로 막힌 칸에 서 있다(충돌 의심)' : '길을 못 찾았다'
           return done(`${String(s.map)}의 (${String(s.x)},${String(s.z)})에서 ${kind}`
             + ` (${plan.why} · ${String(plan.status)})`)
         }
