@@ -20,6 +20,8 @@ import { useBattleStore } from '../state/battleStore'
 import { useSaveStore } from '../state/saveStore'
 import { startSafari } from '../engine/world/safari'
 import { gridFor } from './worldData'
+import { beginAsyncPipelines, settleAsyncPipelines } from './asyncPipelines'
+import { terrainLanded } from './terrainMark'
 import { distortionSpawn, isDistortionFloor } from './distortion'
 import type { Checkpoint } from '../engine/dev/checkpoints'
 
@@ -128,6 +130,14 @@ export function useDevWarp(enter: EnterFn): DevWarpHooks {
         // TV 방송이 시작된다. 안 끊으면 딴 맵에서 그 대사창이 뜨고 플레이어가
         // 잠긴 채로 선다 — 걸어도 안 움직이는 것을 이동 버그로 읽기 십상이다
         abortScript()
+        // ⚠️ **진짜 워프처럼 새 맵의 파이프라인을 비동기로 굽는다** (`MapStreamer`의 워프 갈래 · REPAIR §8). 안 그러면 방의
+        // 재질 백여 개가 첫 프레임에 동기로 서는 동안 GPU 프로세스가 멎고, 배틀 무대가 15초 시한을 넘겼다(챔피언 방 6판 모두 ·
+        // 동기 파이프라인 127 · `tools/probe/battleStartFreeze.mjs`).
+        // ⚠️ **배틀은 다 구워지기를 안 기다리고 다음 프레임에 연다.** 기다리면 그 몇 초 사이에 방의 도착 스크립트가 돌아
+        // 난천의 대사(8쪽)가 배틀 밑에 떴다가 끊겼다(`pnpm story --only=champion --fight`). 배틀 무대도 같은 비동기
+        // 굽기를 쥐므로(`BattleStage`) 방의 것까지 다 구워진 뒤에 선다
+        beginAsyncPipelines()
+        void settleAsyncPipelines(terrainLanded)
         battle.current = cp.battle
       })
       .catch((e: unknown) => { console.error(`확인 지점 ${cp.id} 실패`, e) })
