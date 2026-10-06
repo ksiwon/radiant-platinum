@@ -8,7 +8,7 @@ import { resolve } from 'node:path'
 import type { Actor, BattleEvent, BoostStat, Cause } from './events'
 import { applyEvent, applyEvents, emptyView, type BattleView } from './view'
 import {
-  STATUS_ANIMS, STAT_CHANGE_FRAMES, spriteFadeTrack, statChangeAt, statusAnimFrames, statusPan,
+  STATUS_ANIMS, STAT_CHANGE_FRAMES, setStatusFrames, spriteFadeTrack, statChangeAt, statusAnimFrames, statusPan,
   statusSoundFrames, type StatusAnimKey,
 } from './vfx'
 import { readSpa } from './spl/resource'
@@ -209,6 +209,17 @@ describe('부분 연출의 길이 (원작 대본 · 태스크)', () => {
     expect(statusAnimFrames('asleep')).toBe(61)
     expect(statusAnimFrames('confused')).toBe(51)
     expect(statusAnimFrames('frozen')).toBe(73)
+  })
+
+  it('BDSP 시퀀스가 길이를 꽂으면 그 값이고, 그 상태에 시퀀스가 없으면(null) 원작 길이다', () => {
+    setStatusFrames((key) => (key === 'asleep' ? 120 : null))
+    try {
+      expect(statusAnimFrames('asleep')).toBe(120)
+      expect(statusAnimFrames('frozen')).toBe(73)
+    } finally {
+      setStatusFrames(null)
+    }
+    expect(statusAnimFrames('asleep')).toBe(61)
   })
 })
 

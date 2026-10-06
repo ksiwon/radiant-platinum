@@ -31,7 +31,7 @@ import { loadParticles } from '../../data/gameData'
 import { music } from '../../engine/audio/music'
 import { battleClock } from '../../engine/battle/presentationClock'
 import {
-  STATUS_ANIMS, spriteFadeTrack, statChangeAt, statusAnimFrames, statusPan, statusSoundFrames,
+  STATUS_ANIMS, setStatusFrames, spriteFadeTrack, statChangeAt, statusAnimFrames, statusPan, statusSoundFrames,
   type StatusAnimKey,
 } from '../../engine/battle/vfx'
 import type { SlotId } from '../../engine/battle/events'
@@ -46,6 +46,9 @@ import type { SplCue } from './splDraw'
 import { splFileFor, preloadSplPack, SPL_WAZA } from './splPack'
 import { splMetre, type SplBasis, type Vec3 } from './splPlace'
 import { tallOf } from './stageRefs'
+import { BdspSequence } from './fx/BdspSequence'
+import { preloadStatusSeqs, statusSeqPlan } from './fx/moveSeq'
+import { planFrames, type SeqPlan } from '../../engine/battle/fx/sequence'
 
 /** DS 화면 높이(픽셀). 무늬 한 칸이 화면에서 차지하는 몫을 원작과 같게 맞춘다 */
 const DS_SCREEN_H = 192
@@ -90,6 +93,9 @@ interface Shot {
   floor: [number, number]
   /** 화살 무늬. 아직 못 풀었으면 그 한 번은 무늬 없이 간다 */
   pattern: DataTexture | null
+  /** BDSP 시퀀스(`es0xx`). 있으면 입자 · 몸 물들임 · 무늬를 그것이 맡고 원작 대본은 소리만 낸다 */
+  plan: SeqPlan | null
+  spotAt: (slot: string) => [number, number]
 }
 
 /**
@@ -233,6 +239,7 @@ function StatusShot({ shot, stage, done }: {
 
   // 몸에 거는 겹. 무늬도 물들임도 없는 연출(잠·얼음·혼란)은 몸에 아무것도 안 건다
   useEffect(() => {
+    if (shot.plan !== null) return undefined
     if (anim.fade === null && (anim.statChange === null || shot.pattern === null)) return undefined
     const { parent, self } = stage()
     if (parent === null || self === null) return undefined
@@ -265,7 +272,7 @@ function StatusShot({ shot, stage, done }: {
   // 스프라이트 한가운데다). 혼란만 오프셋만큼 올린다
   const particles = useMemo(() => {
     const p = anim.particle
-    if (p === null) return null
+    if (p === null || shot.plan !== null) return null
     const file = splFileFor(SPL_WAZA, p.member)
     if (file === null) return null
     const metre = splMetre(tallOf(shot.slot))
@@ -306,6 +313,19 @@ function StatusShot({ shot, stage, done }: {
     for (const o of taken.current) { o.alpha.value = alpha.value; o.offset.value = offset.value }
   })
 
+  if (shot.plan !== null) {
+    return (
+      <BdspSequence
+        plan={shot.plan}
+        // ⚠️ **쓴 쪽 = 걸린 마리.** 상태 시퀀스는 역할 0만 겨눈다(`ParticleMoveRelativePoke trg=0`)
+        roles={[shot.slot, null]}
+        spotAt={shot.spotAt}
+        startedAt={shot.startedAt}
+        camera={false}
+        bodies={[true, false]}
+      />
+    )
+  }
   if (particles === null) return null
   return (
     <SplParticles
@@ -364,8 +384,29 @@ export function StatusVfx({ spotAt }: { spotAt: (slot: SlotId) => [number, numbe
       startedAt: battleClock.now(),
       floor: spotAt(effect.slot),
       pattern: row === undefined ? null : ready[row] ?? null,
+      plan: statusSeqPlan(effect.key, effect.slot.startsWith('p1')),
+      spotAt: spotAt as (slot: string) => [number, number],
     }])
   }, [effect, spotAt, ready])
+
+  // BDSP 상태 시퀀스를 받아 펴고, 박자에 그 길이를 꽂는다 — 원작 소리가 다 나는 것과 시퀀스가 다 도는 것 중 늦은 쪽까지 선다
+  useEffect(() => {
+    let alive = true
+    void preloadStatusSeqs().then(() => {
+      if (!alive) return
+      setStatusFrames((key) => {
+        const plans = [statusSeqPlan(key, true), statusSeqPlan(key, false)].filter((p): p is SeqPlan => p !== null)
+        if (plans.length === 0) return null
+        const sounds = statusSoundFrames(STATUS_ANIMS[key].sound)
+        const sound = (sounds[sounds.length - 1] ?? 0) + 1
+        return Math.max(sound, ...plans.map((p) => 2 * planFrames(p)))
+      })
+    })
+    return () => {
+      alive = false
+      setStatusFrames(null)
+    }
+  }, [])
 
   const stage = useMemo(() => () => ({
     parent: host.current?.parent ?? null,

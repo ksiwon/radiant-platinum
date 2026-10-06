@@ -22,6 +22,10 @@ interface FxIndex {
   moveType?: Record<string, number>
   prefabs?: string[]
   missingPrefabs?: string[]
+  /** 상태 이상 · 능력 변화 시퀀스 이름들 (`es001`…) — 3판부터 */
+  status?: string[]
+  /** 날씨 번호(`WeatherData` 차례 — 1 쾌청 · 2 비 · 3 싸라기눈 · 4 모래바람) → 무대에 깔리는 프리팹 — 3판부터 */
+  weather?: Record<string, string>
 }
 
 let index: Promise<FxIndex | null> | null = null
@@ -40,6 +44,7 @@ onProviderSwap(() => {
   installed = null
   seqs.clear()
   plans.clear()
+  statusPlans.clear()
 })
 
 /** 표를 받아 봤는가 — 받기 전 `null` */
@@ -113,6 +118,43 @@ export function showsNothing(plan: SeqPlan): boolean {
     && plan.shakes.length === 0 && plan.back.length === 0
     && plan.body.every((t) => t.commands.length === 0)
     && plan.camera.every((c) => c.name.startsWith('CameraReset'))
+}
+
+/**
+ * 상태 이상 · 능력 변화 → BDSP 시퀀스. `BattleMiscEffectData`가 원작 부분 연출 자리에 거는 것이고, 프리팹 이름이 뜻이다
+ * (`es001_nemuri` 잠 · `es002_poison` · `es003_fire` · `es004_ice` · `es005_paralysis` · `es006_confusion` · `es008_up` · `es009_down`)
+ */
+export const STATUS_SEQ: Readonly<Record<string, string>> = {
+  asleep: 'es001', poisoned: 'es002', burned: 'es003', frozen: 'es004',
+  paralyzed: 'es005', confused: 'es006', statBoost: 'es008', statDrop: 'es009',
+}
+
+/** 받아 편 상태 연출 계획. 열쇠는 `상태:내쪽여부` */
+const statusPlans = new Map<string, SeqPlan>()
+
+/** 상태 연출 시퀀스를 받아 편다 — 판이 열릴 때 한 번. 묶음이 옛 판(2)이면 표에 `status`가 없어 DS로 간다 */
+export async function preloadStatusSeqs(): Promise<void> {
+  const idx = await fxIndex()
+  const have = new Set(idx?.status ?? [])
+  if (!idx || have.size === 0) return
+  const missing = new Set((idx.missingPrefabs ?? []).map((p) => p.toLowerCase()))
+  await Promise.all(Object.entries(STATUS_SEQ).map(async ([key, name]) => {
+    if (!have.has(name)) return
+    const seq = await loadSeq(name)
+    if (!seq) return
+    for (const mine of [true, false]) {
+      // ⚠️ **상태 연출은 쓴 쪽과 맞는 쪽이 같은 마리다** — 원작 `BattleController_EmitPlayStatusEffect`. 시퀀스는 역할 0만 겨눈다
+      const plan = planSequence(seq, { attackerMine: mine, options: battleOptions(false, indoorField), camera: false })
+      if (plan.particles.some((p) => missing.has(p.prefab.toLowerCase())) || showsNothing(plan)) continue
+      statusPlans.set(`${key}:${mine ? 1 : 0}`, plan)
+      for (const p of plan.particles) void loadFxPrefab(p.prefab).catch(() => { /* 그릴 때 다시 */ })
+    }
+  }))
+}
+
+/** 받아 둔 상태 연출 계획 (동기). 없으면 DS 연출이다 */
+export function statusSeqPlan(key: string, mine: boolean): SeqPlan | null {
+  return statusPlans.get(`${key}:${mine ? 1 : 0}`) ?? null
 }
 
 /** 받아 둔 기술 계획 (동기). 없으면 DS 연출이다 */

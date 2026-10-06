@@ -383,6 +383,11 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    */
   berryPlants: 2,
   /**
+   * 3 — **상태 이상 · 능력 변화 시퀀스와 날씨 이펙트가 붙는다.** `es001~012`(잠듦 · 독 · 화상 · 얼음 · 마비 · 혼란 · 헤롱헤롱 ·
+   * 능력 오름 · 내림 · 회복 · PP 회복 · 번쩍임)와 그 프리팹 · `WeatherData`의 날씨 넷(`et001_rain01` · `et002_hail01` ·
+   * `et003_sandstorm01` · `et004_sunny01` — `index.json`의 `status` · `weather`). 2판도 그대로 쓴다(`GROUP_ACCEPTS`) — 없으면
+   * 그 연출이 원작 DS 입자로 선다
+   *
    * 2 — **볼 모델과 거두기 · 기절 시퀀스가 붙는다.** 볼 열여섯(`data/fx/ball/<볼>.glb` — `ob02nn_00`을 클립째) · 그 클립 · 로케이터 ·
    * 붙은 이펙트 번호표(`index.json`의 `ballModel`) · 붙은 이펙트 프리팹 둘(`ee102_01_check_light` · `ee105_03_succeeded_light`) ·
    * `ee610`/`ee620`/`ee621`과 그 프리팹(`ee600_*`) · 종마다 내보내기 착지 갈래(`moveType`). 포획 · 내보내기 · 기절이 그 시퀀스를 그대로
@@ -393,7 +398,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * `ee101~113` · 내보내기 `ee4xx`, 기술 1~467의 시퀀스와 그것이 부르는 프리팹 · 그림. ⚠️ **필수 그룹이라**(`required.ts`)
    * 이미 깐 사람은 이 그룹만 새로 굽는다
    */
-  battleFx: 2,
+  battleFx: 3,
   /**
    * 1 — **바위깨기 · 풀베기 · 괴력 바위 · 꿀나무 · 눈덩이가 BDSP 입체다** (`models/gimmick/obj0001~0006_00.glb` · `index.json`,
    * 다섯 벌 415KB — `import/bdsp/convert.ts`의 `convertGimmicks` · 노드 쪽 `bdspArena.py --gimmicks`). 꿀나무는 뼈 넷과 흔들림
@@ -428,6 +433,8 @@ const GROUP_ACCEPTS: Readonly<Record<string, readonly number[]>> = {
   // 쓰러짐 동작 (`GROUP_FORMAT.monModels` 6 · `monVariants` 3) — 없으면 맞은 자세로 쓰러진다
   monModels: [4, 5],
   monVariants: [1, 2],
+  // 상태 이상 · 날씨 (`GROUP_FORMAT.battleFx` 3) — 없으면 그 연출이 DS 입자로 선다
+  battleFx: [2],
 }
 
 /** 이 판의 그 그룹을 그대로 써도 되는가 */

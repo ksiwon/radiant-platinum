@@ -381,6 +381,22 @@ export function statChangeAt(f: number, step: number): { alpha: number; offset: 
  * (`BATTLE_ANIM_SCRIPT_MAX_SFX_WAIT_FRAMES`), 소리 길이는 엔진이 모른다
  */
 export function statusAnimFrames(key: StatusAnimKey): number {
+  return statusFramesOf?.(key) ?? dsStatusFrames(key)
+}
+
+/**
+ * 상태 연출이 BDSP 시퀀스로 설 때의 길이를 꽂는 자리 (`scene/battle/StatusVfx` — 기술의 `setMoveFrames`와 같은 까닭).
+ * 소리는 원작 것을 그 프레임에 내므로 꽂는 쪽이 소리 끝과 시퀀스 끝 중 늦은 것을 돌려준다. `null`이면 원작 대본의 길이다
+ */
+let statusFramesOf: ((key: StatusAnimKey) => number | null) | null = null
+
+/** 배틀에 들어설 때 한 번. 나갈 때 `null`로 되돌린다 */
+export function setStatusFrames(fn: ((key: StatusAnimKey) => number | null) | null): void {
+  statusFramesOf = fn
+}
+
+/** 원작 대본(`we_sub`)대로의 길이 */
+function dsStatusFrames(key: StatusAnimKey): number {
   const anim = STATUS_ANIMS[key]
   const sounds = statusSoundFrames(anim.sound)
   const sound = (sounds[sounds.length - 1] ?? 0) + 1

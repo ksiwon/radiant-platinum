@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import {
   AdditiveBlending, DoubleSide, Object3D,
@@ -15,6 +15,8 @@ import type { SideId, SlotId } from '../../engine/battle/events'
 import { battleClock } from '../../engine/battle/presentationClock'
 import { CAMERA } from '../../engine/battle/shots'
 import { ballOpen } from './stageRefs'
+import { BdspEffect } from './fx/BdspEffect'
+import { fxIndex } from './fx/moveSeq'
 
 type WeatherKind = 'none' | 'rain' | 'snow' | 'sand' | 'sun'
 
@@ -67,10 +69,30 @@ interface SpotProps {
 
 const WEATHER_PARTICLES = 72
 
+/** 날씨 → BDSP `WeatherData` 차례 (1 쾌청 · 2 비 · 3 싸라기눈 · 4 모래바람) */
+const BDSP_WEATHER: Readonly<Record<WeatherKind, string | null>> = { sun: '1', rain: '2', snow: '3', sand: '4', none: null }
+
+/**
+ * 날씨 — **BDSP가 무대에 까는 이펙트가 있으면 그것이 선다**(`et001_rain01` · `et002_hail01` · `et003_sandstorm01` ·
+ * `et004_sunny01` — `WeatherData.MainFileName`). 묶음이 옛 판(2)이면 아래의 지은 것(상자 · 팔면체 · 해)으로 선다
+ */
 function Weather({ weather }: { weather: string | null }) {
+  const kind = battleWeatherKind(weather)
+  const [table, setTable] = useState<Record<string, string> | null>(null)
+  useEffect(() => {
+    let alive = true
+    void fxIndex().then((idx) => { if (alive) setTable(idx?.weather ?? null) })
+    return () => { alive = false }
+  }, [])
+  const slot = BDSP_WEATHER[kind]
+  const prefab = slot === null ? null : table?.[slot] ?? null
+  if (prefab !== null) return <BdspEffect key={prefab} name={prefab} loop />
+  return <BuiltWeather kind={kind} />
+}
+
+function BuiltWeather({ kind }: { kind: WeatherKind }) {
   const meshRef = useRef<InstancedMesh>(null)
   const sunRef = useRef<Group>(null)
-  const kind = battleWeatherKind(weather)
   const layout = useMemo(() => Array.from({ length: WEATHER_PARTICLES }, (_, index) => ({
     x: ((index * 37) % 101) / 101 * 22 - 11,
     y: ((index * 53) % 97) / 97 * 9 + 0.5,

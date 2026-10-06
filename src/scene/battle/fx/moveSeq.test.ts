@@ -25,6 +25,29 @@ beforeEach(() => {
   for (const k of Object.keys(files)) delete files[k]
 })
 
+describe('상태 연출 시퀀스 (`es0xx`)', () => {
+  it('표의 `status`에 있으면 상태마다 계획이 선다 · 옛 판(표에 없음)이면 DS로 간다', async () => {
+    files['data/fx/index.json'] = { balls: {}, moves: {}, missingPrefabs: [], status: ['es001'] }
+    files['data/fx/seq/es001.json'] = { name: 'es001', groups: [{ name: 'p', no: 0, options: [], commands: [
+      particle('es001/es001_nemuri.ptcl'),
+      { start: 10, end: 10, name: 'ParticleMoveRelativePoke', values: { node: ['5'], pos: ['0', '0', '0'], trg: ['0'], isRot: ['1'], rate: ['100'] } },
+    ] }] }
+    const { preloadStatusSeqs, statusSeqPlan } = await fresh()
+    await preloadStatusSeqs()
+    expect(statusSeqPlan('asleep', true)?.particles.map((p) => p.prefab)).toEqual(['es001_nemuri'])
+    expect(statusSeqPlan('asleep', false)).not.toBeNull()
+    // 독(`es002`)은 표에 없다
+    expect(statusSeqPlan('poisoned', true)).toBeNull()
+  })
+
+  it('묶음이 2판이면(표에 `status`가 없다) 아무것도 안 편다', async () => {
+    files['data/fx/index.json'] = { balls: {}, moves: {}, missingPrefabs: [] }
+    const { preloadStatusSeqs, statusSeqPlan } = await fresh()
+    await preloadStatusSeqs()
+    expect(statusSeqPlan('asleep', true)).toBeNull()
+  })
+})
+
 describe('`preloadMoveSeqs` — 쪽마다', () => {
   it('화면에 아무것도 안 세우는 빈 시퀀스(`DummyLabel`뿐)는 계획을 안 세워 DS로 간다', async () => {
     files['data/fx/index.json'] = { balls: {}, moves: { 185: { seq: 'ew185' }, 150: { seq: 'ew150' } }, missingPrefabs: [] }

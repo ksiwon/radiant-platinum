@@ -877,6 +877,8 @@ interface Tables {
   moves: Map<number, Record<string, string>>
   /** 내보내기 도입 시퀀스 (`SetupIntroPlaySequenceData`) */
   intro: Map<number, string>
+  /** 날씨 번호 → 무대에 깔리는 이펙트 프리팹 (`WeatherData.MainFileName` — 1 쾌청 · 2 비 · 3 싸라기눈 · 4 모래바람) */
+  weather: Map<number, string>
 }
 
 function readTables(env: Environment): Tables {
@@ -902,7 +904,9 @@ function readTables(env: Environment): Tables {
   }
   const intro = new Map<number, string>()
   for (const s of arr(table.SetupIntroPlaySequenceData) as Obj[]) intro.set(num(s.Key), str(s.SeqName))
-  return { balls, moves, intro }
+  const weather = new Map<number, string>()
+  arr(table.WeatherData).forEach((w, i) => { const f = str((w as Obj).MainFileName); if (f) weather.set(i, f) })
+  return { balls, moves, intro, weather }
 }
 
 /** `BattleWazaData`의 시퀀스 칸 → 우리 이름. `CmdSeqName`이 본편, `…Legend`가 전설 연출(`_fog_on`) */
@@ -929,6 +933,12 @@ const SENDOUT_SEQ = /^ee4\d\d(?:_seal)?$/
  * `ee621`(야생이 쓰러진다). 무리 이름이 「ダウン引っ込みカメラ」(쓰러짐 · 거둠 카메라)이고 `PokemonMotion motion=17`(쓰러짐 `ba41`)을 튼다
  */
 const RETURN_SEQ = /^ee6\d\d$/
+/**
+ * 상태 이상 · 능력 변화 시퀀스 — `BattleMiscEffectData`가 부르는 `es001`(잠듦) · `es002`(독) · `es003`(화상) · `es004`(얼음) ·
+ * `es005`(마비) · `es006`(혼란) · `es007`(헤롱헤롱) · `es008`(능력 오름) · `es009`(능력 내림) · `es010`(회복) · `es011`(PP 회복) ·
+ * `es012`(번쩍임). 프리팹 이름이 그 뜻이다(`es001_nemuri` · `es008_up` …). `_g` 판(더 큰 몸)은 안 쓴다
+ */
+const STATUS_SEQ = /^es0\d\d$/
 
 /** 볼 모델 번들 — 볼 번호 n이 `ob02nn_00`이다 (`convert.ts`의 `POKEBALL` 머리말: 윗반구 색으로 1 마스터 · 3 슈퍼 · 4 몬스터를 쟀다) */
 const BALL_BUNDLE = (id: number): string => `Characters/objects/ob02${String(id).padStart(2, '0')}_00`
@@ -1038,9 +1048,13 @@ export async function convertBattleFx(ctx: ConvertContext): Promise<Produced> {
     if (lower.startsWith(seqDir) && lower.indexOf('/', seqDir.length) < 0) seqNames.set(lower.slice(seqDir.length), real)
   }
   const wantSeq = new Set<string>()
+  const wantPrefab0 = new Set<string>()
   for (const n of seqNames.keys()) {
-    if (CAPTURE_SEQ.test(n) || SENDOUT_SEQ.test(n) || RETURN_SEQ.test(n) || n === 'ee000' || n === 'ee300') wantSeq.add(n)
+    if (CAPTURE_SEQ.test(n) || SENDOUT_SEQ.test(n) || RETURN_SEQ.test(n) || STATUS_SEQ.test(n) || n === 'ee000' || n === 'ee300') wantSeq.add(n)
   }
+  // 날씨는 시퀀스가 아니라 무대에 깔리는 이펙트 하나다 — 시퀀스(`et001~004`)는 카메라를 되돌리고 배경을 물들일 뿐이다
+  const weather: Record<string, string> = {}
+  for (const [i, f] of tables.weather) { weather[String(i)] = f; wantPrefab0.add(f) }
   for (const s of tables.intro.values()) if (s) wantSeq.add(s.toLowerCase())
   const moves: Record<string, Record<string, string>> = {}
   for (let id = 1; id <= LAST_MOVE; id++) {
@@ -1056,7 +1070,7 @@ export async function convertBattleFx(ctx: ConvertContext): Promise<Produced> {
     if (Object.keys(m).length > 0) moves[String(id)] = m
   }
 
-  const wantPrefab = new Set<string>()
+  const wantPrefab = wantPrefab0
   const balls: Record<string, { capture: string | null, ballout: string | null }> = {}
   for (let id = FIRST_BALL; id <= LAST_BALL; id++) {
     const b = tables.balls.get(id)
@@ -1177,6 +1191,8 @@ export async function convertBattleFx(ctx: ConvertContext): Promise<Produced> {
     moves,
     intro: Object.fromEntries(tables.intro),
     capture: bakedSequences.filter((n) => CAPTURE_SEQ.test(n)),
+    status: bakedSequences.filter((n) => STATUS_SEQ.test(n)),
+    weather,
     ballModel: { ...ballTable, files: ballFiles },
     moveType,
     sequences: bakedSequences,
