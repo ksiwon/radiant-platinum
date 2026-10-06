@@ -9,6 +9,7 @@
 //   `recEval`     [{ at, js }] — 그 시각에 페이지에서 돌릴 식. 기다리지 않는 식이어야 한다(`void …`) — 가상 시계가 멈춰 있어 기다리면
 //                 안 끝나고, 5초가 넘으면 캡처가 끊고 적는다. 시선 · 조우 컷인처럼 찍는 도중에 열어야 하는 것
 //   `keepUI`      true면 화면 위 HTML(대사창 · HP 상자 · 명령 메뉴)을 안 숨긴다 — 기본은 글 없는 화면
+//   `overlays`    true면 글은 숨기되 화면 전환 막(조우 섬광 · 배틀이 서는 흰 막)은 남긴다
 // 큐의 길이보다 넉넉히 찍고 묶을 때 자른다 (`assemble.mjs`의 `cut`). 자리는 `--still`로 한 장씩 찍어 맞춘다
 
 export const TAKES = [
@@ -241,7 +242,8 @@ export const TAKES = [
       { do: 'eval', js: "(async()=>{const w=(await import('/src/state/worldState.ts')).worldState;const {npcActors}=await import('/src/engine/actor/npcs.ts');const g=npcActors.list.find((a)=>a.localID===128);w.player.position.z=g.z+0.5+4;w.player.prevPosition.copy(w.player.position);w.player.facing=Math.PI;return [npcActors.list.map((a)=>[a.localID,a.x,a.z]),w.player.position.x,w.player.position.z]})()" },
       { do: 'wait', ms: 2000 }],
     seconds: 12, hold: 'ArrowUp', holdFor: 0.8,
-    keepUI: true,
+    // 글(대사창 · 배틀 정보)은 숨기고 조우 섬광 · 배틀이 서는 흰 막은 남긴다 — 다른 장면과 같은 글 없는 화면
+    overlays: true,
     recKeys: [{ at: 1.0, key: 'z' }, { at: 2.8, key: 'z' }, { at: 4.4, key: 'z' }, { at: 6.0, key: 'z' }],
   },
 ]

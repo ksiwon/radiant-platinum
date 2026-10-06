@@ -78,15 +78,16 @@ const MAIN = [
   // 길이는 오프닝 곡의 프레이즈가 정한다(`fit`) — 챔피언의 방으로 넘어간다
   { cue: 'D8', take: 'D8-city', cut: [0.35, 1.8], trans: 'cut' },
   // 난천 앞 VS 컷인(9.83초) → 띠가 빠진다(10.93초). 챔피언 배틀 곡은 컷인에 들어온다
-  { cue: 'D11', take: 'D11-champion', cut: [9.5, 1.7], trans: 'cut' },
-  // 같은 장면의 뒤 — 볼이 열리고(12.7초) 화강돌이 솟아 화면을 채운다(14.87초)
-  { cue: 'D11b', take: 'D11-champion', cut: [12.3, 2.6], trans: 'cut' },
+  { cue: 'D11', take: 'D11-champion', cut: [9.67, 1.28], trans: 'cut' },
+  // 같은 장면의 뒤 — 볼이 열리고(12.7초) 화강돌이 솟아 화면을 채운다(14.87초). VS 띠가 빠진 뒤의 검은 한 장 · 빈 무대(10.97~11.2초)와
+  // 볼이 열리기 전 빈 무대(12.3~12.45초)는 안 쓴다 — 아무것도 안 움직이는 틈이 컷마다 붙어 툭툭 끊겨 보였다
+  { cue: 'D11b', take: 'D11-champion', cut: [12.45, 2.45], trans: 'cut' },
   // 루카리오가 기를 모으다(1.47초~) 쏘고(2.3초) 맞는다(3.3초). 챔피언 곡 4마디에 D11~D13b가 다 들어가도록 모으는 중간에서 연다
   { cue: 'D12', take: 'D12-lucario', cut: [2.0, 1.6], trans: 'cut' },
-  // 한카리아스가 빛을 모아(1.13초) 부딪고(1.73초) 지나간다(2.23초)
-  { cue: 'D13', take: 'D13-garchomp', cut: [1.05, 1.25], trans: 'cut' },
+  // 한카리아스가 부딪고(1.73초) 지나간다(2.23초). 빛을 모으는 번쩍임(1.13초) 뒤로 두 몸이 0.5초 서 있어 그 뒤에서 연다
+  { cue: 'D13', take: 'D13-garchomp', cut: [1.7, 0.75], trans: 'cut' },
   // 같은 장면의 뒤 — 땅이 터진다(4.17초). 길이는 챔피언 곡의 프레이즈가 정한다(`fit`)
-  { cue: 'D13b', take: 'D13-garchomp', cut: [3.95, 1.4], trans: 'cut' },
+  { cue: 'D13b', take: 'D13-garchomp', cut: [4.03, 1.32], trans: 'cut' },
   { cue: 'E2', take: 'E2-spear', cut: [0.6, 2.1], warp: 'out', fade: 0.4 },
   // 깨어진 세계 — 1인칭으로 판 위를 걷다 V(2.0초)로 3인칭 내려다보기, 발판을 따라 더 걷는다
   { cue: 'E3a', take: 'E3-distortion', cut: [0.3, 4.0], warp: 'in', trans: 'cut' },
@@ -94,8 +95,11 @@ const MAIN = [
   { cue: 'E3w', take: 'E3-wall', cut: [0.4, 1.5], trans: 'cut' },
   // B4F 숲 — 3인칭으로 나무 사이를 걷는다
   { cue: 'E3c', take: 'E3-b4f', cut: [2.3, 2.0], trans: 'cut' },
-  // 기라티나가 서 있다 → 다가가 A(2.93초) → 울음 · 흰 섬광(3.0초) → 배틀. 길이는 기라티나 곡의 프레이즈가 정한다(`fit`)
-  { cue: 'E3b', take: 'E3-giratina', cut: [1.3, 5.0], fade: 0.15 },
+  // 기라티나가 서 있다 → 다가가 A(2.93초) → 울음 · 흰 섬광(3.0초) → 소용돌이 → 화이트아웃(4.27~4.3초)
+  { cue: 'E3b', take: 'E3-giratina', cut: [1.3, 3.03], trans: 'cut', snap: false },
+  // 화이트아웃 밑으로 컷을 넘겨 배틀 무대가 서는 동안(4.33~4.7초 — 검은 화면 · 빈 바닥 · 한 장짜리 밝은 바닥 · 검은 화면)을 건너뛴다.
+  // 흰 화면에서 기라티나가 선 무대로 곧장 간다. 길이는 기라티나 곡의 프레이즈가 정한다(`fit`)
+  { cue: 'E3b2', take: 'E3-giratina', cut: [4.73, 2.8], fade: 0.15 },
   { cue: 'E4', card: 'white', seconds: 0.5, fade: 0.3 },
   { cue: 'F1', card: 'wordmark', fade: 0.2 },
   { cue: 'F2', card: 'rom', fade: 0.2 },
@@ -135,18 +139,19 @@ const SHORTS = [
   { cue: 'D6', take: 'D6-night', cut: [0.3, 1.3], trans: 'cut' },
   // 길이는 오프닝 곡의 프레이즈가 정한다(`fit`)
   { cue: 'D8', take: 'D8-city', cut: [0.35, 1.6], trans: 'cut' },
-  { cue: 'D11', take: 'D11-champion', cut: [9.5, 1.7], trans: 'cut' },
+  { cue: 'D11', take: 'D11-champion', cut: [9.67, 1.28], trans: 'cut' },
   // 세로 카메라는 볼이 늦게 열리고 화강돌이 오른쪽 아래 모서리에 선다 — 가로판에서 화강돌 자리(가로 55%)를 잘라 쓴다
-  { cue: 'D11b', take: 'D11-champion', cut: [12.3, 2.6], crop: 0.55, trans: 'cut' },
+  { cue: 'D11b', take: 'D11-champion', cut: [12.45, 2.45], crop: 0.55, trans: 'cut' },
   { cue: 'D12', take: 'D12-lucario', cut: [2.0, 1.6], crop: 0.5, trans: 'cut' },
-  { cue: 'D13', take: 'D13-garchomp', cut: [1.05, 1.25], crop: 0.5, trans: 'cut' },
+  { cue: 'D13', take: 'D13-garchomp', cut: [1.7, 0.75], crop: 0.5, trans: 'cut' },
   // 길이는 챔피언 곡의 프레이즈가 정한다(`fit`)
-  { cue: 'D13b', take: 'D13-garchomp', cut: [3.95, 1.4], crop: 0.5, trans: 'cut' },
+  { cue: 'D13b', take: 'D13-garchomp', cut: [4.03, 1.32], crop: 0.5, trans: 'cut' },
   { cue: 'E2', take: 'E2-spear', cut: [0.6, 1.6], warp: 'out', fade: 0.4 },
   { cue: 'E3a', take: 'E3-distortion', cut: [0.3, 3.6], warp: 'in', trans: 'cut' },
   { cue: 'E3w', take: 'E3-wall', cut: [0.4, 1.5], crop: 0.45, trans: 'cut' },
+  { cue: 'E3b', take: 'E3-giratina', cut: [2.1, 2.23], trans: 'cut', snap: false },
   // 길이는 기라티나 곡의 프레이즈가 정한다(`fit`)
-  { cue: 'E3b', take: 'E3-giratina', cut: [2.1, 4.4], fade: 0.15 },
+  { cue: 'E3b2', take: 'E3-giratina', cut: [4.73, 1.6], fade: 0.15 },
   { cue: 'E4', card: 'white', seconds: 0.5, fade: 0.3 },
   { cue: 'F1', card: 'wordmark', seconds: 2.5, fade: 0.2 },
   { cue: 'F2', card: 'rom', seconds: 4.2, fade: 0.2 },
@@ -183,7 +188,7 @@ const TAKE_SFX = {
   'D12-lucario': [[2.0, 'EW396_EM', -3, 0.96], [3.3, 'BA_SYS_HIT_H', -2]],
   // 드래곤다이브(기술 407) — 봉우리(소리 안 2.68초)가 부딪는 자리(1.73초)에 온다. 땅 터짐은 지진(기술 89) — 3.6초 내내 고른 땅울림이라
   // 다 울리면 다음 창기둥 장면까지 2.7초를 덮는다. 컷이 넘어간 뒤 0.4초에 걸쳐 뺀다
-  'D13-garchomp': [[1.05, 'EW407_2D', -3, 1.98], [1.73, 'BA_SYS_HIT_H', -2], [4.17, 'EW089_01', -1, 0, 1.6]],
+  'D13-garchomp': [[1.7, 'EW407_2D', -3, 2.65], [1.73, 'BA_SYS_HIT_H', -2], [4.17, 'EW089_01', -1, 0, 1.6]],
   // 오리진폼의 울음 — 이 영상의 주인공이라 다른 소리보다 앞에 둔다
   'E3-giratina': [[3.0, 'PV_487_01_00', 3], [3.3, 'UI_COMMON_PM_BATTLEIN_FX', -4]],
 }
@@ -214,7 +219,7 @@ const SCORE = {
     { src: 'BA001', cue: 'B5-B6', at: 3.03, from: 0, until: 'D1', fit: 4, tail: 0.7 },
     { src: 'B_OTH001', cue: 'D1', from: 33.94, until: 'D11', untilAt: 0.33, fit: 4, fadeIn: 0.4, fadeOut: 0.25 },
     // 챔피언 → 기라티나는 창기둥이 뒤틀리며 녹는 자리 — 화면의 디졸브와 같이 겹친다
-    { src: 'BA008', cue: 'D11', at: 0.33, from: 0, until: 'E2', fit: 4, tail: 0.8 },
+    { src: 'BA008', cue: 'D11', at: 0.16, from: 0, until: 'E2', fit: 4, tail: 0.8 },
     { src: 'BA015', cue: 'E2', from: 0, until: 'E4', fit: 4, fadeIn: 0.5, fadeOut: 0.4 },
     // 타이틀 곡 파일은 머리 0.45초가 무음이다 — 그 뒤부터 깔고 로고보다 조금 앞서 들어온다. 원본은 곡을 0.2초 비우고 스팅어를 넣는다
     { src: 'B_OTH002', cue: 'F1', at: -0.15, from: 0.45, until: 'end', fadeOut: 1.5 },
@@ -226,7 +231,7 @@ const SCORE = {
     { src: 'B_OTH001', cue: 'B1', at: -21.5, notBefore: 'A2-A4', from: 0, until: 'B5-B6', untilAt: 3.03, fit: 1, fadeIn: 0.5, fadeOut: 0.25 },
     { src: 'BA001', cue: 'B5-B6', at: 3.03, from: 0, until: 'D5', fit: 4, tail: 0.7 },
     { src: 'B_OTH001', cue: 'D5', from: 33.94, until: 'D11', untilAt: 0.33, fit: 1, fadeIn: 0.4, fadeOut: 0.25 },
-    { src: 'BA008', cue: 'D11', at: 0.33, from: 0, until: 'E2', fit: 4, tail: 0.8 },
+    { src: 'BA008', cue: 'D11', at: 0.16, from: 0, until: 'E2', fit: 4, tail: 0.8 },
     { src: 'BA015', cue: 'E2', from: 0, until: 'E4', fit: 4, fadeIn: 0.5, fadeOut: 0.4 },
     // 타이틀 곡 파일은 머리 0.45초가 무음이다 — 그 뒤부터 깔고 로고보다 조금 앞서 들어온다. 원본은 곡을 0.2초 비우고 스팅어를 넣는다
     { src: 'B_OTH002', cue: 'F1', at: -0.15, from: 0.45, until: 'end', fadeOut: 1.5 },
@@ -275,18 +280,19 @@ function takeClip(e, file) {
   const dir = takeDir(e)
   const { frames } = JSON.parse(readFileSync(resolve(dir, 'frames.json'), 'utf8'))
   if (frames.length < 2) throw new Error(`${e.take}: 프레임이 ${String(frames.length)}장`)
-  const lines = ['ffconcat version 1.0']
-  for (let i = 0; i < frames.length; i++) {
-    const next = frames[i + 1]?.t ?? frames[i].t + 1 / FPS
-    lines.push(`file '${resolve(dir, frames[i].name).replace(/\\/g, '/')}'`, `duration ${(next - frames[i].t).toFixed(5)}`)
-  }
-  // 마지막 장은 한 번 더 적어야 그 길이가 먹는다 (concat 분리기의 규칙)
-  lines.push(`file '${resolve(dir, frames.at(-1).name).replace(/\\/g, '/')}'`)
-  const list = resolve(WORK, `${e.cue}.ffconcat`)
-  writeFileSync(list, lines.join('\n'))
+  // ⚠️ **사진 이어 붙이기(concat)로 읽지 않는다.** concat 분리기는 사진의 시각을 1/25초 단위로 깎아서, 30fps로 내보내면
+  // 다섯 장마다 한 장이 복제됐다 — 모든 게임 장면이 0.2초마다 한 번씩 멈칫했다(2026-10-06 실측 · 원본 장면에는 복제가 없다).
+  // 가상 시계가 장을 정확히 1/30초 간격으로 찍으므로 번호 붙은 사진 묶음을 30fps로 바로 읽는다
   const [from, cue] = e.cut
   const len = cue + overlap(e)
-  const vf = [`fps=${FPS}`, `trim=start=${from}:duration=${len}`, 'setpts=PTS-STARTPTS']
+  const step = frames.slice(1).map((f, i) => f.t - frames[i].t)
+  if (step.some((d) => Math.abs(d - 1 / FPS) > 1e-4)) throw new Error(`${e.take}: 장 간격이 1/${String(FPS)}초가 아니다`)
+  const first = Math.round(from * FPS)
+  const pattern = /^(.*?)(\d+)(\.\w+)$/.exec(frames[first]?.name ?? '')
+  if (!pattern) throw new Error(`${e.take}: ${String(from)}초 장이 없다`)
+  const input = resolve(dir, `${pattern[1]}%0${String(pattern[2].length)}d${pattern[3]}`).replace(/\\/g, '/')
+  const n = Math.min(Math.round(len * FPS), frames.length - first)
+  const vf = []
   if (e.crop !== undefined) {
     const cw = Math.round((1080 * 9) / 16)
     const x = Math.round(Math.min(1920 - cw, Math.max(0, e.crop * 1920 - cw / 2)))
@@ -296,7 +302,8 @@ function takeClip(e, file) {
   if (e.warp) vf.push(...warpFilter(e.warp, len))
   if (e.caption) vf.push(captionFilter(e, len))
   vf.push('format=yuv420p')
-  run('ffmpeg', ['-y', '-v', 'error', '-safe', '0', '-f', 'concat', '-i', list, '-vf', vf.join(','), ...enc, file])
+  run('ffmpeg', ['-y', '-v', 'error', '-framerate', String(FPS), '-start_number', String(Number(pattern[2])), '-i', input,
+    '-frames:v', String(n), '-vf', vf.join(','), ...enc, file])
 }
 
 /** 카드 → mp4. 프레임마다 `draw(t)`를 부르고 찍는다 */

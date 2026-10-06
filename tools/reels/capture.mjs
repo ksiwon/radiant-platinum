@@ -338,6 +338,11 @@ async function recordVirtual(page, dir, take) {
   // 화면 위 HTML(대사창 · HP 상자 · 명령 메뉴)을 숨긴다 — 원본 영상은 글 없는 화면이다. 찍기 직전에 건다: 준비 단계(`menu`)는
   // 메뉴가 보이는지로 판정하므로 그 전에 숨기면 Z를 끝없이 누른다. `keepUI`면 그대로 둔다
   if (!take.keepUI) await page.addStyleTag({ content: 'body *:not(canvas):not(:has(canvas)){visibility:hidden!important}' })
+  // `overlays`면 화면 전환 막(조우 섬광 · 아이리스 `CutInOverlay` · 배틀이 서는 흰/검은 막 `openVeil` · `wipeHold`)은 다시 보인다 —
+  // 그 막이 배틀 무대가 서는 동안의 빈 바닥 · 검은 화면을 덮는다. 다 숨기면 그 사이가 그대로 찍혔다(2026-10-06 기라티나)
+  if (!take.keepUI && take.overlays) {
+    await page.addStyleTag({ content: '[class*="_cover_"],[class*="_iris_"],[class*="_tint_"],[class*="_openVeil_"],[class*="_wipeHold_"]{visibility:visible!important}' })
+  }
   // 몇 프레임 먼저 돌린다 — 시계를 쥔 첫 프레임은 쥐기 전에 멈춰 있던 그림(먼 데의 DS 지형)이 남아 있다
   for (let i = 0; i < 16; i++) { await settleLoads(); await page.evaluate(() => window.__reelStep()) }
   await startMove(page, take.move, take.move?.seconds ?? take.seconds)
