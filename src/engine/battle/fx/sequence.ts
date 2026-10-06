@@ -207,6 +207,16 @@ export interface SeqPlan {
   back: SeqCommand[]
   /** 맞는 쪽 체력이 깎이는 프레임 (`GaugeDamage`). 없으면 `null` */
   hit: number | null
+  /**
+   * 맞는 쪽 몸이 처음 움찔하는 프레임 (`HitBack` · 맞는 모션 16). 맞는 소리 · 깜박임이 여기서 난다 — 게이지(`hit`)는 그보다 늦다
+   * (몸통박치기 `ew033`: 움찔 34 · 게이지 44). 없으면 `null`
+   */
+  impact: number | null
+  /**
+   * BDSP가 소리를 내는 프레임들 (`SoundPostEvent`). 소리 자체는 원작 대본의 것을 내고 **시각만** 여기서 받는다
+   * (`engine/battle/moveSound` · DATA.md §2.18)
+   */
+  sounds: number[]
   /** 글이 뜨는 프레임 (`MessageDispStd`). 없으면 `null` */
   message: number | null
   /** 마지막 명령이 끝나는 프레임 */
@@ -359,6 +369,8 @@ export function planSequence(seq: SeqData, opts: PlanOptions = {}): SeqPlan {
     camera: [],
     back: [],
     hit: null,
+    impact: null,
+    sounds: [],
     message: null,
     frames: 0,
     shaderBase: opts.shaderBase ?? 0,
@@ -484,6 +496,11 @@ export function planSequence(seq: SeqData, opts: PlanOptions = {}): SeqPlan {
         if (num(c.values.trg, 0, 1) === 1 && plan.hit === null) plan.hit = c.start
         continue
       }
+      // `Sound3DPostEvent`는 같은 프레임의 같은 소리를 3D로 한 번 더 낸 것이다 — 평면 것만 센다
+      if (n === 'SoundPostEvent') {
+        if (!plan.sounds.includes(c.start)) plan.sounds.push(c.start)
+        continue
+      }
       if (n === 'MessageDispStd') {
         if (plan.message === null) plan.message = c.start
         continue
@@ -516,6 +533,10 @@ export function planSequence(seq: SeqData, opts: PlanOptions = {}): SeqPlan {
       if (BODY_CMDS.has(n)) {
         const role = num(c.values.moveTrg ?? c.values.trg ?? c.values.trgPoke, 0, 0) === 1 ? 1 : 0
         plan.body[role].commands.push(c)
+        // 움찔은 `HitBack`만이 아니다 — 맞는 모션(16)을 직접 트는 시퀀스가 있다(10만볼트 · 물기 · 하이퍼빔 … 2026-10-06 실측
+        // 열한 가지). 그것을 안 보면 그 기술들은 소리가 게이지에서 0.15~1.4초 늦게 났다
+        const flinch = n === 'HitBack' || ((n === 'PokemonMotion' || n === 'PokemonAttackMotion') && motionOf(num(c.values.motion)) === 'damage')
+        if (flinch && role === 1 && (plan.impact === null || c.start < plan.impact)) plan.impact = c.start
         continue
       }
       if (n === 'PokemonMoveResetAll') {
@@ -527,6 +548,7 @@ export function planSequence(seq: SeqData, opts: PlanOptions = {}): SeqPlan {
     }
   })
   plan.camera.sort((a, b) => a.start - b.start)
+  plan.sounds.sort((a, b) => a - b)
   // ⚠️ **구운 카메라 애니메이션(`gfbcama`)은 안 굽는다** — 튀어나옴(`ee106~109`)이 f0~4를 그것으로 볼 클로즈업에서
   // 빼 낸 뒤 `CameraMoveRelativePoke`로 3m 밖까지 물러난다. 그것 없이 클로즈업(0.85m)에 선 채 볼이 터지면 빛이 화면을 덮는다
   // (실측). 그래서 애니메이션이 서는 프레임에 **뒤따르는 카메라 자리의 0.6배 거리로 끊어** 두고 거기서 물러나게 한다 — 우리 값
@@ -592,7 +614,7 @@ const shiftCmd = (c: SeqCommand, by: number): SeqCommand => ({ ...c, start: c.st
 export function chainPlans(name: string, plans: readonly (readonly [SeqPlan, number])[]): SeqPlan {
   const out: SeqPlan = {
     name, particles: [], body: [{ commands: [] }, { commands: [] }], models: [], others: [], away: [], shakes: [], camera: [],
-    back: [], hit: null, message: null, frames: 0, shaderBase: plans[0]?.[0].shaderBase ?? 0,
+    back: [], hit: null, impact: null, sounds: [], message: null, frames: 0, shaderBase: plans[0]?.[0].shaderBase ?? 0,
     clipSeconds: plans[0]?.[0].clipSeconds ?? [], scaleParticles: plans[0]?.[0].scaleParticles ?? false,
     cameraAtRest: plans[0]?.[0].cameraAtRest ?? false, ignored: new Set(),
   }
@@ -616,6 +638,8 @@ export function chainPlans(name: string, plans: readonly (readonly [SeqPlan, num
     out.camera.push(...p.camera.map(s))
     out.back.push(...p.back.map(s))
     if (p.hit !== null && out.hit === null) out.hit = p.hit + at
+    if (p.impact !== null && out.impact === null) out.impact = p.impact + at
+    out.sounds.push(...p.sounds.map((f) => f + at))
     if (p.message !== null) out.message = p.message + at
     out.frames = Math.max(out.frames, p.frames + at)
     for (const n of p.ignored) out.ignored.add(n)

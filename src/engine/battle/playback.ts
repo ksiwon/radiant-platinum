@@ -23,10 +23,10 @@
 // 무대의 `MoveVfx`가 틀 하나를 돌린다(`battle/vfx`). 길이는 틀과 위력이 정한다.
 import type { Stats } from '../../data/schema'
 import { captureFrames, captureTailFrames, faintSeconds, pairSettledAt, recallSeconds, sendOutSettledAt } from './captureTiming'
-import type { Actor, BattleEvent, CuredBy, LevelStep, SlotId } from './events'
+import type { Actor, BattleEvent, CuredBy, Effectiveness, LevelStep, SlotId } from './events'
 import { rewardSteps } from './events'
 import { FRAME_SECONDS } from './presentationClock'
-import { moveFramesOf, statusAnimFrames } from './vfx'
+import { moveFramesOf, moveImpactOf, statusAnimFrames } from './vfx'
 import { applyEvents, emptyView, slotOfKey, type BattleView } from './view'
 
 /**
@@ -370,6 +370,27 @@ export function buildBeats(
    */
   let inMove = false
 
+  /** 움찔할 때 이미 소리 · 깜박임을 낸 자리 — 그 자리의 첫 데미지는 게이지만 움직인다 (`strike`) */
+  let voiced = new Set<SlotId>()
+
+  /**
+   * 이 기술이 맞힐 자리와 효과 — 다음 기술 · 턴 · 교체 · 쓰러짐 전까지의 데미지를 미리 읽는다.
+   * 쇼다운은 효과(`-supereffective`)를 데미지 **앞에** 보내므로 첫 데미지까지의 것이 그 효과다(`hitOf`와 같은 읽기)
+   */
+  const strikeOf = (from: number, impact: number): Extract<BattleEvent, { kind: 'move' }>['strike'] => {
+    const slots: SlotId[] = []
+    let level: Effectiveness | 'normal' = 'normal'
+    let crit = false
+    for (let j = from + 1; j < events.length; j++) {
+      const n = events[j]!
+      if (n.kind === 'move' || n.kind === 'turn' || n.kind === 'switch' || n.kind === 'faint') break
+      if (slots.length === 0 && n.kind === 'effectiveness' && !n.from && n.level !== 'immune') level = n.level
+      if (slots.length === 0 && n.kind === 'crit') crit = true
+      if (n.kind === 'damage' && n.from === null && !slots.includes(n.actor.slot)) slots.push(n.actor.slot)
+    }
+    return slots.length === 0 ? undefined : { at: impact, slots, level, crit }
+  }
+
   /** 데미지에 얹을 타격 정보. 쌓아 둔 것에서 읽는다 — 없으면 보통이다 */
   const hitOf = () => ({
     level: held.find((h) => h.kind === 'effectiveness')?.level ?? 'normal' as const,
@@ -488,8 +509,9 @@ export function buildBeats(
         // 글이 먼저 뜨고 나서 게이지가 움직인다 — `subscript_burn_damage.s`가 그렇다
         say(text(e), HOLD_MESSAGE)
         // 맞은 소리는 효과에 따라 다르다. 그것을 아는 자리가 여기뿐이다
+        const first = e.kind === 'damage' && inMove && e.from === null && voiced.delete(e.actor.slot)
         const marked = e.kind === 'damage' && inMove && e.from === null
-          ? { ...e, hit: hitOf() }
+          ? { ...e, hit: first ? { ...hitOf(), voiced: true } : hitOf() }
           : e
         const was = view
         show([marked], drainFor(e), 'gauge')
@@ -566,8 +588,13 @@ export function buildBeats(
         break
       }
 
-      case 'move':
+      case 'move': {
         inMove = true
+        // 맞는 소리 · 깜박임은 몸이 움찔하는 프레임에 난다 — BDSP 시퀀스가 있는 기술만 그 프레임을 안다 (DATA.md §2.18)
+        const mine = e.actor.slot.startsWith('p1')
+        const impact = e.miss ? null : moveImpactOf(e.move, mine, doubles)
+        const strike = impact === null ? undefined : strikeOf(at, impact)
+        voiced = new Set(strike?.slots ?? [])
         // 기술 이름은 띄운 채로 다음 박자가 이어진다. 원작도 이 글 위에서 연출이 돈다.
         // 뷰는 안 바뀌지만 사건은 그래도 실어 보낸다 — 줄기에서 조용히 빠지면
         // 무엇이 지나갔는지 아무도 못 센다
@@ -575,8 +602,9 @@ export function buildBeats(
         // 연출이 도는 만큼 쉰다. 이 자리가 0이면 기술 이름이 뜨자마자 게이지가
         // 닳아서, 무엇이 무엇을 때렸는지가 화면에서 안 이어진다.
         // **기술마다 길이가 다르다** — 무대도 같은 자리에 물어본다 (`vfx`)
-        show([e], moveFramesOf(e.move, e.actor.slot.startsWith('p1'), doubles), 'presentation')
+        show([strike ? { ...e, strike } : e], moveFramesOf(e.move, e.actor.slot.startsWith('p1'), doubles), 'presentation')
         break
+      }
 
       case 'ball':
         // ⚠️ **결과는 볼이 멎은 뒤에 안다.** 예전에는 이 사건이 아래 `default`로

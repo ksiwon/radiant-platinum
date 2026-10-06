@@ -29,7 +29,7 @@ import { worldState } from '../../state/worldState'
 import { timeBlend } from '../../engine/map/timeOfDay'
 import { mapById, world } from '../../engine/map/world'
 import { arenaFor, cameraFit, hasSky } from '../../engine/battle/arena'
-import { BODY_FADE_SECONDS, ClockReader, battleClock } from '../../engine/battle/presentationClock'
+import { BODY_FADE_SECONDS, ClockReader, FRAME_SECONDS, battleClock } from '../../engine/battle/presentationClock'
 import { EncounterBurst } from './EncounterBurst'
 import { DistortionArena } from './DistortionArena'
 import { loadMotionTiming, loadMoves, loadSpecies } from '../../data/gameData'
@@ -411,9 +411,22 @@ function Slot({
     lunge.current = 1
     lungeSecs.current = lungeFor(cast.move)
   }, [cast, slot])
+  // 깜박임은 맞는 소리와 같이 몸이 움찔하는 프레임에 선다(`strike` · DATA.md §2.18). 그 데미지가 게이지에 오면 다시 안 깜박인다
   useEffect(() => {
-    if (struck?.slot === slot) flinch.current = 1
+    if (struck?.slot === slot && !struck.voiced) flinch.current = 1
   }, [struck, slot])
+  useEffect(() => {
+    const strike = cast?.strike
+    if (!strike?.slots.includes(slot)) return undefined
+    const since = battleClock.now()
+    let raf = 0
+    const wait = (): void => {
+      if (battleClock.now() >= since + strike.at * FRAME_SECONDS) { flinch.current = 1; return }
+      raf = requestAnimationFrame(wait)
+    }
+    raf = requestAnimationFrame(wait)
+    return () => { cancelAnimationFrame(raf) }
+  }, [cast, slot])
   // 물리냐 특수냐. **BDSP 모델이 그 둘을 따로 갖고 있다**(`ba20` · `ba21`) —
   // 롬의 기술 데이터가 정하는 값이라 여기서 짐작하지 않는다
   const special = useRef(false)

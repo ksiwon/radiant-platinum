@@ -22,7 +22,9 @@ import {
 } from 'three'
 import { loadMoveAnims, loadMoves } from '../../data/gameData'
 import { battleClock } from '../../engine/battle/presentationClock'
-import { MOVE_FRAMES, archetypeFor, setMoveFrames, type Archetype } from '../../engine/battle/vfx'
+import { MOVE_FRAMES, archetypeFor, setMoveFrames, setMoveImpact, statusPan, type Archetype } from '../../engine/battle/vfx'
+import { moveSoundTimes, type TimedSound } from '../../engine/battle/moveSound'
+import { music } from '../../engine/audio/music'
 import { typeColor } from '../../engine/battle/typeColor'
 import { useBattleStore } from '../../state/battleStore'
 import type { SlotId } from '../../engine/battle/events'
@@ -106,6 +108,11 @@ interface Shot {
    * 몸의 나감 · 맞음도 시퀀스가 시킨다(`stageRefs.seqStage`)
    */
   seq: SeqPlan | null
+  /**
+   * 이 기술이 내는 소리 — 원작 대본의 소리를 BDSP 시퀀스의 소리 칸에 짝지은 것(시작에서 몇 초 뒤 · `moveSoundTimes`).
+   * 자리는 쓴 쪽 기준이라 내 쪽이면 뒤집는다(`statusPan`)
+   */
+  sounds: TimedSound[]
 }
 
 /**
@@ -566,6 +573,13 @@ export function MoveVfx({
     })
     return () => { alive = false }
   }, [roster, scene])
+  // 명부의 기술 소리도 미리 편다 — 처음 내는 소리는 워커 합성을 기다려 늦는다
+  useEffect(() => {
+    if (anims === null) return
+    const seqs = new Set<number>()
+    for (const r of Object.values(roster)) for (const m of r.moves ?? []) for (const s of anims[m]?.sounds ?? []) seqs.add(s.seq)
+    if (seqs.size > 0) void music.prewarm([...seqs])
+  }, [roster, anims])
   useEffect(() => {
     if (anims === null) return undefined
     setMoveFrames((move, mine, doubles) => {
@@ -573,8 +587,14 @@ export function MoveVfx({
       if (plan) return 2 * (plan.hit ?? planFrames(plan))
       return moveAnimFrames(anims[move ?? -1] ?? null, wazaFile)
     })
+    // 맞는 소리 · 깜박임은 게이지가 아니라 몸이 움찔하는 프레임이다 — 박자가 그 시각을 기술 사건에 실어 보낸다
+    setMoveImpact((move, mine, doubles) => {
+      const impact = moveSeqPlan(move, mine, doubles)?.impact ?? null
+      return impact === null ? null : 2 * impact
+    })
     return () => {
       setMoveFrames(null)
+      setMoveImpact(null)
     }
   }, [anims, seqReady])
 
@@ -600,6 +620,7 @@ export function MoveVfx({
     if (seq === null && cast.move !== null) void preloadMoveSeqs([cast.move])
     setShot({
       seq,
+      sounds: moveSoundTimes(anim?.sounds ?? [], seq === null ? null : seq.sounds),
       kind,
       by: cast.by,
       at,
@@ -649,8 +670,11 @@ function MoveShot({ shot, setShot, spotAt }: {
   setShot: (next: (now: Shot | null) => Shot | null) => void
   spotAt: (slot: SlotId) => [number, number]
 }) {
+  const voice = <MoveSounds key={`s${String(shot.seed)}`} sounds={shot.sounds} startedAt={shot.startedAt} mine={shot.by.startsWith('p1')} />
   if (shot.seq) {
     return (
+      <>
+      {voice}
       <BdspSequence
         key={shot.seed}
         plan={shot.seq}
@@ -661,10 +685,12 @@ function MoveShot({ shot, setShot, spotAt }: {
         vanish={shot.signature.vanish}
         onDone={() => { setShot((now) => (now === null || now.seed === shot.seed ? null : now)) }}
       />
+      </>
     )
   }
   return (
     <>
+      {voice}
       <Shape
         // ⚠️ **연출마다 새 컴포넌트다.** 같은 인스턴스를 다시 쓰면 `useRef`에
         // 남은 앞 연출의 값이 이어진다 (`Shot.startedAt`의 머리말)
@@ -685,4 +711,21 @@ function MoveShot({ shot, setShot, spotAt }: {
       )}
     </>
   )
+}
+
+/**
+ * 기술 소리 — 정한 시각이 지나면 한 번씩 낸다. 연출 시계로 잰다(탭을 숨기면 시계와 함께 선다 · `presentationClock`).
+ * 연출이 끝나 이 컴포넌트가 내려가면 아직 안 낸 소리는 버린다 — 다음 기술 위로 앞 기술의 소리가 나지 않는다
+ */
+function MoveSounds({ sounds, startedAt, mine }: { sounds: readonly TimedSound[]; startedAt: number; mine: boolean }) {
+  const played = useRef(0)
+  useFrame(() => {
+    const t = battleClock.now() - startedAt
+    while (played.current < sounds.length && t >= sounds[played.current]!.at) {
+      const s = sounds[played.current]!
+      played.current += 1
+      void music.playEffect(s.seq, 1, { pan: statusPan(s.pan, mine) })
+    }
+  })
+  return null
 }

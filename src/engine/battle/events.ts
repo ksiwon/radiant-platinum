@@ -346,6 +346,11 @@ export type BattleEvent =
       spread?: SlotId[]
       /** `[from] ability: Magic Bounce` 같은 유래 */
       from: Cause | null
+      /**
+       * 프로토콜에 없다 — **박자를 만들 때 붙인다**(`playback.ts`). 맞는 몸이 움찔하는 프레임(`at` · 60fps · 연출 시작에서)에
+       * 맞는 소리 · 깜박임을 낼 자리들. 그 자리의 첫 데미지는 `hit.voiced`가 서서 게이지에서 또 안 난다 (DATA.md §2.18)
+       */
+      strike?: { at: number; slots: SlotId[]; level: Effectiveness | 'normal'; crit: boolean }
     }
   /**
    * `hit`은 프로토콜에 없다 — **박자를 만들 때 붙인다**(`playback.ts`).
@@ -362,7 +367,7 @@ export type BattleEvent =
       actor: Actor
       condition: Condition
       from: Cause | null
-      hit?: { level: Effectiveness | 'normal'; crit: boolean }
+      hit?: { level: Effectiveness | 'normal'; crit: boolean; voiced?: boolean }
       /** `[of]` — 남의 도구에 다쳤을 때(자보열매·애터열매) 그 도구를 든 쪽 */
       of?: Actor | null
     }

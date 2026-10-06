@@ -98,6 +98,22 @@ export function moveFramesOf(move: number | null, mine = true, doubles = false):
   return framesOf?.(move, mine, doubles) ?? MOVE_FRAMES
 }
 
+/** 기술 번호 → 맞는 몸이 처음 움찔하는 프레임(60fps). 꽂는 자리는 `setMoveFrames`와 같다 */
+let impactOf: ((move: number | null, mine: boolean, doubles: boolean) => number | null) | null = null
+
+/** 배틀에 들어설 때 한 번. 나갈 때 `null`로 되돌린다 */
+export function setMoveImpact(fn: ((move: number | null, mine: boolean, doubles: boolean) => number | null) | null): void {
+  impactOf = fn
+}
+
+/**
+ * 맞는 소리 · 깜박임을 낼 프레임(60fps · 기술 연출 시작에서). BDSP 시퀀스의 첫 `HitBack`이다 — 게이지(`moveFramesOf`)보다
+ * 앞선다(DATA.md §2.18). 시퀀스가 없는 기술(DS 연출)은 null이고, 그때는 게이지와 같이 난다
+ */
+export function moveImpactOf(move: number | null, mine = true, doubles = false): number | null {
+  return impactOf?.(move, mine, doubles) ?? null
+}
+
 // ── 상태 이상·능력 변화 연출 (원작 「부분 연출」) ─────────────────────────────
 //
 // 기술 연출과 길이 다르다. 원작은 이것들을 기술 대본(`we.narc`)이 아니라 **부분

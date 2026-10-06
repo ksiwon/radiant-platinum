@@ -53,6 +53,40 @@ const SHAKE_FLIPS = 4
 
 const read = (p) => fs.readFileSync(path.join(DECOMP, p), 'utf8')
 
+/**
+ * SDAT 이름 → 번호. `sdat.txt`는 `이름 = 숫자` 닻 뒤로 하나씩 올라가는 목록이다 (`trainerBgmModule`과 같은 읽기)
+ */
+let sdat = null
+function seqOf(name) {
+  if (sdat === null) {
+    sdat = new Map()
+    let next = 0
+    for (const raw of read('generated/sdat.txt').split(/\r?\n/)) {
+      const line = raw.trim()
+      if (line === '' || line.startsWith('//')) continue
+      const eq = line.indexOf('=')
+      if (eq < 0) { sdat.set(line, next); next++; continue }
+      const key = line.slice(0, eq).trim()
+      const expr = line.slice(eq + 1).trim()
+      const value = /^-?\d+$/.test(expr) ? Number(expr) : /^0x/i.test(expr) ? Number.parseInt(expr, 16) : sdat.get(expr)
+      if (value === undefined) throw new Error(`SDAT 이름을 못 푼다: ${line}`)
+      sdat.set(key, value)
+      next = value + 1
+    }
+  }
+  const id = sdat.get(String(name))
+  if (id === undefined) throw new Error(`소리 ${String(name)}를 SDAT에서 못 찾았다`)
+  return id
+}
+
+/** `BATTLE_SOUND_PAN_*` (`battle_anim.h` 121~123줄). 쓴 쪽 기준이라 화면이 쪽에 따라 뒤집는다(`statusPan`) */
+const PANS = { BATTLE_SOUND_PAN_LEFT: -117, BATTLE_SOUND_PAN_CENTER: 0, BATTLE_SOUND_PAN_RIGHT: 117 }
+const panValue = (v) => (typeof v === 'number' ? v : PANS[String(v)] ?? 0)
+/** `…L` · `…C` · `…R` 꼬리가 자리다. 꼬리가 없으면 인자로 온다 */
+const panOf = (name, arg) => (name.endsWith('L') ? PANS.BATTLE_SOUND_PAN_LEFT
+  : name.endsWith('R') ? PANS.BATTLE_SOUND_PAN_RIGHT
+    : name.endsWith('C') ? 0 : panValue(arg))
+
 // ── 상수 표 ──────────────────────────────────────────────────────────────────
 
 /**
@@ -217,6 +251,7 @@ function parseAnim(text, colors) {
     waits: false,
     unknownWait: false,
     vanish: false,
+    sounds: [],
   }
   /** 지금까지 흐른 프레임. 입자가 언제 붙는지를 여기서 잰다 */
   let clock = 0
@@ -434,6 +469,42 @@ function parseAnim(text, colors) {
         if (out.camera === null) out.camera = { x: 0, y: 6, interval: 1, power: 96 }
         break
 
+      // 소리 (DATA.md §2.18 「배틀 소리는 BDSP 화면의 박자에 단다」). 시각은 이 대본의 프레임이고, BDSP 시퀀스가
+      // 있으면 화면이 그 프레임을 시퀀스의 소리 칸으로 옮긴다(`engine/battle/moveSound`).
+      // `PlayLoopedSoundEffect`는 첫 소리가 곧바로 나고 그 뒤 `interval + 1`프레임마다 난다(`BattleAnimSoundFunc_Repeat`)
+      case 'PlaySoundEffect':
+      case 'PlaySoundEffectL':
+      case 'PlaySoundEffectC':
+      case 'PlaySoundEffectR':
+      case 'PlayPannedSoundEffect':
+        out.sounds.push({ at: clock, seq: seqOf(a[0]), pan: panOf(name, a[1]) })
+        break
+      case 'PlayDelayedSoundEffect':
+      case 'PlayDelayedSoundEffectL':
+      case 'PlayDelayedSoundEffectC':
+      case 'PlayDelayedSoundEffectR': {
+        const delay = Number(name === 'PlayDelayedSoundEffect' ? a[2] : a[1]) || 0
+        out.sounds.push({ at: clock + delay, seq: seqOf(a[0]), pan: panOf(name, a[1]) })
+        break
+      }
+      case 'PlayLoopedSoundEffect':
+      case 'PlayLoopedSoundEffectL':
+      case 'PlayLoopedSoundEffectC':
+      case 'PlayLoopedSoundEffectR': {
+        const [interval, repeat] = name === 'PlayLoopedSoundEffect' ? [a[2], a[3]] : [a[1], a[2]]
+        const pan = panOf(name, a[1])
+        for (let k = 0; k < Math.max(1, Number(repeat) || 0); k++) {
+          out.sounds.push({ at: clock + k * ((Number(interval) || 0) + 1), seq: seqOf(a[0]), pan })
+        }
+        break
+      }
+      // 쓴 쪽에서 맞는 쪽으로 소리가 건너간다 — 시작 자리에 한 번 낸다
+      case 'PlayMovingSoundEffectAtkDef':
+      case 'PlayMovingSoundEffectAtkDef2':
+      case 'PlayMovingSoundEffectNoCorrection':
+        out.sounds.push({ at: clock, seq: seqOf(a[0]), pan: panValue(a[1]) })
+        break
+
       // ⚠️ 사라지는 것은 `RemovePokemonSprite`가 아니다. 그건 대본이 **더 붙인**
       // 그림을 치우는 것이고, 쓴 쪽이 땅에 숨거나 하늘로 뜨는 것은 이쪽이다
       case 'Func_HideBattler':
@@ -446,6 +517,8 @@ function parseAnim(text, colors) {
   }
 
   out.frames = clock
+  // 반복 소리는 뒤 줄보다 늦게까지 이어진다 — 시각 차례로 둔다(BDSP 소리 칸과 차례로 짝짓는다)
+  out.sounds.sort((x, y) => x.at - y.at)
   return out
 }
 
@@ -494,6 +567,8 @@ function main() {
     vanish: moves.filter((m) => m?.vanish).length,
     emitters: moves.reduce((t, m) => t + (m?.emitters.length ?? 0), 0),
     colors: new Set(moves.filter((m) => m?.flash).map((m) => m.flash.color.join(','))).size,
+    sounds: moves.reduce((t, m) => t + (m?.sounds.length ?? 0), 0),
+    voiced: moves.filter((m) => (m?.sounds.length ?? 0) > 0).length,
   }
 
   // ⚠️ **줄마다 `JSON.stringify` 하나다.** 사람이 읽으라고 편 것이 아니라
@@ -515,7 +590,7 @@ function main() {
 //
 // 실측 — 배경 물들임 ${n.flash}개(색 ${n.colors}가지) · 몸 물들임 ${n.tint} · 흔들림 ${n.shake} ·
 // 화면 흔들림 ${n.camera} · 달려 나감 ${n.lunge} · 포물선 ${n.arc} · 공전 ${n.orbit} · 눌림 ${n.squash} ·
-// 직선 ${n.straight} · 흑백 ${n.gray} · 사라짐 ${n.vanish} · 입자 붙임 ${n.emitters}
+// 직선 ${n.straight} · 흑백 ${n.gray} · 사라짐 ${n.vanish} · 입자 붙임 ${n.emitters} · 소리 ${n.sounds}(기술 ${n.voiced})
 //
 // ⚠️ **손으로 고치지 않는다** — \`pnpm gen:moveAnim\`이 디컴프에서 다시 만든다
 // (\`tools/extract/moveAnimModule.cjs\`).
@@ -589,6 +664,11 @@ export interface MoveAnim {
   unknownWait: boolean
   /** 쓴 쪽이 화면에서 사라진다 (구멍파기·공중날기) */
   vanish: boolean
+  /**
+   * 대본이 내는 소리 — 대본 프레임(\`at\` · 60fps) · SDAT 번호 · 쓴 쪽 기준 자리(-117~117).
+   * BDSP 시퀀스가 있으면 화면이 시각을 그 시퀀스의 소리 칸으로 옮긴다 (\`engine/battle/moveSound\`)
+   */
+  sounds: { at: number, seq: number, pan: number }[]
 }
 
 export const MOVE_ANIMS: readonly (MoveAnim | null)[] = [

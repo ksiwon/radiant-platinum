@@ -434,6 +434,17 @@ export class Music {
   }
 
   /**
+   * 울음소리를 미리 편다 — 처음 우는 소리가 합성을 기다리느라 1.4초까지 늦었다(2026-10-06 실측 · 등장 울음)
+   */
+  async prewarmCries(species: readonly number[]): Promise<void> {
+    if (!this.ctx) return
+    for (const s of species) {
+      if (s < 1 || s > MAX_CRY_SPECIES) continue
+      await this.render(`cry:${String(s)}`, CRY_SEQ, { warOverride: s, maxSeconds: SHORT_SECONDS })
+    }
+  }
+
+  /**
    * 울음소리 하나.
    *
    * `SEQ_PV`에 창고만 종족 것으로 갈아 끼운다. 기절할 때는 원작대로 3.5반음

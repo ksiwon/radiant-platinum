@@ -116,7 +116,11 @@ export interface BattleView {
    * `seq`가 있는 이유는 **같은 기술이 이어서 나오기 때문**이다 — 몸통박치기를
    * 두 턴 연속 쓰면 나머지 값이 전부 같아서, 번호가 없으면 두 번째가 안 돈다
    */
-  lastMove: { by: SlotId; to: SlotId | null; move: number | null; seq: number; spread: readonly SlotId[] } | null
+  lastMove: {
+    by: SlotId; to: SlotId | null; move: number | null; seq: number; spread: readonly SlotId[]
+    /** 맞는 소리 · 깜박임을 몸이 움찔하는 시각에 낸다 (`BattleEvent` 'move'의 `strike`) */
+    strike?: { at: number; slots: readonly SlotId[]; level: Effectiveness | 'normal'; crit: boolean }
+  } | null
   /**
    * 방금 맞은 타격. 소리가 이걸 보고 난다 (`ui/battle/BattleSound`).
    *
@@ -129,6 +133,8 @@ export interface BattleView {
     crit: boolean
     amount: number
     seq: number
+    /** 소리 · 깜박임은 이미 움찔할 때 났다 — 게이지만 움직인다 */
+    voiced?: boolean
   } | null
   /**
    * 방금 받은 경험치. 소리가 이걸 보고 난다 (`ui/battle/BattleSound`).
@@ -272,6 +278,7 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
           move: e.move,
           seq: (view.lastMove?.seq ?? 0) + 1,
           spread: e.spread ?? [],
+          ...(e.strike ? { strike: e.strike } : {}),
         },
       }
 

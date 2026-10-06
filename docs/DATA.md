@@ -3751,6 +3751,23 @@ NNS_SndArcPlayerStartSeqEx(handle, -1, waveID, -1, SEQ_PV);   // waveID = specie
 개수를 줄이면 B가 울리는 중인데도 0이 된다. 그래서 개수가 아니라 **표**를 들고,
 늦게 깨어난 것은 자기 표만 뺀다. 그 순서를 `ringing.test.ts`가 못 박는다.
 
+#### 배틀 소리는 BDSP 화면의 박자에 단다
+
+화면은 BDSP 연출 시퀀스(30fps)를 따르고 소리는 플래티넘 SDAT을 낸다. 둘이 따로 놀지 않게 **소리의
+시각은 시퀀스가 정한다**(2026-10-06 실측 · 사용자 결정 「A」).
+
+- **맞는 소리**(`SEQ_SE_DP_KOUKA_L/M/H`)와 깜박임은 맞는 몸이 움찔하는 프레임(`HitBack` — 시퀀스의 첫 것)에
+  난다. 체력 게이지는 그대로 `GaugeDamage`에서 준다. 몸통박치기 `ew033`은 충돌음 33 · 움찔 34 ·
+  게이지 44프레임이라, 게이지에 소리를 걸면 몸이 움찔한 뒤 0.33초 늦게 「퍽」이 났다. 원작 플래티넘은
+  소리 · 깜박임 · 게이지가 한 틱이다(`subscript_update_hp.s` — `PlayMoveHitSound` → `FlickerMon` →
+  `UpdateHealthBar`). 화면이 BDSP라 BDSP 순서를 따른다.
+- **기술 소리**는 원작 대본(`res/moves/<이름>/anim.s`)의 `PlaySoundEffect*` · `PlayMovingSoundEffect*` ·
+  `PlayLoopedSoundEffect*`를 쓴다 — 469개 중 342개에 있다. 시각은 BDSP 시퀀스의 `SoundPostEvent` 프레임이다.
+  짝짓기: 수가 같으면 차례대로, 다르면 원작의 첫 소리를 BDSP 첫 소리에 · 끝 소리를 끝 소리에 붙이고 그 사이는
+  원작의 간격 비로 편다. BDSP 소리가 하나면 원작 간격을 그대로 두고(원작 60fps → 시퀀스 30fps), 시퀀스가 없는
+  기술(DS 연출)은 원작 프레임 그대로 낸다.
+- 첫 소리는 렌더(워커 합성)를 기다리느라 25~52ms 늦었다 — 배틀에 들어설 때 자주 쓰는 소리를 미리 굽는다.
+
 #### 아직 안 한 것
 
 - **스윕(`0xE3`)만 남았다.** 전곡에 204회고 값이 −1416~1512다. 비브라토는

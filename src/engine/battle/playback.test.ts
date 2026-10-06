@@ -7,7 +7,7 @@ import type { Actor, BattleEvent } from './events'
 import { pairSettledAt, recallSeconds, sendOutSettledAt } from './captureTiming'
 import { buildBeats, drainFrames } from './playback'
 import { parseLines } from './sim/protocol'
-import { MOVE_FRAMES, statusAnimFrames } from './vfx'
+import { MOVE_FRAMES, setMoveImpact, statusAnimFrames } from './vfx'
 import { applyEvents, emptyView } from './view'
 
 const p1: Actor = { slot: 'p1a', side: 'p1', name: 'party-0' }
@@ -540,5 +540,39 @@ describe('부분 연출이 도는 만큼 선다 (`PlayBattleAnimation … / Wait
     const tail = beats[drain + 1]!
     expect(tail.presentation).toBe(true)
     expect(tail.hold).toBe(statusAnimFrames('poisoned'))
+  })
+})
+
+describe('맞는 소리 · 깜박임은 몸이 움찔하는 프레임에 난다 (DATA.md §2.18)', () => {
+  const played = (impact: number | null) => {
+    setMoveImpact(() => impact)
+    try {
+      const beats = buildBeats([
+        enter(p2, 20),
+        move(p1, 'Tackle'),
+        { kind: 'effectiveness', actor: p2, level: 'super' } as BattleEvent,
+        hit(p2, 12, 20),
+        hit(p2, 6, 20),
+      ], say)
+      return beats.flatMap((b) => b.events)
+    } finally {
+      setMoveImpact(null)
+    }
+  }
+
+  it('시퀀스가 움찔 프레임을 알면 기술 사건이 그 시각 · 자리 · 효과를 싣고, 그 자리의 첫 데미지는 소리를 또 안 낸다', () => {
+    const events = played(68)
+    const m = events.find((e) => e.kind === 'move')
+    expect(m?.kind === 'move' ? m.strike : null).toEqual({ at: 68, slots: ['p2a'], level: 'super', crit: false })
+    const hits = events.filter((e) => e.kind === 'damage').map((e) => (e.kind === 'damage' ? e.hit : null))
+    // 연타의 둘째는 게이지에서 제 소리를 낸다
+    expect(hits).toEqual([{ level: 'super', crit: false, voiced: true }, { level: 'normal', crit: false }])
+  })
+
+  it('시퀀스가 없는 기술(DS 연출)은 지금처럼 게이지에서 난다', () => {
+    const events = played(null)
+    const m = events.find((e) => e.kind === 'move')
+    expect(m?.kind === 'move' ? m.strike : 'x').toBeUndefined()
+    expect(events.filter((e) => e.kind === 'damage').every((e) => e.kind === 'damage' && !e.hit?.voiced)).toBe(true)
   })
 })

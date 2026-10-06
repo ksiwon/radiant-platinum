@@ -12,6 +12,7 @@ import { music } from '../../engine/audio/music'
 import { SFX } from '../../engine/audio/sfx'
 import { SLOTS, type SlotId } from '../../engine/battle/events'
 import { FRAME_SECONDS, battleClock } from '../../engine/battle/presentationClock'
+import { STATUS_ANIMS } from '../../engine/battle/vfx'
 import { ballOpen } from '../../scene/battle/stageRefs'
 import { useBattleStore } from '../../state/battleStore'
 
@@ -80,6 +81,21 @@ export function BattleSound({ drainMs = 0 }: { drainMs?: number }) {
   const drain = useRef(drainMs)
   drain.current = drainMs
 
+  // 배틀이 열리면 자주 나는 소리를 미리 편다 — 처음 낼 때 워커 합성을 기다리느라 25~52ms 늦었다(2026-10-06 실측)
+  const open = phase !== 'off'
+  useEffect(() => {
+    if (!open) return
+    void music.prewarm([
+      SFX.BATTLE_FLASH, SFX.BATTLE_FLASH2, SFX.THROW, SFX.SEND_OUT, SFX.HIT_NORMAL, SFX.HIT_SUPER, SFX.HIT_WEAK, SFX.FAINT,
+      SFX.EXP_GAIN, SFX.LEVEL_UP, SFX.FLEE, ...STAT_SOUNDS,
+    ])
+  }, [open])
+  // 명부의 울음소리 — 등장하자마자 운다
+  const species = useBattleStore((s) => Object.values(s.roster).map((r) => r.species).join(','))
+  useEffect(() => {
+    if (species === '') return
+    void music.prewarmCries([...new Set(species.split(',').map(Number))])
+  }, [species])
   useEffect(() => {
     if (phase !== 'off') return
     seen.current = blank()
@@ -227,16 +243,33 @@ export function BattleSound({ drainMs = 0 }: { drainMs?: number }) {
   }, [reward])
   useEffect(() => () => { expSound.current?.() }, [])
 
+  // 맞는 소리는 몸이 움찔하는 프레임에 난다 — 박자가 기술 사건에 그 시각을 실어 보낸다(`strike` · DATA.md §2.18).
+  // 시퀀스가 없는 기술(DS 연출)은 `strike`가 없어서 아래 게이지 자리에서 난다
+  const cast = view?.lastMove ?? null
+  useEffect(() => {
+    const strike = cast?.strike
+    if (!strike) return undefined
+    const since = battleClock.now()
+    return whenClock(
+      (now) => now >= since + strike.at * FRAME_SECONDS,
+      () => { void music.playEffect(HIT_SOUND[strike.level]) },
+    )
+  }, [cast])
+
   const hit = view?.lastHit ?? null
   const lastHitSeq = useRef(0)
   useEffect(() => {
     if (!hit || hit.seq === lastHitSeq.current) return
     lastHitSeq.current = hit.seq
+    if (hit.voiced) return
     void music.playEffect(HIT_SOUND[hit.level])
   }, [hit])
 
   return null
 }
+
+/** 상태 이상 · 능력 변화 연출의 소리 — 처음 오를 때 160~186ms 늦었다(2026-10-06 실측) */
+const STAT_SOUNDS = [...new Set(Object.values(STATUS_ANIMS).map((a) => a.sound.seq))]
 
 const HIT_SOUND = {
   super: SFX.HIT_SUPER,
