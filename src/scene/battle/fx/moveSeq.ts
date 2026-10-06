@@ -160,9 +160,11 @@ export async function shinySeqPlan(mine: boolean): Promise<SeqPlan | null> {
   if (!idx?.sequences?.includes('ee003')) return null
   const seq = await loadSeq('ee003')
   if (!seq) return null
-  const plan = planSequence(seq, { attackerMine: mine, options: battleOptions(false, indoorField), camera: false })
+  // ⚠️ **`GroupOption 29`가 자리를 고른다** — 231 · 232는 대상 0, 234 · 235는 2, 237 · 238은 7, 240 · 241은 9(BDSP 자리 번호)를
+  // 겨누는 같은 별 묶음이다. 우리는 역할 0에 그 마리를 두므로 231(대상 0)을 고른다. 안 주면 묶음이 다 빠져 별이 하나도 안 섰다
+  const plan = planSequence(seq, { attackerMine: mine, options: { ...battleOptions(false, indoorField), 29: 231 }, camera: false })
   for (const p of plan.particles) void loadFxPrefab(p.prefab).catch(() => { /* 그릴 때 다시 */ })
-  return plan
+  return plan.particles.length > 0 ? plan : null
 }
 
 /** 받아 둔 상태 연출 계획 (동기). 없으면 DS 연출이다 */
