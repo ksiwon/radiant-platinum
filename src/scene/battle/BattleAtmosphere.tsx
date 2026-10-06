@@ -16,7 +16,9 @@ import { battleClock } from '../../engine/battle/presentationClock'
 import { CAMERA } from '../../engine/battle/shots'
 import { ballOpen } from './stageRefs'
 import { BdspEffect } from './fx/BdspEffect'
-import { fxIndex } from './fx/moveSeq'
+import { fxIndex, shinySeqPlan } from './fx/moveSeq'
+import { BdspSequence } from './fx/BdspSequence'
+import type { SeqPlan } from '../../engine/battle/fx/sequence'
 
 type WeatherKind = 'none' | 'rain' | 'snow' | 'sand' | 'sun'
 
@@ -164,6 +166,7 @@ function StatusAura({ mon, slot, position }: { mon: ViewMon; slot: SlotId; posit
   const confused = mon.volatiles.has('confusion')
   const seeded = mon.volatiles.has('leechseed')
   const substitute = mon.volatiles.has('substitute')
+  const bdspShiny = useBdspShiny()
 
   useFrame(() => {
     // 몸은 볼이 열릴 때까지 안 나온다 (`stageRefs.ballOpen`) — 몸에 붙는 것도 같이 기다린다.
@@ -220,8 +223,52 @@ function StatusAura({ mon, slot, position }: { mon: ViewMon; slot: SlotId; posit
           <mesh position={[0.2, 0.65, 0.48]}><sphereGeometry args={[0.06, 8, 6]} /><meshBasicMaterial color="#17231a" /></mesh>
         </group>
       )}
-      {mon.shiny && <ShinySparkles />}
+      {mon.shiny && bdspShiny === false && <ShinySparkles />}
     </group>
+  )
+}
+
+/** BDSP 묶음이 별(`ee003`)을 들고 있는가. 표를 받기 전에는 `null` — 그동안은 아무것도 안 띄운다 */
+function useBdspShiny(): boolean | null {
+  const [has, setHas] = useState<boolean | null>(null)
+  useEffect(() => {
+    let alive = true
+    void fxIndex().then((idx) => { if (alive) setHas(idx?.sequences?.includes('ee003') === true) })
+    return () => { alive = false }
+  }, [])
+  return has
+}
+
+/**
+ * 색이 다른 포켓몬이 볼에서 나올 때 **한 번** 별이 튄다 — BDSP `ee003`(`BattleMiscEffectData` 2 「レア」). 원작 플래티나도 등판 때
+ * 한 번이다. 볼이 열리는 시각(`ballOpen`)이 새로 서면 그때부터 튼다 — 거뒀다 다시 내보내도 다시 튄다
+ */
+function ShinyBurst({ slot, spotAt }: { slot: SlotId } & SpotProps) {
+  const [plan, setPlan] = useState<SeqPlan | null>(null)
+  const [at, setAt] = useState<number | null>(null)
+  const seen = useRef<number | null>(null)
+  useEffect(() => {
+    let alive = true
+    void shinySeqPlan(slot.startsWith('p1')).then((p) => { if (alive) setPlan(p) })
+    return () => { alive = false }
+  }, [slot])
+  useFrame(() => {
+    const open = ballOpen[slot]
+    if (open === undefined || open === seen.current || battleClock.now() < open) return
+    seen.current = open
+    setAt(open)
+  })
+  if (plan === null || at === null) return null
+  return (
+    <BdspSequence
+      key={at}
+      plan={plan}
+      roles={[slot, null]}
+      spotAt={spotAt as (s: string) => [number, number]}
+      startedAt={at}
+      camera={false}
+      bodies={[false, false]}
+    />
   )
 }
 
@@ -634,6 +681,8 @@ export function BattleAtmosphere({ view, spotAt }: {
         auraShown(mon, slot, view.lastBall) && (
           <StatusAura key={slot} mon={mon} slot={slot} position={spotAt(slot)} />
         ))}
+      {(Object.entries(view.active) as [SlotId, ViewMon | null][]).map(([slot, mon]) =>
+        mon?.shiny === true && <ShinyBurst key={`shiny-${slot}`} slot={slot} spotAt={spotAt} />)}
       <Barrier side="p1" conditions={view.sideConditions.p1} spotAt={spotAt} foes={foes} />
       <Barrier side="p2" conditions={view.sideConditions.p2} spotAt={spotAt} foes={foes} />
       <FieldConditions field={view.field} />

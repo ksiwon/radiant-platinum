@@ -939,6 +939,8 @@ const RETURN_SEQ = /^ee6\d\d$/
  * `es012`(번쩍임). 프리팹 이름이 그 뜻이다(`es001_nemuri` · `es008_up` …). `_g` 판(더 큰 몸)은 안 쓴다
  */
 const STATUS_SEQ = /^es0\d\d$/
+/** 그 밖의 부분 연출 — `ee003`(색이 다른 포켓몬이 나올 때의 별 · `BattleMiscEffectData` 2 「レア」) */
+const MISC_SEQ = /^ee003$/
 
 /** 볼 모델 번들 — 볼 번호 n이 `ob02nn_00`이다 (`convert.ts`의 `POKEBALL` 머리말: 윗반구 색으로 1 마스터 · 3 슈퍼 · 4 몬스터를 쟀다) */
 const BALL_BUNDLE = (id: number): string => `Characters/objects/ob02${String(id).padStart(2, '0')}_00`
@@ -1050,7 +1052,7 @@ export async function convertBattleFx(ctx: ConvertContext): Promise<Produced> {
   const wantSeq = new Set<string>()
   const wantPrefab0 = new Set<string>()
   for (const n of seqNames.keys()) {
-    if (CAPTURE_SEQ.test(n) || SENDOUT_SEQ.test(n) || RETURN_SEQ.test(n) || STATUS_SEQ.test(n) || n === 'ee000' || n === 'ee300') wantSeq.add(n)
+    if (CAPTURE_SEQ.test(n) || SENDOUT_SEQ.test(n) || RETURN_SEQ.test(n) || STATUS_SEQ.test(n) || MISC_SEQ.test(n) || n === 'ee000' || n === 'ee300') wantSeq.add(n)
   }
   // 날씨는 시퀀스가 아니라 무대에 깔리는 이펙트 하나다 — 시퀀스(`et001~004`)는 카메라를 되돌리고 배경을 물들일 뿐이다
   const weather: Record<string, string> = {}

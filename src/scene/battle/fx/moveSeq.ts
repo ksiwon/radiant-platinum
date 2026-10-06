@@ -22,6 +22,8 @@ interface FxIndex {
   moveType?: Record<string, number>
   prefabs?: string[]
   missingPrefabs?: string[]
+  /** 구운 시퀀스 이름 전부 */
+  sequences?: string[]
   /** 상태 이상 · 능력 변화 시퀀스 이름들 (`es001`…) — 3판부터 */
   status?: string[]
   /** 날씨 번호(`WeatherData` 차례 — 1 쾌청 · 2 비 · 3 싸라기눈 · 4 모래바람) → 무대에 깔리는 프리팹 — 3판부터 */
@@ -150,6 +152,17 @@ export async function preloadStatusSeqs(): Promise<void> {
       for (const p of plan.particles) void loadFxPrefab(p.prefab).catch(() => { /* 그릴 때 다시 */ })
     }
   }))
+}
+
+/** 색이 다른 포켓몬이 나올 때 별이 튄다 — `ee003`(「レア」). 옛 판 묶음이면 `null` */
+export async function shinySeqPlan(mine: boolean): Promise<SeqPlan | null> {
+  const idx = await fxIndex()
+  if (!idx?.sequences?.includes('ee003')) return null
+  const seq = await loadSeq('ee003')
+  if (!seq) return null
+  const plan = planSequence(seq, { attackerMine: mine, options: battleOptions(false, indoorField), camera: false })
+  for (const p of plan.particles) void loadFxPrefab(p.prefab).catch(() => { /* 그릴 때 다시 */ })
+  return plan
 }
 
 /** 받아 둔 상태 연출 계획 (동기). 없으면 DS 연출이다 */
