@@ -71,7 +71,15 @@ gr.addColorStop(0,'rgba(220,235,255,'+k+')');gr.addColorStop(1,'rgba(120,170,255
     const raw = LINEUP.map((_, i) => (i === PLATINUM ? 0.9 : i < 4 ? 0.8 : i >= LINEUP.length - 6 ? 0.3 : 0.45))
     const A2 = short ? 3.0 : 11.0
     const sum = raw.reduce((a, b) => a + b, 0)
-    const slots = raw.map((d) => (d * A2) / sum)
+    let slots = raw.map((d) => (d * A2) / sum)
+    // 본편은 플래티넘이 오프닝 곡의 피리(B_OTH001 5.857초 · 영상 8.67초)와 같이 뜬다 — 터널은 영상 3.0초에 서므로 칸 머리를
+    // 터널 5.64초에 두고, 앞 칸들은 늘이고 뒤 칸들은 줄여 A2를 지킨다
+    const P_AT = short ? null : 5.64
+    if (P_AT !== null) {
+      const before = slots.slice(0, PLATINUM).reduce((a, b) => a + b, 0)
+      const after = A2 - before
+      slots = slots.map((d, i) => (i < PLATINUM ? (d * P_AT) / before : (d * (A2 - P_AT)) / after))
+    }
     return `${head}<canvas id="cv" width="${W}" height="${H}"></canvas>
 <div class="c" id="box"><div id="tt" class="silver" style="font-weight:800;white-space:nowrap"></div>
 <div id="yy" class="silver" style="font-weight:600;margin-top:${18 * u}px;letter-spacing:${8 * u}px"></div></div>

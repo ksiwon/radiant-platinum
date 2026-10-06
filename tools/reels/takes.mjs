@@ -156,11 +156,13 @@ export const TAKES = [
     recKeys: [{ at: 3.4, key: 'z' }, { at: 4.6, key: 'z' }, { at: 5.8, key: 'z' }, { at: 7.0, key: 'z' }, { at: 8.2, key: 'z' },
       { at: 9.4, key: 'z' }, { at: 10.6, key: 'z' }, { at: 11.8, key: 'z' }],
   },
-  ...[[448, 'D12-lucario', '루카리오'], [445, 'D13-garchomp', '한카리아스']].map(([sp, id, name]) => ({
+  // 한카리아스는 드래곤다이브로 고정한다 — 롬의 난천 한카리아스(L62)는 드래곤다이브 · 지진 · 화염방사 · 기가임팩트이고, AI가 기가임팩트를
+  // 고른 판이 찍혔다(2026-10-06)
+  ...[[448, 'D12-lucario', '루카리오', null], [445, 'D13-garchomp', '한카리아스', 407]].map(([sp, id, name, only]) => ({
     id, what: `챔피언전 — 난천의 ${name} 기술`, cp: 'mart8',
-    // 난천의 파티 순서만 메모리에서 바꾼다 — 그 포켓몬이 먼저 나온다. 기술 · AI는 그대로
+    // 난천의 파티 순서를 메모리에서 바꾼다 — 그 포켓몬이 먼저 나온다. 기술은 `only`를 준 것만 그 하나로 바꾼다
     steps: [{ do: 'warp', map: 185, spot: { kind: 'warp', index: 1 }, after: 6000 },
-      { do: 'eval', js: `(async()=>{const {loadTrainers}=await import('/src/data/gameData.ts');const t=(await loadTrainers()).get(267);const i=t.party.findIndex((m)=>m.species===${String(sp)});if(i>0){const [m]=t.party.splice(i,1);t.party.unshift(m)}return t.party.map((m)=>m.species)})()` },
+      { do: 'eval', js: `(async()=>{const {loadTrainers}=await import('/src/data/gameData.ts');const t=(await loadTrainers()).get(267);const i=t.party.findIndex((m)=>m.species===${String(sp)});if(i>0){const [m]=t.party.splice(i,1);t.party.unshift(m)}${only ? `t.party[0].moves=[${String(only)}];` : ''}return t.party.map((m)=>[m.species,m.moves])})()` },
       // `pt.trainer`로 바로 열면 무대가 숲으로 섰다(rec-22) — D11처럼 걸어가 말을 걸어 연다. 컷인 · 화강돌 대사는 `menu`가 넘긴다
       { do: 'walk', key: 'ArrowUp', ms: 3000 }, { do: 'menu' }, { do: 'keys', keys: ['z'], gap: 500 }],
     settle: 200, seconds: 9, recKeys: [{ at: 0.2, key: 'z' }],

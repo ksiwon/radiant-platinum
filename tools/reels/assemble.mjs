@@ -46,7 +46,7 @@ const MAIN = [
   { cue: 'A6', card: 'tagline' },
   { cue: 'A7', card: 'white', fade: 0.5 },
   // 원본의 방은 크레인 1.5초 뒤 1.35초를 그대로 머문다
-  { cue: 'B1', take: 'B1-room', cut: [0.9, 3.1], trans: 'cut' },
+  { cue: 'B1', take: 'B1-room', cut: [0.6, 3.1], trans: 'cut' },
   // 떡잎마을 부감은 앞쪽 왼편 위로 맵 밖 흰 허공이 걸린다 — 팬이 오른쪽으로 간 뒤를 쓴다
   { cue: 'B2', take: 'B2-twinleaf', cut: [1.4, 1.5], trans: 'cut' },
   { cue: 'B3', take: 'B3-jubilife', cut: [0.5, 1.6], trans: 'cut' },
@@ -54,21 +54,23 @@ const MAIN = [
   { cue: 'B4', take: 'B4-floaroma', cut: [0.25, 1.6], fade: 0.23 },
   // 한 장면으로 잇는다 — 풀숲에 섰다가 달려(1.7초) 조우 컷인(3.73초) · 배틀 무대(4.0초) · 야생 꼬링크(4.23초). 컷인이 큐 3.03초에
   // 와야 오프닝 곡이 마디에서 끝난다 — 더 늦추면 앞 부감 컷이 늘 수 있는 만큼을 넘는다
-  { cue: 'B5-B6', take: 'B5-switch', cut: [0.7, 5.0], trans: 'cut' },
+  { cue: 'B5-B6', take: 'B5-switch', cut: [0.7, 3.23], trans: 'cut', snap: false },
+  // 컷인이 검게 닫힌 데서(3.9초) 끊는다 — 그 뒤는 한 장씩 풀숲 · 하늘색이 비치고(3.93 · 3.97초 — 무대가 서기 전) 꼬링크가
+  // 나와 가만히 서 있기만 한다(4.2~8.3초). 울음은 볼이 날아오는 다음 컷 머리에 얹는다
   // 같은 장면의 뒤 — 볼이 들어와(8.47초) 열리고(8.9초) 모부기가 내려앉는다(9.6초)
-  { cue: 'C1', take: 'B5-switch', cut: [8.3, 1.5], trans: 'cut' },
+  { cue: 'C1', take: 'B5-switch', cut: [8.3, 1.5], trans: 'cut', sfx: [[8.3, 'PV_403_00_00', -2]] },
   // 흡수가 날아가(5.43초) 맞는다(5.53초)
-  { cue: 'C3', take: 'C3-move', cut: [5.1, 1.1], trans: 'cut' },
-  // 밤 — 몸통박치기 먼지(1.47초) · 맞는다(1.77초)
-  { cue: 'C4', take: 'C4-night', cut: [1.2, 1.0], trans: 'cut' },
-  // 무쇠게이트 굴 무대 — 꼬마돌 가까이(3.33초)에서 웅크리기의 고리가 감싼다(3.77초). 몸통박치기는 바로 앞 밤 컷이 맡았다
-  { cue: 'C5', take: 'C5-cave', cut: [3.5, 1.0], trans: 'cut' },
-  // 포획 — 던지고(0.6초) 맞고(0.9초) 빨려 들어(0.93초) 닫힌다(1.53초)
-  { cue: 'C6', take: 'C6-catch', cut: [0.5, 1.4], trans: 'cut' },
-  // 셋째 흔들림(5.6초)
-  { cue: 'C7', take: 'C6-catch', cut: [5.4, 1.0], trans: 'cut' },
+  { cue: 'C3', take: 'C3-move', cut: [5.1, 0.9], trans: 'cut' },
+  // 밤 배틀(C4-night)은 안 쓴다 — 카메라가 멀어 몸통박치기가 몇 픽셀이고 모부기가 돌진하지 않은 채 먼지만 난다
+  // 무쇠게이트 굴 무대 — 꼬마돌 가까이(3.33초)에서 웅크리기의 고리가 감싸고(3.77초) 빛 고리가 걷힌 뒤 방어가 오르는 노란 빛(6.1~6.5초)까지
+  { cue: 'C5', take: 'C5-cave', cut: [3.5, 3.0], trans: 'cut' },
+  // 포획 — 던지고(0.6초) 맞고(0.9초) 빨려 들어(0.93초) 닫혀 떨어진다(2.65초).
+  // 흔들림 사이에 볼이 가만히 선 0.5~1.4초씩은 쓰지 않는다 — 흔들림만 잘라 잇는다(둘째 4.33~4.73 · 셋째 5.57~5.9초)
+  { cue: 'C6', take: 'C6-catch', cut: [0.5, 2.2], trans: 'cut' },
+  { cue: 'C7a', take: 'C6-catch', cut: [4.3, 0.5], trans: 'cut' },
+  { cue: 'C7', take: 'C6-catch', cut: [5.5, 0.5], trans: 'cut' },
   // 잡힘(7.37초). 길이는 야생 배틀 곡의 프레이즈가 정한다(`fit`)
-  { cue: 'C8', take: 'C6-catch', cut: [7.1, 1.6], trans: 'cut' },
+  { cue: 'C8', take: 'C6-catch', cut: [7.2, 1.0], trans: 'cut' },
   { cue: 'D1', take: 'D1-lake', cut: [0.4, 1.2], trans: 'cut' },
   { cue: 'D2', take: 'D2-windworks', cut: [0.5, 1.0], trans: 'cut' },
   { cue: 'D4', take: 'D4-snow', cut: [0.5, 1.0], trans: 'cut' },
@@ -82,12 +84,11 @@ const MAIN = [
   // 같은 장면의 뒤 — 볼이 열리고(12.7초) 화강돌이 솟아 화면을 채운다(14.87초). VS 띠가 빠진 뒤의 검은 한 장 · 빈 무대(10.97~11.2초)와
   // 볼이 열리기 전 빈 무대(12.3~12.45초)는 안 쓴다 — 아무것도 안 움직이는 틈이 컷마다 붙어 툭툭 끊겨 보였다
   { cue: 'D11b', take: 'D11-champion', cut: [12.45, 2.45], trans: 'cut' },
-  // 루카리오가 기를 모으다(1.47초~) 쏘고(2.3초) 맞는다(3.3초). 챔피언 곡 4마디에 D11~D13b가 다 들어가도록 모으는 중간에서 연다
+  // 루카리오가 기를 모으다(1.47초~) 쏘고(2.3초) 맞는다(3.3초). 챔피언 곡 4마디에 D11~D13이 다 들어가도록 모으는 중간에서 연다
   { cue: 'D12', take: 'D12-lucario', cut: [2.0, 1.6], trans: 'cut' },
-  // 한카리아스가 부딪고(1.73초) 지나간다(2.23초). 빛을 모으는 번쩍임(1.13초) 뒤로 두 몸이 0.5초 서 있어 그 뒤에서 연다
-  { cue: 'D13', take: 'D13-garchomp', cut: [1.7, 0.75], trans: 'cut' },
-  // 같은 장면의 뒤 — 땅이 터진다(4.17초). 길이는 챔피언 곡의 프레이즈가 정한다(`fit`)
-  { cue: 'D13b', take: 'D13-garchomp', cut: [4.03, 1.32], trans: 'cut' },
+  // 드래곤다이브(`ew407` · 시퀀스 머리 0.87초) — 하얗게 빛나며 뛰어올라(1~37프레임) 하늘에서 내리꽂히고(40~74 · 특수 배경)
+  // 맞는다(77프레임 · 3.43초). 내려앉아(86~110) 기본 카메라로 돌아오는 4.25초까지 한 컷이다. 길이는 챔피언 곡의 프레이즈가 정한다(`fit`)
+  { cue: 'D13', take: 'D13-garchomp', cut: [0.85, 3.4], trans: 'cut' },
   { cue: 'E2', take: 'E2-spear', cut: [0.6, 2.1], warp: 'out', fade: 0.4 },
   // 깨어진 세계 — 1인칭으로 판 위를 걷다 V(2.0초)로 3인칭 내려다보기, 발판을 따라 더 걷는다
   { cue: 'E3a', take: 'E3-distortion', cut: [0.3, 4.0], warp: 'in', trans: 'cut' },
@@ -97,9 +98,8 @@ const MAIN = [
   { cue: 'E3c', take: 'E3-b4f', cut: [2.3, 2.0], trans: 'cut' },
   // 기라티나가 서 있다 → 다가가 A(2.93초) → 울음 · 흰 섬광(3.0초) → 소용돌이 → 화이트아웃(4.27~4.3초)
   { cue: 'E3b', take: 'E3-giratina', cut: [1.3, 3.03], trans: 'cut', snap: false },
-  // 화이트아웃 밑으로 컷을 넘겨 배틀 무대가 서는 동안(4.33~4.7초 — 검은 화면 · 빈 바닥 · 한 장짜리 밝은 바닥 · 검은 화면)을 건너뛴다.
-  // 흰 화면에서 기라티나가 선 무대로 곧장 간다. 길이는 기라티나 곡의 프레이즈가 정한다(`fit`)
-  { cue: 'E3b2', take: 'E3-giratina', cut: [4.73, 2.8], fade: 0.15 },
+  // 배틀 무대는 넣지 않는다(사용자 · 2026-10-06) — 조우 소용돌이가 화이트아웃으로 하얘지는 데서 흰 화면을 지나 로고로 간다.
+  // 4.33초 뒤는 배틀 무대가 서는 동안이다(검은 화면 · 빈 바닥)
   { cue: 'E4', card: 'white', seconds: 0.5, fade: 0.3 },
   { cue: 'F1', card: 'wordmark', fade: 0.2 },
   { cue: 'F2', card: 'rom', fade: 0.2 },
@@ -128,13 +128,20 @@ const SHORTS = [
   // 마을이 두 컷이면 오프닝 곡이 마디보다 1.4초 앞에서 끊긴다 — 가로판 잔디마을 부감의 방송국 자리(가로 38%)를 잘라 한 컷 더 둔다.
   // 길이는 오프닝 곡의 마디가 정한다(`fit`)
   { cue: 'B3', take: 'B3-jubilife', cut: [0.5, 1.4], crop: 0.38, fade: 0.23 },
-  { cue: 'B5-B6', take: 'B5-switch', cut: [0.7, 5.0], trans: 'cut' },
-  { cue: 'C1', take: 'B5-switch', cut: [8.3, 1.5], trans: 'cut' },
+  { cue: 'B5-B6', take: 'B5-switch', cut: [0.7, 3.23], trans: 'cut', snap: false },
+  // 컷인이 검게 닫힌 데서(3.9초) 끊는다 — 그 뒤는 한 장씩 풀숲 · 하늘색이 비치고(3.93 · 3.97초 — 무대가 서기 전) 꼬링크가
+  // 나와 가만히 서 있기만 한다(4.2~8.3초). 울음은 볼이 날아오는 다음 컷 머리에 얹는다
+  { cue: 'C1', take: 'B5-switch', cut: [8.3, 1.5], trans: 'cut', sfx: [[8.3, 'PV_399_00_00', -2]] },
   // 세로판은 흡수가 맞는 자리가 다르다(1.5초 — 찍을 때마다 배틀의 차례가 달라진다)
   { cue: 'C3', take: 'C3-move', cut: [1.0, 1.1], trans: 'cut' },
-  { cue: 'C6', take: 'C6-catch', cut: [0.5, 1.4], trans: 'cut' },
+  // 동굴 무대 웅크리기 — 가로판의 꼬마돌 자리(가로 48%)를 잘라 쓴다. 이 컷이 없으면 야생 배틀 곡의 마디까지 볼 흔들림 컷이
+  // 늘어나 볼이 1.3~1.5초씩 가만히 섰다
+  { cue: 'C5', take: 'C5-cave', cut: [3.5, 3.0], crop: 0.48, trans: 'cut' },
+  { cue: 'C6', take: 'C6-catch', cut: [0.5, 2.2], trans: 'cut' },
+  { cue: 'C7a', take: 'C6-catch', cut: [4.3, 0.5], trans: 'cut' },
+  { cue: 'C7', take: 'C6-catch', cut: [5.5, 0.5], trans: 'cut' },
   // 길이는 야생 배틀 곡의 프레이즈가 정한다(`fit`)
-  { cue: 'C8', take: 'C6-catch', cut: [7.1, 1.6], trans: 'cut' },
+  { cue: 'C8', take: 'C6-catch', cut: [7.2, 1.0], trans: 'cut' },
   { cue: 'D5', take: 'D5-first', cut: [0.4, 1.8], trans: 'cut' },
   { cue: 'D6', take: 'D6-night', cut: [0.3, 1.3], trans: 'cut' },
   // 길이는 오프닝 곡의 프레이즈가 정한다(`fit`)
@@ -143,15 +150,12 @@ const SHORTS = [
   // 세로 카메라는 볼이 늦게 열리고 화강돌이 오른쪽 아래 모서리에 선다 — 가로판에서 화강돌 자리(가로 55%)를 잘라 쓴다
   { cue: 'D11b', take: 'D11-champion', cut: [12.45, 2.45], crop: 0.55, trans: 'cut' },
   { cue: 'D12', take: 'D12-lucario', cut: [2.0, 1.6], crop: 0.5, trans: 'cut' },
-  { cue: 'D13', take: 'D13-garchomp', cut: [1.7, 0.75], crop: 0.5, trans: 'cut' },
   // 길이는 챔피언 곡의 프레이즈가 정한다(`fit`)
-  { cue: 'D13b', take: 'D13-garchomp', cut: [4.03, 1.32], crop: 0.5, trans: 'cut' },
+  { cue: 'D13', take: 'D13-garchomp', cut: [0.85, 3.4], crop: 0.5, trans: 'cut' },
   { cue: 'E2', take: 'E2-spear', cut: [0.6, 1.6], warp: 'out', fade: 0.4 },
   { cue: 'E3a', take: 'E3-distortion', cut: [0.3, 3.6], warp: 'in', trans: 'cut' },
   { cue: 'E3w', take: 'E3-wall', cut: [0.4, 1.5], crop: 0.45, trans: 'cut' },
   { cue: 'E3b', take: 'E3-giratina', cut: [2.1, 2.23], trans: 'cut', snap: false },
-  // 길이는 기라티나 곡의 프레이즈가 정한다(`fit`)
-  { cue: 'E3b2', take: 'E3-giratina', cut: [4.73, 1.6], fade: 0.15 },
   { cue: 'E4', card: 'white', seconds: 0.5, fade: 0.3 },
   { cue: 'F1', card: 'wordmark', seconds: 2.5, fade: 0.2 },
   { cue: 'F2', card: 'rom', seconds: 4.2, fade: 0.2 },
@@ -188,7 +192,7 @@ const TAKE_SFX = {
   'D12-lucario': [[2.0, 'EW396_EM', -3, 0.96], [3.3, 'BA_SYS_HIT_H', -2]],
   // 드래곤다이브(기술 407) — 봉우리(소리 안 2.68초)가 부딪는 자리(1.73초)에 온다. 땅 터짐은 지진(기술 89) — 3.6초 내내 고른 땅울림이라
   // 다 울리면 다음 창기둥 장면까지 2.7초를 덮는다. 컷이 넘어간 뒤 0.4초에 걸쳐 뺀다
-  'D13-garchomp': [[1.7, 'EW407_2D', -3, 2.65], [1.73, 'BA_SYS_HIT_H', -2], [4.17, 'EW089_01', -1, 0, 1.6]],
+  'D13-garchomp': [[0.97, 'EW407_2D', -3], [3.5, 'BA_SYS_HIT_H', -2]],
   // 오리진폼의 울음 — 이 영상의 주인공이라 다른 소리보다 앞에 둔다
   'E3-giratina': [[3.0, 'PV_487_01_00', 3], [3.3, 'UI_COMMON_PM_BATTLEIN_FX', -4]],
 }
@@ -217,10 +221,11 @@ const SCORE = {
     { src: 'B_OTH001', cue: 'B1', at: -21.5, from: 0, until: 'B5-B6', untilAt: 3.03, fit: 4, fadeOut: 0.25 },
     // 배틀 → 여정은 곡 한가운데(33.94초 · 마디 첫 박)로 들어간다 — 겹쳐 넘긴다
     { src: 'BA001', cue: 'B5-B6', at: 3.03, from: 0, until: 'D1', fit: 4, tail: 0.7 },
-    { src: 'B_OTH001', cue: 'D1', from: 33.94, until: 'D11', untilAt: 0.33, fit: 4, fadeIn: 0.4, fadeOut: 0.25 },
+    { src: 'B_OTH001', cue: 'D1', from: 33.94, until: 'D11', untilAt: 0.16, fit: 4, fadeIn: 0.4, fadeOut: 0.25 },
     // 챔피언 → 기라티나는 창기둥이 뒤틀리며 녹는 자리 — 화면의 디졸브와 같이 겹친다
     { src: 'BA008', cue: 'D11', at: 0.16, from: 0, until: 'E2', fit: 4, tail: 0.8 },
-    { src: 'BA015', cue: 'E2', from: 0, until: 'E4', fit: 4, fadeIn: 0.5, fadeOut: 0.4 },
+    // 기라티나 컷은 화이트아웃에서 끝나야 해서 길이를 못 바꾼다 — 마디는 흰 화면의 길이로 맞춘다
+    { src: 'BA015', cue: 'E2', from: 0, until: 'F1', fit: 1, fadeIn: 0.5, fadeOut: 0.4 },
     // 타이틀 곡 파일은 머리 0.45초가 무음이다 — 그 뒤부터 깔고 로고보다 조금 앞서 들어온다. 원본은 곡을 0.2초 비우고 스팅어를 넣는다
     { src: 'B_OTH002', cue: 'F1', at: -0.15, from: 0.45, until: 'end', fadeOut: 1.5 },
   ],
@@ -230,9 +235,11 @@ const SCORE = {
     // 마을이 두 컷뿐이라 4마디까지 못 간다 — 한 마디에 맞춘다
     { src: 'B_OTH001', cue: 'B1', at: -21.5, notBefore: 'A2-A4', from: 0, until: 'B5-B6', untilAt: 3.03, fit: 1, fadeIn: 0.5, fadeOut: 0.25 },
     { src: 'BA001', cue: 'B5-B6', at: 3.03, from: 0, until: 'D5', fit: 4, tail: 0.7 },
-    { src: 'B_OTH001', cue: 'D5', from: 33.94, until: 'D11', untilAt: 0.33, fit: 1, fadeIn: 0.4, fadeOut: 0.25 },
+    { src: 'B_OTH001', cue: 'D5', from: 33.94, until: 'D11', untilAt: 0.16, fit: 1, fadeIn: 0.4, fadeOut: 0.25 },
     { src: 'BA008', cue: 'D11', at: 0.16, from: 0, until: 'E2', fit: 4, tail: 0.8 },
-    { src: 'BA015', cue: 'E2', from: 0, until: 'E4', fit: 4, fadeIn: 0.5, fadeOut: 0.4 },
+    // 기라티나 컷은 화이트아웃에서 끝나야 해서 길이를 못 바꾸고, 세로판은 가장 가까운 마디가 흰 화면보다 0.6초 앞이다 —
+    // 마디에 안 맞추고 흰 화면 위에서 0.4초에 뺀다
+    { src: 'BA015', cue: 'E2', from: 0, until: 'F1', fadeIn: 0.5, fadeOut: 0.4 },
     // 타이틀 곡 파일은 머리 0.45초가 무음이다 — 그 뒤부터 깔고 로고보다 조금 앞서 들어온다. 원본은 곡을 0.2초 비우고 스팅어를 넣는다
     { src: 'B_OTH002', cue: 'F1', at: -0.15, from: 0.45, until: 'end', fadeOut: 1.5 },
   ],
