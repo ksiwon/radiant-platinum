@@ -226,7 +226,9 @@ export const seqStage: {
   owner: symbol | null
   /** 도는 시퀀스들 */
   live: Set<symbol>
-} = { running: false, body: {}, bodyOwner: {}, hide: {}, shake: 0, camera: null, back: null, owner: null, live: new Set() }
+  /** 자리 → 그 자리 체력판을 감춘 시퀀스 (`GaugeDispAll` · `GaugeDisp` — 화면을 쥔 시퀀스만) */
+  gauge: Record<string, symbol>
+} = { running: false, body: {}, bodyOwner: {}, hide: {}, shake: 0, camera: null, back: null, owner: null, live: new Set(), gauge: {} }
 
 /** 시퀀스 카메라 (`engine/battle/fx/sequence`의 `SeqCamera`) — 무대 좌표 · 화각(도) · 굴림(라디안) */
 interface SeqCameraPose {
@@ -265,6 +267,7 @@ export function releaseSeq(owner: symbol): void {
     delete seqStage.body[slot]
   }
   for (const slot of Object.keys(seqStage.hide)) if (seqStage.hide[slot] === owner) delete seqStage.hide[slot]
+  for (const slot of Object.keys(seqStage.gauge)) if (seqStage.gauge[slot] === owner) delete seqStage.gauge[slot]
   if (seqStage.owner === owner) {
     seqStage.owner = null
     seqStage.camera = null
@@ -281,6 +284,7 @@ export function clearSeqStage(): void {
   seqStage.body = {}
   seqStage.bodyOwner = {}
   seqStage.hide = {}
+  seqStage.gauge = {}
   seqStage.shake = 0
   seqStage.camera = null
   seqStage.back = null

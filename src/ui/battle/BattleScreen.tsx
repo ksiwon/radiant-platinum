@@ -10,7 +10,7 @@
 // 카메라 컷(PLAN §7.3·§7.4)은 아직 없다.
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BURST, burstWhite } from '../../engine/battle/encounterBurst'
-import { encounterBurst } from '../../scene/battle/stageRefs'
+import { encounterBurst, seqStage } from '../../scene/battle/stageRefs'
 import type { BattleAction } from '../../engine/battle/choice'
 import type { SafariCommand } from '../../engine/battle/safariBattle'
 import type { Actor, SlotId } from '../../engine/battle/events'
@@ -941,6 +941,34 @@ const GENDER_MARK: Record<string, { mark: string; cls: string }> = {
  * 판은 **미끄러져 들어오고 나간다** (`hpDrain`의 `useSlide` · `HealthBox_Scroll`) —
  * 등판 박자의 쉼이 끝난 뒤 들어오고, 쓰러지면 제 쪽 바깥으로 빠진다
  */
+/**
+ * BDSP 시퀀스가 체력판을 감추는 동안 감춘다 (`seqStage.gauge` — `GaugeDispAll visible=0` · 맞기 전 `GaugeDisp trg=1`로 맞는 쪽만 다시).
+ * 원작 플래티나도 기술 연출 동안 체력판을 숨긴다(`BattleDisplay_GetAnimHideFlags`). 자리 · 미끄러짐은 `useSlide`가 쥐고 여기서는
+ * `visibility`만 만진다 — 두 임자가 같은 속성을 다투지 않는다
+ */
+function useSeqGaugeHide(card: React.RefObject<HTMLDivElement | null>, slot: string): void {
+  useEffect(() => {
+    let raf = 0
+    let hidden = false
+    let touched: HTMLDivElement | null = null
+    const tick = (): void => {
+      const now = seqStage.gauge[slot] !== undefined
+      const el = card.current
+      if (el && now !== hidden) {
+        hidden = now
+        touched = el
+        el.style.visibility = now ? 'hidden' : ''
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => {
+      cancelAnimationFrame(raf)
+      if (touched) touched.style.visibility = ''
+    }
+  }, [card, slot])
+}
+
 function MonCard(
   { mon, names, drainMs, nickname = null, showHp = false, caught = false, dim = false }:
   {
@@ -983,6 +1011,7 @@ function MonCard(
     if (hpNow.current) hpNow.current.textContent = String(shownHp(shown, maxHp))
   })
   const card = useSlide(mon.presence !== 'down', drainMs, mon.slot, showHp ? 1 : -1)
+  useSeqGaugeHide(card, mon.slot)
   const exp = expOf(mon)
   const gender = GENDER_MARK[mon.gender]
   return (

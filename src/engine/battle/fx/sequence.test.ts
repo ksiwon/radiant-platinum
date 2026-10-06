@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  backAt, bodyAt, cameraAt, ease, particleAt, planFrames, planSequence, shakeAt,
+  backAt, bodyAt, cameraAt, ease, gaugesAt, particleAt, planFrames, planSequence, shakeAt,
   type SeqContext, type SeqData,
 } from './sequence'
 
@@ -43,6 +43,19 @@ const TACKLE: SeqData = {
 }
 
 describe('BDSP 시퀀스', () => {
+  it('체력판 — 0프레임에 다 감추고, 맞기 전에 맞는 쪽만 다시 켜고, 다 켜면 역할마다 켠 것은 지운다', () => {
+    const seq: SeqData = { name: 'ew033', groups: [{ name: 'gauge', no: 1, options: [], commands: [
+      c(0, 0, 'GaugeDispAll', { visible: ['0'] }),
+      c(20, 20, 'GaugeDisp', { trg: ['1'], visible: ['1'] }),
+      c(60, 60, 'GaugeDispAll', { visible: ['1'] }),
+    ] }] }
+    const plan = planSequence(seq)
+    expect(gaugesAt(plan, -1)).toEqual({ all: true, role: [null, null] })
+    expect(gaugesAt(plan, 5)).toEqual({ all: false, role: [null, null] })
+    expect(gaugesAt(plan, 30)).toEqual({ all: false, role: [null, true] })
+    expect(gaugesAt(plan, 61)).toEqual({ all: true, role: [null, null] })
+  })
+
   it('3D로만 내는 소리도 소리 칸이다 — 같은 이름의 평면 소리가 있으면 그 사본이라 안 센다', () => {
     const seq: SeqData = { name: 'ew098', groups: [{ name: 'se', no: 1, options: [], commands: [
       c(8, 8, 'Sound3DPostEvent', { event: ['Play_ew098_01'] }),

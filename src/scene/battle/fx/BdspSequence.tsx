@@ -15,7 +15,7 @@ import { useFrame } from '@react-three/fiber'
 import { AnimationMixer, LoopOnce, LoopRepeat, Vector3, type AnimationAction, type Group, type Object3D } from 'three'
 import { battleClock } from '../../../engine/battle/presentationClock'
 import {
-  awayHidden, backAt, bodyAt, cameraAt, modelAt, othersHidden, particleAt, planFrames, shakeAt, SEQ_FPS,
+  awayHidden, backAt, bodyAt, cameraAt, gaugesAt, modelAt, othersHidden, particleAt, planFrames, shakeAt, SEQ_FPS,
   touchesTarget, type Role, type SeqCamera, type SeqContext, type SeqPlan, type V3,
 } from '../../../engine/battle/fx/sequence'
 import { claimSeq, releaseSeq, seqStage, tallOf } from '../stageRefs'
@@ -23,6 +23,9 @@ import { trainerThrowOrigin } from '../battleBallMotion'
 import { BdspEffect } from './BdspEffect'
 import { cloneBall, loadBallModel, type BallModel } from './ballModel'
 import { mergePose, roleContext } from './seqContext'
+
+/** 체력판이 설 수 있는 자리 넷 */
+const FIELD_SLOTS = ['p1a', 'p1b', 'p2a', 'p2b'] as const
 
 /** 마지막 명령 뒤로 입자가 사그라지기를 기다리는 위끝 (초) */
 const TAIL = 1.5
@@ -219,6 +222,16 @@ export function BdspSequence({
       for (const slot of awaySlots) {
         if (away) seqStage.hide[slot] = owner
         else if (seqStage.hide[slot] === owner) delete seqStage.hide[slot]
+      }
+      // 체력판 — 화면을 쥐는 시퀀스(카메라를 쓰는 것: 기술 · 볼)만 건다. 상태 연출(`camera={false}`)은 원작도 판을 그대로 둔다
+      if (camera && plan.gauges.length > 0) {
+        const g = gaugesAt(plan, f)
+        for (const slot of FIELD_SLOTS) {
+          const role = slot === roles[0] ? 0 : slot === roles[1] || reactors.includes(slot) ? 1 : null
+          const shown = (role === null ? null : g.role[role]) ?? g.all
+          if (!shown) seqStage.gauge[slot] = owner
+          else if (seqStage.gauge[slot] === owner) delete seqStage.gauge[slot]
+        }
       }
       if (ownsScreen) {
         seqStage.owner = owner

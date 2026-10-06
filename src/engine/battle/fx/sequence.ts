@@ -205,6 +205,8 @@ export interface SeqPlan {
   camera: SeqCommand[]
   /** 배경 물들임 (`EffSpBackColSet` · `EffSpBackColFlg`) */
   back: SeqCommand[]
+  /** 체력판 보이기 · 감추기 (`GaugeDispAll` · `GaugeDisp`) — 기술 467 중 411이 0프레임에 다 감추고 맞기 전에 맞는 쪽만 다시 켠다 */
+  gauges: SeqCommand[]
   /** 맞는 쪽 체력이 깎이는 프레임 (`GaugeDamage`). 없으면 `null` */
   hit: number | null
   /**
@@ -379,6 +381,7 @@ export function planSequence(seq: SeqData, opts: PlanOptions = {}): SeqPlan {
     shakes: [],
     camera: [],
     back: [],
+    gauges: [],
     hit: null,
     impact: null,
     sounds: [],
@@ -506,6 +509,7 @@ export function planSequence(seq: SeqData, opts: PlanOptions = {}): SeqPlan {
         m.commands.push(c)
         continue
       }
+      if (n === 'GaugeDispAll' || n === 'GaugeDisp') { plan.gauges.push(c); continue }
       if (n === 'GaugeDamage') {
         if (num(c.values.trg, 0, 1) === 1 && plan.hit === null) plan.hit = c.start
         continue
@@ -586,6 +590,7 @@ export function planSequence(seq: SeqData, opts: PlanOptions = {}): SeqPlan {
   plan.away.sort((a, b) => a.start - b.start)
   plan.camera.sort((a, b) => a.start - b.start)
   plan.back.sort((a, b) => a.start - b.start)
+  plan.gauges.sort((a, b) => a.start - b.start)
   // 조건 묶음이 이어 준 명령이 뒤에 붙었다 — 시작 프레임 차례로 (같은 프레임은 묶음 차례를 지킨다)
   for (const p of plan.particles) p.commands = [...p.commands].sort((x, y) => x.start - y.start)
   if (plan.scaleParticles) for (const p of plan.particles) p.sized = true
@@ -636,7 +641,7 @@ const shiftCmd = (c: SeqCommand, by: number): SeqCommand => ({ ...c, start: c.st
 export function chainPlans(name: string, plans: readonly (readonly [SeqPlan, number])[]): SeqPlan {
   const out: SeqPlan = {
     name, particles: [], body: [{ commands: [] }, { commands: [] }], models: [], others: [], away: [], shakes: [], camera: [],
-    back: [], hit: null, impact: null, sounds: [], message: null, frames: 0, shaderBase: plans[0]?.[0].shaderBase ?? 0,
+    back: [], gauges: [], hit: null, impact: null, sounds: [], message: null, frames: 0, shaderBase: plans[0]?.[0].shaderBase ?? 0,
     clipSeconds: plans[0]?.[0].clipSeconds ?? [], scaleParticles: plans[0]?.[0].scaleParticles ?? false,
     cameraAtRest: plans[0]?.[0].cameraAtRest ?? false, ignored: new Set(),
   }
@@ -659,6 +664,7 @@ export function chainPlans(name: string, plans: readonly (readonly [SeqPlan, num
     out.shakes.push(...p.shakes.map(s))
     out.camera.push(...p.camera.map(s))
     out.back.push(...p.back.map(s))
+    out.gauges.push(...p.gauges.map(s))
     if (p.hit !== null && out.hit === null) out.hit = p.hit + at
     if (p.impact !== null && out.impact === null) out.impact = p.impact + at
     out.sounds.push(...p.sounds.map((f) => f + at))
@@ -672,6 +678,7 @@ export function chainPlans(name: string, plans: readonly (readonly [SeqPlan, num
   out.away.sort((a, b) => a.start - b.start)
   out.camera.sort((a, b) => a.start - b.start)
   out.back.sort((a, b) => a.start - b.start)
+  out.gauges.sort((a, b) => a.start - b.start)
   return out
 }
 
@@ -1347,6 +1354,21 @@ export function bodyAt(plan: SeqPlan, role: Role, f: number, ctx: SeqContext): B
     }
   }
   return out
+}
+
+/**
+ * 그 프레임의 체력판 — `all`은 역할이 없는 판(더블의 다른 둘)까지 다 · `role`은 역할마다 따로 켠 값(없으면 `all`을 따른다).
+ * `GaugeDispAll`이 서면 역할마다 켠 것은 지운다. 명령이 아직 없으면 다 보인다
+ */
+export function gaugesAt(plan: SeqPlan, f: number): { all: boolean; role: [boolean | null, boolean | null] } {
+  let all = true
+  const role: [boolean | null, boolean | null] = [null, null]
+  for (const c of plan.gauges) {
+    if (f < c.start) break
+    const visible = num(c.values.visible, 0, 1) === 1
+    if (c.name === 'GaugeDispAll') { all = visible; role[0] = null; role[1] = null } else role[num(c.values.trg) === 1 ? 1 : 0] = visible
+  }
+  return { all, role }
 }
 
 /** 그 프레임에 다른 몸(맞는 쪽이 아닌 몸)을 감추는가 — `PokemonVisibleOther visible=0` 뒤 `PokemonVisibleAll` 전까지 */
