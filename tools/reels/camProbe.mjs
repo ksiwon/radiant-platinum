@@ -18,11 +18,15 @@ try {
     await page.keyboard.press('Backquote')
     try { await page.getByText('확인 지점').first().waitFor({ timeout: 15_000 }); break } catch (e) { if (i >= 11) throw e }
   }
-  const row = page.locator('[data-checkpoint="grass"]').first()
+  // CP · HOUR · SPECIES로 자리 · 시각 · 상대를 바꾼다 (기본 grass · 15시 · 꼬링크)
+  const CP = process.env.CP ?? 'grass'
+  const HOUR = Number(process.env.HOUR ?? 15)
+  const SPECIES = Number(process.env.SPECIES ?? 403)
+  const row = page.locator(`[data-checkpoint="${CP}"]`).first()
   await row.hover(); await page.waitForTimeout(200); await row.click()
   await page.waitForURL('**/play', { timeout: 60_000 })
   await page.waitForSelector('canvas', { timeout: 120_000 })
-  await page.evaluate(async () => { const w = await import('/src/state/worldState.ts'); w.worldState.time.gameHour = 15 })
+  await page.evaluate(async (h) => { const w = await import('/src/state/worldState.ts'); w.worldState.time.gameHour = h }, HOUR)
   await page.waitForTimeout(8000)
   await page.evaluate(async () => {
     const R = await import('/src/scene/battle/stageRefs.ts')
@@ -42,7 +46,7 @@ try {
   const mark = (s) => page.evaluate((x) => window.__marks.push([performance.now(), x]), s)
   const seen = (sel) => page.locator(sel).first().isVisible().catch(() => false)
   await mark('wild')
-  await page.evaluate(async () => { await globalThis.pt.wild(403, 5, 0) })
+  await page.evaluate(async (sp) => { await globalThis.pt.wild(sp, 5, 0) }, SPECIES)
   for (let i = 0; i < 400; i++) {
     if (await seen('[data-pilot="fight"]')) break
     if (i % 4 === 3) await page.keyboard.press('KeyZ')

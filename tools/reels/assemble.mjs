@@ -107,17 +107,11 @@ const MAIN = [
 ]
 
 /**
- * 쇼츠 — 세로로 다시 찍은 장면을 쓴다(문서 「쇼츠 · 릴스」). 첫 1~2초에 머물지 떠날지가 갈리므로 **기라티나로 연다**(`H1`).
- * 기라티나가 빛을 두르는 순간(대사창이 서기 전) → 섬광 · 울음 → 조우 소용돌이가 한창일 때 하드컷으로 터널에 든다. 터널은
- * 소용돌이의 속도 · 빛을 이어받아 가라앉고(`cards.mjs`), 소용돌이 소리가 컷을 건너 울린다. 흰 화면으로 넘기면 파랑 → 흰 → 검정으로
- * 밝기가 두 번 뒤집혀 앞뒤가 따로 놀았다. 팬 게임 고지는 터널 위에 작게 얹는다(`caption` — 기라티나의 얼굴을 가렸다)
+ * 쇼츠 — 세로로 다시 찍은 장면을 쓴다(문서 「쇼츠 · 릴스」). 본편 3초 자리처럼 연다 — 고지 글이 사그라진 검은 화면에 빛점이
+ * 떠올라(`disclaimer` 카드의 2.6초부터) 빛 터널로 터진다. 팬 게임 고지는 터널 위에 작게 얹는다(`caption`)
  */
 const SHORTS = [
-  // 빛을 두른다(0.6초~ · 대사창이 1.03초에 선다) → 대사창이 닫힌 뒤(2.9초)로 건너뛴다 — 카메라 · 두 몸이 그대로라 이음매가 안 보이고
-  // 바로 섬광이 덮는다. 곡의 타격으로 옮기면(`snap`) 대사창이 걸린다
-  { cue: 'H1', take: 'E3-giratina', cut: [0.4, 0.6], trans: 'cut', snap: false },
-  // 섬광 · 울음(3.0초) → 소용돌이(3.3초)가 한창일 때 끊는다
-  { cue: 'H1b', take: 'E3-giratina', cut: [2.95, 0.9], trans: 'cut' },
+  { cue: 'A1', card: 'disclaimer', from: 2.6, fade: 0.3 },
   { cue: 'A2-A4', card: 'tunnel', seconds: 5.0, caption: '본 게임은 팬 게임이며, 수익을 창출하지 않습니다.' },
   { cue: 'A5', card: 'sink' },
   // 3.6초면 첫 줄이 또렷해지기 전에 다음 줄이 온다
@@ -231,7 +225,6 @@ const SCORE = {
   ],
   '9:16': [
     // 기라티나의 울음으로 연다 — 곡도 기라티나 곡의 머리. 오프닝 곡은 터널부터다(`notBefore`)
-    { src: 'BA015', cue: 'H1', from: 0, until: 'A2-A4', untilAt: 0.3, tail: 0.8 },
     // 마을이 두 컷뿐이라 4마디까지 못 간다 — 한 마디에 맞춘다
     { src: 'B_OTH001', cue: 'B1', at: -21.5, notBefore: 'A2-A4', from: 0, until: 'B5-B6', untilAt: 3.03, fit: 1, fadeIn: 0.5, fadeOut: 0.25 },
     { src: 'BA001', cue: 'B5-B6', at: 3.03, from: 0, until: 'D5', fit: 4, tail: 0.7 },
@@ -315,7 +308,7 @@ function takeClip(e, file) {
 
 /** 카드 → mp4. 프레임마다 `draw(t)`를 부르고 찍는다 */
 async function cardClip(page, e, file) {
-  const cue = e.seconds ?? CARD_SECONDS[e.card]
+  const cue = cueLength(e)
   const len = cue + overlap(e)
   const n = Math.round(len * FPS)
   const dir = resolve(WORK, `card-${e.cue}`)
@@ -325,7 +318,8 @@ async function cardClip(page, e, file) {
   // 카드 안의 시각은 큐 길이 기준이다 — 겹치는 꼬리는 마지막 모습을 이어 간다
   const scale = e.seconds && CARD_SECONDS[e.card] ? CARD_SECONDS[e.card] / e.seconds : 1
   for (let i = 0; i < n; i++) {
-    const t = Math.min(i / FPS, cue - 1e-3) * (e.card === 'tunnel' ? 1 : scale)
+    // `from`이면 카드의 그 시각부터 그린다
+    const t = (e.from ?? 0) + Math.min(i / FPS, cue - 1e-3) * (e.card === 'tunnel' ? 1 : scale)
     await page.evaluate((x) => new Promise((done) => { window.draw(x); requestAnimationFrame(() => { requestAnimationFrame(done) }) }), t)
     writeFileSync(resolve(dir, `c-${String(i).padStart(4, '0')}.png`), await page.screenshot())
   }
@@ -393,7 +387,7 @@ function lufs(file) {
 }
 
 /** 조각의 큐 길이(초) */
-const cueLength = (e) => (e.take ? e.cut[1] : e.seconds ?? CARD_SECONDS[e.card])
+const cueLength = (e) => (e.take ? e.cut[1] : e.seconds ?? CARD_SECONDS[e.card] - (e.from ?? 0))
 
 /** 큐가 시작하는 시각 — 앞 조각들의 큐 길이를 더한 것이다(겹침은 다음 조각 안으로 들어간다) */
 function cueStarts(edit) {
