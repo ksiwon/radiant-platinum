@@ -466,6 +466,7 @@ describe('타격 정보 — 소리가 이걸 보고 난다', () => {
       '글:party-0의 몸통박치기!', // 빠른 쪽이 먼저 말하고
       '연출:move', //                 그 위에서 연출이 돌고
       '연출:damage', //               게이지가 닳고
+      '연출:—', //                    15프레임 쉬고
       '글:효과가 굉장했다!', //          그러고 나서 효과를 말한다
       '연출:effectiveness',
       '글:foe-0의 할퀴기!', //         이제 느린 쪽이 같은 차례를 밟는다
@@ -485,6 +486,23 @@ describe('타격 정보 — 소리가 이걸 보고 난다', () => {
     const damageAt = beats.findIndex((b) => b.events[0]?.kind === 'damage')
     const effectAt = beats.findIndex((b) => b.text === '효과가 굉장했다!')
     expect(effectAt).toBeGreaterThan(damageAt)
+  })
+
+  it('효과 줄 앞에 15프레임을 쉰다 · 급소 줄 앞에는 안 쉰다 (subscript_move_followup_message.s)', () => {
+    const beats = buildBeats([
+      { kind: 'move', actor: p1, moveName: '몸통박치기', move: 33 },
+      { kind: 'crit', actor: p2 },
+      { kind: 'effectiveness', actor: p2, level: 'resisted' },
+      hit(p2, 22, 40),
+    ] as BattleEvent[], say)
+    const effectAt = beats.findIndex((b) => b.text === '효과가 굉장했다!')
+    const gap = beats[effectAt - 1]!
+    expect(gap.text).toBeNull()
+    expect(gap.events).toEqual([])
+    expect(gap.hold).toBe(15)
+    expect(gap.presentation).toBeUndefined()
+    const critAt = beats.findIndex((b) => b.text === '급소에 맞았다!')
+    expect(beats[critAt - 1]!.events[0]?.kind).toBe('damage')
   })
 
 })

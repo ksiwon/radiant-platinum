@@ -26,6 +26,24 @@ beforeEach(() => {
 })
 
 describe('`preloadMoveSeqs` — 쪽마다', () => {
+  it('화면에 아무것도 안 세우는 빈 시퀀스(`DummyLabel`뿐)는 계획을 안 세워 DS로 간다', async () => {
+    files['data/fx/index.json'] = { balls: {}, moves: { 185: { seq: 'ew185' }, 150: { seq: 'ew150' } }, missingPrefabs: [] }
+    // 속여때리기 — 라벨 한 줄과 소리 · 게이지뿐
+    files['data/fx/seq/ew185.json'] = { name: 'ew185', groups: [{ name: 'x', no: 0, options: [], commands: [
+      { start: 0, end: 12, name: 'DummyLabel', values: {} },
+      { start: 0, end: 0, name: 'CameraReset', values: {} },
+    ] }] }
+    // 튀어오르기 — 입자는 없어도 몸이 움직인다
+    files['data/fx/seq/ew150.json'] = { name: 'ew150', groups: [{ name: 'x', no: 0, options: [], commands: [
+      { start: 2, end: 20, name: 'PokemonMoveRelativePoke', values: { moveTrg: ['0'], posTrg: ['0'], node: ['0'], ofs: ['0', '60', '0'], move: ['1'] } },
+    ] }] }
+    const { moveSeqPlan, preloadMoveSeqs } = await fresh()
+    await preloadMoveSeqs([185, 150])
+    expect(moveSeqPlan(185, true)).toBeNull()
+    expect(moveSeqPlan(185, false)).toBeNull()
+    expect(moveSeqPlan(150, true)).not.toBeNull()
+  })
+
   it('상대 쪽(짝수 묶음) 프리팹만 빠지면 내 쪽 계획은 서고 상대 쪽은 DS다', async () => {
     files['data/fx/index.json'] = {
       balls: {},

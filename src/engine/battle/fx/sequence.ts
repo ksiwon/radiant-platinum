@@ -413,6 +413,9 @@ export function planSequence(seq: SeqData, opts: PlanOptions = {}): SeqPlan {
   const ballOutSecond = `eb${pad(opts.ballSecond ?? opts.ball ?? 4)}_ballout`
   /** 구운 카메라 애니메이션(`CameraAnimationPoke`)이 서는 프레임들 — 아래에서 대신 선다 */
   const animCams: number[] = []
+  /** 평면 소리의 이름 · 3D 소리 — 3D 소리는 같은 이름의 평면 소리가 없을 때만 소리 칸이 된다 */
+  const flatSounds = new Set<string>()
+  const sounds3d: { at: number; event: string }[] = []
   /**
    * 묶음 번호(`no`) → 그 번호로 마지막에 세운 입자 칸. ⚠️ **조건 묶음은 같은 번호의 기본 묶음 입자를 이어 받는다** — 파도타기 `ew057`은
    * `ParticleCreate`가 든 묶음 `no=15` 뒤에 `シングル分岐`(`[0,1]`) · `[0,4]` 묶음이 같은 `no=15`로 서서 맞는 쪽 자리
@@ -507,9 +510,16 @@ export function planSequence(seq: SeqData, opts: PlanOptions = {}): SeqPlan {
         if (num(c.values.trg, 0, 1) === 1 && plan.hit === null) plan.hit = c.start
         continue
       }
-      // `Sound3DPostEvent`는 같은 프레임의 같은 소리를 3D로 한 번 더 낸 것이다 — 평면 것만 센다
+      // `Sound3DPostEvent`는 대개 평면 소리(`SoundPostEvent`)를 3D로 한 번 더 낸 것이다 — 그때는 평면 것만 센다.
+      // ⚠️ **3D로만 내는 소리도 있다** — 시퀀스 164벌(전광석화 `ew098` · 잎날가르기 · 할퀴기 · 막치기 …)은 평면 소리가
+      // 하나도 없다. 그것을 버리면 소리 칸이 비어 원작 대본의 시각(60fps)으로 났다. 같은 이름의 평면 소리가 없는 3D 소리만 받는다
       if (n === 'SoundPostEvent') {
+        flatSounds.add(c.values.event?.[0] ?? '')
         if (!plan.sounds.includes(c.start)) plan.sounds.push(c.start)
+        continue
+      }
+      if (n === 'Sound3DPostEvent') {
+        sounds3d.push({ at: c.start, event: c.values.event?.[0] ?? '' })
         continue
       }
       if (n === 'MessageDispStd') {
@@ -558,6 +568,7 @@ export function planSequence(seq: SeqData, opts: PlanOptions = {}): SeqPlan {
       if (!SILENT.test(n)) plan.ignored.add(n)
     }
   })
+  for (const d of sounds3d) if (!flatSounds.has(d.event) && !plan.sounds.includes(d.at)) plan.sounds.push(d.at)
   plan.camera.sort((a, b) => a.start - b.start)
   plan.sounds.sort((a, b) => a - b)
   // ⚠️ **구운 카메라 애니메이션(`gfbcama`)은 안 굽는다** — 튀어나옴(`ee106~109`)이 f0~4를 그것으로 볼 클로즈업에서

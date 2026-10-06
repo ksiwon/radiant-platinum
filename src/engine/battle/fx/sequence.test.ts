@@ -43,6 +43,17 @@ const TACKLE: SeqData = {
 }
 
 describe('BDSP 시퀀스', () => {
+  it('3D로만 내는 소리도 소리 칸이다 — 같은 이름의 평면 소리가 있으면 그 사본이라 안 센다', () => {
+    const seq: SeqData = { name: 'ew098', groups: [{ name: 'se', no: 1, options: [], commands: [
+      c(8, 8, 'Sound3DPostEvent', { event: ['Play_ew098_01'] }),
+      c(19, 19, 'Sound3DPostEvent', { event: ['Play_ew098_02'] }),
+      c(23, 23, 'SoundPostEvent', { event: ['Play_x_01'] }),
+      c(33, 33, 'SoundPostEvent', { event: ['Play_x_02'] }),
+      c(40, 40, 'Sound3DPostEvent', { event: ['Play_x_02'] }),
+    ] }] }
+    expect(planSequence(seq).sounds).toEqual([8, 19, 23, 33])
+  })
+
   it('입자 칸 · 맞는 프레임 · 길이를 편다', () => {
     const plan = planSequence(TACKLE, { attackerMine: true })
     expect(plan.particles.map((p) => p.prefab)).toEqual(['ew033_df_hit', 'mine'])

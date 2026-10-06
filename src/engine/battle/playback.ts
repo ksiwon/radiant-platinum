@@ -112,6 +112,8 @@ export interface LearnPrompt {
 
 /** `WaitButtonABTime 30` — 글 하나를 읽히는 시간 */
 const HOLD_MESSAGE = 30
+/** 효과 줄 앞의 쉼 (`subscript_move_followup_message.s` `WaitButtonABTime 15`) */
+const HOLD_FOLLOWUP = 15
 
 /**
  * 등판이 서는 데 걸리는 프레임. **원작이 자리마다 적어 두었다.**
@@ -357,7 +359,15 @@ export function buildBeats(
   /** 데미지 뒤로 밀어 둔 급소·효과 */
   let held: BattleEvent[] = []
   const flush = (): void => {
-    for (const e of held) { say(text(e), HOLD_MESSAGE); show([e], 0) }
+    for (const e of held) {
+      // 효과 줄은 게이지가 멎고 **15프레임 뒤에** 뜬다 — `subscript_move_followup_message.s`가 `WaitButtonABTime 15`로
+      // 연다. 급소 줄(`subscript_critical_hit.s`)에는 그 쉼이 없다. A·B로 줄일 수 있는 쉼이라 연출 박자가 아니다
+      if (e.kind === 'effectiveness' && !e.from && (e.level === 'super' || e.level === 'resisted')) {
+        out.push({ text: null, events: [], hold: HOLD_FOLLOWUP })
+      }
+      say(text(e), HOLD_MESSAGE)
+      show([e], 0)
+    }
     held = []
   }
 

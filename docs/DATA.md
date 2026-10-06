@@ -3761,8 +3761,14 @@ NNS_SndArcPlayerStartSeqEx(handle, -1, waveID, -1, SEQ_PV);   // waveID = specie
   게이지 44프레임이라, 게이지에 소리를 걸면 몸이 움찔한 뒤 0.33초 늦게 「퍽」이 났다. 원작 플래티넘은
   소리 · 깜박임 · 게이지가 한 틱이다(`subscript_update_hp.s` — `PlayMoveHitSound` → `FlickerMon` →
   `UpdateHealthBar`). 화면이 BDSP라 BDSP 순서를 따른다.
+  ⚠️ **시퀀스가 도는 기술은 안 깜박인다.** BDSP 시퀀스 467벌(+ 볼 · 공용 40벌)에 깜박임 명령이 하나도 없다 — 맞는 쪽은
+  `HitBack`과 맞는 모션(16)으로만 반응한다(2026-10-07 전수). 원작의 깜박임(`FlickerMon` · 3프레임 × 6번)은 DS 연출로
+  서는 기술에서만 난다(`BattleStage` `FLINCH`).
 - **기술 소리**는 원작 대본(`res/moves/<이름>/anim.s`)의 `PlaySoundEffect*` · `PlayMovingSoundEffect*` ·
   `PlayLoopedSoundEffect*`를 쓴다 — 469개 중 342개에 있다. 시각은 BDSP 시퀀스의 `SoundPostEvent` 프레임이다.
+  `Sound3DPostEvent`는 대개 같은 이름의 평면 소리를 3D로 한 번 더 낸 사본이라 안 세는데, **3D로만 내는 시퀀스가 164벌**이다
+  (전광석화 `ew098` · 잎날가르기 · 할퀴기 · 막치기 …). 같은 이름의 평면 소리가 없는 3D 소리는 소리 칸으로 받는다 —
+  소리 칸이 있는 기술이 257 → 409개가 됐다(2026-10-07 · `planSequence` 전수). 소리 명령이 아예 없는 58벌만 원작 시각이다.
   짝짓기: 수가 같으면 차례대로, 다르면 원작의 첫 소리를 BDSP 첫 소리에 · 끝 소리를 끝 소리에 붙이고 그 사이는
   원작의 간격 비로 편다. BDSP 소리가 하나면 원작 간격을 그대로 두고(원작 60fps → 시퀀스 30fps), 시퀀스가 없는
   기술(DS 연출)은 원작 프레임 그대로 낸다.

@@ -93,12 +93,26 @@ export async function preloadMoveSeqs(moves: Iterable<number>): Promise<void> {
           const plan = planSequence(seq, { attackerMine: mine, options: battleOptions(doubles, indoor) })
           // 프리팹이 하나라도 빠졌으면 이 쪽은 DS로 간다 — 반쪽짜리 BDSP 연출보다 낫다
           if (plan.particles.some((p) => missing.has(p.prefab.toLowerCase()))) continue
+          // 화면에 아무것도 안 세우는 시퀀스도 DS로 간다 — `DummyLabel` 한 줄뿐인 빈 칸이 49벌 있다(속여때리기 `ew185` ·
+          // 진흙폭탄 `ew426` · 유혹 `ew445` …). 계획을 세우면 무대가 DS 몫을 다 끄므로 그 기술은 아무것도 안 보였다
+          if (showsNothing(plan)) continue
           plans.set(`${move}:${mine ? 1 : 0}:${doubles ? 1 : 0}:${indoor ? 1 : 0}`, plan)
           for (const p of plan.particles) void loadFxPrefab(p.prefab).catch(() => { /* 그릴 때 다시 */ })
         }
       }
     }
   }))
+}
+
+/**
+ * 시퀀스가 화면에 세우는 것이 하나도 없는가 — 입자 · 시퀀스 모델 · 몸 · 다른 몸 감추기 · 흔들림 · 배경색이 없고 카메라는
+ * 제자리로 돌리는 것뿐이다. 소리 · 게이지 · 글만 있는 계획이 그렇다
+ */
+export function showsNothing(plan: SeqPlan): boolean {
+  return plan.particles.length === 0 && plan.models.length === 0 && plan.others.length === 0
+    && plan.shakes.length === 0 && plan.back.length === 0
+    && plan.body.every((t) => t.commands.length === 0)
+    && plan.camera.every((c) => c.name.startsWith('CameraReset'))
 }
 
 /** 받아 둔 기술 계획 (동기). 없으면 DS 연출이다 */
