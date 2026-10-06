@@ -101,9 +101,9 @@ const MAIN = [
   // 배틀 무대는 넣지 않는다(사용자 · 2026-10-06) — 조우 소용돌이가 화이트아웃으로 하얘지는 데서 흰 화면을 지나 로고로 간다.
   // 4.33초 뒤는 배틀 무대가 서는 동안이다(검은 화면 · 빈 바닥)
   { cue: 'E4', card: 'white', seconds: 0.5, fade: 0.3 },
+  // 로고에 팬 프로젝트 안내 · 롬 고지가 같이 선다. 다른 작업은 따로
   { cue: 'F1', card: 'wordmark', fade: 0.2 },
-  { cue: 'F2', card: 'rom', fade: 0.2 },
-  { cue: 'F3', card: 'promo' },
+  { cue: 'F2', card: 'promo' },
 ]
 
 /**
@@ -153,8 +153,8 @@ const SHORTS = [
   { cue: 'E3w', take: 'E3-wall', cut: [0.4, 1.2], crop: 0.45, trans: 'cut' },
   { cue: 'E3b', take: 'E3-giratina', cut: [2.1, 2.23], trans: 'cut', snap: false },
   { cue: 'E4', card: 'white', seconds: 0.3, fade: 0.3 },
-  { cue: 'F1', card: 'wordmark', seconds: 2.2, fade: 0.2 },
-  { cue: 'F2', card: 'outro', seconds: 3.2 },
+  { cue: 'F1', card: 'wordmark', seconds: 3.4, fade: 0.2 },
+  { cue: 'F2', card: 'promo', seconds: 2.2 },
 ]
 
 const EDIT = SHORT ? SHORTS : MAIN
@@ -177,9 +177,12 @@ const TAKE_SFX = {
   'C4-night': [[1.47, 'EW033_01', -4], [1.77, 'BA_SYS_HIT_NOMAL', -3]],
   // 웅크리기(기술 111)
   'C5-cave': [[3.77, 'EW111', -4]],
-  'C6-catch': [[0.6, 'BA_SYS_BALL_THROW_NORMAL', -6], [0.9, 'BA_SYS_BALL_HIT', -5], [0.93, 'BA_SYS_ABSORPTION', -4],
-    [1.53, 'BA_SYS_BALL_CLOSE', -4], [2.03, 'BA_SYS_BALL_DROP', -6], [2.3, 'BA_SYS_BALL_DROP', -9], [2.5, 'BA_SYS_BALL_DROP', -12],
-    [3.03, 'BA_SYS_BALL_SPIN', -5], [4.33, 'BA_SYS_BALL_SPIN', -5], [5.6, 'BA_SYS_BALL_SPIN', -5], [7.37, 'BA_SYS_POKE_BALL', -2]],
+  // 포획은 BDSP 시퀀스의 소리 그대로다 — `ee101` 던지기(11) · 빨려 듦 `poke_down`(31) · 볼이 빛남 `ball_light`(54) · 떨어짐(65 · 72 · 79),
+  // 흔들림 `ee102~104`의 `ball_spin`, 잡힘 `ee105`의 `ball_close`(37 — 별이 터지는 자리). 볼이 빛나는 프레임(1.8초)으로 시퀀스 머리를
+  // 맞췄다. 잠기는 소리(`ball_close`)를 빨려 들 때 내고 잡힐 때 다른 소리를 냈더니 거꾸로 들렸다. 던지기는 컷이 열리는 0.6초로 당긴다
+  'C6-catch': [[0.6, 'BA_SYS_BALL_THROW_NORMAL', -6], [1.03, 'BA_SYS_POKE_DOWN', -4], [1.8, 'BA_SYS_BALL_LIGHT', -4],
+    [2.17, 'BA_SYS_BALL_DROP', -6], [2.4, 'BA_SYS_BALL_DROP', -9], [2.63, 'BA_SYS_BALL_DROP', -12],
+    [3.03, 'BA_SYS_BALL_SPIN', -5], [4.33, 'BA_SYS_BALL_SPIN', -5], [5.6, 'BA_SYS_BALL_SPIN', -5], [7.4, 'BA_SYS_BALL_CLOSE', -3]],
   // 화강돌의 울음(1.75초 · 처음부터 고르다)은 돌에서 영이 피어오를 때(13.77초) 운다 — 다 솟은 뒤(14.87초)에 두니 컷이 14.9초에 끝나
   // 울음이 통째로 다음 루카리오 컷에 깔렸다
   'D11-champion': [[9.83, 'UI_COMMON_PM_ENCOUNT_YARI_a', -4], [12.7, 'BA_SYS_BALL_OPEN', -3], [13.77, 'PV_442_00_00', -1]],

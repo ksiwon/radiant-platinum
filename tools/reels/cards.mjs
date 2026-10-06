@@ -26,10 +26,8 @@ export const CARD_SECONDS = {
   sink: 0.7,
   tagline: 6.5,
   white: 0.3,
-  wordmark: 4.0,
-  rom: 7.0,
+  wordmark: 6.0, // 로고 1.6초 → 팬 프로젝트 안내
   promo: 5.0,
-  outro: 5.0,
 }
 
 /**
@@ -119,7 +117,9 @@ if(t<A2){streaks(t,0);let i=starts.findIndex((a,j)=>t>=a&&t<a+SL[j]);if(i<0)i=L.
 // 플래티넘은 처음 지날 때도 한 박자 머문다 — 칸 안에서 사라지는 끝을 늦춘다
 let k=(t-starts[i])/SL[i];if(i===L.length-1)k=Math.min(k,0.6);show(i,k,1,i===P?0.3:0);return}
 if(t<A2+REW){streaks(t,0.2);const x=(t-A2)/REW;const span=L.length-1-P;const f=(L.length-1)-span*easeOut(x*1.08);
-const i=Math.max(P,Math.round(f));if(x>0.85){show(P,0.5+(x-0.85)/0.3,-1,ease((x-0.85)/0.15)*0.5);return}show(i,(f-Math.floor(f)),-1,0);return}
+const i=Math.max(P,Math.round(f));
+// 플래티넘에 닿으면 그 자리에 선 채로 빛만 차오른다 — 칸 안 진행으로 밝기를 매기니 닿고 · 어두워지고 · 다시 밝아져 두 번 번쩍였다
+if(i===P){show(P,0.5,-1,ease((x-0.6)/0.4)*0.5);return}show(i,(f-Math.floor(f)),-1,0);return}
 const x=(t-A2-REW)/FL;streaks(t,0.6+x);show(P,0.5,-1,0.5+x*6);wash.style.opacity=ease(x*1.15).toFixed(3)}</script>`
   }
 
@@ -159,48 +159,37 @@ wash.style.opacity=ease((t-(D-0.25))/0.25).toFixed(3)}</script>`
 
   if (kind === 'wordmark') {
     // 그림이 화면을 꽉 채운 채로 시작해 조금씩 다가간다 — 작게 띄우면 둘레 검은 여백이 보였다.
-    // 세로는 가로 그림을 꽉 채우면 로고가 잘리므로 같은 그림을 흐리게 깔아 채우고 로고 그림은 폭에 맞춘다
+    // 세로는 가로 그림을 꽉 채우면 로고가 잘리므로 같은 그림을 흐리게 깔아 채우고 로고 그림은 폭에 맞춘다.
+    // 로고가 한 번 빛난 뒤 **같은 화면에** 팬 프로젝트 안내 · 주소 · 롬 고지가 들어온다(사용자 · 2026-10-07 — 따로 두니 글 카드만
+    // 이어졌다). 가로는 로고 아래가 좁아 그림을 위로 조금 올리고 아래를 어둡게 깐다. 세로는 로고 띠 아래 빈 자리에 놓는다
     const img = url('public/assets/radiant-platinum-intro.webp')
     const fill = `position:absolute;inset:0;background:url('${img}') center/cover`
+    const band = (W * 941) / 1672
     const front = portrait
       ? `<div id="bg" style="${fill};filter:blur(${24 * u}px) brightness(0.55);transform:scale(1.15)"></div>
-<div id="lg" style="position:absolute;left:0;right:0;top:50%;height:${(W * 941) / 1672}px;margin-top:${-(W * 941) / 1672 / 2}px;background:url('${img}') center/cover;overflow:hidden">`
+<div id="lg" style="position:absolute;left:0;right:0;top:${H * 0.42 - band / 2}px;height:${band}px;background:url('${img}') center/cover;overflow:hidden">`
       : `<div id="lg" style="${fill};overflow:hidden">`
-    return `${head}<div id="all" style="position:absolute;inset:0;overflow:hidden">${front}
-<div id="sw" style="position:absolute;top:-30%;bottom:-30%;width:22%;transform:skewX(-18deg);background:linear-gradient(90deg,rgba(255,255,255,0) 0%,rgba(255,255,255,0.55) 50%,rgba(255,255,255,0) 100%);mix-blend-mode:screen"></div></div></div>
-<script>${common}
-const all=document.getElementById('all'),lg=document.getElementById('lg'),sw=document.getElementById('sw');
-window.draw=(t)=>{all.style.opacity=(ease(t/0.6)*(1-ease((t-3.5)/0.5))).toFixed(3);lg.style.transform='scale('+(1+0.08*t/4).toFixed(4)+')';
-const x=(t-0.9)/1.1;sw.style.left=(-40+170*clamp(x))+'%';sw.style.opacity=(x>0&&x<1)?1:0}</script>`
-  }
-
-  if (kind === 'rom') {
-    return `${head}<div class="c" id="box" style="padding:0 ${portrait ? 70 : 240}px">
-<div style="font-size:${(portrait ? 58 : 60) * u}px;font-weight:700;color:#eef3ff">팬 프로젝트 · 브라우저에서 바로 플레이</div>
-<div style="font-size:${(portrait ? 54 : 50) * u}px;font-weight:600;color:#9cc4ff;margin-top:${34 * u}px;letter-spacing:${2 * u}px">radiant.siwon.it.kr</div>
-<div style="font-size:${(portrait ? 34 : 26) * u}px;font-weight:400;color:#8b93a3;margin-top:${(portrait ? 110 : 90) * u}px;line-height:1.7;max-width:${portrait ? 900 : 1300}px">
-플레이하려면 본인이 가진 포켓몬스터 플래티넘의 원본 롬과<br>브릴리언트 다이아몬드·샤이닝 펄의 원본 게임 데이터가 필요합니다.<br>어느 것도 제공하지 않습니다.</div></div>
-<script>${common}const b=document.getElementById('box');window.draw=(t)=>{b.style.opacity=(ease(t/0.6)*(1-ease((t-6.5)/0.5))).toFixed(3)}</script>`
-  }
-
-  // 쇼츠는 롬 안내와 다른 작업을 한 화면에 — 따로 두니 글 카드 둘이 5초를 먹었다
-  if (kind === 'outro') {
-    const shot = (img, name, link) => `<div style="display:flex;flex-direction:column;align-items:center;margin:0 ${14 * u}px">
-<div style="width:${420 * u}px;height:${420 * u * 9 / 16}px;background:url('${url(img)}') center/cover;border-radius:${12 * u}px;box-shadow:0 0 ${30 * u}px rgba(110,160,255,0.35)"></div>
-<div style="font-size:${34 * u}px;font-weight:700;margin-top:${16 * u}px;color:#eef3ff">${name}</div>
-<div style="font-size:${24 * u}px;color:#9cc4ff;margin-top:${4 * u}px">${link}</div></div>`
-    return `${head}<div class="c" id="box" style="padding:0 ${60 * u}px">
+    const notice = '플레이하려면 본인이 가진 포켓몬스터 플래티넘의 원본 롬과 브릴리언트 다이아몬드·샤이닝 펄의 원본 게임 데이터가 필요합니다. 어느 것도 제공하지 않습니다.'
+    const text = portrait
+      ? `<div id="tx" style="position:absolute;left:${60 * u}px;right:${60 * u}px;top:${H * 0.42 + band / 2 + 70 * u}px;text-align:center;opacity:0">
 <div style="font-size:${54 * u}px;font-weight:700;color:#eef3ff">팬 프로젝트 · 브라우저에서 바로 플레이</div>
-<div style="font-size:${52 * u}px;font-weight:600;color:#9cc4ff;margin-top:${26 * u}px;letter-spacing:${2 * u}px">radiant.siwon.it.kr</div>
-<div style="font-size:${30 * u}px;font-weight:400;color:#8b93a3;margin-top:${44 * u}px;line-height:1.65">
-플레이하려면 본인이 가진 포켓몬스터 플래티넘의 원본 롬과<br>브릴리언트 다이아몬드·샤이닝 펄의 원본 게임 데이터가 필요합니다.<br>어느 것도 제공하지 않습니다.</div>
-<div style="width:${700 * u}px;height:${1 * u}px;background:#2a3245;margin:${90 * u}px 0 ${60 * u}px"></div>
-<div style="font-size:${28 * u}px;color:#8b93a3;letter-spacing:${3 * u}px">만든 사람의 다른 작업 · siwon.it.kr</div>
-<div style="display:flex;flex-direction:row;margin-top:${34 * u}px">
-${shot('.audit/reels/assets/pokerhythm.png', 'PokeRhythm', 'pokerhythm.siwon.it.kr')}
-${shot('.audit/reels/assets/pokemon-aegis.png', 'Pokemon Aegis', 'aegis.siwon.it.kr')}</div></div>
-<script>${common}const b=document.getElementById('box');window.draw=(t)=>{b.style.opacity=(ease(t/0.5)*(1-ease((t-4.4)/0.6))).toFixed(3)}</script>`
+<div style="font-size:${52 * u}px;font-weight:600;color:#9cc4ff;margin-top:${24 * u}px;letter-spacing:${2 * u}px">radiant.siwon.it.kr</div>
+<div style="font-size:${29 * u}px;color:#a3abbb;margin-top:${44 * u}px;line-height:1.65">${notice}</div></div>`
+      : `<div id="sh" style="position:absolute;left:0;right:0;bottom:0;height:34%;background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,0.85) 45%);opacity:0"></div>
+<div id="tx" style="position:absolute;left:0;right:0;bottom:${44 * u}px;text-align:center;opacity:0">
+<div style="font-size:${46 * u}px;font-weight:700;color:#eef3ff">팬 프로젝트 · 브라우저에서 바로 플레이 <span style="color:#9cc4ff;font-weight:600;margin-left:${18 * u}px;letter-spacing:${2 * u}px">radiant.siwon.it.kr</span></div>
+<div style="font-size:${23 * u}px;color:#a3abbb;margin-top:${16 * u}px">${notice}</div></div>`
+    return `${head}<div id="all" style="position:absolute;inset:0;overflow:hidden">${front}
+<div id="sw" style="position:absolute;top:-30%;bottom:-30%;width:22%;transform:skewX(-18deg);background:linear-gradient(90deg,rgba(255,255,255,0) 0%,rgba(255,255,255,0.55) 50%,rgba(255,255,255,0) 100%);mix-blend-mode:screen"></div></div>${text}</div>
+<script>${common}
+const all=document.getElementById('all'),lg=document.getElementById('lg'),sw=document.getElementById('sw'),tx=document.getElementById('tx'),sh=document.getElementById('sh');
+// 0~1.6초 로고 · 빛 · 1.6~2.2초 글이 들어온다 · 5.5초부터 빠진다 (6.0초)
+window.draw=(t)=>{all.style.opacity=(ease(t/0.6)*(1-ease((t-5.5)/0.5))).toFixed(3);const k=ease((t-1.6)/0.6);
+lg.style.transform=${portrait ? "'scale('+(1+0.06*t/6).toFixed(4)+')'" : "'translateY('+(-9*k).toFixed(3)+'%) scale('+(1+0.06*t/6).toFixed(4)+')'"};
+tx.style.opacity=k.toFixed(3);if(sh)sh.style.opacity=k.toFixed(3);
+const x=(t-0.5)/1.0;sw.style.left=(-40+170*clamp(x))+'%';sw.style.opacity=(x>0&&x<1)?1:0}</script>`
   }
+
 
   if (kind === 'promo') {
     const shot = (img, name, what, link) => `<div style="display:flex;flex-direction:column;align-items:center;margin:${portrait ? `${28 * u}px 0` : `0 ${30 * u}px`}">
