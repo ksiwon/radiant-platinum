@@ -112,16 +112,17 @@ const MAIN = [
  */
 const SHORTS = [
   { cue: 'A1', card: 'disclaimer', from: 2.6, fade: 0.3 },
-  { cue: 'A2-A4', card: 'tunnel', seconds: 5.0, caption: '본 게임은 팬 게임이며, 수익을 창출하지 않습니다.' },
-  { cue: 'A5', card: 'sink' },
+  // 터널 · 문구의 길이는 오프닝 곡이 정한다(`SCORE` 9:16) — 피리에서 큰 박까지 15.64초를 끊지 않고 흘린다. 빛점 0.4초를 더해
+  // B1이 16.04초에 선다
+  { cue: 'A2-A4', card: 'tunnel', seconds: 8.143, caption: '본 게임은 팬 게임이며, 수익을 창출하지 않습니다.' },
+  // 흰 화면이 1초 넘게 서지 않게 섬광(`cards.mjs`의 `FL`)과 가라앉기를 줄이고, 줄인 만큼 문구에 준다
+  { cue: 'A5', card: 'sink', seconds: 0.367 },
   // 3.6초면 첫 줄이 또렷해지기 전에 다음 줄이 온다
-  { cue: 'A6', card: 'tagline', seconds: 4.5 },
+  { cue: 'A6', card: 'tagline', seconds: 6.833 },
   { cue: 'A7', card: 'white', fade: 0.5 },
-  { cue: 'B1', take: 'B1-room', cut: [0.3, 3.0], trans: 'cut' },
-  { cue: 'B2', take: 'B2-twinleaf', cut: [0.8, 1.9], trans: 'cut' },
-  // 마을이 두 컷이면 오프닝 곡이 마디보다 1.4초 앞에서 끊긴다 — 가로판 잔디마을 부감의 방송국 자리(가로 38%)를 잘라 한 컷 더 둔다.
-  // 길이는 오프닝 곡의 마디가 정한다(`fit`)
-  { cue: 'B3', take: 'B3-jubilife', cut: [0.5, 1.4], crop: 0.38, fade: 0.23 },
+  { cue: 'B1', take: 'B1-room', cut: [0.3, 1.7], trans: 'cut' },
+  // 오프닝 곡은 큰 박에서 두 마디(6.2초) 뒤에 배틀 곡으로 넘긴다 — 방 · 떡잎마을 두 컷이 그 마디를 채운다(`fit`)
+  { cue: 'B2', take: 'B2-twinleaf', cut: [0.8, 1.5], trans: 'cut' },
   { cue: 'B5-B6', take: 'B5-switch', cut: [0.7, 3.23], trans: 'cut', snap: false },
   // 컷인이 검게 닫힌 데서(3.9초) 끊는다 — 그 뒤는 한 장씩 풀숲 · 하늘색이 비치고(3.93 · 3.97초 — 무대가 서기 전) 꼬링크가
   // 나와 가만히 서 있기만 한다(4.2~8.3초). 울음은 볼이 날아오는 다음 컷 머리에 얹는다
@@ -136,24 +137,24 @@ const SHORTS = [
   { cue: 'C7', take: 'C6-catch', cut: [5.5, 0.5], trans: 'cut' },
   // 길이는 야생 배틀 곡의 프레이즈가 정한다(`fit`)
   { cue: 'C8', take: 'C6-catch', cut: [7.2, 1.0], trans: 'cut' },
-  { cue: 'D5', take: 'D5-first', cut: [0.4, 1.8], trans: 'cut' },
-  { cue: 'D6', take: 'D6-night', cut: [0.3, 1.3], trans: 'cut' },
-  // 길이는 오프닝 곡의 프레이즈가 정한다(`fit`)
-  { cue: 'D8', take: 'D8-city', cut: [0.35, 1.6], trans: 'cut' },
+  // 지역이 바뀌는 1인칭 셋은 오프닝 곡 두 마디(6.2초)에 지나간다 — 한 마디에 몰았더니 너무 빨랐다
+  { cue: 'D5', take: 'D5-first', cut: [0.4, 2.0], trans: 'cut' },
+  { cue: 'D6', take: 'D6-night', cut: [0.3, 1.7], trans: 'cut' },
+  // 길이는 오프닝 곡의 마디가 정한다(`fit`)
+  { cue: 'D8', take: 'D8-city', cut: [0.35, 2.5], trans: 'cut' },
   { cue: 'D11', take: 'D11-champion', cut: [9.67, 1.28], trans: 'cut' },
   // 세로 카메라는 볼이 늦게 열리고 화강돌이 오른쪽 아래 모서리에 선다 — 가로판에서 화강돌 자리(가로 55%)를 잘라 쓴다
   { cue: 'D11b', take: 'D11-champion', cut: [12.45, 2.45], crop: 0.55, trans: 'cut' },
   { cue: 'D12', take: 'D12-lucario', cut: [2.0, 1.6], crop: 0.5, trans: 'cut' },
   // 길이는 챔피언 곡의 프레이즈가 정한다(`fit`)
   { cue: 'D13', take: 'D13-garchomp', cut: [0.85, 3.4], crop: 0.5, trans: 'cut' },
-  { cue: 'E2', take: 'E2-spear', cut: [0.6, 1.6], warp: 'out', fade: 0.4 },
-  { cue: 'E3a', take: 'E3-distortion', cut: [0.3, 3.6], warp: 'in', trans: 'cut' },
-  { cue: 'E3w', take: 'E3-wall', cut: [0.4, 1.5], crop: 0.45, trans: 'cut' },
+  { cue: 'E2', take: 'E2-spear', cut: [0.6, 1.3], warp: 'out', fade: 0.4 },
+  { cue: 'E3a', take: 'E3-distortion', cut: [1.9, 2.0], warp: 'in', trans: 'cut' },
+  { cue: 'E3w', take: 'E3-wall', cut: [0.4, 1.2], crop: 0.45, trans: 'cut' },
   { cue: 'E3b', take: 'E3-giratina', cut: [2.1, 2.23], trans: 'cut', snap: false },
-  { cue: 'E4', card: 'white', seconds: 0.5, fade: 0.3 },
-  { cue: 'F1', card: 'wordmark', seconds: 2.5, fade: 0.2 },
-  { cue: 'F2', card: 'rom', seconds: 4.2, fade: 0.2 },
-  { cue: 'F3', card: 'promo', seconds: 3.5 },
+  { cue: 'E4', card: 'white', seconds: 0.3, fade: 0.3 },
+  { cue: 'F1', card: 'wordmark', seconds: 2.2, fade: 0.2 },
+  { cue: 'F2', card: 'outro', seconds: 3.2 },
 ]
 
 const EDIT = SHORT ? SHORTS : MAIN
@@ -224,9 +225,9 @@ const SCORE = {
     { src: 'B_OTH002', cue: 'F1', at: -0.15, from: 0.45, until: 'end', fadeOut: 1.5 },
   ],
   '9:16': [
-    // 기라티나의 울음으로 연다 — 곡도 기라티나 곡의 머리. 오프닝 곡은 터널부터다(`notBefore`)
-    // 마을이 두 컷뿐이라 4마디까지 못 간다 — 한 마디에 맞춘다
-    { src: 'B_OTH001', cue: 'B1', at: -21.5, notBefore: 'A2-A4', from: 0, until: 'B5-B6', untilAt: 3.03, fit: 1, fadeIn: 0.5, fadeOut: 0.25 },
+    // 오프닝 곡은 빛점이 터널로 터지는 순간 피리(5.857초)로 연다 — 본편이 플래티넘을 얹는 그 소리다. 큰 박(21.5초)까지 끊지
+    // 않는다 — 마디를 건너 이었더니 다들 아는 곡이라 어색했다(사용자 · 2026-10-07). 큰 박에 B1이 선다
+    { src: 'B_OTH001', cue: 'A2-A4', at: -0.057, from: 5.8, until: 'B5-B6', untilAt: 3.03, fit: 1, fadeIn: 0.05, fadeOut: 0.25 },
     { src: 'BA001', cue: 'B5-B6', at: 3.03, from: 0, until: 'D5', fit: 4, tail: 0.7 },
     { src: 'B_OTH001', cue: 'D5', from: 33.94, until: 'D11', untilAt: 0.16, fit: 1, fadeIn: 0.4, fadeOut: 0.25 },
     { src: 'BA008', cue: 'D11', at: 0.16, from: 0, until: 'E2', fit: 4, tail: 0.8 },

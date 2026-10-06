@@ -29,6 +29,7 @@ export const CARD_SECONDS = {
   wordmark: 4.0,
   rom: 7.0,
   promo: 5.0,
+  outro: 5.0,
 }
 
 /**
@@ -70,12 +71,14 @@ gr.addColorStop(0,'rgba(220,235,255,'+k+')');gr.addColorStop(1,'rgba(120,170,255
   if (kind === 'tunnel') {
     // 칸 길이 — 앞 넷 0.8 · 가운데 0.45 · 뒤 여섯 0.3 · 플래티넘 0.9, 합을 A2 길이로 맞춘다
     const raw = LINEUP.map((_, i) => (i === PLATINUM ? 0.9 : i < 4 ? 0.8 : i >= LINEUP.length - 6 ? 0.3 : 0.45))
-    const A2 = short ? 3.0 : 11.0
+    // 쇼츠는 끝 섬광을 0.3초로 줄인다 — 0.8초면 흰 화면이 1초 넘게 섰다
+    const A2 = short ? 6.843 : 11.0
     const sum = raw.reduce((a, b) => a + b, 0)
     let slots = raw.map((d) => (d * A2) / sum)
     // 본편은 플래티넘이 오프닝 곡의 피리(B_OTH001 5.857초 · 영상 8.67초)와 같이 뜬다 — 터널은 영상 3.0초에 서므로 칸 머리를
     // 터널 5.64초에 두고, 앞 칸들은 늘이고 뒤 칸들은 줄여 A2를 지킨다
-    const P_AT = short ? null : 5.64
+    // 쇼츠는 곡이 터널 머리에서 피리로 열린다 — 플래티넘은 피리 다음 마디의 첫 박(9.066초 · 터널 3.209초)에 둔다
+    const P_AT = short ? 3.209 : 5.64
     if (P_AT !== null) {
       const before = slots.slice(0, PLATINUM).reduce((a, b) => a + b, 0)
       const after = A2 - before
@@ -86,7 +89,7 @@ gr.addColorStop(0,'rgba(220,235,255,'+k+')');gr.addColorStop(1,'rgba(120,170,255
 <div id="yy" class="silver" style="font-weight:600;margin-top:${18 * u}px;letter-spacing:${8 * u}px"></div></div>
 <div id="wash" style="position:absolute;inset:0;background:#fff;opacity:0"></div>
 <script>${common}
-const L=${JSON.stringify(LINEUP)},P=${PLATINUM},SL=${JSON.stringify(slots)},A2=${A2},REW=${short ? 1.2 : 2.0},FL=0.8;
+const L=${JSON.stringify(LINEUP)},P=${PLATINUM},SL=${JSON.stringify(slots)},A2=${A2},REW=${short ? 1.0 : 2.0},FL=${short ? 0.3 : 0.8};
 const starts=[];{let a=0;for(const d of SL){starts.push(a);a+=d}}
 const g=document.getElementById('cv').getContext('2d'),tt=document.getElementById('tt'),yy=document.getElementById('yy'),box=document.getElementById('box'),wash=document.getElementById('wash');
 // 빛줄기 — 각도 · 깊이를 씨앗으로 정해 두고, 나아간 거리 s만큼 깊이를 줄인다
@@ -178,6 +181,25 @@ const x=(t-0.9)/1.1;sw.style.left=(-40+170*clamp(x))+'%';sw.style.opacity=(x>0&&
 <div style="font-size:${(portrait ? 34 : 26) * u}px;font-weight:400;color:#8b93a3;margin-top:${(portrait ? 110 : 90) * u}px;line-height:1.7;max-width:${portrait ? 900 : 1300}px">
 플레이하려면 본인이 가진 포켓몬스터 플래티넘의 원본 롬과<br>브릴리언트 다이아몬드·샤이닝 펄의 원본 게임 데이터가 필요합니다.<br>어느 것도 제공하지 않습니다.</div></div>
 <script>${common}const b=document.getElementById('box');window.draw=(t)=>{b.style.opacity=(ease(t/0.6)*(1-ease((t-6.5)/0.5))).toFixed(3)}</script>`
+  }
+
+  // 쇼츠는 롬 안내와 다른 작업을 한 화면에 — 따로 두니 글 카드 둘이 5초를 먹었다
+  if (kind === 'outro') {
+    const shot = (img, name, link) => `<div style="display:flex;flex-direction:column;align-items:center;margin:0 ${14 * u}px">
+<div style="width:${420 * u}px;height:${420 * u * 9 / 16}px;background:url('${url(img)}') center/cover;border-radius:${12 * u}px;box-shadow:0 0 ${30 * u}px rgba(110,160,255,0.35)"></div>
+<div style="font-size:${34 * u}px;font-weight:700;margin-top:${16 * u}px;color:#eef3ff">${name}</div>
+<div style="font-size:${24 * u}px;color:#9cc4ff;margin-top:${4 * u}px">${link}</div></div>`
+    return `${head}<div class="c" id="box" style="padding:0 ${60 * u}px">
+<div style="font-size:${54 * u}px;font-weight:700;color:#eef3ff">팬 프로젝트 · 브라우저에서 바로 플레이</div>
+<div style="font-size:${52 * u}px;font-weight:600;color:#9cc4ff;margin-top:${26 * u}px;letter-spacing:${2 * u}px">radiant.siwon.it.kr</div>
+<div style="font-size:${30 * u}px;font-weight:400;color:#8b93a3;margin-top:${44 * u}px;line-height:1.65">
+플레이하려면 본인이 가진 포켓몬스터 플래티넘의 원본 롬과<br>브릴리언트 다이아몬드·샤이닝 펄의 원본 게임 데이터가 필요합니다.<br>어느 것도 제공하지 않습니다.</div>
+<div style="width:${700 * u}px;height:${1 * u}px;background:#2a3245;margin:${90 * u}px 0 ${60 * u}px"></div>
+<div style="font-size:${28 * u}px;color:#8b93a3;letter-spacing:${3 * u}px">만든 사람의 다른 작업 · siwon.it.kr</div>
+<div style="display:flex;flex-direction:row;margin-top:${34 * u}px">
+${shot('.audit/reels/assets/pokerhythm.png', 'PokeRhythm', 'pokerhythm.siwon.it.kr')}
+${shot('.audit/reels/assets/pokemon-aegis.png', 'Pokemon Aegis', 'aegis.siwon.it.kr')}</div></div>
+<script>${common}const b=document.getElementById('box');window.draw=(t)=>{b.style.opacity=(ease(t/0.5)*(1-ease((t-4.4)/0.6))).toFixed(3)}</script>`
   }
 
   if (kind === 'promo') {
