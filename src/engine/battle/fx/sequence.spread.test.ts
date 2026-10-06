@@ -98,3 +98,26 @@ maybeAll('쓴 쪽 감추기(`PokemonVisible trg=0`) — 흡수 `ew071`은 몸을
   expect(absorb.camera.some((c) => c.name !== 'CameraReset' && c.name !== 'CameraResetFieldAll')).toBe(false)
   })
 })
+
+withData('fx/seq/ew416.json')('무대 갈래(`GroupOption 28`) — 기가임팩트 `ew416`', () => {
+  const giga = JSON.parse(readFileSync(resolve(DATA, 'fx/seq/ew416.json'), 'utf8')) as SeqData
+  const plan = (indoor: boolean) => planSequence(giga, { attackerMine: false, options: battleOptions(false, indoor) })
+  const relCam = (indoor: boolean) => plan(indoor).camera.filter((c) => c.name === 'CameraMoveRelativePoke')
+
+  it('야외 · 실내 어느 쪽이든 카메라 묶음이 선다 — 갈래를 안 주던 때는 101프레임 앞의 카메라가 하나도 없었다', () => {
+    expect(relCam(false).some((c) => c.start < 101)).toBe(true)
+    expect(relCam(true).some((c) => c.start < 101)).toBe(true)
+  })
+
+  it('실내는 덜 물러난다 — 79프레임 카메라가 1200 → 850', () => {
+    const z = (indoor: boolean) => relCam(indoor).filter((c) => c.start === 79).map((c) => Number(c.values.pos?.[2]))
+    expect(z(false)).toContain(1200)
+    expect(z(true)).toContain(850)
+  })
+
+  it('돌진한 몸을 상대 기준으로 다시 세우고(79~104) 115프레임에 제자리로 돌린다', () => {
+    const cmds = plan(false).body[0].commands
+    expect(cmds.some((c) => c.name === 'PokemonMoveRelativePoke' && c.start === 79)).toBe(true)
+    expect(cmds.some((c) => c.name === 'PokemonMoveReset' && c.start === 115)).toBe(true)
+  })
+})

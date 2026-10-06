@@ -71,6 +71,14 @@ export function hasSky(arena: Arena): boolean {
   return arena.sky !== NO_SKY
 }
 
+/**
+ * 이 무대가 실내인가 — BDSP 기술 시퀀스의 무대 갈래(`GroupOption 28` · 실내 221)를 고른다. 하늘이 없는 무대(방 · 굴 · 리그)가 실내다.
+ * 깨어진 세계는 하늘 대신 소용돌이를 세운 넓은 무대라 야외로 둔다(BDSP엔 없는 자리)
+ */
+export function isIndoor(arena: Arena): boolean {
+  return !hasSky(arena) && !arena.distortion
+}
+
 
 /** 카메라가 벽에서 떨어져 있을 여유 (m) */
 const CLEARANCE = 1

@@ -28,7 +28,7 @@ import { preloadSplPack, SPL_WAZA } from './splPack'
 import { worldState } from '../../state/worldState'
 import { timeBlend } from '../../engine/map/timeOfDay'
 import { mapById, world } from '../../engine/map/world'
-import { arenaFor, cameraFit, hasSky } from '../../engine/battle/arena'
+import { arenaFor, cameraFit, hasSky, isIndoor } from '../../engine/battle/arena'
 import { BODY_FADE_SECONDS, ClockReader, FRAME_SECONDS, battleClock } from '../../engine/battle/presentationClock'
 import { EncounterBurst } from './EncounterBurst'
 import { DistortionArena } from './DistortionArena'
@@ -51,7 +51,7 @@ import { spriteKey } from '../../engine/pokemon/form'
 import { MoveVfx } from './MoveVfx'
 import { warmFxEffects } from './fx/BdspEffect'
 import { cloneBall, loadBallModel } from './fx/ballModel'
-import { ballPrefabs } from './fx/moveSeq'
+import { ballPrefabs, setSeqIndoor } from './fx/moveSeq'
 import type { SeqCamera } from '../../engine/battle/fx/sequence'
 import { clampShot, type Box, type ClampMemo } from '../../engine/battle/fx/cameraClamp'
 import { bigSwing, NO_RETURN, smoothClamp, stepCamera, swingAround, type CameraReturn, type ClampFix } from './battleCamera'
@@ -789,6 +789,8 @@ export function BattleStage() {
     const here = world.grid?.behaviorAtWorld(p.x, p.z) ?? null
     return arenaFor(mapById(world.mapId), worldState.player.surfing, here)
   }, [])
+  // 기술 시퀀스의 야외 · 실내 갈래는 이 무대가 정한다(`GroupOption 28`)
+  useEffect(() => { setSeqIndoor(isIndoor(arena)) }, [arena])
   const arenaUp = useCallback((up: boolean) => { arenaHere = up }, [])
   const [colors, setColors] = useState<((id: number) => string) | null>(null)
   const scene = useOptionsStore((s) => s.battleScene)

@@ -308,7 +308,18 @@ export function prefabOfFile(file: string): string | null {
  * `ParticleMoveRelativePoke`가 `[0,1]` 묶음에만 있는 기술(파도타기 `ew057` 등 30개)이 있다
  */
 const BATTLE_OPTION = 0
-export const battleOptions = (doubles: boolean): PlanOptions['options'] => ({ [BATTLE_OPTION]: doubles ? [2, 4] : 1 })
+/**
+ * 무대 갈래 — `GroupOption 28`이 야외 220 · 실내 221이다. 실내 배경 묶음(`屋内_背景` 여섯 · `背景表示(室内)`)이 모두 221에만 있고,
+ * 같은 카메라도 221 쪽이 덜 물러난다(기가임팩트 `ew416` 79프레임 1200 → 850 — 벽을 안 뚫는다). 갈래를 안 주면 이 묶음들이
+ * 통째로 빠진다 — 기가임팩트는 카메라와 돌진 뒤 몸 자리를 잃어 쓴 몸이 16m 밖에 남았다(2026-10-06 실측 · 열한 시퀀스)
+ */
+const FIELD_OPTION = 28
+const OUTDOOR = 220
+const INDOOR = 221
+export const battleOptions = (doubles: boolean, indoor = false): PlanOptions['options'] => ({
+  [BATTLE_OPTION]: doubles ? [2, 4] : 1,
+  [FIELD_OPTION]: indoor ? INDOOR : OUTDOOR,
+})
 
 /** 이 입자가 맞는 쪽(역할 1)에 붙는 명령을 가졌는가 — 범위 기술에서 맞은 자리마다 한 벌 더 세운다 */
 export function touchesTarget(p: { commands: readonly SeqCommand[] }): boolean {

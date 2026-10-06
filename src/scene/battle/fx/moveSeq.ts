@@ -26,8 +26,14 @@ interface FxIndex {
 
 let index: Promise<FxIndex | null> | null = null
 const seqs = new Map<string, Promise<SeqData | null>>()
-/** 받아 펴 둔 기술 계획. 열쇠는 `기술:내쪽여부:더블여부` */
+/** 받아 펴 둔 기술 계획. 열쇠는 `기술:내쪽여부:더블여부:실내여부` */
 const plans = new Map<string, SeqPlan>()
+
+/** 이 판의 무대가 실내인가 — 무대가 설 때 정한다(`setSeqIndoor`). 시퀀스의 무대 갈래(`GroupOption 28`)를 고른다 */
+let indoorField = false
+export function setSeqIndoor(indoor: boolean): void {
+  indoorField = indoor
+}
 
 onProviderSwap(() => {
   index = null
@@ -80,14 +86,16 @@ export async function preloadMoveSeqs(moves: Iterable<number>): Promise<void> {
     if (!seq) return
     // ⚠️ **쪽마다 따로 정한다.** 짝 · 홀 묶음(`GroupOption`)이 쪽마다 다른 프리팹을 골라서, 한쪽만
     // 빠질 수 있다. 빠진 쪽만 DS로 가고 그 쪽의 길이도 DS가 낸다 (`moveFramesOf`가 같은 표를 본다)
-    // 싱글 · 더블 갈래(`GroupOption 0`)도 따로 편다 — 더블에서만 서는 묶음이 있다 (`battleOptions`)
+    // 싱글 · 더블 갈래(`GroupOption 0`)와 야외 · 실내 갈래(`GroupOption 28`)도 따로 편다 — 그 판에서만 서는 묶음이 있다 (`battleOptions`)
     for (const mine of [true, false]) {
       for (const doubles of [false, true]) {
-        const plan = planSequence(seq, { attackerMine: mine, options: battleOptions(doubles) })
-        // 프리팹이 하나라도 빠졌으면 이 쪽은 DS로 간다 — 반쪽짜리 BDSP 연출보다 낫다
-        if (plan.particles.some((p) => missing.has(p.prefab.toLowerCase()))) continue
-        plans.set(`${move}:${mine ? 1 : 0}:${doubles ? 1 : 0}`, plan)
-        for (const p of plan.particles) void loadFxPrefab(p.prefab).catch(() => { /* 그릴 때 다시 */ })
+        for (const indoor of [false, true]) {
+          const plan = planSequence(seq, { attackerMine: mine, options: battleOptions(doubles, indoor) })
+          // 프리팹이 하나라도 빠졌으면 이 쪽은 DS로 간다 — 반쪽짜리 BDSP 연출보다 낫다
+          if (plan.particles.some((p) => missing.has(p.prefab.toLowerCase()))) continue
+          plans.set(`${move}:${mine ? 1 : 0}:${doubles ? 1 : 0}:${indoor ? 1 : 0}`, plan)
+          for (const p of plan.particles) void loadFxPrefab(p.prefab).catch(() => { /* 그릴 때 다시 */ })
+        }
       }
     }
   }))
@@ -96,7 +104,7 @@ export async function preloadMoveSeqs(moves: Iterable<number>): Promise<void> {
 /** 받아 둔 기술 계획 (동기). 없으면 DS 연출이다 */
 export function moveSeqPlan(move: number | null, attackerMine: boolean, doubles = false): SeqPlan | null {
   if (move === null) return null
-  return plans.get(`${move}:${attackerMine ? 1 : 0}:${doubles ? 1 : 0}`) ?? null
+  return plans.get(`${move}:${attackerMine ? 1 : 0}:${doubles ? 1 : 0}:${indoorField ? 1 : 0}`) ?? null
 }
 
 /** 볼 번호의 프리팹 둘. 표에 없으면 몬스터볼(4) */
