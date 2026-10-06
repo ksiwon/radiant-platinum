@@ -156,7 +156,10 @@ const SHORTS = [
 const EDIT = SHORT ? SHORTS : MAIN
 
 /**
- * 장면마다 잰 소리 자리 — [장면 안 초, 효과음, `rel`(`sfxChains`)]. 시각은 찍은 프레임에서 잰 것이다(`.audit/reels/sfx-cues.json`).
+ * 장면마다 잰 소리 자리 — [장면 안 초, 효과음, `rel`(`sfxChains`), 소리 안 시작(초 · 없으면 0), 길이(초 · 끝 0.4초에 걸쳐 뺀다)]. 시각은 찍은 프레임에서 잰 것이다
+ * (`.audit/reels/sfx-cues-2.json`). ⚠️ **기술 소리는 머리가 아니라 가장 센 자리를 화면의 타격에 맞춘다** — 파동탄 · 드래곤다이브는
+ * 1.3~2.7초에 걸쳐 차오른 뒤 터진다(봉우리: EW396_EM 2.26초 · EW407_2D 2.68초). 머리를 기 모으기에 두니 터지는 소리가 맞은 뒤의
+ * 다음 컷에서 났다. 컷 안에서 앞을 다 못 깔면 넷째 값만큼 소리 안에서 앞을 잘라 연다
  * `<장면>@9:16`이 있으면 세로판은 그것을 쓴다. BDSP 공개 영상은 울음을 곡 아래 낮게 깐다 — 소리는 곡을 넘지 않는다
  */
 const TAKE_SFX = {
@@ -173,10 +176,14 @@ const TAKE_SFX = {
   'C6-catch': [[0.6, 'BA_SYS_BALL_THROW_NORMAL', -6], [0.9, 'BA_SYS_BALL_HIT', -5], [0.93, 'BA_SYS_ABSORPTION', -4],
     [1.53, 'BA_SYS_BALL_CLOSE', -4], [2.03, 'BA_SYS_BALL_DROP', -6], [2.3, 'BA_SYS_BALL_DROP', -9], [2.5, 'BA_SYS_BALL_DROP', -12],
     [3.03, 'BA_SYS_BALL_SPIN', -5], [4.33, 'BA_SYS_BALL_SPIN', -5], [5.6, 'BA_SYS_BALL_SPIN', -5], [7.37, 'BA_SYS_POKE_BALL', -2]],
-  'D11-champion': [[9.83, 'UI_COMMON_PM_ENCOUNT_YARI_a', -4], [12.7, 'BA_SYS_BALL_OPEN', -3], [14.87, 'PV_442_00_00', -1]],
-  // 난천의 루카리오 — 파동탄(기술 396). 모으는 소리는 컷 머리에 선다
-  'D12-lucario': [[2.0, 'EW396_EM', -3], [3.3, 'BA_SYS_HIT_H', -2]],
-  'D13-garchomp': [[1.13, 'EW407_2D', -3], [1.73, 'BA_SYS_HIT_H', -2], [4.17, 'EW089_01', -1]],
+  // 화강돌의 울음(1.75초 · 처음부터 고르다)은 돌에서 영이 피어오를 때(13.77초) 운다 — 다 솟은 뒤(14.87초)에 두니 컷이 14.9초에 끝나
+  // 울음이 통째로 다음 루카리오 컷에 깔렸다
+  'D11-champion': [[9.83, 'UI_COMMON_PM_ENCOUNT_YARI_a', -4], [12.7, 'BA_SYS_BALL_OPEN', -3], [13.77, 'PV_442_00_00', -1]],
+  // 난천의 루카리오 — 파동탄(기술 396). 봉우리(소리 안 2.26초)가 맞는 자리(3.3초)에 온다
+  'D12-lucario': [[2.0, 'EW396_EM', -3, 0.96], [3.3, 'BA_SYS_HIT_H', -2]],
+  // 드래곤다이브(기술 407) — 봉우리(소리 안 2.68초)가 부딪는 자리(1.73초)에 온다. 땅 터짐은 지진(기술 89) — 3.6초 내내 고른 땅울림이라
+  // 다 울리면 다음 창기둥 장면까지 2.7초를 덮는다. 컷이 넘어간 뒤 0.4초에 걸쳐 뺀다
+  'D13-garchomp': [[1.05, 'EW407_2D', -3, 1.98], [1.73, 'BA_SYS_HIT_H', -2], [4.17, 'EW089_01', -1, 0, 1.6]],
   // 오리진폼의 울음 — 이 영상의 주인공이라 다른 소리보다 앞에 둔다
   'E3-giratina': [[3.0, 'PV_487_01_00', 3], [3.3, 'UI_COMMON_PM_BATTLEIN_FX', -4]],
 }
@@ -342,7 +349,7 @@ function takeSeconds(e) {
  */
 function sfxOf(e) {
   const len = cueLength(e)
-  const own = (TAKE_SFX[`${e.take}@${ASPECT}`] ?? TAKE_SFX[e.take] ?? []).map(([t, name, rel]) => ({ at: t - e.cut[0], name, rel })).filter((h) => h.at >= 0 && h.at < len)
+  const own = (TAKE_SFX[`${e.take}@${ASPECT}`] ?? TAKE_SFX[e.take] ?? []).map(([t, name, rel, from = 0, len]) => ({ at: t - e.cut[0], name, rel, from, len })).filter((h) => h.at >= 0 && h.at < len)
   return [...own, ...(e.sfx ?? []).map(([t, name, rel]) => ({ at: e.take ? t - e.cut[0] : t, name, rel }))]
 }
 
@@ -475,7 +482,7 @@ function sfxChains(hits, first) {
   const music = srcs.reduce((a, s) => a + level(resolve(MUSIC, `${s}.wav`), false), 0) / srcs.length
   hits = hits.map((h) => ({ ...h, gain: music + h.rel - level(resolve(SFX, `${h.name}.wav`), true) }))
   const inputs = hits.flatMap((h) => ['-i', resolve(SFX, `${h.name}.wav`)])
-  const chains = hits.map((h, i) => `[${String(first + i)}:a]aformat=sample_rates=48000:channel_layouts=stereo,volume=${String(h.gain ?? 0)}dB,adelay=${String(Math.round(h.t * 1000))}:all=1[s${String(i)}]`)
+  const chains = hits.map((h, i) => `[${String(first + i)}:a]aformat=sample_rates=48000:channel_layouts=stereo,${h.from ? `atrim=start=${String(h.from)},asetpts=PTS-STARTPTS,afade=t=in:d=0.03,` : ''}${h.len ? `atrim=end=${String(h.len)},afade=t=out:st=${String(h.len - 0.4)}:d=0.4,` : ''}volume=${String(h.gain ?? 0)}dB,adelay=${String(Math.round(h.t * 1000))}:all=1[s${String(i)}]`)
   return { inputs, chains }
 }
 
