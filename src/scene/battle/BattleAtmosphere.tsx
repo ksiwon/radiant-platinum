@@ -87,6 +87,9 @@ function Weather({ weather }: { weather: string | null }) {
     void fxIndex().then((idx) => {
       if (!alive) return
       const missing = new Set((idx?.missingPrefabs ?? []).map((p) => p.toLowerCase()))
+      // ⚠️ 우박(`et002_hail01`)은 입자가 살아 있는데 배틀 카메라 안에 아무것도 안 보인다(2026-10-07 `/fxlab` · 배틀 실측) —
+      // 원인을 찾을 때까지 지은 우박으로 선다 (`docs/orders/FOLLOWUP_20261007.md`)
+      missing.add('et002_hail01')
       const table = Object.entries(idx?.weather ?? {}).filter(([, prefab]) => !missing.has(prefab.toLowerCase()))
       setTable(Object.fromEntries(table))
     })
