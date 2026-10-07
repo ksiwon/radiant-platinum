@@ -47,11 +47,12 @@ const PRESSES: readonly Press[] = [
  * 원작도 A·B로 글을 빨리 넘긴다(`battle_main.c`의 `CanABSpeedUpPrint`). 그 칸은 `data-pilot-pass`를 단다.
  *
  * 창의 **캡처 단계**에서 끊는다 — React는 뿌리에서 듣고, `onPointerEnter`도 뿌리의 `pointerover`로 흉내 내므로 둘 다 여기서 멎는다.
- * 포커스된 단추 위의 Space · Enter가 만드는 `click`도 사람 것(`isTrusted`)이라 같이 걸린다
+ * 포커스된 단추 위의 Space · Enter가 만드는 `click`도 사람 것(`isTrusted`)이라 같이 걸린다. 터치는 포인터 · `click`으로 걸린다 —
+ * 창의 `touchstart`는 크롬이 수동(passive)으로 다뤄 `preventDefault`가 경고만 남긴다
  */
 const HUMAN_POINTER = [
   'pointerdown', 'pointerup', 'pointerover', 'pointerout', 'mousedown', 'mouseup', 'mouseover', 'mouseout',
-  'click', 'dblclick', 'auxclick', 'contextmenu', 'touchstart', 'touchend',
+  'click', 'dblclick', 'auxclick', 'contextmenu',
 ] as const
 
 function blockHumanPointer(): () => void {
