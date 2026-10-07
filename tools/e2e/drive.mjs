@@ -235,30 +235,25 @@ export async function driveStory(page, {
       }
     }
   }
-  /** 마지막으로 장애물을 물어본 맵 — 다른 맵에 다녀오면 다시 묻는다 */
-  let obstaclesAskedOn = null
   /**
-   * 이 맵의 장애물이 **지금** 서 있는지 묻는다. 물을 수 있는 건 선 맵뿐이다.
+   * 이 맵의 장애물 중 **이미 치운 것**을 지운다. 물을 수 있는 건 선 맵뿐이다.
    *
-   * ⚠️ **맵에 들 때마다 다시 묻는다.** 벤 나무 · 깬 바위는 맵을 다시 들어오면
-   * 되살아난다(`actor/obstacles.ts` — 숨김 깃발이 없는 물체). 예전에는 맵당 한 번만
-   * 물어서, 갤럭시 빌딩 앞 나무(305,521)를 벤 뒤 센터에 다녀오자 되살아난 나무를
-   * 「없다」로 믿고 그 칸으로 길을 냈다 — 빌딩(72)을 앞에 두고 9분을 문마다
-   * 드나들었다 (`journey-2bf760a-full`)
+   * ⚠️ **맵당 한 번만 묻고, 되살아난 것은 다시 막지 않는다.** 벤 나무 · 깬 바위는 맵을
+   * 다시 들어오면 되살아나는데(`actor/obstacles.ts`), 들 때마다 다시 물어 막아 두면 길
+   * 찾기가 그 칸 너머를 「길이 없다」로 끊는다 — 험한 샛길(254)의 바위 (23,44)를 깬 뒤
+   * 346을 들렀다 오자 (24,44)에서 북쪽 길이 끊겼다 (`journey-b7e4511-full`). 「치웠다」로
+   * 믿고 걸으면 부딪힌 자리에서 결정으로 다시 깨고 지나간다 — 앞 판들이 그렇게 지났다.
+   * 갤럭시 빌딩 앞 나무처럼 **문이 그 뒤에 붙은** 자리만 부르는 쪽이 다시 벤다(`badges.mjs`)
    */
   const askObstacles = async (mapId) => {
     seedObstacles(matrixOf(mapId))
-    if (obstaclesAskedOn === mapId) return
-    obstaclesAskedOn = mapId
+    if (obstaclesAsked.has(mapId)) return
     obstaclesAsked.add(mapId)
-    const key = (npc) => `${String(matrixOf(mapId))}:${String(npc.x)},${String(npc.z)}`
     for (const npc of npcsOf(mapId)) {
       if (!OBSTACLE_SPRITES.has(npc.sprite)) continue
       const r = await obs.obstacleAt(npc.x, npc.z)
-      // 못 읽으면 **아는 대로 둔다** — 모르는 채로 뚫고 가는 길을 내느니 돌아간다
-      if (!r.known) continue
-      if (r.value === null) obstacleGone(mapId, npc.x, npc.z)
-      else standingObstacles.add(key(npc))
+      // 못 읽으면 **표를 믿는다** — 모르는 채로 뚫고 가는 길을 내느니 돌아간다
+      if (r.known && r.value === null) obstacleGone(mapId, npc.x, npc.z)
     }
   }
   /** 그 칸의 장애물을 치웠다 — 다음 계획부터 지나갈 수 있다 */
