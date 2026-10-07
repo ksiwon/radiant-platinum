@@ -83,7 +83,13 @@ function Weather({ weather }: { weather: string | null }) {
   const [table, setTable] = useState<Record<string, string> | null>(null)
   useEffect(() => {
     let alive = true
-    void fxIndex().then((idx) => { if (alive) setTable(idx?.weather ?? null) })
+    // 굽다 빠진 프리팹(`missingPrefabs`)은 표에서 지운다 — 그 날씨는 지은 것으로 선다. 이름만 남기면 아무것도 안 떴다
+    void fxIndex().then((idx) => {
+      if (!alive) return
+      const missing = new Set((idx?.missingPrefabs ?? []).map((p) => p.toLowerCase()))
+      const table = Object.entries(idx?.weather ?? {}).filter(([, prefab]) => !missing.has(prefab.toLowerCase()))
+      setTable(Object.fromEntries(table))
+    })
     return () => { alive = false }
   }, [])
   const slot = BDSP_WEATHER[kind]
@@ -211,12 +217,15 @@ function StatusAura({ mon, slot, position }: { mon: ViewMon; slot: SlotId; posit
   )
 }
 
-/** BDSP 묶음이 별(`ee003`)을 들고 있는가. 표를 받기 전에는 `null` — 그동안은 아무것도 안 띄운다 */
+/**
+ * BDSP 별(`ee003`)이 실제로 돌 수 있는가. 표를 받기 전에는 `null` — 그동안은 아무것도 안 띄운다.
+ * 목록에 이름만 있는지가 아니라 **계획이 서는지**를 본다 — 시퀀스를 못 읽거나 입자가 0이면 옛 반짝이로 선다
+ */
 function useBdspShiny(): boolean | null {
   const [has, setHas] = useState<boolean | null>(null)
   useEffect(() => {
     let alive = true
-    void fxIndex().then((idx) => { if (alive) setHas(idx?.sequences?.includes('ee003') === true) })
+    shinySeqPlan(true).then((p) => { if (alive) setHas(p !== null) }, () => { if (alive) setHas(false) })
     return () => { alive = false }
   }, [])
   return has

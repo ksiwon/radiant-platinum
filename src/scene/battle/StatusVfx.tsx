@@ -401,6 +401,9 @@ export function StatusVfx({ spotAt }: { spotAt: (slot: SlotId) => [number, numbe
         const sound = (sounds[sounds.length - 1] ?? 0) + 1
         return Math.max(sound, ...plans.map((p) => 2 * planFrames(p)))
       })
+    }, (err: unknown) => {
+      // 못 읽으면 DS 연출 · 길이 그대로다 — 갈 데 없는 거부로 콘솔을 어지럽히지 않는다
+      console.warn('[StatusVfx] BDSP 상태 시퀀스를 못 읽었다 — DS로 선다', err)
     })
     return () => {
       alive = false
