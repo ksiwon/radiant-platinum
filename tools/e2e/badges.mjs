@@ -575,6 +575,20 @@ export async function rideToHearthome(api, ctx,
   }
 
   if (want.includes(MAP.route207)) {
+    /**
+     * ⚠️ **게이트에서 이어 갈 때 안 타고 있으면 밖에 나가 다시 탄다.** 게이트에 닿은 뒤
+     * `journey`의 자리 앞 회복이 센터(69)에 다녀오면 실내에서 내린 채 걸어 돌아온다 —
+     * 그 판은 게이트 띠 (5~8,8)에서 120바퀴를 되밀렸다 (`journey-3cdded9-full`)
+     */
+    if (here === MAP.gate206North || !want.includes(MAP.gate206North)) {
+      const onBike = await api.riding()
+      if (onBike !== true) {
+        const outside = await api.goTo(MAP.eterna, Math.min(300_000, api.left()))
+        const again = outside === 'arrived' ? await api.rideBike(Math.min(120_000, api.left())) : { ok: false, why: outside }
+        const gate2 = again.ok === true ? await api.goTo(MAP.gate206North, Math.min(600_000, api.left())) : 'skipped'
+        note('게이트 앞 — 자전거 다시 타기', `${again.ok === true ? '탔다' : String(again.why)} · 게이트 ${String(gate2)}`)
+      }
+    }
     const r207 = await api.goTo(MAP.route207, Math.min(1_200_000, api.left()))
     out.route207 = { went: r207, riding: await api.riding() }
     note('207번도로(353)', `${r207} · 타고 있나 ${String(out.route207.riding)}`)
