@@ -2701,7 +2701,11 @@ on('Warp', (ctx) => {
   // 칸 가운데에 세운다(격자 좌표는 칸의 왼쪽 위 모서리다). 롬 칸이라 깨어진 세계면
   // 씬이 층 오프셋을 뺀다(`romWorld` · REPAIR §83)
   mapWorld.pending = { to, matrix: dest.matrix, x: x + 0.5, z: z + 0.5, viaDoor: false, facing, romWorld: true }
-  return false
+  // ⚠️ **새 맵이 설 때까지 선다.** 원작 `ScrCmd_Warp`(`scrcmd.c`)는 맵 교체를 필드 태스크로 걸고 `TRUE`를
+  // 돌려준다 — 뒤의 `FadeScreenIn`은 새 맵에서 돈다. 안 서면 스크립트가 떠나는 맵에서 끝나고, 그 틈에
+  // 떠나는 맵의 `OnFrame`이 걸린다(`field.ts`의 `tryStartScripts` — 모래시티 연구소 (26,7))
+  ctx.pause(() => mapWorld.pending === null)
+  return true
 })
 
 /**
@@ -2732,6 +2736,8 @@ on('PlayBoatCutscene', (ctx) => {
   const boat = ctx.host.world.services.boat
   if (!boat) {
     mapWorld.pending = { to, matrix: dest.matrix, x: x + 0.5, z: z + 0.5, viaDoor: false, facing }
+    // `Warp`와 같다 — 새 맵이 설 때까지 선다
+    ctx.pause(() => mapWorld.pending === null)
     return true
   }
   // 원작이 `FieldTask_InitCall`로 장면을 걸고 `TRUE`를 돌려준다 — 스크립트는 장면이 끝날 때까지 선다

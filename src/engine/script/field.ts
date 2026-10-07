@@ -1042,6 +1042,12 @@ function tryStartScripts(): void {
   // ⚠️ **필드 태스크가 쥐고 있으면 아무것도 안 건다** (`FieldServices.taskUp`). 전멸 과제가 그렇다 —
   // 원작은 그동안 필드 입력을 안 받아서, 깨어난 자리의 스크립트가 도착한 맵의 `OnFrame`보다 먼저다
   if (taskHeld()) { triggerWatch.skipped.task++; return }
+  // ⚠️ **맵을 갈아 끼우는 중에는 아무것도 안 건다** (`mapWorld.pending`). 원작은 맵 교체가 필드 태스크라
+  // 그동안 `FieldInput_Process`가 안 돈다. 우리는 교체가 몇 프레임 늦게 소비되므로, 그 틈에 **떠나는 맵의**
+  // `OnFrame` 표를 보면 방금 세운 변수로 엉뚱한 장면이 걸린다 — 실측(e2e ㉖ 10-06 · 10-07): 모래시티가
+  // `VAR_SANDGEM_TOWN_STATE=1`을 세우고 연구소로 `Warp`한 틈에 `OnFrame_ExitLab`이 걸려, 그 걸음(동쪽 19칸)이
+  // 연구소 안에서 돌아 주인공이 벽 밖 (26,7)에 섰다
+  if (mapWorld.pending !== null) { triggerWatch.skipped.warp++; return }
   // ⚠️ **세이브 값이 붓기 전에는 아무것도 안 건다** (`varsReady`). 그전에는
   // 모든 변수가 0이라 표와 트리거가 전부 「아직 안 봤다」로 읽힌다
   if (!fieldScripts.varsReady) { triggerWatch.skipped.vars++; return }
@@ -1853,7 +1859,7 @@ export const triggerWatch = {
   /** 스크립트를 실제로 건 횟수 */
   fired: 0,
   /** 트리거를 **못 본** 까닭별 횟수 */
-  skipped: { battle: 0, task: 0, vars: 0, cameo: 0, script: 0 },
+  skipped: { battle: 0, task: 0, warp: 0, vars: 0, cameo: 0, script: 0 },
   /** 최근에 본 칸과 그 답. 뒤에서부터 예순넷만 남는다 */
   recent: [] as { x: number; z: number; script: number | null; map: number }[],
 }
@@ -1863,7 +1869,7 @@ export function resetTriggerWatch(): void {
   triggerWatch.calls = 0
   triggerWatch.stepped = 0
   triggerWatch.fired = 0
-  triggerWatch.skipped = { battle: 0, task: 0, vars: 0, cameo: 0, script: 0 }
+  triggerWatch.skipped = { battle: 0, task: 0, warp: 0, vars: 0, cameo: 0, script: 0 }
   triggerWatch.recent = []
 }
 

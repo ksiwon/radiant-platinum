@@ -125,6 +125,8 @@ maybe('오프닝 길목의 스크립트는 전부 끝난다', () => {
         // A는 두 프레임에 한 번. 계속 누르고 있으면 눌린 순간이 안 잡힌다
         worldState.input.interact = frames % 2 === 0
         scriptSystem.fixedUpdate()
+        // `Warp`는 새 맵이 설 때까지 선다 — 맵을 갈아 끼우는 씬 대신 그 자리에서 다 갈았다고 친다
+        mapWorld.pending = null
         if (frames % 8 === 0) await yieldToLoop()
       }
       if (scriptBusy()) {

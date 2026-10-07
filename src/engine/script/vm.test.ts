@@ -22,6 +22,7 @@ import { MessageSlots } from './text'
 import { VarStore, VAR_RESULT } from './vars'
 import { FieldWorld, MENU_NO, type FieldServices } from './world'
 import { addItem, canFit, emptyBag, quantity, removeItem } from '../bag/bag'
+import { world as mapWorld } from '../map/world'
 import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
@@ -170,6 +171,8 @@ maybe('스크립트 VM', () => {
       if (world.menu?.kind === 'list') world.chooseAtCursor()
       else if (world.menu !== null) world.choose(opts.answer ?? MENU_NO)
       world.tick()
+      // `Warp`는 새 맵이 설 때까지 선다 — 맵을 갈아 끼우는 씬 대신 그 자리에서 다 갈았다고 친다
+      mapWorld.pending = null
     }
     return world
   }

@@ -129,6 +129,8 @@ maybe('배틀을 여는 스크립트는 져도 끝난다', () => {
       for (; frames < FRAME_CAP && scriptBusy(); frames++) {
         worldState.input.interact = frames % 2 === 0
         scriptSystem.fixedUpdate()
+        // `Warp`는 새 맵이 설 때까지 선다 — 맵을 갈아 끼우는 씬 대신 그 자리에서 다 갈았다고 친다
+        mapWorld.pending = null
         if (frames % 8 === 0) await yieldToLoop()
       }
       if (scriptBusy()) {
@@ -166,6 +168,7 @@ maybe('배틀을 여는 스크립트는 져도 끝난다', () => {
       for (let f = 0; f < FRAME_CAP && scriptBusy(); f++) {
         worldState.input.interact = f % 2 === 0
         scriptSystem.fixedUpdate()
+        mapWorld.pending = null
         if (f % 8 === 0) await yieldToLoop()
       }
       abortScript()

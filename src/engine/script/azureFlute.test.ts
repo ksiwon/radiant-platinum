@@ -103,17 +103,17 @@ maybe('천계의피리', () => {
       { vars, world, commands: map }, fileBytes(data, target.file), target.file)
     ctx.start(entryOffset(data, target.file, target.entry))
     let ended = false
+    let warpedTo: number | null = null
     for (let frame = 0; frame < 4000; frame++) {
       if (!ctx.step(200_000)) { ended = true; break }
       world.tick()
       // 「불겠습니까」에 예로 답한다. 그 뒤로는 묻는 것이 없다
       if (world.menu !== null) world.choose(world.menu.entries[0]?.value ?? 0)
+      // `Warp`는 새 맵이 설 때까지 선다 — 씬이 갈아 끼운 것처럼 받아 두고 비운다.
+      // ⚠️ 모듈 전역이라 위에서 `null`을 넣은 것을 타입 좁히기가 기억한다. 한 번 꺼내서 본다
+      const { pending } = mapWorld as { pending: { to: number } | null }
+      if (pending !== null) { warpedTo = pending.to; mapWorld.pending = null }
     }
-    // ⚠️ 모듈 전역이라 위에서 `null`을 넣은 것을 타입 좁히기가 기억한다.
-    // 한 번 꺼내서 본다
-    const { pending } = mapWorld as { pending: { to: number } | null }
-    const warpedTo = pending === null ? null : pending.to
-    mapWorld.pending = null
     mapWorld.mapId = -1
     return { warpedTo, ended }
   }

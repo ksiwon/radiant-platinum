@@ -1158,8 +1158,9 @@ export async function driveStory(page, {
       at = await now()
       if (at.talk || at.scene !== 'overworld') { why = 'scene'; break }
       // ⚠️ **맵이 바뀌면 손을 뗀다.** 목표는 떠난 맵의 좌표라, 새 방 안에서는 「닿았다 · 지나쳤다」가
-      // 안 서고 쥔 키가 방 안을 계속 민다 — 실측(2026-10-06 ㉖): 샌드젬 상점(187,842)으로 가다 같은 줄의
-      // 연구소 문(168,842)으로 새서, 422의 (26,12)에서 「길을 못 찾았다」로 끝났다
+      // 안 서고 쥔 키가 방 안을 계속 민다.
+      // (10-06 · 10-07 ㉖의 「422의 (26,12)에서 길을 못 찾았다」는 이것이 아니었다 — 제품의 `Warp` 경합으로 연구소 벽 밖에
+      // 선 것이다. REPAIR §146)
       if (Number.isFinite(at.map)) from ??= at.map
       if (from !== null && Number.isFinite(at.map) && at.map !== from) { why = 'map'; break }
       // ⚠️ **정확히 같은 칸만 보면 지나친다.** 나아가는 동안 잡고 있으므로,

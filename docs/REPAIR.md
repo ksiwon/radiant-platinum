@@ -5877,3 +5877,21 @@ src/state/multiBattle.test.ts`.
 
 **우리** — 필드 주인공 · 배틀 · 오프닝은 이름으로 꺼 두는데(`scene/personModel`), **필드 NPC만 안 껐다**(`scene/NpcModels`). 광휘로 하는 판에
 이야기에 나오는 빛나가 모자 위에 머리카락 얼룩을 달고 섰다. 끄는 목록을 `isAltOutfit` 하나로 모아 세 자리가 다 쓴다.
+
+## 146. 모래시티에서 연구소로 끌려 들어가면 주인공이 **연구소 벽 밖**에 섰다
+
+**원작** — `ScrCmd_Warp`(`scrcmd.c`)는 맵 교체를 필드 태스크로 걸고 `TRUE`를 돌려준다. 스크립트는 새 맵이 설 때까지 서고, 뒤의
+`FadeScreenIn`은 새 맵에서 돈다. 그동안 `FieldInput_Process`가 안 돌아 떠나는 맵의 `OnFrame` 표도 안 본다.
+
+**우리** — `Warp`가 `mapWorld.pending`만 세우고 바로 넘어갔다. 씬(`MapStreamer`)은 격자를 받은 뒤에야 교체를 소비하므로, 그 몇 프레임
+사이에 스크립트가 **떠나는 맵에서** 끝나고 그 맵의 `OnFrame` 표가 방금 세운 변수를 읽었다. 모래시티는 `VAR_SANDGEM_TOWN_STATE=1`을 세우고
+연구소로 `Warp`하는데, 그 값이 곧 `OnFrame_ExitLab`(상점 · 센터 안내)의 조건이라 그 장면의 주인공 걸음(동쪽 19칸 · 충돌을 안 보는 상대 이동)이
+연구소 안에서 돌아 벽 밖 (26,7)에 섰다. 프레임이 한 번 길면(약 0.1초) 터지는 경합이라 기계가 바쁠 때만 났다 — e2e ㉖이 10-06 · 10-07 세 판에서
+「422의 (26,12)에서 길을 못 찾았다」로 섰다(하네스가 거기서 다섯 칸 물러났다).
+
+같은 꼴(떠나는 맵의 `OnFrame` 조건을 세우고 `Warp`)이 둘 더 있다 — 운하시티 여관 → 신월섬(`VAR_DARKRAI_EVENT_STATE=2` · `OnFrame_Awaken`),
+대습원 입구 → 대습원(`VAR_SAFARI_GAME_STATE=1` · `OnFrame_TryExitEarly`).
+
+**고친 것** — `Warp`가 원작대로 `mapWorld.pending`이 빌 때까지 스크립트를 세운다(`script/commands`, 배 연출이 없을 때의 `PlayBoatCutscene`도).
+그리고 교체가 걸려 있는 동안은 `tryStartScripts`가 아무것도 안 건다(`script/field`). 시험 `script/warpRace.test.ts`가 진짜 롬 스크립트로 그 틈을
+서른 프레임 벌린다 — 고치기 전에는 그 사이 `OnFrame_ExitLab`이 걸렸다.
