@@ -66,7 +66,9 @@ maybe('스크립트 워프가 맵 교체를 기다린다', () => {
     enterMap(SANDGEM)
     await yieldToLoop()
     // 좌표 사건 (164, 842~847)을 밟은 자리다. 스크립트가 `GetPlayerMapPos`의 z로 갈래를 고른다
-    fieldScripts.world!.player = { ...fieldScripts.world!.player, x: 164.5, z: 845.5 }
+    const me = fieldScripts.world!.player!
+    me.x = 164.5
+    me.z = 845.5
     expect(start(LEAD_TO_LAB, header.scripts)).toBe(true)
 
     // 연구소로 가는 `Warp`까지 몬다. 대사는 A로 넘긴다
