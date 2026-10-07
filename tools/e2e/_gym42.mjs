@@ -54,7 +54,7 @@ const STAMP = new Date().toISOString().replace(/[:.]/g, '-')
 const OUT = resolve(ROOT, `shots/gym42/${STAMP}`)
 mkdirSync(OUT, { recursive: true })
 
-/** 무쇠 체육관 · 관장 로안 — 맵 47의 스크립트 1 (`scripts_oreburgh_city_gym.s`) */
+/** 무쇠 체육관 · 관장 강석 — 맵 47의 스크립트 1 (`scripts_oreburgh_city_gym.s`) */
 const GYM = 47
 const ROARK = 1
 /**

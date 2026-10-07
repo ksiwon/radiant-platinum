@@ -231,7 +231,7 @@ function devObserver(page) {
          * **셋째~다섯째 배지 길목** (`docs/orders/JOURNEY_BADGE345_20260922.md` §1).
          * 번호는 같은 셈법이다 — `vars_flags.txt`를 C 열거형으로 세었다.
          *
-         *   · 16506 `VAR_ETERNA_CITY_STATE`             0 태홍 → 1 난천(베어가르기) → 2 · 쥬피터 뒤 3
+         *   · 16506 `VAR_ETERNA_CITY_STATE`             0 태홍 → 1 난천(풀베기) → 2 · 쥬피터 뒤 3
          *   · 16660 `VAR_ETERNA_CITY_BLOCK_EXITS_STATE` 자전거만 있고 탐사세트가 없으면 1
          *   · 16524 `VAR_ROUTE_207_COUNTERPART_TRIGGER_STATE` 동행 상대 장면 0 → 1
          *   · 16534 `VAR_MT_CORONET_1F_SOUTH_STATE`     태홍 장면 0 → 1

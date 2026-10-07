@@ -195,10 +195,10 @@ export async function driveStory(page, {
   /**
    * **벨 나무·깰 바위·밀 바위는 격자에 없다** — 지형이 아니라 객체라서다
    * (`engine/actor/obstacles.ts`의 `OBSTACLE_MOVE`: 84 괴력 · 85 바위깨기 ·
-   * 86 베어가르기). 길 찾기는 칸 격자만 보므로 **그것들을 뚫고 가는 길**을 낸다.
+   * 86 풀베기). 길 찾기는 칸 격자만 보므로 **그것들을 뚫고 가는 길**을 낸다.
    *
    * ⚠️ 실측(2026-09-17 `_leg42`): 영원의 숲(202) 216,566과 216,567에
-   * **베어가르기 나무 둘**(스프라이트 86 · 스크립트 10000 · 플래그 34)이 나란히
+   * **풀베기 나무 둘**(스프라이트 86 · 스크립트 10000 · 플래그 34)이 나란히
    * 서서 동쪽 길을 막는데, 그쪽이 202에서 205번도로 북(349)으로 가는 **유일한**
    * 격자 길이다. 그래서 하네스는 같은 두 칸에 스무 번을 부딪혔다. 제대로 된 길은
    * 202가 아니라 **숲 안(203)의 북쪽 문**이고, 그 길은 이 두 칸을 막아야 보인다.
@@ -235,16 +235,30 @@ export async function driveStory(page, {
       }
     }
   }
-  /** 이 맵의 장애물 중 **이미 치운 것**을 지운다. 물을 수 있는 건 선 맵뿐이다 */
+  /** 마지막으로 장애물을 물어본 맵 — 다른 맵에 다녀오면 다시 묻는다 */
+  let obstaclesAskedOn = null
+  /**
+   * 이 맵의 장애물이 **지금** 서 있는지 묻는다. 물을 수 있는 건 선 맵뿐이다.
+   *
+   * ⚠️ **맵에 들 때마다 다시 묻는다.** 벤 나무 · 깬 바위는 맵을 다시 들어오면
+   * 되살아난다(`actor/obstacles.ts` — 숨김 깃발이 없는 물체). 예전에는 맵당 한 번만
+   * 물어서, 갤럭시 빌딩 앞 나무(305,521)를 벤 뒤 센터에 다녀오자 되살아난 나무를
+   * 「없다」로 믿고 그 칸으로 길을 냈다 — 빌딩(72)을 앞에 두고 9분을 문마다
+   * 드나들었다 (`journey-2bf760a-full`)
+   */
   const askObstacles = async (mapId) => {
     seedObstacles(matrixOf(mapId))
-    if (obstaclesAsked.has(mapId)) return
+    if (obstaclesAskedOn === mapId) return
+    obstaclesAskedOn = mapId
     obstaclesAsked.add(mapId)
+    const key = (npc) => `${String(matrixOf(mapId))}:${String(npc.x)},${String(npc.z)}`
     for (const npc of npcsOf(mapId)) {
       if (!OBSTACLE_SPRITES.has(npc.sprite)) continue
       const r = await obs.obstacleAt(npc.x, npc.z)
-      // 못 읽으면 **표를 믿는다** — 모르는 채로 뚫고 가는 길을 내느니 돌아간다
-      if (r.known && r.value === null) obstacleGone(mapId, npc.x, npc.z)
+      // 못 읽으면 **아는 대로 둔다** — 모르는 채로 뚫고 가는 길을 내느니 돌아간다
+      if (!r.known) continue
+      if (r.value === null) obstacleGone(mapId, npc.x, npc.z)
+      else standingObstacles.add(key(npc))
     }
   }
   /** 그 칸의 장애물을 치웠다 — 다음 계획부터 지나갈 수 있다 */
@@ -2238,7 +2252,7 @@ export async function driveStory(page, {
         }
       }
       // ⚠️ **맵 그래프가 못 지나가는 길을 낼 수 있다.** 구역 표는 **맞닿아
-      // 있는가**만 보는데, 그 경계에 베어가르기 나무가 서 있으면 맞닿아 있어도
+      // 있는가**만 보는데, 그 경계에 풀베기 나무가 서 있으면 맞닿아 있어도
       // 못 간다 — 실측(2026-09-17 `_leg42`): 영원의 숲 바깥(202)에서 205번도로
       // 북(349)이 「맞닿음」인데 사이가 나무 둘이라, `mapRoute`가 낸
       // `[202, 349, 65]`가 통째로 거짓말이었다. 진짜 길은 **뒤로 나갔다가**
@@ -3225,7 +3239,7 @@ export async function driveStory(page, {
      * ⚠️ **첫 칸에 있는 마리가 늘 옳지는 않다.** 실측(2026-09-22 다리 a 앞):
      * 선두 수풀부기의 기술이 `바위깨기·물기·흡수·잎날가르기`로 **꽉 차 있었고**,
      * 비버니는 `몸통박치기` 하나뿐이라 **빈 칸이 셋**이었다. 그냥 첫 칸부터 누르면
-     * 수풀부기가 **바위깨기를 버리고** 베어가르기를 배운다 — 사람이라면 비버니에게
+     * 수풀부기가 **바위깨기를 버리고** 풀베기를 배운다 — 사람이라면 비버니에게
      * 가르친다. 그래서 첫 바퀴는 **칸이 남은 마리만** 보고, 아무도 못 배우면
      * 두 번째 바퀴에서 칸이 찬 마리까지 본다.
      *

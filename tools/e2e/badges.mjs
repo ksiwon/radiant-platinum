@@ -42,7 +42,7 @@ export const ITEM = {
   /** 골드스프레이 — 250걸음. 배지 다섯이면 마트가 판다(tier 4) */
   maxRepel: 77,
 }
-/** 베어가르기 기술 번호 */
+/** 풀베기 기술 번호 */
 export const CUT = 15
 
 /** 맵 번호 (`raw/decomp/generated/map_headers.txt`의 줄 번호 − 1) */
@@ -81,6 +81,8 @@ export const MAP = {
   route216: 383, route217: 385, acuityLakefront: 340,
   snowpoint: 165, snowpointMart: 166, snowpointGym: 167, snowpointCenter: 168,
 }
+/** 갤럭시 빌딩 네 층 — 여기 서 있으면 앞 나무를 지난 것이다 */
+const GALACTIC_FLOORS = new Set([MAP.galactic1F, MAP.galactic2F, MAP.galactic3F, MAP.galactic4F])
 
 /**
  * 영원시티의 **좌표 이벤트 칸** (`events_eterna_city.json`).
@@ -271,7 +273,7 @@ async function fightTrainers(api, ctx, mapId, what) {
 /**
  * **다리 A — 영원시티에서 자전거까지** (지시서 §1 ①~⑥).
  *
- * 태홍 → 난천(베어가르기) → 나무 → 빌딩 4층 → 쥬피터 → 자전거 → 탐사세트.
+ * 태홍 → 난천(풀베기) → 나무 → 빌딩 4층 → 쥬피터 → 자전거 → 탐사세트.
  * 끝나면 영원시티에 서 있다. 결말은 전부 **읽은 값**이다
  */
 export async function eternaToBike(api, ctx, {
@@ -341,9 +343,9 @@ export async function eternaToBike(api, ctx, {
   }
   out.cynthia = v?.eterna ?? null
 
-  // ③ 베어가르기를 가르치고 나무를 벤다
+  // ③ 풀베기를 가르치고 나무를 벤다
   out.taught = await api.teachHm(ITEM.hm01, CUT, Math.min(300_000, api.left()))
-  note('베어가르기 가르치기', out.taught.ok ? `${String(out.taught.slot)}번째가 배웠다` : String(out.taught.why))
+  note('풀베기 가르치기', out.taught.ok ? `${String(out.taught.slot)}번째가 배웠다` : String(out.taught.why))
   if (api.left() <= 0) return out
   out.cut = await api.clearWay(MAP.eterna, MAP.galactic1F, Math.min(600_000, api.left()), { sprite: 86, maxHits: 3 })
   note('나무를 베고 빌딩 1F로', out.cut.ok ? `들어갔다 (${String(out.cut.broke.length)}그루 건드렸다)` : String(out.cut.why))
@@ -377,6 +379,19 @@ export async function eternaToBike(api, ctx, {
        * 하나는 막다른 주머니로 간다 — `enterToward`가 쥬피터에게 닿는 쪽을 고른다.
        * 쥬피터 자리는 **배치표에서 읽는다**(표를 여기 또 적지 않는다)
        */
+      /**
+       * ⚠️ **밖에 나갔다 왔으면 나무를 다시 벤다.** 벤 나무는 맵을 다시 들어오면
+       * 되살아나고(`actor/obstacles.ts`), 빌딩 문은 그 뒤에 있다 — 센터에 다녀온
+       * 판이 빌딩 앞에서 9분을 헤맸다 (`journey-2bf760a-full`). 사람도 다시 벤다
+       */
+      if (!GALACTIC_FLOORS.has((await api.now()).map)) {
+        const back = await api.goTo(MAP.eterna, Math.min(600_000, api.left()))
+        const recut = back === 'arrived'
+          ? await api.clearWay(MAP.eterna, MAP.galactic1F, Math.min(600_000, api.left()), { sprite: 86, maxHits: 3 })
+          : { ok: false, why: `영원시티에 못 갔다 (${back})` }
+        note(`빌딩 ${String(floor - MAP.galactic1F + 1)}F 앞 — 나무 다시 베기`,
+          recut.ok ? `들어갔다 (${String(recut.broke.length)}그루 건드렸다)` : String(recut.why))
+      }
       const jupiter = floor === MAP.galactic4F
         ? npcsOf(MAP.galactic4F).find((n) => n.script === JUPITER.script) : undefined
       const went = jupiter === undefined

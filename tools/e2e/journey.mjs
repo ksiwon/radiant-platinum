@@ -198,12 +198,12 @@ const JUBILIFE = {
 /**
  * 그 자리에서 **말을 걸어야 하는 사람들**. 트레이너 표에 없는 이들이다.
  *
- * 관장 로안은 탄광에서 먼저 만나고(원작 순서), 체육관에서 도전한다. 둘 다
+ * 관장 강석은 탄광에서 먼저 만나고(원작 순서), 체육관에서 도전한다. 둘 다
  * `trainerType: 0`이라 `trainersOn()`으로는 안 나온다 — 오래 말을 건 적이 없다
  */
 const NPC_STOPS = {
-  198: [{ script: 7235, what: '관장 로안' }],
-  47: [{ script: 1, what: '관장 로안에게 도전' }],
+  198: [{ script: 7235, what: '관장 강석' }],
+  47: [{ script: 1, what: '관장 강석에게 도전' }],
   // 영원 체육관 넷. 꽃시계가 하나씩 열리므로 **이 차례를 지켜야** 닿는다
   67: [
     { script: 5, what: '트① 캐롤라인' },
@@ -225,7 +225,7 @@ const NPC_STOPS = {
  * 스크립트 번호는 `NPC_STOPS`의 관장 줄과 같다
  */
 const LEADER_RETRY = {
-  47: { script: 1, badges: 1, what: '관장 로안' },
+  47: { script: 1, badges: 1, what: '관장 강석' },
   67: { script: 4, badges: 2, what: '관장 유채' },
   /**
    * ⚠️ **쥬피터는 배지가 아니다.** 이겼는지는 롬이 세우는 깃발로 본다
@@ -356,7 +356,7 @@ const AFTER_STOPS = [
   { id: '20', map: 65, what: '영원시티' },
   { id: '21', map: 67, what: '영원 체육관' },
   // ── 여기부터 셋째 배지 (지시서 JOURNEY_BADGE3 §1·§2) ───────────────────────
-  { id: '23', map: B3MAP.galactic1F, what: '갤럭시단 영원 빌딩 1F (베어가르기)' },
+  { id: '23', map: B3MAP.galactic1F, what: '갤럭시단 영원 빌딩 1F (풀베기)' },
   { id: '24', map: B3MAP.galactic4F, what: '갤럭시단 영원 빌딩 4F (쥬피터)' },
   { id: '25', map: B3MAP.gate206North, what: '206번도로 북쪽 게이트 (자전거·탐사세트)' },
   { id: '26', map: B3MAP.route207, what: '207번도로 (자전거길을 타고)' },
@@ -1262,7 +1262,7 @@ try {
        * 전멸을 일곱 번** 되풀이한 판이 있었다(2026-09-23 대표 구간 6판 · 3판 다섯 번).
        * 판마다 전멸한 자리를 모으면 202·203번도로 · 무쇠게이트 · 영원의 숲이다 —
        * 전부 소포 뒤 숲 앞까지라, 202번도로에 나서기 전에 한 번 올린다.
-       * 로안(꼬마돌 12 · 롱스톤 12 · 두개도스 14)까지 이것으로 덮는다
+       * 강석(꼬마돌 12 · 롱스톤 12 · 두개도스 14)까지 이것으로 덮는다
        */
       {
         const early = await candyUp(0, null, EARLY_LEAD_LEVEL)
@@ -1688,7 +1688,7 @@ try {
                */
               const center = CENTERS[B3MAP.galactic1F]
               const got = await api.healAt(center, Math.min(300_000, api.left()))
-              heals.push({ where: '베어가르기 앞', center, ...got })
+              heals.push({ where: '풀베기 앞', center, ...got })
             }
             badge3.cut = await eternaToBike(api, ctx, { phases: ['cut'] })
           }
@@ -2061,14 +2061,14 @@ try {
           }
           /**
            * ⚠️ **관장은 트레이너 표에 없다.** `trainersOn(47)`이 내는 둘은
-           * 체육관 **부하** 둘(스크립트 3243·3244)이고, 관장 로안은
+           * 체육관 **부하** 둘(스크립트 3243·3244)이고, 관장 강석은
            * `trainerType: 0`인 **사람**이다 — 맵 47의 (5,3), 스크립트 1.
            * 원작도 그렇다: `OreburghGym_Roark`가 스크립트 항목 첫째고, 그 안에서
            * `StartTrainerBattle TRAINER_LEADER_ROARK` → 이기면 `GiveBadge`다
            * (`raw/decomp/…/scripts_oreburgh_city_gym.s`).
            *
            * 그래서 오래 **말을 건 적이 없다.** 부하 둘에게 말을 걸고 배지가
-           * 0인 것을 보고 끝났다 (실측). 탄광(198)의 로안도 사람이다 —
+           * 0인 것을 보고 끝났다 (실측). 탄광(198)의 강석도 사람이다 —
            * (19,4) 스크립트 7235
            */
           for (const who of NPC_STOPS[stop.map] ?? []) {
@@ -2154,9 +2154,9 @@ try {
            * 온다. 그 한 번을 안 하면 우리 판은 「졌다」가 아니라 「배지가 하나」로만
            * 남고, 진 까닭(파티가 약하다)과 못 간 까닭(길이 없다)이 안 갈린다.
            *
-           * ⚠️ **로안에게도 한다.** 오래 유채에게만 있었다. 실측(2026-09-17
-           * journey11): 같은 코드로 journey10은 로안을 한 번에 이겼는데 이 판은
-           * 부하 둘 뒤에 로안에게 져서 무쇠 센터(48)로 밀려났고, 배지 0개로
+           * ⚠️ **강석에게도 한다.** 오래 유채에게만 있었다. 실측(2026-09-17
+           * journey11): 같은 코드로 journey10은 강석을 한 번에 이겼는데 이 판은
+           * 부하 둘 뒤에 강석에게 져서 무쇠 센터(48)로 밀려났고, 배지 0개로
            * 북쪽에 올라가 둘째 배지 사슬이 통째로 막혔다. 배틀 운이 가른 것이라
            * 사람이 하듯 낫고 한 번 더 간다.
            *
@@ -2430,7 +2430,7 @@ try {
   {
     const { got, j, text } = stopLine('23')
     const cut = b3.cut ?? null
-    add('23', '난천에게 베어가르기를 받고 나무를 베어 갤럭시 빌딩에 들어간다',
+    add('23', '난천에게 풀베기를 받고 나무를 베어 갤럭시 빌딩에 들어간다',
       got?.verdict === 'arrived' && (v3?.eterna ?? 0) >= 2 && cut?.cut?.ok === true ? 'PASS' : j.status === 'BLOCKED' ? 'BLOCKED' : 'FAIL',
       `${text} · 영원 상태 ${String(v3?.eterna ?? '?')} (2 이상이어야 난천을 지났다)`
       + ` · 비전머신01 ${has(B3.hm01) ? '있다' : '없다'}`
