@@ -163,8 +163,6 @@ function BuiltWeather({ kind }: { kind: WeatherKind }) {
 function StatusAura({ mon, slot, position }: { mon: ViewMon; slot: SlotId; position: [number, number] }) {
   const hostRef = useRef<Group>(null)
   const color = statusAuraColor(mon.status)
-  const confused = mon.volatiles.has('confusion')
-  const seeded = mon.volatiles.has('leechseed')
   const substitute = mon.volatiles.has('substitute')
   const bdspShiny = useBdspShiny()
 
@@ -189,26 +187,11 @@ function StatusAura({ mon, slot, position }: { mon: ViewMon; slot: SlotId; posit
           </mesh>
         </group>
       )}
-      {confused && (
-        <group position={[0, 1.7, 0]} rotation={[0.25, 0, 0]}>
-          <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <torusGeometry args={[0.55, 0.035, 6, 26]} />
-            <meshBasicMaterial color="#fff080" toneMapped={false} />
-          </mesh>
-        </group>
-      )}
-      {seeded && (
-        <group>
-          <mesh position={[-0.35, 0.2, 0.15]} rotation={[0, 0, -0.8]}>
-            <torusGeometry args={[0.4, 0.055, 6, 18, Math.PI * 1.45]} />
-            <meshStandardMaterial color="#58a94a" roughness={0.8} />
-          </mesh>
-          <mesh position={[0.32, 0.18, -0.1]} rotation={[0, 1.1, 0.8]}>
-            <torusGeometry args={[0.34, 0.05, 6, 18, Math.PI * 1.4]} />
-            <meshStandardMaterial color="#72bf52" roughness={0.8} />
-          </mesh>
-        </group>
-      )}
+      {/*
+        ⚠️ **혼란 · 씨뿌리기는 몸에 내내 붙는 것이 없다.** BDSP의 상태 지속 표(`BattleStatusEffectObserverData`)는 마비 · 잠듦 ·
+        얼음 · 화상 · 독 여섯 줄뿐이고, 씨뿌리기는 턴 끝 틱에만 새싹(`ew073_turn`)이 돋았다 진다. 늘 돌던 노란 고리 · 덩굴 고리는
+        지어낸 것이라 걷었다 — 걸린 순간 · 틱의 연출은 `StatusVfx`가 낸다
+      */}
       {substitute && (
         <group position={[0.62, 0.25, 0.28]} scale={0.42}>
           <mesh position={[0, 0.55, 0]} castShadow>
