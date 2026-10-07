@@ -653,7 +653,7 @@ export async function driveStory(page, {
         if (await card.isDisabled().catch(() => true)) continue
         await card.click({ timeout: 3000 }).catch(() => {})
         // 누른 자리에 마우스를 두면 다음 메뉴가 그 줄에서 열린다 (`parkMouse`)
-        await page.mouse.move(1, 1).catch(() => {})
+        await page.mouse.move(-5, -5).catch(() => {})
         return true
       }
       // 고를 수 있는 칸이 하나도 없다 — 전멸이다. 넘겨서 끝낸다
@@ -717,7 +717,7 @@ export async function driveStory(page, {
         if (at < 0) at = 0
       }
       await rows.nth(Math.min(at, n - 1)).click({ timeout: 3000 }).catch(() => {})
-      await page.mouse.move(1, 1).catch(() => {})
+      await page.mouse.move(-5, -5).catch(() => {})
       await page.waitForTimeout(80)
       return true
     }
@@ -2806,6 +2806,8 @@ export async function driveStory(page, {
       await tap('Space', 120)
     }
     if (!opened) return { ok: false, why: '가게가 안 열렸다' }
+    // 가게 목록도 마우스 밑 줄로 커서가 간다 (`ShopScreen`) — 키로 고르기 전에 치운다
+    await page.mouse.move(-5, -5).catch(() => {})
     /**
      * ⚠️ **줄 번호를 짐작하지 않는다.** 재고는 그 자리의 **배지 수**가 정하므로
      * (`engine/bag/mart.ts`) 배지가 하나 늘면 목록이 통째로 밀린다 — 「첫 줄이
@@ -2870,7 +2872,8 @@ export async function driveStory(page, {
    * 「이상한사탕을 몇 개 버리겠습니까?」에 섰다 (`journey-224740d-full`). 판마다 마지막
    * 클릭 자리가 달라서 가끔이었다
    */
-  const parkMouse = async () => { await page.mouse.move(1, 1).catch(() => {}) }
+  // 화면 밖이다 — (1,1)에도 메뉴 줄이 올 수 있다(가게 목록 등)
+  const parkMouse = async () => { await page.mouse.move(-5, -5).catch(() => {}) }
 
   const openBagAt = async (item, till) => {
     const bag = await bagState()
