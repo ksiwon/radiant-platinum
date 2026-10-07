@@ -3397,8 +3397,11 @@ export async function driveStory(page, {
         }
       }
       if ((await now()).menu !== 'party') {
+        // 그때 화면이 무엇이었는지 같이 적는다 — 「안 열렸다」만으로는 다음 판에서 못 가른다
+        const st = await now()
+        const seen = (await screen()).slice(0, 140)
         await closeMenus()
-        return done({ ok: false, level: mon.level, why: '파티 화면이 안 열렸다' })
+        return done({ ok: false, level: mon.level, why: `파티 화면이 안 열렸다 (menu ${String(st.menu)} · script ${String(st.script)} · 화면 「${seen}」)` })
       }
       for (let i = 0; i < slot; i++) await tap('ArrowRight', 90)
       await tap('Space', 250)
