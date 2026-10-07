@@ -2906,10 +2906,15 @@ export async function driveStory(page, {
       }
     })
     let menu = null
-    for (let i = 0; i < 20 && Date.now() < till; i++) {
-      menu = await rowAt().catch(() => null)
-      if (menu !== null && menu.n > 0) break
-      await page.waitForTimeout(250)
+    // ⚠️ **안 열렸으면 한 번 더 누른다.** 맵에 막 들어선 자리(나무를 베고 빌딩에 든 직후 등)에서
+    // 첫 C가 씹혀 「시작 메뉴가 안 열렸다 ([])」로 사탕 셋이 다 빠진 판이 있었다 (`journey-3cdded9-full`)
+    for (let attempt = 0; attempt < 2 && (menu === null || menu.n === 0); attempt++) {
+      if (attempt > 0) { await settle(); await page.waitForTimeout(800); await tap('KeyC') }
+      for (let i = 0; i < 20 && Date.now() < till; i++) {
+        menu = await rowAt().catch(() => null)
+        if (menu !== null && menu.n > 0) break
+        await page.waitForTimeout(250)
+      }
     }
     if (menu === null || menu.n < 5) {
       for (let i = 0; i < 6; i++) await tap('KeyX', 80)
@@ -3070,10 +3075,15 @@ export async function driveStory(page, {
       }
     })
     let menu = null
-    for (let i = 0; i < 20 && Date.now() < till; i++) {
-      menu = await rowAt().catch(() => null)
-      if (menu !== null && menu.n > 0) break
-      await page.waitForTimeout(250)
+    // ⚠️ **안 열렸으면 한 번 더 누른다.** 맵에 막 들어선 자리(나무를 베고 빌딩에 든 직후 등)에서
+    // 첫 C가 씹혀 「시작 메뉴가 안 열렸다 ([])」로 사탕 셋이 다 빠진 판이 있었다 (`journey-3cdded9-full`)
+    for (let attempt = 0; attempt < 2 && (menu === null || menu.n === 0); attempt++) {
+      if (attempt > 0) { await settle(); await page.waitForTimeout(800); await tap('KeyC') }
+      for (let i = 0; i < 20 && Date.now() < till; i++) {
+        menu = await rowAt().catch(() => null)
+        if (menu !== null && menu.n > 0) break
+        await page.waitForTimeout(250)
+      }
     }
     if (menu === null || menu.want < 0) {
       await closeMenus()
