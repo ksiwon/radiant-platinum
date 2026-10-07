@@ -401,6 +401,22 @@ export function buildBeats(
     return slots.length === 0 ? undefined : { at: impact, slots, level, crit }
   }
 
+  /**
+   * 이 기술이 대상에 닿기 전에 막혔는가 — 원작은 빗나감과 **같은 갈래**(`subscript_missed.s`)로 보내 연출을 안 돌린다:
+   * 방어(`MOVE_STATUS_PROTECTED`) · 타입 무효(`MOVE_STATUS_INEFFECTIVE`) · 부유(`LEVITATED`) · 불가사의부적(`WONDER_GUARD`).
+   * 변화기도 같다 — 강철에 맹독은 `PrintAttackMessage` 뒤 `PlayMoveAnimation` 없이 `WaitButtonABTime 30` · 「효과가 없는 것 같다」다
+   * (`subscript_badly_poison.s` `_314`). 홑 대상만 본다 — 범위 기술은 한쪽만 막혀도 다른 쪽에 연출이 돈다
+   */
+  const blockedAfter = (from: number, target: SlotId): boolean => {
+    for (let j = from + 1; j < events.length; j++) {
+      const n = events[j]!
+      if (n.kind === 'move' || n.kind === 'turn' || n.kind === 'switch' || n.kind === 'faint' || n.kind === 'damage') return false
+      if (n.kind === 'activate' && n.effect.id === 'protect' && n.actor?.slot === target) return true
+      if (n.kind === 'effectiveness' && n.level === 'immune' && n.actor.slot === target) return true
+    }
+    return false
+  }
+
   /** 데미지에 얹을 타격 정보. 쌓아 둔 것에서 읽는다 — 없으면 보통이다 */
   const hitOf = () => ({
     level: held.find((h) => h.kind === 'effectiveness')?.level ?? 'normal' as const,
@@ -611,7 +627,10 @@ export function buildBeats(
         say(text(e), 0)
         // 빗나간 기술은 연출이 없다 — 기술 이름을 읽힌 뒤 바로 빗나감 글이다
         // (`subscript_missed.s` `PrintAttackMessage · Wait · WaitButtonABTime 30`). 무대도 안 돈다 (`view` 'move')
-        if (e.miss) { show([e], HOLD_MESSAGE); break }
+        // 막기 · 무효도 같은 갈래다(`blockedAfter`) — 뷰는 `[miss]`만 알므로 `miss`를 세워 넘긴다
+        const aimed = e.target?.slot ?? null
+        const blocked = !e.miss && aimed !== null && (e.spread ?? []).length === 0 && blockedAfter(at, aimed)
+        if (e.miss || blocked) { show([blocked ? { ...e, miss: true } : e], HOLD_MESSAGE); break }
         // 연출이 도는 만큼 쉰다. 이 자리가 0이면 기술 이름이 뜨자마자 게이지가
         // 닳아서, 무엇이 무엇을 때렸는지가 화면에서 안 이어진다.
         // **기술마다 길이가 다르다** — 무대도 같은 자리에 물어본다 (`vfx`)

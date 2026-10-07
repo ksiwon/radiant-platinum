@@ -109,6 +109,23 @@ describe('박자 순서', () => {
     expect(applyEvents(emptyView(), [enter(p2, 20), missed]).lastMove).toBeNull()
   })
 
+  it('방어에 막히거나 효과가 없는 기술도 빗나감과 같은 갈래다', () => {
+    const aimed = { ...move(p1, 'Tackle'), target: p2 } as BattleEvent
+    const protect: BattleEvent = {
+      kind: 'activate', actor: p2, effect: { id: 'protect', kind: 'move', num: 182, name: 'Protect' }, of: null, extra: {},
+    } as BattleEvent
+    const immune: BattleEvent = { kind: 'effectiveness', actor: p2, level: 'immune' }
+    for (const after of [protect, immune]) {
+      const beats = buildBeats([enter(p2, 20), aimed, after], say)
+      const at = beats.findIndex((b) => b.events.some((e) => e.kind === 'move'))
+      expect(beats[at]!.hold).toBe(30)
+      expect(beats[at]!.presentation).toBeUndefined()
+    }
+    // 맞았으면 연출이 돈다
+    const hitBeats = buildBeats([enter(p2, 20), aimed, hit(p2, 12, 20)], say)
+    expect(hitBeats.find((b) => b.events.some((e) => e.kind === 'move'))!.presentation).toBe(true)
+  })
+
   it('기술 이름이 먼저 뜨고 그 다음 박자에서 체력이 닳는다', () => {
     const beats = buildBeats([enter(p2, 20), move(p1, 'Tackle'), hit(p2, 12, 20)], say)
     const at = beats.findIndex((b) => b.text?.includes('Tackle'))

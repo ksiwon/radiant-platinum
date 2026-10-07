@@ -17,7 +17,7 @@
 | 5 | **날씨가 BDSP `et` 이펙트** (`BattleAtmosphere` `Weather`) | `WeatherData.MainFileName` — `et004_sunny01` · `et001_rain01` · `et002_hail01` · `et003_sandstorm01`. 지은 상자 · 팔면체 · 해는 옛 설치본에서만 |
 | 6 | **체력판을 시퀀스가 감춘다** (`seqStage.gauge` · `useSeqGaugeHide`) | BDSP 411기술이 0프레임 `GaugeDispAll 0` → 맞기 전 `GaugeDisp trg=1`. PT도 연출 동안 숨긴다(`BattleDisplay_GetAnimHideFlags`) |
 | 7 | **색이 다른 포켓몬은 볼이 열릴 때 별이 한 번** (`ShinyBurst` · `ee003`) | 몸 둘레를 늘 돌던 팔면체 일곱은 원작 어디에도 없다. BDSP `BattleMiscEffectData` 2 「レア」. `GroupOption 29 = 231`이 자리를 고른다 |
-| 8 | **빗나간 기술은 연출 없이 넘긴다** (`playback` 'move' · `view` 'move') | 사용자 결정(10-07): PT를 따른다. `subscript_missed.s`가 `PrintAttackMessage · Wait · WaitButtonABTime 30` 뒤 바로 빗나감 글 — `PlayMoveAnimation`이 없다. `[miss]`는 홑 대상에만 붙는다(`hitStepInvulnerabilityEvent`의 `!move.spreadHit`) — 범위 기술은 맞은 쪽 연출이 그대로 돈다. 막기 · 효과 없음도 원작은 같은 갈래(`MOVE_STATUS_DID_NOT_HIT`)인데 아직 연출이 돈다 |
+| 8 | **빗나간 기술은 연출 없이 넘긴다** (`playback` 'move' · `view` 'move') | 사용자 결정(10-07): PT를 따른다. `subscript_missed.s`가 `PrintAttackMessage · Wait · WaitButtonABTime 30` 뒤 바로 빗나감 글 — `PlayMoveAnimation`이 없다. `[miss]`는 홑 대상에만 붙는다(`hitStepInvulnerabilityEvent`의 `!move.spreadHit`) — 범위 기술은 맞은 쪽 연출이 그대로 돈다. 막기 · 효과 없음도 같은 갈래라 같이 건너뛴다(`blockedAfter` — 뒤따르는 `-activate 방어` · `-immune`) — 변화기도 같다: 강철에 맹독은 `PlayMoveAnimation` 없이 30프레임 뒤 「효과가 없는 것 같다」(`subscript_badly_poison.s` `_314`) |
 | — | 설치 그룹 `battleFx` 3판 · 2판도 그대로 쓴다 | 상태 · 날씨 · 별이 없으면 그 연출만 DS로 선다 — 다시 롬을 묻지 않는다(`GROUP_ACCEPTS`) |
 
 ## 안 바꾼 것 — 근거가 반대였다
@@ -31,17 +31,14 @@
 
 ## 남은 것 (영향 순)
 
-1. **막기 · 효과 없음에도 기술 연출이 돈다.** 원작은 빗나감과 같은 갈래(`subscript_missed.s` `MOVE_STATUS_PROTECTED` ·
-   `MOVE_STATUS_INEFFECTIVE`)로 연출을 건너뛴다. 우리 사건 줄은 `[miss]`만 달고 오므로 뒤따르는 `-activate 막기` · `-immune`을
-   보고 갈라야 한다 — 범위 기술에서 한쪽만 막힌 판을 가려야 해서 따로 한다.
-2. **카메라 판 입자 17기술**(`*_cam` — 째려보기 위아래 띠 · 집중선). `drawType`이 카메라 공간을 뜻하지 않는다(카메라 판이 아닌 113개도
+1. **카메라 판 입자 17기술**(`*_cam` — 째려보기 위아래 띠 · 집중선). `drawType`이 카메라 공간을 뜻하지 않는다(카메라 판이 아닌 113개도
    1이다) — 브라우저에서 `/fxlab`으로 맞춰야 한다.
-3. **스텐실 231 · 후처리(방사형 블러 35 · 피드백 51 · DOF 76) 버림.** 웅크리기 흰 공(`ew111`)의 첫 후보. 큼.
-4. **상태가 걸린 동안의 몸 표시**(`BattleStatusEffectObserverData` 효과 번호 744~752) — 번호 → 프리팹 표를 못 찾았다. 지금은 얼음 껍질 ·
+2. **스텐실 231 · 후처리(방사형 블러 35 · 피드백 51 · DOF 76) 버림.** 웅크리기 흰 공(`ew111`)의 첫 후보. 큼.
+3. **상태가 걸린 동안의 몸 표시**(`BattleStatusEffectObserverData` 효과 번호 744~752) — 번호 → 프리팹 표를 못 찾았다. 지금은 얼음 껍질 ·
    혼란 고리 · 씨뿌리기 고리 · 대타 인형을 지어 세운다.
-5. **조우 이펙트 `ef_b_encount_*` 110벌 중 2벌, 무대 배경 효과 `ef_b_bg_*` 35벌 중 1벌만 굽는다.**
-6. **UI 아이콘이 32px DS 도트**(도구 · 포켓몬) — BDSP `texturemass`에 `item` 380 · `pm` 542가 있다.
-7. `MotionReplaceData` 51줄(피카츄 · 식스테일 …의 공격 클립 갈아 끼기), 짐작 상수(흔들림 세기 · 주기).
+4. **조우 이펙트 `ef_b_encount_*` 110벌 중 2벌, 무대 배경 효과 `ef_b_bg_*` 35벌 중 1벌만 굽는다.**
+5. **UI 아이콘이 32px DS 도트**(도구 · 포켓몬) — BDSP `texturemass`에 `item` 380 · `pm` 542가 있다.
+6. `MotionReplaceData` 51줄(피카츄 · 식스테일 …의 공격 클립 갈아 끼기), 짐작 상수(흔들림 세기 · 주기).
 
 ## 확인
 
