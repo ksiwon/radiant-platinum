@@ -388,12 +388,14 @@ export function BattleScreen() {
   useEffect(() => { setPage('root') }, [actions])
   // Esc로 한 단 나온다. 교체만 고를 수 있는 화면은 그 화면이 제 X를 받는다
   // (`SwitchScreen`의 `onBack` — 기절한 뒤면 없고, 「교체」의 예로 열었으면 물러서기다)
+  // ⚠️ 잡는 법 강습 동안은 안 듣는다 — 사람 키를 끊는 `useMenuKeys`는 메뉴가 붙어 있을 때만 서므로, 그 틈의
+  // Esc가 손이 가리키는 기술 단을 닫을 수 있었다 (`TutorialPilot`)
   useEffect(() => {
-    if (page === 'root' || forced) return
+    if (page === 'root' || forced || ally !== null) return
     const onEsc = (e: KeyboardEvent) => { if (e.code === 'Escape') setPage('root') }
     window.addEventListener('keydown', onEsc)
     return () => { window.removeEventListener('keydown', onEsc) }
-  }, [page, forced])
+  }, [page, forced, ally])
 
   /**
    * 트레이너가 서 있는 판인가 (`battleStore.hasTrainer` — 무대가 상대 몸을 세우는 그 술어다).
@@ -724,7 +726,8 @@ export function BattleScreen() {
 
       <div className={css.console_}>
         {/* 로그는 판이 아니라 글이다. 무대를 가리지 않게 상자를 없앴다 */}
-        <div className={css.log} onClick={tapLog}>
+        {/* 강습 동안에도 글 넘기기는 산다 (`TutorialPilot`의 `data-pilot-pass`) */}
+        <div className={css.log} onClick={tapLog} data-pilot-pass>
           <div className={css.logText}>
             {pilotLine ?? commandLine ?? script.text}
             {/* 누름을 기다릴 때만 뜬다 — 연출·게이지 동안은 눌러도 아무 일이 없다 */}

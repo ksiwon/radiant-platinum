@@ -40,6 +40,31 @@ const PRESSES: readonly Press[] = [
   { target: 'item-0', keys: ['KeyZ'] },
 ]
 
+/**
+ * 손이 떠 있는 동안 사람의 누름을 막는다 — 키(`useMenuKeys`의 `pilotOnly`)만 막고 마우스는 열어 두었더니, 첫 턴에 사람이
+ * 기술 칸을 먼저 눌러 손이 한 걸음 뒤처졌다. 손은 둘째 턴에 없는 기술 칸(`move-0`)만 찾으며 **영영** 섰다(2026-10-07 journey).
+ * 원작은 그동안 터치도 키도 안 읽는다(`battle_subscreen.c`의 강좌 갈래 · `GetCatchTutorialInput`). 글 넘기기만 산다 —
+ * 원작도 A·B로 글을 빨리 넘긴다(`battle_main.c`의 `CanABSpeedUpPrint`). 그 칸은 `data-pilot-pass`를 단다.
+ *
+ * 창의 **캡처 단계**에서 끊는다 — React는 뿌리에서 듣고, `onPointerEnter`도 뿌리의 `pointerover`로 흉내 내므로 둘 다 여기서 멎는다.
+ * 포커스된 단추 위의 Space · Enter가 만드는 `click`도 사람 것(`isTrusted`)이라 같이 걸린다
+ */
+const HUMAN_POINTER = [
+  'pointerdown', 'pointerup', 'pointerover', 'pointerout', 'mousedown', 'mouseup', 'mouseover', 'mouseout',
+  'click', 'dblclick', 'auxclick', 'contextmenu', 'touchstart', 'touchend',
+] as const
+
+function blockHumanPointer(): () => void {
+  const stop = (e: Event): void => {
+    if (!e.isTrusted) return
+    if (e.target instanceof Element && e.target.closest('[data-pilot-pass]') !== null) return
+    e.stopPropagation()
+    if (e.cancelable) e.preventDefault()
+  }
+  for (const type of HUMAN_POINTER) window.addEventListener(type, stop, true)
+  return () => { for (const type of HUMAN_POINTER) window.removeEventListener(type, stop, true) }
+}
+
 function send(code: string): void {
   window.dispatchEvent(new KeyboardEvent('keydown', { code, bubbles: true, cancelable: true }))
   window.dispatchEvent(new KeyboardEvent('keyup', { code, bubbles: true, cancelable: true }))
@@ -59,7 +84,8 @@ export function TutorialPilot({ line, onLine }: { line: string | null, onLine: (
     document.documentElement.dataset.pilotStep = '0'
     let alive = true
     void loadPointerHand().then(() => { if (alive) setReady(true) }).catch(() => { if (alive) setReady(true) })
-    return () => { alive = false }
+    const unblock = blockHumanPointer()
+    return () => { alive = false; unblock() }
   }, [])
 
   useEffect(() => {
