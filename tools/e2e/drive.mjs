@@ -2828,6 +2828,17 @@ export async function driveStory(page, {
     await tap('Space', 200)
     for (let i = 1; i < want; i++) await tap('ArrowUp', 70)
     await tap('Space', 300)
+    /**
+     * ⚠️ **개수 뒤에 「…원입니다. 괜찮겠습니까?」가 온다** (`Shop_ConfirmItemPurchase` — 커서는
+     * 「예」). 10-02(`ab3b3f7`)에 가게가 원작 차례대로 바뀐 뒤로 이 걸음은 개수에서 곧장 X를
+     * 눌러 **한 번도 못 샀다** — 그 뒤 journey 여덟 판이 전부 「안 샀다」였고, 포획은 처음 받은
+     * 볼 다섯 개의 운에 걸렸다. 산 것이 가방에 들어올 때까지 결정을 넘긴다
+     */
+    for (let i = 0; i < 8; i++) {
+      const mid = await bagState()
+      if (mid !== null && held(mid) > held(before)) break
+      await tap('Space', 350)
+    }
     await tap('KeyX', 200)
     await clearTalk()
     await settle()
