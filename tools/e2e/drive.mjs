@@ -191,6 +191,20 @@ export async function driveStory(page, {
     // (2026-09-17 `_leg42`): 202에서 347로 빠져나왔다가 같은 계획으로 202에
     // 도로 들어가기를 121걸음씩 되풀이했다
     || standingObstacles.has(`${String(matrixOf(mapId))}:${String(x)},${String(z)}`)
+    || DETOUR.has(`${String(matrixOf(mapId))}:${String(x)},${String(z)}`)
+
+  /**
+   * **밟으면 이야기가 곁길로 새는 칸** — 행렬:x,z.
+   *
+   * 205번도로 남(347)의 (211, 659~664)는 꼬마 아가씨의 좌표 사건이다
+   * (`scripts_route_205_south.s` `Route205South_CoordEvent_LittleGirl`) — 밟으면
+   * `VAR_VALLEY_WINDWORKS_STATE`가 1이 되고, 그 뒤로는 다리 (217,653)에서 조무래기 둘이
+   * 주인공을 밀어낸다(`Route205South_CoordEvent_Grunts`). 골짜기 발전소를 풀어야 열리는데
+   * 이 하네스는 그 걸음을 아직 모른다. 앞 판들은 그 줄을 우연히 안 밟고 숲에 들었고,
+   * `journey-cf392ba-full`은 밟고 다리에서 5분을 밀려났다. 원작에서도 그 줄을 비켜 걸으면
+   * 발전소를 건너뛴다 — 그 길로 간다 (FOLLOWUP: 발전소 걸음)
+   */
+  const DETOUR = new Set([659, 660, 661, 662, 663, 664].map((z) => `${String(matrixOf(347))}:211,${String(z)}`))
 
   /**
    * **벨 나무·깰 바위·밀 바위는 격자에 없다** — 지형이 아니라 객체라서다
