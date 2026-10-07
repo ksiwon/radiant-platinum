@@ -652,6 +652,8 @@ export async function driveStory(page, {
         const card = cards.nth(i)
         if (await card.isDisabled().catch(() => true)) continue
         await card.click({ timeout: 3000 }).catch(() => {})
+        // 누른 자리에 마우스를 두면 다음 메뉴가 그 줄에서 열린다 (`parkMouse`)
+        await page.mouse.move(1, 1).catch(() => {})
         return true
       }
       // 고를 수 있는 칸이 하나도 없다 — 전멸이다. 넘겨서 끝낸다
@@ -715,6 +717,7 @@ export async function driveStory(page, {
         if (at < 0) at = 0
       }
       await rows.nth(Math.min(at, n - 1)).click({ timeout: 3000 }).catch(() => {})
+      await page.mouse.move(1, 1).catch(() => {})
       await page.waitForTimeout(80)
       return true
     }
@@ -2859,6 +2862,16 @@ export async function driveStory(page, {
    *
    * @returns `{ ok, slot, why }` — `slot`은 `{ item, count, pocket, row }`
    */
+  /**
+   * **마우스를 화면 구석으로 치운다.** 메뉴 줄은 `onPointerEnter`로 커서를 옮기는데
+   * (`ui/menu/BagScreen`의 갈래 창 등), 크로미움은 가만히 있는 마우스 밑에 창이 뜨면 그
+   * 줄에 들어섰다고 친다. 배틀에서 파티 칸 · 기술 칸을 누른 자리에 마우스가 남아 있으면
+   * 가방의 갈래 창이 「쓴다」가 아니라 그 밑의 「버린다」에서 열렸다 — 숲 앞 사탕이
+   * 「이상한사탕을 몇 개 버리겠습니까?」에 섰다 (`journey-224740d-full`). 판마다 마지막
+   * 클릭 자리가 달라서 가끔이었다
+   */
+  const parkMouse = async () => { await page.mouse.move(1, 1).catch(() => {}) }
+
   const openBagAt = async (item, till) => {
     const bag = await bagState()
     if (bag === null) return { ok: false, unknown: true, why: `가방을 못 읽었다 (${obs.kind})` }
@@ -2866,6 +2879,8 @@ export async function driveStory(page, {
     if (slot === null) return { ok: false, why: `가방에 도구 ${String(item)}이 없다` }
 
     await settle()
+    // ⚠️ 마우스를 치워 두고 키로 고른다 — `parkMouse`
+    await parkMouse()
     await tap('KeyC')
     const rowAt = async () => page.evaluate(() => {
       const all = [...document.querySelectorAll('[role="radiogroup"] [role="radio"]')]
@@ -3028,6 +3043,8 @@ export async function driveStory(page, {
     const { from, to, unlocked } = plan.value
     if (!unlocked || from === null || to === null) return { ok: false, why: `맵 ${String(target)}은 아직 날 수 없다` }
     await settle()
+    // ⚠️ 마우스를 치워 두고 키로 고른다 — `parkMouse`
+    await parkMouse()
     await tap('KeyC')
     const rowAt = async () => page.evaluate(() => {
       const all = [...document.querySelectorAll('[role="radiogroup"] [role="radio"]')]
