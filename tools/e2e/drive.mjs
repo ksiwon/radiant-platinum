@@ -3370,24 +3370,29 @@ export async function driveStory(page, {
       if (!used.ok) { await closeMenus(); return done({ ...used, level: mon.level }) }
       for (let i = 0; i < 30 && (await now()).menu !== 'party'; i++) await page.waitForTimeout(150)
       /**
-       * ⚠️ **가방에 그대로면 한 번 더 고른다.** `chooseUse`는 키를 시간 간격으로만 누르므로,
-       * 맵에 막 들어선 프레임이 느린 자리에서는 첫 결정이 갈래 메뉴를 열기 전에 다음 키가
-       * 들어가 화면이 가방에 남는다 — 갤럭시 빌딩 앞에서 세 마리가 9초 안에 다 그렇게
-       * 떨어졌고(`journey-2bf760a-full`) 같은 자리의 다음 판은 됐다. 갈래 창을 닫고 다시 고른다
+       * ⚠️ **가방에 그대로면 가방을 닫고 처음부터 다시 연다** (두 번까지). 판마다 가끔 숲 앞 ·
+       * 빌딩 앞에서 첫 알이 「쓴다」 뒤에도 가방에 남았다 — 메뉴 bag · 스크립트 없음 · 60fps
+       * (`journey-26f5428-full`). 갈래 창만 닫고 다시 고르는 것으로는 안 잡혔다
        */
-      if ((await now()).menu === 'bag') {
-        await tap('KeyX', 300)
-        if ((await now()).menu === 'bag') {
-          const again = await chooseUse(at.slot)
-          if (again.ok) for (let i = 0; i < 60 && (await now()).menu !== 'party'; i++) await page.waitForTimeout(150)
-        }
+      for (let retry = 0; retry < 2 && (await now()).menu !== 'party'; retry++) {
+        await closeMenus()
+        const at2 = await openBagAt(CANDY, till)
+        if (!at2.ok) break
+        const again = await chooseUse(at2.slot)
+        if (!again.ok) break
+        for (let i = 0; i < 60 && (await now()).menu !== 'party'; i++) await page.waitForTimeout(150)
       }
       if ((await now()).menu !== 'party') {
-        // 그때 화면이 무엇이었는지 같이 적는다 — 「안 열렸다」만으로는 다음 판에서 못 가른다
+        // 그때 화면이 무엇이었는지 같이 적는다 — 앞쪽은 계기판 글이라 끝과 갈래 창을 따로 잡는다
         const st = await now()
-        const seen = (await screen()).slice(0, 140)
+        const seen = (await screen()).slice(-200)
+        const radios = await page.evaluate(() => [...document.querySelectorAll('[role="radiogroup"]')]
+          .map((g) => [...g.querySelectorAll('[role="radio"]')]
+            .map((e) => `${e.getAttribute('aria-checked') === 'true' ? '▶' : ''}${(e.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 16)}`)
+            .join('|'))
+          .join(' / ')).catch(() => '?')
         await closeMenus()
-        return done({ ok: false, level: mon.level, why: `파티 화면이 안 열렸다 (menu ${String(st.menu)} · script ${String(st.script)} · 화면 「${seen}」)` })
+        return done({ ok: false, level: mon.level, why: `파티 화면이 안 열렸다 (menu ${String(st.menu)} · script ${String(st.script)} · 갈래 [${radios}] · 화면 끝 「${seen}」)` })
       }
       for (let i = 0; i < slot; i++) await tap('ArrowRight', 90)
       await tap('Space', 250)
