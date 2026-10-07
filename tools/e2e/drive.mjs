@@ -3374,6 +3374,19 @@ export async function driveStory(page, {
       const used = await chooseUse(at.slot)
       if (!used.ok) { await closeMenus(); return done({ ...used, level: mon.level }) }
       for (let i = 0; i < 30 && (await now()).menu !== 'party'; i++) await page.waitForTimeout(150)
+      /**
+       * ⚠️ **가방에 그대로면 한 번 더 고른다.** `chooseUse`는 키를 시간 간격으로만 누르므로,
+       * 맵에 막 들어선 프레임이 느린 자리에서는 첫 결정이 갈래 메뉴를 열기 전에 다음 키가
+       * 들어가 화면이 가방에 남는다 — 갤럭시 빌딩 앞에서 세 마리가 9초 안에 다 그렇게
+       * 떨어졌고(`journey-2bf760a-full`) 같은 자리의 다음 판은 됐다. 갈래 창을 닫고 다시 고른다
+       */
+      if ((await now()).menu === 'bag') {
+        await tap('KeyX', 300)
+        if ((await now()).menu === 'bag') {
+          const again = await chooseUse(at.slot)
+          if (again.ok) for (let i = 0; i < 60 && (await now()).menu !== 'party'; i++) await page.waitForTimeout(150)
+        }
+      }
       if ((await now()).menu !== 'party') {
         await closeMenus()
         return done({ ok: false, level: mon.level, why: '파티 화면이 안 열렸다' })
