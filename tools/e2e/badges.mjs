@@ -81,6 +81,23 @@ export const MAP = {
   route216: 383, route217: 385, acuityLakefront: 340,
   snowpoint: 165, snowpointMart: 166, snowpointGym: 167, snowpointCenter: 168,
 }
+/**
+ * **영원 센터에서 낫는다 — 빌딩 문 앞 나무가 되살아났으면 베고 간다.**
+ *
+ * ⚠️ 빌딩에서 나오면 (305,520)에 서는데, 벤 나무(305,521)는 맵을 다시 들어오면
+ * 되살아나 센터로 가는 길을 막는다(`actor/obstacles.ts`). 실측(진단 판
+ * `journey-from23-diag`): 층마다 「(305,520)에서 길을 못 찾았다」로 한 번도 못 나았다.
+ * 사람은 문 앞에서 다시 벤다
+ */
+async function healEterna(api) {
+  const budget = () => Math.min(300_000, api.left())
+  let got = await api.healAt(MAP.eternaCenter, budget())
+  if (got.ok || (await api.now()).map !== MAP.eterna) return got
+  const cut = await api.clearWay(MAP.eterna, MAP.eternaCenter, Math.min(600_000, api.left()), { sprite: 86, maxHits: 3 })
+  if (!cut.ok) return { ...got, why: `${String(got.why)} · 나무를 다시 못 벴다 (${String(cut.why)})` }
+  got = await api.healAt(MAP.eternaCenter, budget())
+  return got
+}
 /** 갤럭시 빌딩 네 층 — 여기 서 있으면 앞 나무를 지난 것이다 */
 const GALACTIC_FLOORS = new Set([MAP.galactic1F, MAP.galactic2F, MAP.galactic3F, MAP.galactic4F])
 
@@ -371,7 +388,7 @@ export async function eternaToBike(api, ctx, {
        */
       const before = await api.partyState()
       if (hurt(before)) {
-        const got = await api.healAt(MAP.eternaCenter, Math.min(300_000, api.left()))
+        const got = await healEterna(api)
         note(`빌딩 ${String(floor - MAP.galactic1F + 1)}F 앞 회복`, got.ok ? '나았다' : String(got.why))
       }
       /**
@@ -410,7 +427,7 @@ export async function eternaToBike(api, ctx, {
        * 못 탔다)이 그 말에 덮여 있었다
        */
       const why = out.floors.at(-1)?.went === 'arrived' ? '전멸했다' : String(out.floors.at(-1)?.went)
-      const healed = await api.healAt(MAP.eternaCenter, Math.min(300_000, api.left()))
+      const healed = await healEterna(api)
       note(`빌딩에서 멈췄다 (${why}) — 회복`, healed.ok ? '나았다' : String(healed.why))
       if (!phases.includes('jupiter')) { out.why = `빌딩에서 멈췄다 — ${why}`; return out }
       continue
@@ -435,7 +452,7 @@ export async function eternaToBike(api, ctx, {
     note(`쥬피터${round > 0 ? ' (재도전)' : ''}`, `${said ? '붙었다' : '못 걸었다'} · 영원 상태 ${String(v?.eterna)} · 떠났다 ${String(v?.galacticLeft)} · 지금 맵 ${String(after.map)}`)
     if (v?.galacticLeft === true) break
     if (api.left() > 600_000) {
-      const healed = await api.healAt(MAP.eternaCenter, Math.min(300_000, api.left()))
+      const healed = await healEterna(api)
       note('쥬피터에게 져서 회복', healed.ok ? '나았다' : String(healed.why))
     }
   }
