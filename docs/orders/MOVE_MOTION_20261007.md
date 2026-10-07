@@ -17,6 +17,7 @@
 | 5 | **날씨가 BDSP `et` 이펙트** (`BattleAtmosphere` `Weather`) | `WeatherData.MainFileName` — `et004_sunny01` · `et001_rain01` · `et002_hail01` · `et003_sandstorm01`. 지은 상자 · 팔면체 · 해는 옛 설치본에서만 |
 | 6 | **체력판을 시퀀스가 감춘다** (`seqStage.gauge` · `useSeqGaugeHide`) | BDSP 411기술이 0프레임 `GaugeDispAll 0` → 맞기 전 `GaugeDisp trg=1`. PT도 연출 동안 숨긴다(`BattleDisplay_GetAnimHideFlags`) |
 | 7 | **색이 다른 포켓몬은 볼이 열릴 때 별이 한 번** (`ShinyBurst` · `ee003`) | 몸 둘레를 늘 돌던 팔면체 일곱은 원작 어디에도 없다. BDSP `BattleMiscEffectData` 2 「レア」. `GroupOption 29 = 231`이 자리를 고른다 |
+| 8 | **빗나간 기술은 연출 없이 넘긴다** (`playback` 'move' · `view` 'move') | 사용자 결정(10-07): PT를 따른다. `subscript_missed.s`가 `PrintAttackMessage · Wait · WaitButtonABTime 30` 뒤 바로 빗나감 글 — `PlayMoveAnimation`이 없다. `[miss]`는 홑 대상에만 붙는다(`hitStepInvulnerabilityEvent`의 `!move.spreadHit`) — 범위 기술은 맞은 쪽 연출이 그대로 돈다. 막기 · 효과 없음도 원작은 같은 갈래(`MOVE_STATUS_DID_NOT_HIT`)인데 아직 연출이 돈다 |
 | — | 설치 그룹 `battleFx` 3판 · 2판도 그대로 쓴다 | 상태 · 날씨 · 별이 없으면 그 연출만 DS로 선다 — 다시 롬을 묻지 않는다(`GROUP_ACCEPTS`) |
 
 ## 안 바꾼 것 — 근거가 반대였다
@@ -30,8 +31,9 @@
 
 ## 남은 것 (영향 순)
 
-1. **빗나감에도 기술 연출이 통째로 돈다.** PT는 빗나가면 연출이 없다(`subscript_pursuit.s` → `subscript_missed.s`). BDSP가 빗나갈 때
-   무엇을 하는지(연출을 돌리는지)는 못 찾았다 — **갈림길이라 사용자에게 묻는다**.
+1. **막기 · 효과 없음에도 기술 연출이 돈다.** 원작은 빗나감과 같은 갈래(`subscript_missed.s` `MOVE_STATUS_PROTECTED` ·
+   `MOVE_STATUS_INEFFECTIVE`)로 연출을 건너뛴다. 우리 사건 줄은 `[miss]`만 달고 오므로 뒤따르는 `-activate 막기` · `-immune`을
+   보고 갈라야 한다 — 범위 기술에서 한쪽만 막힌 판을 가려야 해서 따로 한다.
 2. **카메라 판 입자 17기술**(`*_cam` — 째려보기 위아래 띠 · 집중선). `drawType`이 카메라 공간을 뜻하지 않는다(카메라 판이 아닌 113개도
    1이다) — 브라우저에서 `/fxlab`으로 맞춰야 한다.
 3. **스텐실 231 · 후처리(방사형 블러 35 · 피드백 51 · DOF 76) 버림.** 웅크리기 흰 공(`ew111`)의 첫 후보. 큼.

@@ -269,7 +269,10 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
 
     case 'move':
       // 화면에는 아무 변화가 없지만 **연출은 여기서 시작한다.** 박자가 이
-      // 사건에 그 기술의 연출 길이만큼 쉬는 자리를 내 준다 (`playback`)
+      // 사건에 그 기술의 연출 길이만큼 쉬는 자리를 내 준다 (`playback`).
+      // 빗나간 기술은 원작이 연출을 안 돌린다(`subscript_missed.s`) — 돌 것이 없으니 그대로 둔다.
+      // `[miss]`는 홑 대상만 단다(범위 기술은 `spreadHit`라 안 단다) — 다른 쪽이 맞았으면 여기에 안 온다
+      if (e.miss) return view
       return {
         ...view,
         lastMove: {

@@ -98,6 +98,17 @@ describe('게이지 속도', () => {
 })
 
 describe('박자 순서', () => {
+  it('빗나간 기술은 연출 없이 글 하나 읽을 만큼만 쉬고 넘어간다', () => {
+    // `subscript_missed.s`: `PrintAttackMessage · Wait · WaitButtonABTime 30` 뒤 바로 빗나감 글.
+    // `PlayMoveAnimation`이 없다 — 무대가 볼 `lastMove`도 안 바뀐다
+    const missed: BattleEvent = { ...move(p1, 'Tackle'), miss: true } as BattleEvent
+    const beats = buildBeats([enter(p2, 20), missed, { kind: 'miss', actor: p2, source: p1 }], say)
+    const at = beats.findIndex((b) => b.events.some((e) => e.kind === 'move'))
+    expect(beats[at]!.hold).toBe(30)
+    expect(beats[at]!.presentation).toBeUndefined()
+    expect(applyEvents(emptyView(), [enter(p2, 20), missed]).lastMove).toBeNull()
+  })
+
   it('기술 이름이 먼저 뜨고 그 다음 박자에서 체력이 닳는다', () => {
     const beats = buildBeats([enter(p2, 20), move(p1, 'Tackle'), hit(p2, 12, 20)], say)
     const at = beats.findIndex((b) => b.text?.includes('Tackle'))

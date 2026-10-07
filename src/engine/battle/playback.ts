@@ -609,6 +609,9 @@ export function buildBeats(
         // 뷰는 안 바뀌지만 사건은 그래도 실어 보낸다 — 줄기에서 조용히 빠지면
         // 무엇이 지나갔는지 아무도 못 센다
         say(text(e), 0)
+        // 빗나간 기술은 연출이 없다 — 기술 이름을 읽힌 뒤 바로 빗나감 글이다
+        // (`subscript_missed.s` `PrintAttackMessage · Wait · WaitButtonABTime 30`). 무대도 안 돈다 (`view` 'move')
+        if (e.miss) { show([e], HOLD_MESSAGE); break }
         // 연출이 도는 만큼 쉰다. 이 자리가 0이면 기술 이름이 뜨자마자 게이지가
         // 닳아서, 무엇이 무엇을 때렸는지가 화면에서 안 이어진다.
         // **기술마다 길이가 다르다** — 무대도 같은 자리에 물어본다 (`vfx`)
