@@ -109,7 +109,7 @@ const drivers = {
         await sleep(80)
         continue
       }
-      const cards = page.locator('button').filter({ hasText: /Lv\./ })
+      const cards = page.locator('button').filter({ hasText: /Lv\.?\s*\d/ })
       if ((await cards.count().catch(() => 0)) > 0) {
         for (let i = 0; i < await cards.count(); i++) {
           if (await cards.nth(i).isDisabled().catch(() => true)) continue

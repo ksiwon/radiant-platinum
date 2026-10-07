@@ -188,7 +188,7 @@ try {
           return m.useBattleStore.getState().shiftAsk
         })
         out.shift.potionSeen = out.shift.panelAfter.some((t) => t.includes(POTION_NAME))
-        out.shift.switchOpened = out.shift.panelAfter.some((t) => /Lv\./.test(t))
+        out.shift.switchOpened = out.shift.panelAfter.some((t) => /Lv\.?\s*\d/.test(t))
         await page.screenshot({ path: resolve(OUT, 'shift-after.png') })
         note('교체 물음에서 옛 판정', JSON.stringify(out.shift))
         out.verdict = out.shift.switchOpened && !out.shift.potionSeen

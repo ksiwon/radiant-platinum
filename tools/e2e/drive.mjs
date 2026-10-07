@@ -630,9 +630,13 @@ export async function driveStory(page, {
        *
        * 그래서 **고를 수 있는 칸**을 누른다. 화면이 `disabled`로 이미 갈라 두었다
        * (`ui/battle/PartyCards`의 `can`). 칸은 「Lv.」이 붙은 단추뿐이라 기술
-       * 칸(`12/25`)과 안 헷갈린다
+       * 칸(`12/25`)과 안 헷갈린다.
+       *
+       * ⚠️ **점을 못 박지 않는다.** 칸은 `Lv21`이다(`PartyCards`의 `Lv{level}`). `/Lv\./`로
+       * 찾던 동안 칸이 0개로 읽혀 이 함수가 늘 거짓이었고, 영원의 숲에서 수풀부기가 쓰러진
+       * 교체 화면에 판이 섰다 (`journey-c82a4d5-full` · `stuck-battle-2.png`)
        */
-      const cards = page.locator('button').filter({ hasText: /Lv\./ })
+      const cards = page.locator('button').filter({ hasText: /Lv\.?\s*\d/ })
       const n = await cards.count()
       if (n === 0) return false
       for (let i = 0; i < n; i++) {
