@@ -115,7 +115,7 @@ export async function preloadMoveSeqs(moves: Iterable<number>): Promise<void> {
  * 시퀀스가 화면에 세우는 것이 하나도 없는가 — 입자 · 시퀀스 모델 · 몸 · 다른 몸 감추기 · 흔들림 · 배경색이 없고 카메라는
  * 제자리로 돌리는 것뿐이다. 소리 · 게이지 · 글만 있는 계획이 그렇다
  */
-export function showsNothing(plan: SeqPlan): boolean {
+function showsNothing(plan: SeqPlan): boolean {
   return plan.particles.length === 0 && plan.models.length === 0 && plan.others.length === 0
     && plan.shakes.length === 0 && plan.back.length === 0
     && plan.body.every((t) => t.commands.length === 0)

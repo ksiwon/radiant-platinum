@@ -380,6 +380,12 @@ export function buildBeats(
    */
   let inMove = false
 
+  /**
+   * 방금 쓴 기술 — 특성이 막은 줄 · 반감 열매 줄이 그 이름을 빈칸으로 받는다.
+   * ⚠️ 뷰의 `lastMove`로 읽지 않는다 — 빗나가거나 막힌 기술은 연출이 없어 뷰가 안 적는다
+   */
+  let cast: number | null = null
+
   /** 움찔할 때 이미 소리 · 깜박임을 낸 자리 — 그 자리의 첫 데미지는 게이지만 움직인다 (`strike`) */
   let voiced = new Set<SlotId>()
 
@@ -504,7 +510,7 @@ export function buildBeats(
     // 위협이 대타 뒤의 자리를 건너뛰면 쇼다운은 `-immune`만 낸다 — 원작은 그 자리를 말없이 건너뛴다 (`subscript_intimidate.s`)
     if (announced !== null && e.kind === 'effectiveness' && e.level === 'immune') { flush(); show([e], 0); continue }
     // 특성이 막은 기술은 그 이름이 문장에 든다 — 쇼다운 줄은 기술을 안 실으므로 지금 도는 기술을 붙인다
-    if (e.kind === 'effectiveness' && e.from) { held.push({ ...e, move: view.lastMove?.move ?? null }); continue }
+    if (e.kind === 'effectiveness' && e.from) { held.push({ ...e, move: cast }); continue }
     if (e.kind === 'crit' || e.kind === 'effectiveness') { held.push(e); continue }
     if (e.kind === 'ability') {
       announced = e.boost === true ? { actor: e.actor, ability: e.ability, abilityName: e.abilityName } : null
@@ -616,6 +622,7 @@ export function buildBeats(
 
       case 'move': {
         inMove = true
+        cast = e.move
         // 맞는 소리 · 깜박임은 몸이 움찔하는 프레임에 난다 — BDSP 시퀀스가 있는 기술만 그 프레임을 안다 (DATA.md §2.18)
         const mine = e.actor.slot.startsWith('p1')
         const impact = e.miss ? null : moveImpactOf(e.move, mine, doubles)
@@ -666,7 +673,7 @@ export function buildBeats(
         // 그친 날씨가 무엇이었는지 — `|-weather|none`은 이름을 안 들고 온다
         if (e.kind === 'weather' && e.weather === null) told = { ...e, ended: view.weather }
         // 반감 열매가 막은 기술 — 원작 줄이 그 이름을 빈칸으로 받는다
-        if (e.kind === 'enditem' && e.how === 'weaken') told = { ...e, move: view.lastMove?.move ?? null }
+        if (e.kind === 'enditem' && e.how === 'weaken') told = { ...e, move: cast }
         // 변신 — 따라 한 쪽의 종 이름이 빈칸이다
         if (e.kind === 'transform') {
           const target = view.active[e.target.slot]
