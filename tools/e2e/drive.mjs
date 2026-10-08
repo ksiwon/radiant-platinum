@@ -214,6 +214,16 @@ export async function driveStory(page, {
   const obstaclesAsked = new Set()
   const OBSTACLE_SPRITES = new Set([84, 85, 86])
   /**
+   * **치웠다고 믿는 칸** — `obstacleGone`이 지운 칸을 따로 적는다.
+   *
+   * ⚠️ **세이브에는 없는 기억이다.** 벤 나무 · 깬 바위는 맵을 다시 들어오면 되살아나므로
+   * 게임이 「치웠다」를 남기지 않는다. 연속 판은 이 기억으로 되살아난 바위를 「치웠다」로
+   * 믿고 부딪혀 다시 깨며 지나가는데, 새로 띄운 판은 그것을 몰라 길이 없다고 한다 —
+   * 실측(2026-10-07 `journey-ww-from18`): 험한 샛길(254)의 (24,44)에서 「unreachable」.
+   * 그래서 파트 경계에서 이 기억을 세이브 옆에 적고 다음 파트가 읽는다(`harnessMemory`)
+   */
+  const clearedObstacles = new Set()
+  /**
    * 그 행렬의 장애물을 **표에서 통째로 깐다** — 아직 안 가 본 구역 것까지.
    *
    * ⚠️ **제품에게 물어서는 못 채운다.** `obstacleAt`은 **지금 떠 있는 맵**의
@@ -231,7 +241,8 @@ export async function driveStory(page, {
       if (matrixOf(id) !== matrix) continue
       for (const npc of npcsOf(id)) {
         if (!OBSTACLE_SPRITES.has(npc.sprite)) continue
-        standingObstacles.add(`${String(matrix)}:${String(npc.x)},${String(npc.z)}`)
+        const key = `${String(matrix)}:${String(npc.x)},${String(npc.z)}`
+        if (!clearedObstacles.has(key)) standingObstacles.add(key)
       }
     }
   }
@@ -258,7 +269,9 @@ export async function driveStory(page, {
   }
   /** 그 칸의 장애물을 치웠다 — 다음 계획부터 지나갈 수 있다 */
   const obstacleGone = (mapId, x, z) => {
-    standingObstacles.delete(`${String(matrixOf(mapId))}:${String(x)},${String(z)}`)
+    const key = `${String(matrixOf(mapId))}:${String(x)},${String(z)}`
+    standingObstacles.delete(key)
+    clearedObstacles.add(key)
   }
 
   /**
@@ -3187,7 +3200,9 @@ export async function driveStory(page, {
         break
       }
       obstacleGone(mapId, rock.x, rock.z)
-      standingObstacles.add(`${String(matrixOf(mapId))}:${String(next.x)},${String(next.z)}`)
+      const pushedTo = `${String(matrixOf(mapId))}:${String(next.x)},${String(next.z)}`
+      standingObstacles.add(pushedTo)
+      clearedObstacles.delete(pushedTo)
       rock = next
       pushed++
     }
@@ -3202,6 +3217,23 @@ export async function driveStory(page, {
   const setClimb = (on) => { climbMode = on === true }
   /** 폭포오르기 다리를 켜고 끈다 (`waterfallMode`) */
   const setWaterfall = (on) => { waterfallMode = on === true }
+
+  /**
+   * **세이브 밖의 하네스 기억** — 파트 경계에서 세이브 옆에 적고 다음 파트가 읽는다
+   * (`docs/orders/JOURNEY_PARTS_20261008.md` §3). 치웠다고 믿는 장애물과 물 · 벽 · 폭포
+   * 모드다. 모드는 다리가 켜고 끄지만, 켠 채 경계를 넘는 다리가 있어도 같은 답을 내게 한다
+   */
+  const harnessMemory = () => ({
+    version: 1,
+    clearedObstacles: [...clearedObstacles].sort(),
+    surf: surfMode, climb: climbMode, waterfall: waterfallMode,
+  })
+  const loadHarnessMemory = (m) => {
+    if (m?.version !== 1) return false
+    for (const key of m.clearedObstacles ?? []) { clearedObstacles.add(key); standingObstacles.delete(key) }
+    surfMode = m.surf === true; climbMode = m.climb === true; waterfallMode = m.waterfall === true
+    return true
+  }
 
   /**
    * **도구 하나를 밭에서 쓴다** (`ui/menu/itemAction`의 그 갈래들).
@@ -4352,6 +4384,7 @@ export async function driveStory(page, {
     teachHm, feedCandy, smashWay, smashRock, clearWay, rideBike, riding, hearthomeDoor, npcSpots, facing,
     gameBlocked, gameSolid,
     flyTo, strengthPush, setSurf, surfLog, setClimb, setWaterfall, climbLog, fieldState: () => obs.fieldState(),
+    harnessMemory, loadHarnessMemory,
     // 한 칸 걸음 — 체육관 풀이가 계획한 칸을 한 칸씩 밟는다. 판정은 부르는 쪽이 한다
     stepKey: (key, want) => stepOnce(key, want),
     /**

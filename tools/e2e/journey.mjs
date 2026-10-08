@@ -42,6 +42,7 @@ import { LOAD_SPY, startLoadSpy } from './loadSpy.mjs'
 import { classify, INFRA, SHAPE, SLOW } from './budget.mjs'
 import { missingData, trainersOn } from './route.mjs'
 import { resumableAt, writeSegment } from './segments.mjs'
+import { JOURNEY_PARTS, keepPartEnd, partEnvelope, partStart, PARTS_DIR } from './parts.mjs'
 import {
   bindingDigest, dataDigest, describeEnvironment, rosterOf, sealEvidence,
 } from '../distribution/evidence.mjs'
@@ -89,6 +90,29 @@ const FROM = flag('from')
  * 바뀐 하네스 지문은 기록 첫머리에 찍는다. 이 판도 **진단**이다
  */
 const ALLOW_HARNESS = args.includes('--allow-harness')
+/**
+ * **파트 하나만 돈다** (`--part=1|2|3`, `docs/orders/JOURNEY_PARTS_20261008.md`).
+ *
+ * 앞 파트의 끝 세이브(`.audit/parts/part-(N-1).rpsave`)와 그 옆의 하네스 기억에서
+ * 시작해 그 파트의 마지막 구간까지 걷고, 관장을 이긴 마을 센터에서 회복한 뒤
+ * ⑬의 끝 리포트를 `part-N.rpsave`로 쓴다. 봉투는 `.audit/parts/part-N.json`이다 —
+ * `.audit/journey.json`은 안 덮는다. `--save`를 주면 그 세이브에서 시작하는 진단이다
+ */
+const PART_N = flag('part') === null ? null : Number(flag('part'))
+const PART = PART_N === null ? null : JOURNEY_PARTS[PART_N] ?? null
+if (PART_N !== null && PART === null) {
+  console.error(`\n--part=${String(flag('part'))} — journey가 도는 파트는 1~3이다\n`)
+  process.exit(1)
+}
+if (PART !== null && FROM !== null) {
+  console.error('\n--part와 --from은 같이 못 쓴다 — 파트는 앞 파트의 끝 세이브에서 시작한다\n')
+  process.exit(1)
+}
+const PART_START = PART === null ? null : partStart(PART_N, flag('save'))
+if (PART_START !== null && !PART_START.ok) {
+  console.error(`\n파트 ${String(PART_N)}을 못 시작한다 — ${PART_START.why.join(' · ')}\n`)
+  process.exit(1)
+}
 
 /**
  * **레벨은 이상한사탕으로 맞춘다** (`docs/orders/RARE_CANDY_20260917.md`).
@@ -124,7 +148,7 @@ const STARLY = 396
  * `startDigest`는 **도중에 src를 고쳤는가**를 잡는다 — 개발 서버가 HMR로
  * 갈아 끼우면 앞뒤 걸음이 서로 다른 게임에서 재어진다
  */
-const EXPECTED_CASES = rosterOf('journey')?.cases ?? null
+const EXPECTED_CASES = PART !== null ? PART.cases : rosterOf('journey')?.cases ?? null
 const START_DIGEST = bindingDigest('journey')
 /** 도는 동안 자료가 바뀌었는지 보려고 시작 지문을 같이 든다 (지시 §7) */
 const dataAtStart = dataDigest()
@@ -581,6 +605,8 @@ let video = null
 let load = null
 const rows = []
 const add = (id, what, status, detail) => {
+  // ⚠️ **파트 판은 제 줄만 낸다.** 다른 파트의 줄을 「안 갔다」로 적으면 없는 결함이 생긴다
+  if (PART !== null && !PART.cases.includes(id)) return
   rows.push({ id, what, status, detail })
   const mark = { PASS: '✓', FAIL: '✗', BLOCKED: '⛔' }[status]
   console.log(`  ${mark} ${id}  ${what}`)
@@ -1039,6 +1065,8 @@ const story = { }
 const timings = {}
 const shots = []
 let ranToTheEnd = false
+/** 파트 판의 끝 (`--part`) — ⑬에서 채운다. 터지면 null로 남고 파트는 못 닿은 것이다 */
+let partOut = null
 
 /**
  * `--from`이 가리키는 구간에서 이어 달려도 되는가 — **신원까지 맞을 때만.**
@@ -1046,8 +1074,19 @@ let ranToTheEnd = false
  * ⚠️ **안 되면 조용히 전체를 돈다.** 다만 왜 못 이어 달리는지는 화면에 적는다 —
  * 「신원이 다르다」로만 적으면 다음 사람이 무엇이 바뀌었는지 다시 찾아야 한다
  */
-const resume = FROM === null ? { ok: false, segment: null, why: '' }
-  : resumableAt(FROM, SHORTCUTS, { allowHarness: ALLOW_HARNESS })
+const resume = PART !== null
+  ? (PART_N === 1 ? { ok: false, segment: null, why: '' }
+    : {
+      ok: true, why: '', notes: [],
+      segment: { id: PART.first, save: PART_START.save, at: PART_START.at, verifiedAt: `파트 ${String(PART_N - 1)} 끝` },
+    })
+  : FROM === null ? { ok: false, segment: null, why: '' }
+    : resumableAt(FROM, SHORTCUTS, { allowHarness: ALLOW_HARNESS })
+if (PART !== null) {
+  console.log(`  파트 ${String(PART_N)} — ${PART.what} · 구간 ${PART.first ?? '새 게임'}~${PART.last} · 줄 ${String(PART.cases.length)}개`)
+  if (PART_START.save !== null) console.log(`  시작 세이브 ${PART_START.save} (${String(PART_START.digest)})`)
+  for (const w of PART_START.why) console.log(`  ⚠️ 이 판은 **진단**이다 — ${w}`)
+}
 if (FROM !== null) {
   console.log(resume.ok
     ? `  구간 ${resume.segment.id}에서 이어 달린다 — ${resume.segment.save}`
@@ -1661,7 +1700,14 @@ try {
        * 돌아가고** 들판은 물이 낮음으로 되돌아가, 돌아와도 관장에게 못 닿는다
        */
       let preHealed = false
+      if (PART_START?.memory) {
+        log(`  하네스 기억을 읽었다 — 치운 장애물 ${String(PART_START.memory.clearedObstacles?.length ?? 0)}개`
+          + ` · 파도타기 ${String(PART_START.memory.surf)} · 락클라임 ${String(PART_START.memory.climb)}`)
+        api.loadHarnessMemory(PART_START.memory)
+      }
       for (const stop of AFTER_STOPS) {
+        // 파트의 마지막 구간을 넘으면 멈춘다 — 다음 파트의 앞 걸음을 밟지 않는다
+        if (PART !== null && stop.id > PART.last) break
         preHealed = false
         await noteBike()
         // ⚠️ **북쪽 다리는 꽃향기 앞에서 딱 한 번 연다.** 이 걸음을 건너뛰면
@@ -2027,7 +2073,7 @@ try {
          * 통째로 삼키지는 못하되, 900초보다 길어야 하는 다리는 길게 걷는다.
          * 바닥은 900초다(짧은 다리에서 굳이 줄일 까닭이 없다)
          */
-        const ahead = AFTER_STOPS.filter((one) => one.id >= stop.id).length
+        const ahead = AFTER_STOPS.filter((one) => one.id >= stop.id && (PART === null || one.id <= PART.last)).length
         /**
          * ⚠️ **위를 안 막으면 한 다리가 판을 통째로 삼킨다.** 900초 상한을
          * 없앤 판(2026-09-16)에서 영원시티 다리가 **30분 동안 줄 하나 없이**
@@ -2275,7 +2321,30 @@ try {
             || stop.map === VEILSTONE.map || stop.map === PASTORIA.map) api.stopPotions()
         }
       }
+      /**
+       * **파트 경계** — 관장을 이긴 마을 센터에서 낫고 나온다. 끝 세이브는 ⑬이 쓴다.
+       * 하네스 기억은 회복 걸음까지 끝난 뒤에 뜬다
+       */
+      let partEnd = null
+      if (PART !== null) {
+        const healed = await api.healAt(PART.center, Math.min(600_000, Math.max(120_000, api.left())))
+        await api.settle()
+        const where = await whereNow()
+        const badgesNow = (await readSave()).badges
+        partEnd = {
+          healed: healed.ok === true, healWhy: healed.ok ? null : String(healed.why),
+          badges: badgesNow,
+          memory: api.harnessMemory(),
+          at: {
+            map: where.world.map, matrix: where.world.matrix, x: where.player.x, z: where.player.z,
+            poketch: poketch.done, badges: badgesNow,
+          },
+        }
+        log(`  파트 ${String(PART_N)} 경계 — 센터 ${String(PART.center)} ${partEnd.healed ? '나았다' : `못 나았다 (${String(partEnd.healWhy)})`}`
+          + ` · 배지 ${String(partEnd.badges)}/${String(PART.badges)} · 맵 ${String(partEnd.at.map)}`)
+      }
       return {
+        partEnd,
         seen, metNpcs, heals, sprays, poketch, north, clock, potionBuy, badge3, badge45, badge67,
         vars: await api.storyVars(), bag: await api.bagState(),
         party: await api.partyState(), badges: (await readSave()).badges,
@@ -2725,7 +2794,22 @@ try {
   }
 
   // ── ⑬ 끝 리포트 ──────────────────────────────────────────────────────────
-  const endSave = await writeReport('end.rpsave')
+  const endSave = await writeReport(PART !== null ? `part-${String(PART_N)}.rpsave` : 'end.rpsave')
+  /** 파트 판의 끝 — 세이브 · 기억 · 다이제스트. 통과는 배지 수 · 회복 · 세이브 셋이다 */
+  if (PART !== null) {
+    const pe = story.extra?.partEnd ?? null
+    const digest = endSave.ok && pe !== null ? keepPartEnd(PART_N, resolve(SAVES, `part-${String(PART_N)}.rpsave`), pe.memory, pe.at) : null
+    partOut = {
+      n: PART_N, what: PART.what, first: PART.first, last: PART.last,
+      startSave: PART_START.save, startSaveDigest: PART_START.digest ?? null,
+      startDiagnostic: PART_START.diagnostic, startWhy: PART_START.why,
+      endSaveDigest: digest, badges: pe?.badges ?? null, wantBadges: PART.badges,
+      healed: pe?.healed ?? false, healWhy: pe?.healWhy ?? '경계에 못 닿았다', at: pe?.at ?? null,
+      ok: digest !== null && pe !== null && pe.healed && pe.badges >= PART.badges,
+    }
+    console.log(`  파트 ${String(PART_N)} 끝 — ${partOut.ok ? '통과' : '못 닿았다'} · 배지 ${String(partOut.badges)}/${String(PART.badges)}`
+      + ` · 끝 세이브 ${String(digest)}`)
+  }
   const endState = await readSave()
   add('13', '끝 자리에서 리포트를 쓰고 파일로 받는다', endSave.ok ? 'PASS' : 'FAIL',
     endSave.ok ? `${endSave.file} (${endSave.name}) · ${JSON.stringify(endState)}`
@@ -2968,9 +3052,11 @@ mkdirSync(resolve(ROOT, '.audit'), { recursive: true })
 // ⚠️ **`executedCases`를 결과 줄에서 뽑지 않는다.** 도중에 터져 여덟 줄만 남은
 // 파일과 열일곱 줄을 다 돌린 파일이 똑같아 보이면 안 된다 — 실제로 밟은 목록을
 // 여기서 넘기고, 판정은 `validateEvidence`가 정본과 맞대어 한다
-writeFileSync(resolve(ROOT, '.audit/journey.json'), `${JSON.stringify(sealEvidence({
+if (PART !== null) mkdirSync(PARTS_DIR, { recursive: true })
+writeFileSync(PART !== null ? partEnvelope(PART_N) : resolve(ROOT, '.audit/journey.json'), `${JSON.stringify(sealEvidence({
   dataAtStart,
   suite: 'journey',
+  selection: PART !== null ? `part-${String(PART_N)}` : 'all',
   expectedCases: EXPECTED_CASES,
   executedCases: rows.map((r) => r.id),
   startDigest: START_DIGEST,
@@ -2983,7 +3069,7 @@ writeFileSync(resolve(ROOT, '.audit/journey.json'), `${JSON.stringify(sealEviden
     load,
   },
   results: rows,
-  extra: { timings, story, shots, video, noise, perfSpy },
+  extra: { timings, story, shots, video, noise, perfSpy, part: partOut },
 }), null, 1)}\n`)
 
-process.exit(rows.some((r) => r.status === 'FAIL' || r.status === 'BLOCKED') ? 1 : 0)
+process.exit(rows.some((r) => r.status === 'FAIL' || r.status === 'BLOCKED') || (PART !== null && partOut?.ok !== true) ? 1 : 0)

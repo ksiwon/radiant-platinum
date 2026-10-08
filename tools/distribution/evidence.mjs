@@ -280,6 +280,8 @@ export const SUITES = {
       'tools/e2e/canvasShot.mjs', 'tools/e2e/terrainJudge.mjs', 'tools/e2e/stageProbe.mjs',
       // ⚠️ 페이지에 심는 것도 도구다 — 빠지면 계측이 바뀐 판을 봉투가 못 잡는다
       'tools/e2e/perfSpy.mjs',
+      // 파트 표 — 경계 · 결과 줄 · 시작 세이브를 정한다 (`JOURNEY_PARTS_20261008.md`)
+      'tools/e2e/parts.mjs',
       'tools/devServer.mjs', 'tools/gpuFlags.mjs', 'tools/shot/png.mjs',
       'tools/distribution/evidence.mjs',
     ],

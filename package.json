@@ -123,6 +123,8 @@
     "story": "node tools/e2e/story.mjs",
     "gpu:loss": "node tools/e2e/gpuLoss.mjs",
     "journey": "node tools/e2e/journey.mjs",
+    "part": "node tools/e2e/part.mjs",
+    "parts": "node tools/e2e/part.mjs --all",
     "saves": "node tools/saves/bake.mjs",
     "saves:check": "node tools/saves/check.mjs",
     "bake:mechanics": "node tools/distribution/mechanics/bake.mjs",
