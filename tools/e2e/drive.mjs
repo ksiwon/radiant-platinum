@@ -605,6 +605,13 @@ export async function driveStory(page, {
     const kind = opened.battle ?? 'wild'
     battles[kind] = (battles[kind] ?? 0) + 1
     const t0 = Date.now()
+    /** 창을 열 때의 턴 — 상한에 걸렸을 때 **턴이 넘어갔는가**로 선 것과 긴 것을 가른다 */
+    const turnAt = async () => {
+      const m = await obs.battleMoment().catch(() => null)
+      const turn = (m?.value ?? m)?.turn
+      return Number.isFinite(turn) ? turn : null
+    }
+    const turn0 = await turnAt()
     log(`  ${kind === 'wild' ? '야생' : '트레이너'} 배틀 — `
       + `야생 ${String(battles.wild)} · 트레이너 ${String(battles.trainer)}`)
     /**
@@ -1084,6 +1091,20 @@ export async function driveStory(page, {
       if (await maybePotion()) continue
       if (await pickMove()) continue
       await tap('Space')
+    }
+    /**
+     * ⚠️ **긴 배틀은 선 배틀이 아니다.** 실측(2026-10-08 `journey-965c569-full`):
+     * 유채 앞 배틀(25턴째 · 기술 고르기가 떠 있었다)과 맥실러전(16턴째 ·
+     * 「물의파동!」 글이 나오던 중)이 둘 다 120초를 넘겨 `stuckFights`가 2가 됐고,
+     * 그 뒤로 이 함수가 **아무 배틀도 안 밀어** 배지 5부터 판 전체가 섰다.
+     * 그래서 창 동안 **턴이 넘어갔으면** 세지 않고 돌려준다 — 화면이 아직
+     * `battle`이니 부르는 쪽이 곧 다시 부른다. 턴이 그대로일 때만 선 것으로 센다
+     */
+    const turn1 = await turnAt()
+    if (turn0 !== null && turn1 !== null && turn1 > turn0) {
+      log(`    배틀이 길다 — ${String(turn0)}→${String(turn1)}턴 · 이어서 민다`)
+      fights.push({ kind, from: opened.map, to: null, taps: 800, ms: Date.now() - t0, movedAfter: null, long: true })
+      return false
     }
     stuckFights++
     /**
