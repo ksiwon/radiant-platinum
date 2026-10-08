@@ -5,22 +5,29 @@
  * 끝날 때까지 0바이트라 도는 동안 못 본다.
  *
  * `pnpm parts`는 P1부터 차례로 돌고, 앞 파트가 못 닿으면 거기서 멈춘다. 판은 한 번에 하나다.
- * P4 · P5(`_dw` · `_league`를 파트로 올린 것)와 P6는 아직 없다 — 만들면 여기 잇는다
+ * P4는 `_dw`, P5는 `_league`를 `--part`로 돈다. P6는 아직 없다 — 만들면 여기 잇는다
  */
 import { spawn, execFileSync } from 'node:child_process'
 import { createWriteStream, mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { JOURNEY_PARTS, PARTS_DIR } from './parts.mjs'
+import { PROBE_PARTS } from './partProbe.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const args = process.argv.slice(2)
 const all = args.includes('--all')
 const rest = args.filter((a) => a.startsWith('--') && a !== '--all')
-const which = all ? Object.keys(JOURNEY_PARTS).map(Number) : [Number(args.find((a) => /^\d+$/.test(a)))]
+/** 파트 번호 → 무엇이 도는가. P1~P3는 journey, P4는 `_dw`, P5는 `_league`다 */
+const RUNNERS = {
+  ...Object.fromEntries(Object.entries(JOURNEY_PARTS).map(([n, d]) => [n, { what: d.what, file: 'tools/e2e/journey.mjs' }])),
+  4: { what: PROBE_PARTS[4].what, file: 'tools/e2e/_dw.mjs' },
+  5: { what: PROBE_PARTS[5].what, file: 'tools/e2e/_league.mjs' },
+}
+const which = all ? Object.keys(RUNNERS).map(Number) : [Number(args.find((a) => /^\d+$/.test(a)))]
 
-if (which.some((n) => JOURNEY_PARTS[n] === undefined)) {
-  console.error(`\n파트 번호를 준다 — 지금 도는 것은 ${Object.keys(JOURNEY_PARTS).join(' · ')}이다 (pnpm part 2)\n`)
+if (which.some((n) => RUNNERS[n] === undefined)) {
+  console.error(`\n파트 번호를 준다 — 지금 도는 것은 ${Object.keys(RUNNERS).join(' · ')}이다 (pnpm part 2)\n`)
   process.exit(1)
 }
 if (all && rest.some((a) => a.startsWith('--save='))) {
@@ -34,8 +41,8 @@ mkdirSync(PARTS_DIR, { recursive: true })
 const runOne = (n) => new Promise((done) => {
   const log = resolve(PARTS_DIR, `part-${String(n)}-${sha}.log`)
   const out = createWriteStream(log)
-  console.log(`\n── 파트 ${String(n)} — ${JOURNEY_PARTS[n].what} · 로그 ${log}\n`)
-  const child = spawn(process.execPath, [resolve(ROOT, 'tools/e2e/journey.mjs'), `--part=${String(n)}`, ...rest],
+  console.log(`\n── 파트 ${String(n)} — ${RUNNERS[n].what} · 로그 ${log}\n`)
+  const child = spawn(process.execPath, [resolve(ROOT, RUNNERS[n].file), `--part=${String(n)}`, ...rest],
     { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] })
   for (const s of [child.stdout, child.stderr]) {
     s.on('data', (chunk) => { process.stdout.write(chunk); out.write(chunk) })

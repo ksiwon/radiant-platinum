@@ -19,15 +19,26 @@ import { chromium } from 'playwright'
 import { freePort, startVite } from '../devServer.mjs'
 import { gpuArgs } from '../gpuFlags.mjs'
 import { driveStory } from './drive.mjs'
+import { probePartStart, sealProbePart } from './partProbe.mjs'
 import { MAP, candiceToAcuity, catchGiratina, coronetToSpear, veilstoneHQ, walkDistortion } from './badgesDW.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
 const args = process.argv.slice(2)
 const flag = (name, d) => args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? d
 const HEADED = args.includes('--headed')
-const SAVE = flag('save', '.audit/journey/probe-badge7.rpsave')
+/**
+ * `--part=4` — **파트 4로 돈다** (`docs/orders/JOURNEY_PARTS_20261008.md` §5). 시작 세이브는 앞 파트의 끝 세이브,
+ * 다리는 전부, 사탕은 파트 표의 값이다. `--save`를 같이 주면 그 세이브에서 시작하는 진단이다
+ */
+const PART = flag('part', null) === null ? null : probePartStart(Number(flag('part', null)), flag('save', null))
+const PART_N = PART === null ? null : Number(flag('part', null))
+/** 다리마다 닿았는가 — 파트 봉투의 결과 줄이 된다 */
+const legsRun = {}
+/** 마지막 다리가 남긴 끝 — `{ file, memory, at }` */
+let partEnd = null
+const SAVE = PART !== null ? PART.start.save : flag('save', '.audit/journey/probe-badge7.rpsave')
 const BUDGET = Number(flag('budget', '7200')) * 1000
-const LEG = flag('leg', 'all')
+const LEG = PART !== null ? 'all' : flag('leg', 'all')
 const URL = flag('url', null)
 const STAMP = new Date().toISOString().replace(/[:.]/g, '-')
 const OUT = resolve(ROOT, `shots/dw/${STAMP}`)
@@ -139,7 +150,12 @@ try {
         log: (l) => { console.log(`    ${l}`) },
         setWalls: (mapId, keys) => { roomWalls.set(mapId, new Set(keys)) },
       }
-      const legs = LEG.split(',')
+      // ⚠️ 「all」은 다리 전부다 — 예전에는 `'all'.split(',')`이 어느 다리도 안 골라 빈 판으로 끝났다
+      const legs = LEG === 'all' ? ['e', 'f', 'g', 'h', 'i'] : LEG.split(',')
+      if (PART?.start.memory) {
+        console.log(`    하네스 기억을 읽었다 — 치운 장애물 ${String(PART.start.memory.clearedObstacles?.length ?? 0)}개`)
+        api.loadHarnessMemory(PART.start.memory)
+      }
       /** 사탕 — 가방에 넣는 것만 개발 모듈, 먹이는 것은 화면 (`RARE_CANDY_20260917`) */
       ctx.candyUp = async (slot, species, level) => {
         const family = species === null ? [] : [species].flat()
@@ -168,6 +184,13 @@ try {
       const leg = async (what, file, run, reached) => {
         out[what] = await run()
         const ok = await reached()
+        legsRun[what] = { reached: ok, detail: JSON.stringify({ ...await storyNow(page), ok }).slice(0, 600) }
+        // 파트의 마지막 다리는 끝 세이브를 `part-N.rpsave`로 쓰고, 그 앞에 하네스 기억을 뜬다
+        if (PART !== null && ok && what === 'i') {
+          const at = await storyNow(page)
+          partEnd = { file: `.audit/journey/part-${String(PART_N)}.rpsave`, memory: api.harnessMemory(), at: { ...at, badges: at.badges } }
+          file = `part-${String(PART_N)}.rpsave`
+        }
         await end(what, ok ? file : file.replace('.rpsave', '-못닿음.rpsave'))
         if (!ok) note(`다리 ${what}`, '못 닿았다 — 여기서 멈춘다')
         return ok
@@ -186,7 +209,7 @@ try {
            * 이 세계에는 회복할 곳이 B7F 태홍을 이긴 뒤 난천뿐이고 태홍의 다섯 중 넷이 선두(토대부기)에 상성 우위다 — 탐침 p22가
            * L69·66·66으로 들었다가 전멸했다. 사탕으로 레벨을 맞추는 것은 이 판의 정상 행동이다(메모 journey-levels-by-candy)
            */
-          const want = flag('candy', null)
+          const want = flag('candy', PART !== null ? PART.def.candy : null)
           if (want !== null) {
             const levels = want.split(',').map(Number)
             for (let slot = 0; slot < levels.length; slot++) {
@@ -224,6 +247,9 @@ try {
 }
 
 writeFileSync(`${OUT}/실행.json`, `${JSON.stringify(out, null, 1)}\n`)
+if (PART !== null) {
+  process.exit(sealProbePart(PART_N, PART, { legsRun, end: partEnd, crash: out.crash ?? null, extra: { probe: OUT, trouble: out.trouble ?? null, battles: out.battles ?? null } }))
+}
 console.log(`\n  ${OUT}`)
 console.log(`  배지 ${String(out.end?.badges ?? out.atLoad?.badges ?? '?')}`)
 process.exit(out.crash === undefined ? 0 : 1)

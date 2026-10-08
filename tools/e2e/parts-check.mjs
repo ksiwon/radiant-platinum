@@ -15,13 +15,13 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-/** 연쇄의 파트 — P4~P6는 만들면 여기 `envelope`를 단다 */
+/** 연쇄의 파트 — P6는 하네스를 만들면 `pending`을 뗀다 */
 const CHAIN = [
   { n: 1, what: '새 게임 → 배지 2' },
   { n: 2, what: '배지 2 뒤 → 배지 5' },
   { n: 3, what: '배지 5 뒤 → 배지 7' },
-  { n: 4, what: '배지 7 뒤 → 깨어진 세계 클리어', pending: '아직 파트로 안 올렸다 (_dw)' },
-  { n: 5, what: '→ 챔피언 · 전당등록', pending: '아직 파트로 안 올렸다 (_league)' },
+  { n: 4, what: '배지 7 뒤 → 깨어진 세계 클리어' },
+  { n: 5, what: '→ 챔피언 · 전당등록' },
   { n: 6, what: '전당등록 뒤 남은 컨텐츠', pending: '하네스가 아직 없다' },
 ]
 
