@@ -1,0 +1,75 @@
+diff --git a/build/three.webgpu.js b/build/three.webgpu.js
+index 2e490796d4d4aa9479b04a5c46ddbf31cc05b1a1..552ee022deaa33857b626dd4d1fef0bc7897cb4d 100644
+--- a/build/three.webgpu.js
++++ b/build/three.webgpu.js
+@@ -67097,6 +67097,9 @@ class WebGLAttributeUtils {
+ 		const bufferType = bufferData.bufferType;
+ 		const updateRanges = attribute.isInterleavedBufferAttribute ? attribute.data.updateRanges : attribute.updateRanges;
+ 
++		// radiant-platinum: an ELEMENT_ARRAY_BUFFER bind lands in the bound VAO — unbind it first or the VAO loses its index while WebGLState still thinks it is bound
++		if ( bufferType === gl.ELEMENT_ARRAY_BUFFER ) this.backend.state.resetVertexState();
++
+ 		gl.bindBuffer( bufferType, bufferData.bufferGPU );
+ 
+ 		if ( updateRanges.length === 0 ) {
+@@ -67243,6 +67246,10 @@ class WebGLAttributeUtils {
+ 
+ 		const bufferGPU = gl.createBuffer();
+ 
++		// radiant-platinum: an ELEMENT_ARRAY_BUFFER bind lands in the bound VAO — unbind it first or the VAO loses its index while WebGLState still thinks it is bound
++		if ( bufferType === gl.ELEMENT_ARRAY_BUFFER ) this.backend.state.resetVertexState();
++
++
+ 		gl.bindBuffer( bufferType, bufferGPU );
+ 		gl.bufferData( bufferType, array, usage );
+ 		gl.bindBuffer( bufferType, null );
+diff --git a/build/three.webgpu.nodes.js b/build/three.webgpu.nodes.js
+index f707acc24f5711fdae065ce920b08435b0869c1b..c47e66afc6b4ce321aaef9d3c2d7431b45fa2f5c 100644
+--- a/build/three.webgpu.nodes.js
++++ b/build/three.webgpu.nodes.js
+@@ -67097,6 +67097,9 @@ class WebGLAttributeUtils {
+ 		const bufferType = bufferData.bufferType;
+ 		const updateRanges = attribute.isInterleavedBufferAttribute ? attribute.data.updateRanges : attribute.updateRanges;
+ 
++		// radiant-platinum: an ELEMENT_ARRAY_BUFFER bind lands in the bound VAO — unbind it first or the VAO loses its index while WebGLState still thinks it is bound
++		if ( bufferType === gl.ELEMENT_ARRAY_BUFFER ) this.backend.state.resetVertexState();
++
+ 		gl.bindBuffer( bufferType, bufferData.bufferGPU );
+ 
+ 		if ( updateRanges.length === 0 ) {
+@@ -67243,6 +67246,10 @@ class WebGLAttributeUtils {
+ 
+ 		const bufferGPU = gl.createBuffer();
+ 
++		// radiant-platinum: an ELEMENT_ARRAY_BUFFER bind lands in the bound VAO — unbind it first or the VAO loses its index while WebGLState still thinks it is bound
++		if ( bufferType === gl.ELEMENT_ARRAY_BUFFER ) this.backend.state.resetVertexState();
++
++
+ 		gl.bindBuffer( bufferType, bufferGPU );
+ 		gl.bufferData( bufferType, array, usage );
+ 		gl.bindBuffer( bufferType, null );
+diff --git a/src/renderers/webgl-fallback/utils/WebGLAttributeUtils.js b/src/renderers/webgl-fallback/utils/WebGLAttributeUtils.js
+index 5e2cf317c96b239c5b027b3dd73a0c08d75282e0..b35d899164acd11793eb568b08b1d16318b87e16 100644
+--- a/src/renderers/webgl-fallback/utils/WebGLAttributeUtils.js
++++ b/src/renderers/webgl-fallback/utils/WebGLAttributeUtils.js
+@@ -200,6 +200,9 @@ class WebGLAttributeUtils {
+ 		const bufferType = bufferData.bufferType;
+ 		const updateRanges = attribute.isInterleavedBufferAttribute ? attribute.data.updateRanges : attribute.updateRanges;
+ 
++		// radiant-platinum: an ELEMENT_ARRAY_BUFFER bind lands in the bound VAO — unbind it first or the VAO loses its index while WebGLState still thinks it is bound
++		if ( bufferType === gl.ELEMENT_ARRAY_BUFFER ) this.backend.state.resetVertexState();
++
+ 		gl.bindBuffer( bufferType, bufferData.bufferGPU );
+ 
+ 		if ( updateRanges.length === 0 ) {
+@@ -346,6 +349,10 @@ class WebGLAttributeUtils {
+ 
+ 		const bufferGPU = gl.createBuffer();
+ 
++		// radiant-platinum: an ELEMENT_ARRAY_BUFFER bind lands in the bound VAO — unbind it first or the VAO loses its index while WebGLState still thinks it is bound
++		if ( bufferType === gl.ELEMENT_ARRAY_BUFFER ) this.backend.state.resetVertexState();
++
++
+ 		gl.bindBuffer( bufferType, bufferGPU );
+ 		gl.bufferData( bufferType, array, usage );
+ 		gl.bindBuffer( bufferType, null );
