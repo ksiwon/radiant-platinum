@@ -143,7 +143,7 @@ export const hideDom = (page, on, alsoCanvas = false, keepDom = false) =>
  *   `steady`가 거짓이면 **찍는 동안 화면이 흔들렸다** — 그 판의 결과는 못 믿는다
  */
 export async function shootCanvas(page, { path = null, settle = 200, dropCanvas = false } = {}) {
-  const n = await page.locator('canvas').count()
+  const n = await page.locator(CANVAS).count()
   if (n !== 1) throw new Error(`캔버스가 ${String(n)}개다 — 하나여야 잰다`)
   const before = await page.evaluate(MEASURE, CANVAS)
   if (before === null) throw new Error(`게임 캔버스(${CANVAS})가 없다`)

@@ -27,7 +27,13 @@ export function disposeTree(root: Object3D): void {
   for (const t of textures) {
     // 풀린 그림은 `ImageBitmap`이다 — GPU 몫과 따로 CPU 몫을 쥔다
     const image: unknown = t.image
-    if (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap) image.close()
+    if (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap) {
+      image.close()
+      // ⚠️ **닫은 그림을 텍스처에 그대로 두지 않는다.** three의 노드 빌더 상태는 같은 재질 모양이면 서로 나눠 쓰고, 새 재질의 첫
+      // 바인딩은 **직전에 그 상태를 쓴 물체의 그림**(방금 버린 지역의 것)으로 올린다. 닫힌 `ImageBitmap`이 그 자리에 있으면
+      // WebGL2 폴백에서 `texSubImage2D: The source data has been detached`가 뜬다(실측: 도심 → 숲 이동에서 두 번). 1×1을 대신 둔다
+      if (typeof ImageData !== 'undefined') t.image = new ImageData(1, 1)
+    }
     t.dispose()
   }
 }
