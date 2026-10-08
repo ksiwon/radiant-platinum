@@ -227,6 +227,10 @@ function devObserver(page) {
         // = 2401). 모미의 회복이 걸린 조건이 이것이라, 「붙었다」를 이 값으로
         // 본다 — 구역 변수(`cheryl`)는 장면이 어디까지 갔나만 말해 준다
         partner: v.checkFlag(2401) === true,
+        // 골짜기발전소 (`badges.valleyWindworks`) — 16521 `VAR_VALLEY_WINDWORKS_STATE` 0 → 1(아가씨) → 2(마스) ·
+        // 16617 꽃밭 조무래기 · 플래그 159 발전소 열쇠 · 271 문 열림
+        windworks: v.get(16521), meadow: v.get(16617),
+        worksKey: v.checkFlag(159) === true, windworksDoor: v.checkFlag(271) === true,
         /**
          * **셋째~다섯째 배지 길목** (`docs/orders/JOURNEY_BADGE345_20260922.md` §1).
          * 번호는 같은 셈법이다 — `vars_flags.txt`를 C 열거형으로 세었다.

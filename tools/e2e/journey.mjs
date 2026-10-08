@@ -28,6 +28,7 @@ import {
   eternaToBike, FANTINA, hearthomeDoors, hearthomeToVeilstone, ITEM as B3, JUPITER,
   MAP as B3MAP, PASTORIA, pastoriaClimb, rideToHearthome, VEILSTONE, veilstoneKicks,
   veilstoneToPastoria, veilstoneWarehouse,
+  valleyWindworks,
 } from './badges.mjs'
 import {
   canalaveGym, canalaveToLakes, celesticToCanalave, coronetToSnowpoint, pastoriaToCelestic, snowpointGym,
@@ -1954,6 +1955,9 @@ try {
          * 체육관은 여기 안 건다(`JOURNEY_BADGE2` §3.3 — 파티를 꾸려서 넘는다)
          */
         if (stop.id === '19') {
+          // 숲에 들기 전에 골짜기발전소를 푼다 — 안 풀면 205번도로 다리가 막힌다 (`badges.valleyWindworks`)
+          story.windworks = await valleyWindworks(api, { log })
+          log(`  골짜기발전소 → ${story.windworks.ok ? '풀었다' : String(story.windworks.why)}`)
           const got = await candyUp(0, null, FOREST_LEVEL)
           const trained = candyLine(got)
           log(`  ${stop.what} 앞 레벨 맞추기 (선두 L${String(FOREST_LEVEL)}) → ${trained}`)

@@ -293,6 +293,57 @@ async function fightTrainers(api, ctx, mapId, what) {
  * 태홍 → 난천(풀베기) → 나무 → 빌딩 4층 → 쥬피터 → 자전거 → 탐사세트.
  * 끝나면 영원시티에 서 있다. 결말은 전부 **읽은 값**이다
  */
+/**
+ * **골짜기발전소** — 꽃향기마을과 영원의 숲 사이의 이야기 (`scripts_route_205_south.s` ·
+ * `scripts_floaroma_meadow.s` · `scripts_valley_windworks_outside.s` · `scripts_valley_windworks_building.s`).
+ *
+ * 205번도로 남(347)의 꼬마 아가씨 줄 (211, 659~664)을 밟으면 `VAR_VALLEY_WINDWORKS_STATE`(16521)가 1이
+ * 되고, 그 뒤로 다리 (217,653)에서 조무래기 둘이 밀어낸다. 마스를 이겨 2가 되어야 풀린다. 그 줄은 꽃향기
+ * 동쪽 길 자체라 비켜 갈 수 없다 — 비키게 했더니 꽃향기 경계에서 14분을 오갔다(`journey-b11810c-full`).
+ * 앞 판들은 우연히 안 밟고 지났고, 밟은 판(`journey-cf392ba-full`)은 다리에서 5분을 밀려났다.
+ *
+ * 그래서 **늘 밟고 늘 푼다** — 사람이 가는 길이고, 판마다 같은 길이 된다:
+ * 아가씨 → 꽃밭(256) 조무래기 둘 (12~13,48 · 발전소 열쇠) → 발전소 앞(200) 조무래기 → 문 (243,654) →
+ * 안(201) 마스 (19, 6~7). 마스는 L15 · L17이라 숲 앞 파티로 넉넉하다
+ */
+export const WINDWORKS = { route205: 347, meadow: 256, outside: 200, inside: 201 }
+export async function valleyWindworks(api, ctx) {
+  const t0 = Date.now()
+  const out = { steps: [], ok: false }
+  const note = (what, detail) => { out.steps.push({ what, detail }); ctx.log(`  ${what} → ${detail}`) }
+  const calm = async () => { await api.clearTalk(); await api.settle(); await api.clearTalk(); await api.settle() }
+  let v = await api.storyVars()
+  if (v === null) { out.why = '이야기 변수를 못 읽었다'; return out }
+  if ((v.windworks ?? 0) >= 2) { note('골짜기발전소', `이미 지났다 (상태 ${String(v.windworks)})`); out.ok = true; return out }
+  if ((v.windworks ?? 0) === 0) {
+    const s = await api.stepOn(WINDWORKS.route205, { x: 211, z: 660 }, Math.min(600_000, api.left()))
+    await calm(); v = await api.storyVars()
+    note('205번도로 꼬마 아가씨 줄 (211,660)', `${String(s)} · 발전소 상태 ${String(v?.windworks)}`)
+  }
+  if (v?.worksKey !== true) {
+    const m = await api.stepOn(WINDWORKS.meadow, { x: 12, z: 48 }, Math.min(900_000, api.left()))
+    await calm(); v = await api.storyVars()
+    note('꽃향기의 꽃밭 조무래기 (12,48)', `${String(m)} · 꽃밭 상태 ${String(v?.meadow)} · 발전소 열쇠 ${v?.worksKey === true ? '받았다' : '없다'}`)
+    if (v?.worksKey !== true) { out.why = '발전소 열쇠를 못 받았다'; out.ms = Date.now() - t0; return out }
+  }
+  if (v?.windworksDoor !== true) {
+    const g = await api.talkToNpc(WINDWORKS.outside, 3, Math.min(300_000, api.left()))
+    await calm()
+    note('발전소 앞 조무래기', g ? '붙었다' : '못 걸었다')
+    const d = await api.talkTo(WINDWORKS.outside, { x: 243, z: 654 }, Math.min(180_000, api.left()))
+    await calm(); v = await api.storyVars()
+    note('발전소 문 (243,654)', `${d ? '말을 걸었다' : '못 걸었다'} · 열림 ${String(v?.windworksDoor)}`)
+    if (v?.windworksDoor !== true) { out.why = '발전소 문이 안 열렸다'; out.ms = Date.now() - t0; return out }
+  }
+  const mars = await api.stepOn(WINDWORKS.inside, { x: 19, z: 6 }, Math.min(900_000, api.left()))
+  await calm(); v = await api.storyVars()
+  note('발전소 안 마스 (19,6)', `${String(mars)} · 발전소 상태 ${String(v?.windworks)}`)
+  out.ok = (v?.windworks ?? 0) >= 2
+  if (!out.ok) out.why = `마스를 못 넘었다 (상태 ${String(v?.windworks)})`
+  out.ms = Date.now() - t0
+  return out
+}
+
 export async function eternaToBike(api, ctx, {
   phases = ['cut', 'floors', 'jupiter', 'bike'],
   /**
