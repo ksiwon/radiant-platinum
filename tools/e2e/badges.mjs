@@ -306,7 +306,8 @@ async function fightTrainers(api, ctx, mapId, what) {
  * 아가씨 → 꽃밭(256) 조무래기 둘 (12~13,48 · 발전소 열쇠) → 발전소 앞(200) 조무래기 → 문 (243,654) →
  * 안(201) 마스 (19, 6~7). 마스는 L15 · L17이라 숲 앞 파티로 넉넉하다
  */
-export const WINDWORKS = { route205: 347, meadow: 256, outside: 200, inside: 201 }
+/** `center`는 꽃향기 센터(T03PC0101) — 마스에게 지면 여기로 돌아온다 */
+export const WINDWORKS = { route205: 347, meadow: 256, outside: 200, inside: 201, center: 428 }
 export async function valleyWindworks(api, ctx) {
   const t0 = Date.now()
   const out = { steps: [], ok: false }
@@ -344,11 +345,21 @@ export async function valleyWindworks(api, ctx) {
     note('발전소 문 (243,654)', `${d ? '말을 걸었다' : '못 걸었다'} · 열림 ${String(v?.windworksDoor)}`)
     if (v?.windworksDoor !== true) { out.why = '발전소 문이 안 열렸다'; out.ms = Date.now() - t0; return out }
   }
-  const inside = await api.goTo(WINDWORKS.inside, Math.min(600_000, api.left()))
-  if (inside !== 'arrived') { out.why = `발전소 안에 못 들어갔다 (${String(inside)})`; out.ms = Date.now() - t0; return out }
-  const mars = await api.stepOn(WINDWORKS.inside, { x: 19, z: 6 }, Math.min(900_000, api.left()))
-  await calm(); v = await api.storyVars()
-  note('발전소 안 마스 (19,6)', `${String(mars)} · 발전소 상태 ${String(v?.windworks)}`)
+  /**
+   * ⚠️ **마스 앞에서 회복하고, 지면 회복해서 다시 붙는다.** 실측(`journey-341fa95-full`): 선두 하나(L21)로
+   * 발전소 앞 · 안 조무래기에 이어 마스까지 회복 없이 붙어 전멸했다. 그 사이 꽃향기 센터로 돌아가는 길에
+   * 아가씨 줄을 지나 상태가 1이 되고 다리가 막혔다. 진 뒤에도 마스 칸(`TEAM_GALACTIC_STATE` 1)은 그대로라
+   * 다시 들어가면 다시 붙는다 — 사람도 그렇게 한다
+   */
+  for (let round = 1; round <= 3 && (v?.windworks ?? 0) < 2; round++) {
+    const healed = await api.healAt(WINDWORKS.center, Math.min(600_000, api.left()))
+    note(`발전소 앞 회복 (센터 ${String(WINDWORKS.center)}) ${String(round)}`, healed.ok ? '나았다' : String(healed.why))
+    const inside = await api.goTo(WINDWORKS.inside, Math.min(600_000, api.left()))
+    if (inside !== 'arrived') { out.why = `발전소 안에 못 들어갔다 (${String(inside)})`; out.ms = Date.now() - t0; return out }
+    const mars = await api.stepOn(WINDWORKS.inside, { x: 19, z: 6 }, Math.min(900_000, api.left()))
+    await calm(); v = await api.storyVars()
+    note(`발전소 안 마스 (19,6) ${String(round)}`, `${String(mars)} · 발전소 상태 ${String(v?.windworks)}`)
+  }
   out.ok = (v?.windworks ?? 0) >= 2
   if (!out.ok) out.why = `마스를 못 넘었다 (상태 ${String(v?.windworks)})`
   out.ms = Date.now() - t0

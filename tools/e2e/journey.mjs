@@ -1682,7 +1682,7 @@ try {
             const before = await api.partyState()
             if (!api.fullyHealed(before).ok) {
               /**
-               * ⚠️ **`CENTERS[65]`가 아니다.** 그 값은 428(**무릉마을** 센터)이고,
+               * ⚠️ **`CENTERS[65]`가 아니다.** 그 값은 428(**꽃향기마을** 센터)이고,
                * 「영원시티로 **가는 길**에 들르는 센터」다. 여기는 이미 영원시티
                * 안이라 그쪽으로 회복하러 가면 **영원의 숲을 통째로 다시 걷는다**.
                * 빌딩으로 떠나는 자리의 센터는 영원 센터(69)다 — `CENTERS[72]`
@@ -1955,14 +1955,15 @@ try {
          * 체육관은 여기 안 건다(`JOURNEY_BADGE2` §3.3 — 파티를 꾸려서 넘는다)
          */
         if (stop.id === '19') {
-          // 숲에 들기 전에 골짜기발전소를 푼다 — 안 풀면 205번도로 다리가 막힌다 (`badges.valleyWindworks`)
-          story.windworks = await valleyWindworks(api, { log })
-          log(`  골짜기발전소 → ${story.windworks.ok ? '풀었다' : String(story.windworks.why)}`)
           const got = await candyUp(0, null, FOREST_LEVEL)
           const trained = candyLine(got)
           log(`  ${stop.what} 앞 레벨 맞추기 (선두 L${String(FOREST_LEVEL)}) → ${trained}`)
           story.training = [...(story.training ?? []), { before: stop.what, result: trained }]
           story.candySteps = [...(story.candySteps ?? []), { what: '숲 앞 선두', ...got }]
+          // 숲에 들기 전에 골짜기발전소를 푼다 — 안 풀면 205번도로 다리가 막힌다 (`badges.valleyWindworks`).
+          // **사탕 뒤다** — 마스(L15 · L17)와 조무래기 넷을 선두 하나로 넘는다. 사탕 앞에 두니 L21로 졌다(`journey-341fa95-full`)
+          story.windworks = await valleyWindworks(api, { log })
+          log(`  골짜기발전소 → ${story.windworks.ok ? '풀었다' : String(story.windworks.why)}`)
         }
         /**
          * ⚠️ **갤럭시단 빌딩에 들기 전에 쥬피터 몫을 맞춘다.**
