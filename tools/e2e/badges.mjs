@@ -589,6 +589,17 @@ export async function rideToHearthome(api, ctx,
         note('게이트 앞 — 자전거 다시 타기', `${again.ok === true ? '탔다' : String(again.why)} · 게이트 ${String(gate2)}`)
       }
     }
+    /**
+     * ⚠️ **206번도로 아래 길의 풀베기 나무 둘 (310,690) · (311,690)을 먼저 벤다.** 길 찾기는
+     * 그 둘을 선 것으로 막고(`seedObstacles`), 그러면 207번도로가 「길이 없다」가 되어 게이트(80)와
+     * 350을 20분 넘게 오갔다 (`journey-from25-diag`). 9-24 판들은 이 걸음 없이 닿았다 — 9-28에
+     * 자료를 다시 구운 뒤로 달라진 까닭은 아직 못 밝혔다 (FOLLOWUP §1.1). 사람은 풀베기로 벤다
+     */
+    const out350 = await api.goTo(MAP.route206, Math.min(300_000, api.left()))
+    if (out350 === 'arrived') {
+      out.cut206 = await api.clearWay(MAP.route206, MAP.route207, Math.min(900_000, api.left()), { sprite: 86, maxHits: 3 })
+      note('206번도로 아래 나무', out.cut206.ok ? `베고 지났다 (${String(out.cut206.broke.length)}그루)` : String(out.cut206.why))
+    }
     const r207 = await api.goTo(MAP.route207, Math.min(1_200_000, api.left()))
     out.route207 = { went: r207, riding: await api.riding() }
     note('207번도로(353)', `${r207} · 타고 있나 ${String(out.route207.riding)}`)
