@@ -41,6 +41,7 @@ import {
 } from './romText'
 import { useRomLines } from './useRomLines'
 import * as css from './battleBag.css'
+import { pointerMoved } from '../pointerMoved'
 
 /** 목록의 아이콘. 줄 높이를 안 넘는다 */
 const LIST_ICON = 28
@@ -435,7 +436,7 @@ export function BattleBag({
                   <button
                     key={`${String(m.move)}-${String(i)}`}
                     className={`${css.move} ${i === slot ? css.moveOn : ''}`}
-                    onPointerEnter={() => { setSlot(i) }}
+                    onPointerMove={(e) => { if (pointerMoved(e)) setSlot(i) }}
                     onClick={() => { setSlot(i); if (planAt(target, i)) commit(target, i) }}
                     disabled={full}
                   >
@@ -515,7 +516,7 @@ export function BattleBag({
                 data-item-count={one.count}
                 data-pilot={`item-${String(index)}`}
                 aria-selected={index === at}
-                onPointerEnter={() => { setCursor(index) }}
+                onPointerMove={(e) => { if (pointerMoved(e)) setCursor(index) }}
                 onClick={() => { setCursor(index); pickItem() }}
               >
                 <span

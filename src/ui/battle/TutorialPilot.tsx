@@ -46,12 +46,12 @@ const PRESSES: readonly Press[] = [
  * 원작은 그동안 터치도 키도 안 읽는다(`battle_subscreen.c`의 강좌 갈래 · `GetCatchTutorialInput`). 글 넘기기만 산다 —
  * 원작도 A·B로 글을 빨리 넘긴다(`battle_main.c`의 `CanABSpeedUpPrint`). 그 칸은 `data-pilot-pass`를 단다.
  *
- * 창의 **캡처 단계**에서 끊는다 — React는 뿌리에서 듣고, `onPointerEnter`도 뿌리의 `pointerover`로 흉내 내므로 둘 다 여기서 멎는다.
+ * 창의 **캡처 단계**에서 끊는다 — React는 뿌리에서 듣고, 메뉴 줄의 커서는 `pointermove`로 따라오므로(`ui/pointerMoved`) 그것도 여기서 멎는다.
  * 포커스된 단추 위의 Space · Enter가 만드는 `click`도 사람 것(`isTrusted`)이라 같이 걸린다. 터치는 포인터 · `click`으로 걸린다 —
  * 창의 `touchstart`는 크롬이 수동(passive)으로 다뤄 `preventDefault`가 경고만 남긴다
  */
 const HUMAN_POINTER = [
-  'pointerdown', 'pointerup', 'pointerover', 'pointerout', 'mousedown', 'mouseup', 'mouseover', 'mouseout',
+  'pointerdown', 'pointerup', 'pointerover', 'pointerout', 'pointermove', 'mousedown', 'mouseup', 'mouseover', 'mouseout', 'mousemove',
   'click', 'dblclick', 'auxclick', 'contextmenu',
 ] as const
 

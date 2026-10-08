@@ -13,6 +13,7 @@ import { useRef, useState } from 'react'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import { OTHER_GAMES } from './gameLinks'
 import * as css from './otherGames.css'
+import { pointerMoved } from '../pointerMoved'
 
 interface Props { onClose: () => void }
 
@@ -54,7 +55,7 @@ export function OtherGames({ onClose }: Props) {
               href={game.url}
               target="_blank"
               rel="noopener noreferrer"
-              onPointerEnter={() => { setCursor(i) }}
+              onPointerMove={(e) => { if (pointerMoved(e)) setCursor(i) }}
             >
               <span className={css.name}>{game.name}</span>
               <span className={css.line}>{game.line}</span>

@@ -53,6 +53,7 @@ import * as css from './menuChrome.css'
 import * as own from './summaryScreen.css'
 import { HP_VARS, STATUS_VARS } from '../theme/window.css'
 import { vars } from '../theme/contract.css'
+import { pointerMoved } from '../pointerMoved'
 
 /**
  * 요약 뱅크(455)의 글 번호. 원작 상수 이름 그대로다.
@@ -566,7 +567,7 @@ function MovesPage(
               key={`${String(slot.move)}/${String(i)}`}
               className={own.move[i === at ? 'on' : i === swapFrom ? 'from' : 'off']}
               data-swap-from={i === swapFrom ? 'on' : undefined}
-              onPointerEnter={() => { onPick(i) }}
+              onPointerMove={(e) => { if (pointerMoved(e)) onPick(i) }}
             >
               <span
                 className={own.typeChip}

@@ -43,6 +43,7 @@ import { SummaryScreen } from './SummaryScreen'
 import { useMenuKeys, wrapCursor } from './useMenuKeys'
 import * as css from './menuChrome.css'
 import * as own from './boxScreen.css'
+import { pointerMoved } from '../pointerMoved'
 
 /** 벽지·아이콘을 화면 픽셀로 옮기는 배수. css 쪽과 같은 값이다 */
 const K = 3
@@ -707,7 +708,7 @@ export function BoxScreen() {
                     role="menuitem"
                     aria-selected={i === menu.at}
                     className={i === menu.at ? own.headerItemOn : own.headerItem}
-                    onPointerEnter={() => { setMenu({ ...menu, at: i }) }}
+                    onPointerMove={(e) => { if (pointerMoved(e) && menu.at !== i) setMenu({ ...menu, at: i }) }}
                     onClick={() => { pickMenu(i) }}
                   >
                     {menu.kind === 'jump' || menu.kind === 'store' ? nameOfBox(item) : boxText[MENU_LABEL + item] ?? ''}
@@ -738,7 +739,7 @@ export function BoxScreen() {
                     top: Math.floor(i / BOX_COLS) * own.SLOT_PITCH,
                     ...(mon ? monIcon(icons, mon, SLOT_ICON) : { width: SLOT_ICON, height: SLOT_ICON }),
                   }}
-                  onPointerEnter={() => { setCursor({ pane: 'box', at: i }) }}
+                  onPointerMove={(e) => { if (pointerMoved(e) && (cursor.pane !== 'box' || cursor.at !== i)) setCursor({ pane: 'box', at: i }) }}
                   onClick={grab}
                 />
               ))}
@@ -760,7 +761,7 @@ export function BoxScreen() {
                     own.partySlot[kind],
                     held?.pane === 'party' && held.at === i ? own.picked : '',
                   ].filter(Boolean).join(' ')}
-                  onPointerEnter={() => { setCursor({ pane: 'party', at: i }) }}
+                  onPointerMove={(e) => { if (pointerMoved(e) && (cursor.pane !== 'party' || cursor.at !== i)) setCursor({ pane: 'party', at: i }) }}
                   onClick={grab}
                 >
                   <span

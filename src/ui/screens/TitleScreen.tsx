@@ -46,6 +46,7 @@ import { TITLE_SONG } from '../../engine/audio/songIds'
 import { unreadPatch } from './patchLog'
 import { ChunkBoundary } from './ChunkBoundary'
 import * as css from './titleScreen.css'
+import { pointerMoved } from '../pointerMoved'
 
 /** 게임 청크를 미리 받아둔다 — 클릭 시점의 대기를 없앤다 (PLAN §10.4) */
 function prefetchGameChunk() {
@@ -577,7 +578,8 @@ function TitleMenu() {
               ].filter(Boolean).join(' ')}
               disabled={entry.off}
               onClick={entry.go}
-              onPointerEnter={() => {
+              onPointerMove={(e) => {
+                if (!pointerMoved(e) || i === cursor) return
                 moved.current = true
                 setCursor(i)
                 if (entry.tone === 'main') prefetchGameChunk()
@@ -939,7 +941,7 @@ function TitleConfirm({ choices, initial, onCancel, enabled }: {
           className={[css.fileButton, i === cursor ? css.fileButtonOn : ''].filter(Boolean).join(' ')}
           onClick={choice.go}
           // 마우스와 키 커서를 **같은 표시**로 둔다 — 차림표와 같은 잣대다
-          onPointerEnter={() => { setCursor(i) }}
+          onPointerMove={(e) => { if (pointerMoved(e)) setCursor(i) }}
           onFocus={() => { setCursor(i) }}
         >
           {i === cursor && <span className={css.fileCaret} aria-hidden>▶</span>}

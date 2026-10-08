@@ -14,6 +14,7 @@
 import { useRef, useState } from 'react'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import * as css from './moreMenu.css'
+import { pointerMoved } from '../pointerMoved'
 
 interface Props {
   onOptions: () => void
@@ -60,7 +61,7 @@ export function MoreMenu({
               ref={(node) => { items.current[i] = node }}
               className={[css.item, i === cursor ? css.itemOn : ''].filter(Boolean).join(' ')}
               onClick={entry.go}
-              onPointerEnter={() => { setCursor(i) }}
+              onPointerMove={(e) => { if (pointerMoved(e)) setCursor(i) }}
             >
               {i === cursor && <span className={css.caret} aria-hidden>▶</span>}
               {entry.label}

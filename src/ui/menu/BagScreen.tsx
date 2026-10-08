@@ -49,6 +49,7 @@ import * as own from './bagScreen.css'
 // 갈래 메뉴 창은 파티 화면 것을 그대로 쓴다 — 원작도 두 화면이 같은 오른쪽 아래
 // 창을 띄운다 (`BagUI_ShowItemActionsMenu` · `GetContextMenuEntriesForPartyMon`)
 import * as menu from './partyScreen.css'
+import { pointerMoved } from '../pointerMoved'
 
 /** 목록의 아이콘. 줄 높이(32)를 넘지 않는다 */
 const LIST_ICON = 28
@@ -606,7 +607,7 @@ export function BagScreen() {
               key={slot.item}
               className={i === at ? css.rowOn : css.row}
               ref={i === at ? scrollIntoView : undefined}
-              onPointerEnter={() => { if (!open) moveCursor(i) }}
+              onPointerMove={(e) => { if (pointerMoved(e) && !open && i !== at) moveCursor(i) }}
             >
               {i === at && <span className={css.caret} aria-hidden />}
               <span className={css.face}>
@@ -656,7 +657,7 @@ export function BagScreen() {
               <div
                 key={`${label}-${String(i)}`}
                 className={i === Math.min(menuAt, choices.length - 1) ? menu.choiceOn : menu.choice}
-                onPointerEnter={() => { setMenuAt(i) }}
+                onPointerMove={(e) => { if (pointerMoved(e)) setMenuAt(i) }}
                 onClick={() => { setMenuAt(i); menuConfirm(i) }}
               >
                 {label}

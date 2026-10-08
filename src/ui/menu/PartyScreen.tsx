@@ -62,6 +62,7 @@ import * as css from './menuChrome.css'
 import * as own from './partyScreen.css'
 import { HP_VARS, STATUS_VARS } from '../theme/window.css'
 import { useAssetImage } from '../../data/providers/useAssetUrl'
+import { pointerMoved } from '../pointerMoved'
 
 /** 상태 이상 배지. 이름은 `TEXT_BANK_MENU_ENTRIES` 0~4와 같은 낱말이다 */
 const STATUS_LABEL: Record<string, string> = {
@@ -1098,7 +1099,7 @@ export function PartyScreen() {
                 key={c.label + String(i)}
                 className={i === Math.min(menuAt, choices.length - 1)
                   ? own.choiceOn : own.choice}
-                onPointerEnter={() => { setMenuAt(i) }}
+                onPointerMove={(e) => { if (pointerMoved(e)) setMenuAt(i) }}
                 onClick={c.run}
               >
                 {c.label}
@@ -1157,7 +1158,7 @@ function Card(
   ].filter(Boolean).join(' ')
 
   return (
-    <div className={shell} onPointerEnter={onPick} onClick={onGrab}>
+    <div className={shell} onPointerMove={(e) => { if (pointerMoved(e) && !on) onPick() }} onClick={onGrab}>
       {/* 그림을 못 받아도 카드는 서야 한다. 자리만 비운다 */}
       {art !== null && (
         <img

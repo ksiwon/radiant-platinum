@@ -35,6 +35,7 @@ import * as css from './menuChrome.css'
 import * as bagCss from './bagScreen.css'
 // 갈래 창은 파티 화면 것을 그대로 쓴다 — 오른쪽 아래 구석의 창 하나다
 import * as menu from './partyScreen.css'
+import { pointerMoved } from '../pointerMoved'
 
 /** 갈래 넷 — 원작 목록의 반환값 차례다 (0 읽는다 · 1 지운다 · 2 지니게 한다 · 3 그만둔다) */
 export const MAILBOX_ACTIONS = ['read', 'erase', 'give', 'cancel'] as const
@@ -352,7 +353,7 @@ export function MailboxScreen() {
                 className={i === Math.min(menuAt, choices.length - 1) ? menu.choiceOn : menu.choice}
                 // 알은 못 고른다 — 흐리게 둔다
                 style={open.kind === 'pick' && party[i]?.isEgg === true ? { opacity: 0.45 } : undefined}
-                onPointerEnter={() => { setMenuAt(i) }}
+                onPointerMove={(e) => { if (pointerMoved(e)) setMenuAt(i) }}
                 onClick={() => { setMenuAt(i); confirm(i) }}
               >
                 {label}

@@ -43,6 +43,7 @@ import * as own from './dialog.css'
 import * as stage from './bagScreen.css'
 // 예·아니오 창은 파티 화면 것을 그대로 쓴다 — 오른쪽 아래 구석의 창 하나다
 import * as menu from './partyScreen.css'
+import { pointerMoved } from '../pointerMoved'
 
 /** 가방과 같은 크기를 쓴다 — 같은 물건이 화면마다 다른 크기면 안 된다 */
 const LIST_ICON = 28
@@ -532,7 +533,7 @@ export function ShopScreen() {
               <div
                 key={String(yes)}
                 className={step.yes === yes ? menu.choiceOn : menu.choice}
-                onPointerEnter={() => { setStep({ ...step, yes }) }}
+                onPointerMove={(e) => { if (pointerMoved(e) && step.yes !== yes) setStep({ ...step, yes }) }}
               >
                 {data?.menu[yes ? YES_NO.yes : YES_NO.no] ?? ''}
               </div>

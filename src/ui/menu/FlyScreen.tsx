@@ -45,6 +45,7 @@ import { journalFlew } from '../../scene/journal'
 import { beginFlyTransition } from '../../scene/flyTransition'
 import * as own from './flyScreen.css'
 import { ZOOM, ZOOM_IN } from './flyScreen.css'
+import { pointerMoved } from '../pointerMoved'
 
 /** 커서가 처음 서는 칸. 갈 수 있는 첫 곳으로 간다 */
 const HOME = { x: 3, z: 27 }
@@ -203,8 +204,8 @@ export function FlyScreen() {
                     width: px(w),
                     height: px(h),
                   }}
-                  onPointerEnter={() => {
-                    setAt({ x: s.x, z: s.z })
+                  onPointerMove={(e) => {
+                    if (pointerMoved(e) && (at.x !== s.x || at.z !== s.z)) setAt({ x: s.x, z: s.z })
                   }}
                   onClick={fly}
                 />

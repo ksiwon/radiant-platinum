@@ -17,6 +17,7 @@ import type { PokeIcons } from '../../data/schema'
 import { monIcon } from '../menu/pokeIcon'
 import * as css from './switchScreen.css'
 import { HP_VARS, STATUS_VARS } from '../theme/window.css'
+import { pointerMoved } from '../pointerMoved'
 
 /** 상태 이상 배지. 필드 파티 화면과 같은 롬 낱말이다 (`TEXT_BANK_MENU_ENTRIES` 0~4) */
 const STATUS_LABEL: Record<string, string> = {
@@ -70,7 +71,7 @@ export function PartyCards(
               css.card, i === cursor ? css.cardOn : '',
               can ? '' : css.cardOut, slot.active ? css.cardHere : '',
             ].filter(Boolean).join(' ')}
-            onPointerEnter={() => { onHover(i) }}
+            onPointerMove={(e) => { if (pointerMoved(e)) onHover(i) }}
             onClick={() => { onHover(i); if (can) onPick(i) }}
             disabled={!can}
           >
