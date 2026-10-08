@@ -719,7 +719,16 @@ page.on('console', (m) => {
   if (m.type() !== 'error' && m.type() !== 'warning') return
   const text = m.text()
   if (BENIGN.some((re) => re.test(text))) return
-  noise.push({ kind: m.type(), text: text.slice(0, 300), at: at(m), when: Date.now() })
+  const one = { kind: m.type(), text: text.slice(0, 300), at: at(m), when: Date.now() }
+  noise.push(one)
+  /**
+   * ANGLE이 찍는 `[.WebGL-…]` 경고는 자리(`play:0:0`)도 스택도 없다 — 그 순간 게임이
+   * 무엇을 하던 중이었는지(맵 · 배틀 · 장면 표식)를 붙여야 고칠 자리를 좁힌다
+   */
+  page.evaluate(() => {
+    const d = { ...document.documentElement.dataset }
+    return Object.fromEntries(Object.entries(d).filter(([, v]) => String(v).length < 80).slice(0, 30))
+  }).then((ctx) => { one.ctx = ctx }, () => {})
 })
 page.on('pageerror', (e) => {
   noise.push({
