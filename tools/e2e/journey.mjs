@@ -643,7 +643,10 @@ const url = flag('url') ?? await (async () => {
  * 그 사이가 **이어지는가**고, `--gpu=webgpu`로 언제든 되돌린다.
  * 어느 쪽으로 돌았는지는 봉투의 `environment.backend`에 그대로 남는다
  */
-const browser = await chromium.launch({ args: gpuArgs(flag('gpu') ?? 'gl') })
+// ⚠️ **`--mute-audio`: 오디오 장치가 없는 헤드리스가 `AudioContext encountered an error from the audio device`를 콘솔 오류로 띄운다.**
+// 우리 코드가 아니라 장치 쪽이다 — `engine/audio/unlock.ts`의 `new AudioContext()` 하나뿐이고, 같은 경고가 배틀만 돈 별도 프로브에서도 한 번 떴다
+// (2026-10-08, 제품 코드가 다른 판). 소리는 계속 처리되고(컨텍스트·워커 그대로) **출력만** 널 싱크로 간다
+const browser = await chromium.launch({ args: [...gpuArgs(flag('gpu') ?? 'gl'), '--mute-audio'] })
 const browserVersion = browser.version()
 // ⚠️ **영상은 납품물이다** (기획서 §7.3.3). 그림 여덟 컷은 「그 자리에 섰다」를
 // 보이지만 **걷는 것과 싸우는 것**은 못 보인다 — 컷인 타이밍도, 대사창이
