@@ -321,6 +321,10 @@ export async function valleyWindworks(api, ctx) {
     note('205번도로 꼬마 아가씨 줄 (211,660)', `${String(s)} · 발전소 상태 ${String(v?.windworks)}`)
   }
   if (v?.worksKey !== true) {
+    // ⚠️ **`stepOn`은 그 맵 안에서 부른다.** 205번도로(행렬 0)에서 꽃밭(행렬 52)을 부르면 첫 바퀴에
+    // 「다른 행렬」로 읽혀 `warped`로 끝난다 — 실측 `journey-a7cbd7c-full`. 아가씨 줄은 같은 행렬이라 됐다
+    const came = await api.goTo(WINDWORKS.meadow, Math.min(600_000, api.left()))
+    if (came !== 'arrived') { out.why = `꽃밭에 못 갔다 (${String(came)})`; out.ms = Date.now() - t0; return out }
     const m = await api.stepOn(WINDWORKS.meadow, { x: 12, z: 48 }, Math.min(900_000, api.left()))
     await calm(); v = await api.storyVars()
     note('꽃향기의 꽃밭 조무래기 (12,48)', `${String(m)} · 꽃밭 상태 ${String(v?.meadow)} · 발전소 열쇠 ${v?.worksKey === true ? '받았다' : '없다'}`)
@@ -335,6 +339,8 @@ export async function valleyWindworks(api, ctx) {
     note('발전소 문 (243,654)', `${d ? '말을 걸었다' : '못 걸었다'} · 열림 ${String(v?.windworksDoor)}`)
     if (v?.windworksDoor !== true) { out.why = '발전소 문이 안 열렸다'; out.ms = Date.now() - t0; return out }
   }
+  const inside = await api.goTo(WINDWORKS.inside, Math.min(600_000, api.left()))
+  if (inside !== 'arrived') { out.why = `발전소 안에 못 들어갔다 (${String(inside)})`; out.ms = Date.now() - t0; return out }
   const mars = await api.stepOn(WINDWORKS.inside, { x: 19, z: 6 }, Math.min(900_000, api.left()))
   await calm(); v = await api.storyVars()
   note('발전소 안 마스 (19,6)', `${String(mars)} · 발전소 상태 ${String(v?.windworks)}`)
