@@ -316,13 +316,18 @@ export async function valleyWindworks(api, ctx) {
   if (v === null) { out.why = '이야기 변수를 못 읽었다'; return out }
   if ((v.windworks ?? 0) >= 2) { note('골짜기발전소', `이미 지났다 (상태 ${String(v.windworks)})`); out.ok = true; return out }
   if ((v.windworks ?? 0) === 0) {
+    // 꽃밭 · 발전소 안과 같은 까닭 — 센터에서 막 나온 판은 205번도로 밖이라 첫 바퀴에 `warped`였다 (`journey-341fa95-full`)
+    const road = await api.goTo(WINDWORKS.route205, Math.min(600_000, api.left()))
+    if (road !== 'arrived') { out.why = `205번도로에 못 갔다 (${String(road)})`; out.ms = Date.now() - t0; return out }
     const s = await api.stepOn(WINDWORKS.route205, { x: 211, z: 660 }, Math.min(600_000, api.left()))
     await calm(); v = await api.storyVars()
     note('205번도로 꼬마 아가씨 줄 (211,660)', `${String(s)} · 발전소 상태 ${String(v?.windworks)}`)
+    // 줄을 못 밟았으면 다리도 안 막혔다 — 꽃밭까지 헛걸음하지 않는다
+    if ((v?.windworks ?? 0) === 0) { out.why = '아가씨 줄을 못 밟았다'; out.ms = Date.now() - t0; return out }
   }
   if (v?.worksKey !== true) {
     // ⚠️ **`stepOn`은 그 맵 안에서 부른다.** 205번도로(행렬 0)에서 꽃밭(행렬 52)을 부르면 첫 바퀴에
-    // 「다른 행렬」로 읽혀 `warped`로 끝난다 — 실측 `journey-a7cbd7c-full`. 아가씨 줄은 같은 행렬이라 됐다
+    // 「다른 행렬」로 읽혀 `warped`로 끝난다 — 실측 `journey-a7cbd7c-full`
     const came = await api.goTo(WINDWORKS.meadow, Math.min(600_000, api.left()))
     if (came !== 'arrived') { out.why = `꽃밭에 못 갔다 (${String(came)})`; out.ms = Date.now() - t0; return out }
     const m = await api.stepOn(WINDWORKS.meadow, { x: 12, z: 48 }, Math.min(900_000, api.left()))
