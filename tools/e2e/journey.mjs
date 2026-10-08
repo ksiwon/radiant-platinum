@@ -743,6 +743,32 @@ page.on('pageerror', (e) => {
 const marks = () => page.evaluate(() => ({ ...document.documentElement.dataset }))
 
 /**
+ * **지형을 재는 컷은 한낮에 찍는다.** `terrainJudge` 계약 2의 잣대는 낮 그림으로
+ * 세웠다 — 실측(2026-10-09 새벽 P1 · 395eb63)에서 밤의 매끈한 잔디와 길은 칸
+ * 가장자리 값이 0.01~0.04로 「안 그린 칸」과 못 갈랐다(stop-09 · stop-19, 지형은
+ * 그려져 있었다). 게임 시각은 판 내내 손대지 않고 **찍는 순간에만** 정오로 돌렸다
+ * 원래 시각으로 되돌린다 — 시간대 인카운터 · 이야기는 실제 시계를 그대로 따른다
+ */
+const NOON = 12
+const atNoon = async (shoot) => {
+  const was = await page.evaluate(async (h) => {
+    const w = await import('/src/state/worldState.ts')
+    const old = w.worldState.time.gameHour
+    w.worldState.time.gameHour = h
+    return old
+  }, NOON).catch(() => null)
+  if (was !== null) await page.waitForTimeout(600)
+  try { return await shoot() } finally {
+    if (was !== null) {
+      await page.evaluate(async (h) => {
+        const w = await import('/src/state/worldState.ts')
+        w.worldState.time.gameHour = h
+      }, was).catch(() => {})
+    }
+  }
+}
+
+/**
  * 엔진이 들고 있는 **날것의 자리**와 세이브가 적어 둔 자리.
  *
  * ⚠️ **`data-tile`로는 ⑭를 못 잰다.** 그것은 내림한 칸이라 「같은 맵의 엉뚱한
@@ -812,7 +838,7 @@ async function shot(name, { world = true } = {}) {
     one.marks = await marks().catch(() => null)
     try {
       const at = `${head}-캔버스.png`
-      const cut = await shootCanvas(page, { path: resolve(ROOT, at) })
+      const cut = await atNoon(() => shootCanvas(page, { path: resolve(ROOT, at) }))
       /**
        * ⚠️ **색 개수로 지형을 인정하지 않는다.** 실측(2026-09-08)에서 까만
        * 원반 위에 주인공만 뜬 컷과 바닥이 한 줄만 그려진 컷이 색 개수로는
@@ -851,7 +877,7 @@ async function shot(name, { world = true } = {}) {
           const wait = sec * 1000 - (Date.now() - t0)
           if (wait > 0) await page.waitForTimeout(wait)
           const late = `${head}-이어서-${String(sec).padStart(2, '0')}초.png`
-          const c = await shootCanvas(page, { path: resolve(ROOT, late) }).catch(() => null)
+          const c = await atNoon(() => shootCanvas(page, { path: resolve(ROOT, late) })).catch(() => null)
           if (c === null) { one.after.push({ sec, unobservable: '캔버스를 못 뗐다' }); continue }
           const j = judgeTerrain(c.png)
           one.after.push({
