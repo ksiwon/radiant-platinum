@@ -100,3 +100,14 @@ export function turnQuaternion(turn: PoseTurn, withHeading: boolean, out: Quater
   turnPart.identity().slerp(turnResidual, k)
   return out.copy(turnRoll).multiply(turnFrom).multiply(turnPart)
 }
+
+/**
+ * 맵 물체 그림을 눕히는 각 (라디안, 세계 Z축 둘레).
+ *
+ * 자료의 각(`playerSpriteRotAngle` · `rotationAngle`)은 DS의 회전 방향이라 우리 오른손 Z축과 **부호가
+ * 반대다** (`turnQuaternion`). 서쪽 벽(+90) 위에 선 사람의 위쪽은 +x가 된다 — 판 기저 표의 `up`과 같다.
+ * 방향(`yaw`)을 돌린 **뒤에** 곱한다 (`Rz · Ry`) — 그림을 먼저 세우고 눕히는 순서다
+ */
+export function spriteRollRadians(angleDegrees: number): number {
+  return -angleDegrees * RAD
+}

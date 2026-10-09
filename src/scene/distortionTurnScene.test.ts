@@ -5,9 +5,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { distortionSchema, type DistortionData } from '../data/schema'
 import { withDistortionTables } from '../data/distortionFile'
+import { Vector3 } from 'three'
 import {
-  MAP, PLATFORM_CEILING, PLATFORM_FLOOR, PLATFORM_NONE, PLATFORM_WEST_WALL, newDistortionState,
+  MAP, PLATFORM_CEILING, PLATFORM_FLOOR, PLATFORM_NONE, PLATFORM_WEST_WALL, findPlatform, newDistortionState,
+  platformBasis,
 } from '../engine/world/distortion'
+import { spriteRollRadians } from '../engine/actor/distortionSurface'
 
 const FILE = 'public/data/distortion.json'
 const real = existsSync(FILE)
@@ -118,5 +121,43 @@ describe.runIf(real)('폭포 끝 — 닿을 판의 기저로 가는 카메라 �
     // 끝난 뒤에는 턴이 없고 입력 기저가 천장이다
     expect(distortionPoseTurn()).toBeNull()
     expect(mod.distortionKind()).toBe(PLATFORM_CEILING)
+  })
+})
+
+describe.runIf(real)('D4 벽에 선 사람은 그림이 눕는다 (`rotated` · `rotationAngle`)', () => {
+  it('배치표에서 rotated인 줄은 난천 둘뿐이고, 둘 다 서쪽 벽 판 위에 있다 — 각이 판 기저의 위쪽과 맞는다', () => {
+    const z = new Vector3(0, 0, 1)
+    const rotated: { map: number, localID: number }[] = []
+    for (const m of data!.maps) {
+      const table = data!.mapObjects.find((t) => t.map === m.map)
+      for (const o of table?.objects ?? []) {
+        if ((o.rotated as number) !== 1) continue
+        rotated.push({ map: m.map, localID: o.localID as number })
+        // 서 있는 칸의 세계 좌표 — y는 `타일 × 4096 × 16`
+        const wy = Math.round((o.y as number) / (4096 * 16))
+        // 바닥 판(y 233)과 벽 판(y 225~233)이 한 줄 겹친다 — 눕는 사람이 서 있는 것은 서쪽 벽 판이다
+        const idx = findPlatform(m.platforms, o.x as number, wy, o.z as number, PLATFORM_WEST_WALL)
+        expect(idx, `${m.map}#${o.localID} 서쪽 벽 판`).toBeGreaterThanOrEqual(0)
+        const kind = m.platforms[idx]?.kind ?? PLATFORM_FLOOR
+        const upKind = platformBasis(kind).up
+        const up = new Vector3(0, 1, 0).applyAxisAngle(z, spriteRollRadians(o.rotationAngle as number))
+        expect(up.distanceTo(new Vector3(upKind[0], upKind[1], upKind[2])), `${m.map}#${o.localID}`)
+          .toBeLessThan(1e-9)
+        expect(kind).toBe(PLATFORM_WEST_WALL)
+      }
+    }
+    expect(rotated).toEqual([{ map: MAP.b2f, localID: 128 }, { map: MAP.b2f, localID: 128 }])
+  })
+
+  it('addObjectRow가 roll을 배우에게 싣는다 — 눕는 줄만', async () => {
+    const { npcActors } = await import('../engine/actor/npcs')
+    const { VarStore } = await import('../engine/script/vars')
+    const vars = new VarStore()
+    const [lx, ly, lz] = local(MAP.b2f, 30, 232, 20)
+    mod.distortionEnter(MAP.b2f, lx, ly, lz)
+    npcActors.list = []
+    npcActors.byLocalID.clear()
+    mod.distortionAddObject(128, vars)
+    expect(npcActors.byLocalID.get(128)?.info.roll).toBe(90)
   })
 })

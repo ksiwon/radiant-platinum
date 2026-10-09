@@ -94,6 +94,8 @@ function addObjectRow(row: Record<string, unknown>, vars: VarStore, map?: number
     flag: hidden === 0 ? null : hidden,
     range: [row.movementRangeX as number, row.movementRangeZ as number],
     raw: [0, 0, 0, 0, 0, 0, 0, ...(row.data as number[])],
+    // 벽에 선 사람은 그림이 눕는다 (`rotated` · `rotationAngle`, `ov9_02249960.c:7255-7257`)
+    ...(row.rotated === 1 ? { roll: row.rotationAngle as number } : {}),
   }, vars)
 }
 
