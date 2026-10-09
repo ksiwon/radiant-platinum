@@ -324,20 +324,28 @@ function devObserver(page) {
     /**
      * **공중날기 화면 커서의 출발 칸과 목표 칸** (`ui/menu/FlyScreen`).
      *
-     * 화면은 열릴 때 커서를 `FLY_SPOTS` 차례에서 **열린 첫 자리**에 두고, 방향키
-     * 한 번에 한 칸씩 옮긴다. 커서 자체는 화면 안의 상태라 밖에서 못 읽는다 — 그래서
-     * 같은 표를 **읽어서** 몇 칸 누를지 셈한다. 날았는지는 부르는 쪽이 맵으로 본다
+     * 화면은 열릴 때 커서를 **주인공이 있는 블록**에 두고(`FlyScreen.playerBlock` — 원작 `TownMap_Init`),
+     * 방향키 한 번에 한 칸씩 옮긴다. 커서 자체는 화면 안의 상태라 밖에서 못 읽는다 — 그래서
+     * 제품이 내보낸 출발 칸을 **읽어서** 몇 칸 누를지 셈한다. 날았는지는 부르는 쪽이 맵으로 본다.
+     *
+     * ⚠️ **예전에는 「열린 첫 자리」에서 셌다** — 제품이 원작대로 주인공 블록으로 바뀐 뒤 어긋났다.
+     * 실측(2026-10-10 P4 진단 · ec149bb): 예지호수에서 장막시티로 날다 커서가 엉뚱한 칸에 서 120초를 버렸다
      */
     flyPlan: (map) => read('타운맵을 못 읽었다', async (target) => {
       const t = await import('/src/engine/map/townMap.ts')
       const save = await import('/src/state/saveStore.ts')
+      const fly = await import('/src/ui/menu/FlyScreen.tsx')
+      const spawns = await import('/src/engine/map/spawns.ts')
+      const field = await import('/src/engine/script/field.ts')
       const lit = save.useSaveStore.getState().flySpots
-      const open = t.FLY_SPOTS.find((one) => (lit & (1 << one.spawn)) !== 0) ?? null
+      // 열렸는가도 화면과 같은 셈이다 — 깃발로 여는 자리가 있다 (`flySpotOpen`)
+      const isOpen = (spawn) => spawns.flySpotOpen(spawn, lit, (f) => field.fieldScripts.vars.checkFlag(f))
+      const open = fly.playerBlock()
       const spot = t.FLY_SPOTS.find((one) => one.map === target) ?? null
       return {
         from: open === null ? null : { x: open.x, z: open.z },
         to: spot === null ? null : { x: spot.x, z: spot.z },
-        unlocked: spot !== null && (lit & (1 << spot.spawn)) !== 0,
+        unlocked: spot !== null && isOpen(spot.spawn),
       }
     }, map),
     /**

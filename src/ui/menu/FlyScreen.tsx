@@ -54,9 +54,11 @@ const HOME = { x: 3, z: 27 }
  * 커서가 처음 설 칸 — **주인공이 있는 블록**이다 (`TownMap_Init` → `initialCursorX = playerX / 32`).
  *
  * 실내·동굴이면 들어오기 전 바깥 자리(`FieldOverworldState_GetExitLocation` — 우리 `save.exit`)다. 자리를 모르면 원작처럼
- * 떡잎마을(3,27)이다. 날기·벽 지도·타운맵 도구가 다 같다
+ * 떡잎마을(3,27)이다. 날기·벽 지도·타운맵 도구가 다 같다.
+ *
+ * 내보낸다 — e2e가 방향키를 몇 번 누를지 **이 값에서** 센다(`observe.flyPlan`). 따로 셈하면 갈린다
  */
-function playerBlock(): { x: number, z: number } {
+export function playerBlock(): { x: number, z: number } {
   const header = mapById(mapWorld.mapId)
   const p = worldState.player.position
   const exit = useSaveStore.getState().exit
