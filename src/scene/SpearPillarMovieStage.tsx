@@ -24,9 +24,12 @@ import { BackSide, MeshBasicMaterial } from 'three'
 import { cinematicStage, CINEMATIC_ORIGIN } from './battle/stageRefs'
 import { afterimageState } from './fx/afterimage'
 import { aimDemoCamera, DemoInstance, fxTiles, loadDemoModel, type DemoLighting, type DemoLoaded, type DemoPose } from './demoInstance'
+import { loadMonModel } from './battle/monModel'
 import { movieLive } from './spearPillarMovie'
 import { ANIM_FRAMES, movieModels, type MovieModel } from '../engine/world/spearPillarMovie'
 import { useSaveStore } from '../state/saveStore'
+import { BDSP_CAST, HUMAN_HEIGHT, MovieCastLights, MovieHuman, MovieLegend } from './SpearPillarCast'
+import { playerModelPath } from './playerModelPath'
 
 const FX = 4096
 
@@ -64,8 +67,11 @@ export function SpearPillarMovieStage() {
 
   useEffect(() => {
     let alive = true
-    const names = [...new Set([0, 1, 2].flatMap((s) => movieModels(s as 0 | 1 | 2, heroine)))]
-    void Promise.all(names.map((name) => loadDemoModel(name).then((d) => [name, d] as const))).then((rows) => {
+    // 주인공 · 태홍 · 디아루가 · 펄기아는 BDSP 몸이라(`SpearPillarCast`) DS 판때기를 안 받는다
+    const names = [...new Set([0, 1, 2].flatMap((s) => movieModels(s as 0 | 1 | 2, heroine)))].filter((n) => !BDSP_CAST.has(n))
+    // 디아루가 · 펄기아의 몸은 한 벌 캐시되어(`loadMonModel`) 나중에 세울 때 바로 나온다 — 연 뒤에 안 뜨는 틈이 없게 같이 기다린다
+    const legends = Promise.all([483, 484].map((species) => loadMonModel(species).catch(() => null)))
+    void Promise.all([legends, ...names.map((name) => loadDemoModel(name).then((d) => [name, d] as const))]).then(([, ...rows]) => {
       if (!alive) return
       const map = new Map<MovieModel, DemoLoaded>()
       for (const [name, d] of rows) if (d) map.set(name, d)
@@ -116,12 +122,21 @@ export function SpearPillarMovieStage() {
       <mesh material={backdrop}>
         <sphereGeometry args={[55, 16, 12]} />
       </mesh>
+      <MovieCastLights />
       {cast.map(([key, model]) => {
+        if (BDSP_CAST.has(model)) return null
         const data = loaded.get(model)
         return data
           ? <DemoInstance key={`${key}:${model}`} name={key} data={data} pose={() => poseOf(key, model)} lighting={LIGHTING} />
           : null
       })}
+      {/* BDSP 몸 — 이 영상 안에 올라 있는 동안만 서고, 장면이 바뀌어도 한 벌이 이어진다 */}
+      {cast.some(([, m]) => m === 'dialga') && <MovieLegend objectKey="dialga" species={483} which={0} />}
+      {cast.some(([, m]) => m === 'palkia') && <MovieLegend objectKey="palkia" species={484} which={1} />}
+      {cast.some(([k]) => k === 'player') && (
+        <MovieHuman objectKey="player" path={playerModelPath(heroine ? 'girl' : 'boy')} height={HUMAN_HEIGHT.player} />
+      )}
+      {cast.some(([k]) => k === 'cyrus') && <MovieHuman objectKey="cyrus" path="models/npc/tr1086_00.glb" height={HUMAN_HEIGHT.cyrus} />}
     </group>
   )
 }

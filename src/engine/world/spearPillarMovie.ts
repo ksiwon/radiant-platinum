@@ -289,7 +289,8 @@ export interface SpearPillarMovie {
 interface MovieFrame {
   scene: 0 | 1 | 2
   cam: { target: Vec, angle: Vec, dist: number, fov: number, near: number, far: number }
-  objects: { key: string, model: MovieModel, pos: Vec, scale: Vec, frame: readonly number[] }[]
+  /** `pattern` · `active`는 걸음(`unk_158` · `unk_160`) — 사람을 3D로 세우는 쪽이 보는 쪽과 몸짓을 읽는다 (`spearPillarCast`) */
+  objects: { key: string, model: MovieModel, pos: Vec, scale: Vec, frame: readonly number[], pattern: number, active: boolean }[]
 }
 
 const emptyFrame = (): MovieFrame => ({
@@ -528,7 +529,9 @@ function draw(m: SpearPillarMovie): void {
     if (!o) continue
     updateObject(o)
     if (!o.enabled || !o.visible) continue
-    objects.push({ key, model: o.model, pos: [...o.pos], scale: [...o.scale], frame: [...o.frame] })
+    objects.push({
+      key, model: o.model, pos: [...o.pos], scale: [...o.scale], frame: [...o.frame], pattern: o.pattern, active: o.active,
+    })
   }
   m.shown = {
     scene: m.scene,
