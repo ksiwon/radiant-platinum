@@ -54,7 +54,7 @@ export function flyUnlockedAt(mapId: number): number | null {
 }
 
 /** `FLAG_FIRST_ARRIVAL_TWINLEAF_TOWN` — `SYSTEM_FLAGS_FIRST_ARRIVAL_TO_ZONE`의 첫 깃발 (`generated/vars_flags.txt`, 줄 번호 − 9) */
-export const FIRST_ARRIVAL_FLAG_BASE = 2480
+const FIRST_ARRIVAL_FLAG_BASE = 2480
 
 /**
  * 발을 들여도 안 열리는 날기 자리 셋이 여는 깃발 (`sTownMapFlyLocationUnlockFlags`, `town_map/context.c` 54–75).

@@ -147,7 +147,7 @@ export function whyNot(id: FieldMoveId, who: Trainer): FieldMoveDenial | null {
 }
 
 /** 파티 화면에서 비전기술을 못 쓰는 까닭 (`FIELD_MOVE_ERROR_*`). `state`는 「이미 파도타기 중」이다 */
-export type MenuFieldDenial = FieldMoveDenial | 'notHere' | 'partner' | 'state'
+type MenuFieldDenial = FieldMoveDenial | 'notHere' | 'partner' | 'state'
 
 /**
  * 파티 화면에서 앞 칸 기술을 쓸 수 있는가 (`FieldMoves_CheckSurf` · `_CheckRockSmash` · `_CheckRockClimb` 따위, `field_move_tasks.c`).
