@@ -17,6 +17,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { dataDigest, sourceDigest } from '../distribution/evidence.mjs'
 import { keepPartEnd, partEnvelope, partStart, PARTS_DIR } from './parts.mjs'
+import { buildCheckRows, CHECK_KEYS, CHECK_WHAT } from './partChecks.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -31,6 +32,8 @@ export const PROBE_PARTS = {
     legs: { e: ['61', '예지호수 장면을 본다'], f: ['62', '갤럭시단 아지트에서 호수 셋을 풀어 준다'],
       g: ['63', '창기둥을 지나 깨어진 세계 1F에 든다'], h: ['64', '깨어진 세계를 지나 기라티나 방에 닿는다'],
       i: ['65', '기라티나를 잡고 송별의 샘으로 나온다'] },
+    // 다리 줄 뒤의 끝 점검 — 지형 · 콘솔 · 캔버스 · 이어하기 · 끝 리포트 (`partChecks.mjs`). 번호는 P5의 71~과 안 겹친다
+    checks: { terrain: '66', console: '67', canvas: '68', resume: '69', report: '70' },
     harness: ['tools/e2e/_dw.mjs', 'tools/e2e/badgesDW.mjs', 'tools/e2e/distortionSolve.mjs'],
   },
   5: {
@@ -38,13 +41,22 @@ export const PROBE_PARTS = {
     legs: { j: ['71', '물가시티 톱니 체육관에서 여덟째 배지를 받는다'], k: ['72', '승리의 길을 지나 리그 남쪽 센터에 닿는다'],
       l: ['73', '챔피언로드를 지나 리그 북쪽 센터에서 라이벌을 이긴다'],
       m: ['74', '사천왕 · 난천을 이기고 전당에 오른 뒤 이어하기로 떡잎마을 침실에 선다'] },
+    checks: { terrain: '75', console: '76', canvas: '77', resume: '78', report: '79' },
     harness: ['tools/e2e/_league.mjs', 'tools/e2e/badgesLeague.mjs'],
   },
 }
 
+/** 파트가 내야 할 결과 줄 번호 전부 — 다리 줄 + 끝 점검 줄 (`parts-check`가 이것으로 「안 낸 줄」을 센다) */
+export const probeRoster = (n) => {
+  const def = PROBE_PARTS[n]
+  return def === undefined ? null
+    : [...Object.values(def.legs).map(([id]) => id), ...CHECK_KEYS.map((k) => def.checks[k])]
+}
+
 /** 이 파트를 재는 도구의 지문 — 공용 걸음(drive · observe · route)과 파트 표까지 */
 const COMMON = ['tools/e2e/drive.mjs', 'tools/e2e/observe.mjs', 'tools/e2e/route.mjs', 'tools/e2e/parts.mjs',
-  'tools/e2e/partProbe.mjs', 'tools/devServer.mjs', 'tools/gpuFlags.mjs']
+  'tools/e2e/partProbe.mjs', 'tools/e2e/partChecks.mjs', 'tools/e2e/canvasShot.mjs', 'tools/e2e/terrainJudge.mjs',
+  'tools/e2e/stageProbe.mjs', 'tools/devServer.mjs', 'tools/gpuFlags.mjs']
 const harnessOf = (files) => {
   const h = createHash('sha256')
   for (const rel of [...files, ...COMMON].sort()) {
@@ -69,9 +81,9 @@ export function probePartStart(n, saveFlag) {
  * 봉투를 쓴다. `legsRun`은 다리 글자 → `{ reached, detail }`, `end`는 마지막 다리가 남긴
  * `{ file, memory, at }`(못 닿았으면 null)다. 돌려준 값이 종료 코드다
  */
-export function sealProbePart(n, ctx, { legsRun, end, crash = null, extra = {} }) {
+export function sealProbePart(n, ctx, { legsRun, end, crash = null, extra = {}, checks = null }) {
   const { def, start, dataAtStart, t0 } = ctx
-  const expected = Object.values(def.legs).map(([id]) => id)
+  const expected = probeRoster(n)
   const results = []
   for (const [leg, [id, what]] of Object.entries(def.legs)) {
     const r = legsRun[leg]
@@ -80,7 +92,14 @@ export function sealProbePart(n, ctx, { legsRun, end, crash = null, extra = {} }
   }
   const digest = end !== null && existsSync(resolve(ROOT, end.file))
     ? keepPartEnd(n, resolve(ROOT, end.file), end.memory, end.at) : null
-  const allLegs = results.length === expected.length && results.every((r) => r.status === 'PASS')
+  const allLegs = results.length === Object.keys(def.legs).length && results.every((r) => r.status === 'PASS')
+  // 끝 점검 줄 — 탐침이 모은 것(`checks`)과 끝 세이브로 만든다. 안 모았으면 전부 BLOCKED (PASS로 접지 않는다)
+  const rows = buildCheckRows({
+    cuts: [], expectCuts: [], noise: [], toTheEnd: false, resume: null, ...checks, end, digest,
+  })
+  for (const k of CHECK_KEYS) {
+    results.push({ id: def.checks[k], what: CHECK_WHAT[k], status: rows[k].status, detail: String(rows[k].detail).slice(0, 900) })
+  }
   const data = dataDigest()
   const env = {
     suite: `part-${def.suite}`,
@@ -100,7 +119,8 @@ export function sealProbePart(n, ctx, { legsRun, end, crash = null, extra = {} }
       endSaveDigest: digest, at: end?.at ?? null,
       // journey 파트와 같은 칸 — 이 파트의 경계는 배지 수가 아니라 다리 끝이다
       badges: end?.at?.badges ?? null, wantBadges: null, healed: true, healWhy: null,
-      ok: allLegs && digest !== null && crash === null,
+      ok: allLegs && digest !== null && crash === null && results.length === expected.length
+      && results.every((r) => r.status === 'PASS'),
     },
     ...extra,
   }

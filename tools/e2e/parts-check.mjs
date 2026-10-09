@@ -13,6 +13,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { probeRoster } from './partProbe.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 /** 연쇄의 파트 — P6는 하네스를 만들면 `pending`을 뗀다 */
@@ -46,6 +47,14 @@ for (const p of CHAIN) {
     const executed = new Set(env.scope?.executedCases ?? [])
     const missing = (env.scope?.expectedCases ?? []).filter((id) => !executed.has(id))
     if (missing.length > 0) row.problems.push(`안 낸 줄 ${missing.join(' · ')}`)
+    // P4 · P5는 다리 줄 + 끝 점검 줄(지형 · 콘솔 · 캔버스 · 이어하기 · 끝 리포트)이 **기대 목록에 있어야** 한다.
+    // 옛 봉투(다리 줄만 적은 것)는 기대 목록이 짧아 위 검사를 통과하므로 정본과 따로 맞댄다
+    const roster = probeRoster(p.n)
+    if (roster !== null) {
+      const expected = new Set(env.scope?.expectedCases ?? [])
+      const unlisted = roster.filter((id) => !expected.has(id))
+      if (unlisted.length > 0) row.problems.push(`기대 목록에 없는 줄 ${unlisted.join(' · ')} — 옛 하네스로 쟀다`)
+    }
     if ((env.scope?.shortcuts ?? []).length > 0) row.problems.push(`지름길 ${env.scope.shortcuts.join(',')}`)
     if (env.dataChangedDuringRun === true) row.problems.push('도는 동안 자료가 바뀌었다')
     if (part.ok !== true) row.problems.push(`경계에 못 닿았다 — 배지 ${String(part.badges)}/${String(part.wantBadges)} · 회복 ${part.healed ? '됨' : String(part.healWhy)}`)

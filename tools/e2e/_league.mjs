@@ -19,6 +19,7 @@ import { freePort, startVite } from '../devServer.mjs'
 import { gpuArgs } from '../gpuFlags.mjs'
 import { driveStory } from './drive.mjs'
 import { probePartStart, sealProbePart } from './partProbe.mjs'
+import { collectConsole, resumeCheck, takeCut, watchCanvas } from './partChecks.mjs'
 import { MAP, beaconToVictory, eliteFour, sendoffToBeacon, victoryRoad } from './badgesLeague.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
@@ -35,6 +36,11 @@ const PART_N = PART === null ? null : Number(flag('part', null))
 const legsRun = {}
 /** 마지막 다리가 남긴 끝 — `{ file, memory, at }` */
 let partEnd = null
+/** 끝 점검이 모으는 것 — 지형 컷 · 콘솔 · 이어하기 (`partChecks.mjs`). 위 `legsRun`과 함께 봉투의 결과 줄이 된다 */
+const cuts = []
+let noise = []
+let resume = null
+let toTheEnd = false
 const SAVE = PART !== null ? PART.start.save : flag('save', '.audit/journey/probe-sendoff.rpsave')
 const BUDGET = Number(flag('budget', '7200')) * 1000
 const LEG = PART !== null ? 'all' : flag('leg', 'all')
@@ -125,6 +131,17 @@ try {
   // 영상은 납품물이다 (journey와 같다) — 걷고 싸우는 것은 정지 화면으로 못 보인다. 맥락이 닫힐 때 파일이 쓰인다
   page = await browser.newPage({ viewport: { width: 960, height: 640 }, recordVideo: { dir: OUT, size: { width: 960, height: 640 } } })
   page.on('pageerror', (e) => { console.error(`  pageerror ${String(e.message).slice(0, 160)}`) })
+  if (PART !== null) {
+    await watchCanvas(page)
+    noise = collectConsole(page, { gl: true })
+  }
+  /** 지금 자리에서 지형 컷 하나 — 파트로 돌 때만 (다리 끝마다 · 처음 들인 자리) */
+  const cutHere = async (name) => {
+    if (PART === null) return
+    const cut = await takeCut(page, name, { file: resolve(OUT, `컷-${name}.png`) })
+    cuts.push(cut)
+    console.log(`    컷 ${name} — ${cut.error ? `못 뗐다: ${cut.error}` : `지형칸 ${String(cut.canvas.filled)}/${String(cut.canvas.roi)} ${cut.canvas.drawn ? '그려졌다' : '비었다'}${cut.skyWhy ? ` (${cut.skyWhy})` : ''}`}`)
+  }
 
   await page.goto(url, { waitUntil: 'load', timeout: 600_000 })
   await page.getByRole('button', { name: '시작', exact: true }).waitFor({ timeout: 600_000 })
@@ -138,6 +155,7 @@ try {
   await page.waitForTimeout(1500)
   out.atLoad = await storyNow(page)
   note('들인 자리', JSON.stringify(out.atLoad))
+  await cutHere('start')
 
   const drive = await driveStory(page, {
     log: (l) => { console.log(`    ${l}`) },
@@ -185,6 +203,7 @@ try {
         out[what] = await run()
         const ok = await reached()
         legsRun[what] = { reached: ok, detail: JSON.stringify({ ...await storyNow(page), ok }).slice(0, 600) }
+        await cutHere(what)
         // 파트의 마지막 다리는 끝 세이브를 `part-N.rpsave`로 쓰고, 그 앞에 하네스 기억을 뜬다
         if (PART !== null && ok && what === 'm') {
           const at = await storyNow(page)
@@ -222,6 +241,7 @@ try {
         note('다리 m', JSON.stringify({ ok: out.m.ok, rooms: out.m.rooms, ending: out.m.ending }).slice(0, 1500))
         if (out.m.ok !== true) {
           legsRun.m = { reached: false, detail: JSON.stringify({ rooms: out.m.rooms, ending: out.m.ending }).slice(0, 600) }
+          await cutHere('m')
           await end('m', 'probe-elite-못닿음.rpsave')
           return
         }
@@ -252,6 +272,7 @@ try {
         const cleared = out.cleared.gameCompleted === true && out.cleared.hallOfFame !== null
           && typeof out.cleared.hallOfFame === 'object'
         legsRun.m = { reached: cleared, detail: JSON.stringify(out.cleared).slice(0, 600) }
+        await cutHere('m')
         if (PART !== null && cleared) {
           partEnd = { file: `.audit/journey/part-${String(PART_N)}.rpsave`, memory: api.harnessMemory(), at: after }
           await end('m', `part-${String(PART_N)}.rpsave`)
@@ -264,6 +285,12 @@ try {
   out.potions = drive?.potions ?? null
   out.battles = drive?.wild === undefined ? null : { wild: drive.wild, trainer: drive.trainer }
   out.end = await storyNow(page)
+  // 끝 점검 — 마지막 다리까지 닿았으면 앱을 다시 켜 이어하기로 같은 자리에 서는지 잰다 (journey ⑭와 같다)
+  if (PART !== null && legsRun.m?.reached === true) {
+    resume = await resumeCheck(page, url)
+    note('이어하기', JSON.stringify({ want: resume.want, got: resume.got?.player, map: resume.got?.world?.map, restoredOk: resume.restoredOk }))
+  }
+  toTheEnd = true
   if (out.trouble !== null && out.trouble.length > 0) note('걸린 것', JSON.stringify(out.trouble))
 } catch (e) {
   out.crash = String(e?.stack ?? e?.message ?? e).slice(0, 900)
@@ -277,7 +304,9 @@ try {
 
 writeFileSync(`${OUT}/실행.json`, `${JSON.stringify(out, null, 1)}\n`)
 if (PART !== null) {
-  process.exit(sealProbePart(PART_N, PART, { legsRun, end: partEnd, crash: out.crash ?? null, extra: { probe: OUT, video: out.video ?? null, trouble: out.trouble ?? null, battles: out.battles ?? null, cleared: out.cleared ?? null } }))
+  process.exit(sealProbePart(PART_N, PART, { legsRun, end: partEnd, crash: out.crash ?? null,
+    checks: { cuts, expectCuts: ['start', ...['j', 'k', 'l', 'm']], noise, toTheEnd, resume },
+    extra: { cuts, noise, probe: OUT, video: out.video ?? null, trouble: out.trouble ?? null, battles: out.battles ?? null, cleared: out.cleared ?? null } }))
 }
 console.log(`\n  ${OUT}`)
 console.log(`  배지 ${String(out.end?.badges ?? out.atLoad?.badges ?? '?')}`)
