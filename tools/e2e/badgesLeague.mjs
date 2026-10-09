@@ -70,6 +70,23 @@ const noteOf = (out, ctx) => (what, detail) => {
 const have = async (api, item) => ((await api.bagState())?.items ?? []).some((one) => one.item === item && one.count > 0)
 
 /** 맵이 `ok`를 만족할 때까지 기다린다 — 스크립트 워프가 격자를 받는 동안 */
+/**
+ * **장면이 끝나 이야기 값이 바뀔 때까지 대사를 넘기며 기다린다.** `ok(v)`가 참이면 그 값을, 끝내 아니면 마지막 값을 낸다.
+ *
+ * ⚠️ **들어선 순간·말 건 순간에는 장면이 아직 안 열렸을 수 있다** — 인물이 걸어 들어오는 동안은 대사도 스크립트도
+ * 안 보여 `settle`이 곧바로 돌아온다. 실측(2026-10-10 P5 진단 · d595b69): 연구소에 들어서자마자 재서 「입지 막음 풀림
+ * 0」으로 다리를 잃었고, 그 뒤에 「마박사: 돌아왔는가!」 창이 떴다. 예지호수(P4)에서도 같았다
+ */
+async function sceneUntil(api, ok, ms = 30_000) {
+  let v = {}
+  for (const till = Date.now() + ms; ;) {
+    await api.clearTalk(); await api.settle()
+    v = (await api.storyVars()) ?? {}
+    if (ok(v) || Date.now() >= till) return v
+    await new Promise((r) => { setTimeout(r, 1000) })
+  }
+}
+
 async function untilMap(api, ok, ms) {
   const till = Date.now() + ms
   while (Date.now() < till) {
@@ -212,8 +229,7 @@ export async function sendoffToBeacon(api, ctx, { levels = null, potions = 20 } 
     const fly = await api.flyTo(MAP.sandgem, Math.min(120_000, api.left()))
     note('공중날기 → 모래시티', fly.ok ? '닿았다' : String(fly.why))
     const lab = await api.goTo(MAP.sandgemLab, Math.min(600_000, api.left()))
-    await api.clearTalk(); await api.settle()
-    v = await vars()
+    v = await sceneUntil(api, (x) => (x.valorOpen ?? 0) >= 1, 60_000)
     note('연구소(422) — 마박사 장면', `${lab} · 연구소 상태 ${String(v.sandgemLab)} · 입지 막음 풀림 ${String(v.valorOpen)}`)
     if ((v.valorOpen ?? 0) < 1) return done()
   }
@@ -225,8 +241,7 @@ export async function sendoffToBeacon(api, ctx, { levels = null, potions = 20 } 
     note('스프레이 (214번도로)', sprayed.ok ? `뿌렸다 (남은 것 ${String(sprayed.left)})` : String(sprayed.why))
     await via(api, note, [MAP.veilstone, MAP.gate214, MAP.route214, MAP.valorLakefront, MAP.route222, MAP.gate222, MAP.sunyshore],
       '물가시티로 — 214번도로 · 입지호수근처 · 222번도로', 1_500_000)
-    await api.clearTalk(); await api.settle()
-    v = await vars()
+    v = await sceneUntil(api, (x) => (x.sunyshore ?? 0) >= 1, 60_000)
     note('물가시티 대엽 장면', `물가 상태 ${String(v.sunyshore)}`)
     if ((v.sunyshore ?? 0) < 1) return done()
   }
@@ -243,8 +258,7 @@ export async function sendoffToBeacon(api, ctx, { levels = null, potions = 20 } 
     await api.clearTalk(); await api.settle()
     note('길잡이등대(164) — 승강기(516)', `${lift} · 올라왔다 ${String(up)}`)
     const said = await api.talkTo(MAP.lighthouse, LIGHTHOUSE_VOLKNER, Math.min(300_000, api.left()))
-    await api.clearTalk(); await api.settle()
-    v = await vars()
+    v = await sceneUntil(api, (x) => x.volknerBack === true)
     note('등대의 전진 (6,4)', `${said ? '말 걸었다' : '못 걸었다'} · 체육관으로 ${String(v.volknerBack)}`)
     if (!v.volknerBack) return done()
   }
@@ -256,8 +270,7 @@ export async function sendoffToBeacon(api, ctx, { levels = null, potions = 20 } 
       note('물가시티로 내려온다 — 승강기(516)', `${lift} · 내려왔다 ${String(down)}`)
     }
     const said = await api.talkTo(MAP.sunyshore, SUNYSHORE_FLINT, Math.min(300_000, api.left()))
-    await api.clearTalk(); await api.settle()
-    v = await vars()
+    v = await sceneUntil(api, (x) => x.flintAway === true)
     note('체육관 앞 대엽 (845,748)', `${said ? '말 걸었다' : '못 걸었다'} · 비켰다 ${String(v.flintAway)}`)
     if (!v.flintAway) return done()
   }
@@ -397,8 +410,7 @@ export async function beaconToVictory(api, ctx, { potions = 25 } = {}) {
       note('물가시티로', out2)
     }
     const stood = await api.stepOn(MAP.sunyshore, SUNYSHORE_JASMINE, Math.min(600_000, api.left()))
-    await api.clearTalk(); await api.settle()
-    v = await vars()
+    v = await sceneUntil(api, (x) => x.hm07 === true)
     note('북쪽 복도 라이벌·귤 (855,743)', `${stood} · 물가 상태 ${String(v.sunyshore)} · 비전머신07 ${String(v.hm07)}`)
     if (!v.hm07) return done()
   }
@@ -564,8 +576,7 @@ export async function victoryRoad(api, ctx) {
     await prepare(api, ctx, note, { center: MAP.leagueNorthCenter, nurse: LEAGUE_NURSE, levels: null, what: '리그 북' })
     for (let i = 0; i < 3 && (v.rivalLeague ?? 0) < 1; i++) {
       const stood = await api.stepOn(MAP.leagueNorthCenter, LEAGUE_RIVAL, Math.min(300_000, api.left()))
-      await api.clearTalk(); await api.settle()
-      v = await vars()
+      v = await sceneUntil(api, (x) => (x.rivalLeague ?? 0) >= 1)
       note(`북 센터 라이벌전 (11,4)${i > 0 ? ` 재도전 ${String(i)}` : ''}`, `${stood} · 라이벌 ${String(v.rivalLeague)}`)
       if ((v.rivalLeague ?? 0) < 1) await prepare(api, ctx, note, { center: MAP.leagueNorthCenter, nurse: LEAGUE_NURSE, levels: null, what: '라이벌전 뒤' })
     }
@@ -682,8 +693,7 @@ export async function eliteFour(api, ctx, page, {
       v = await vars()
       if (!v.guardMoved) {
         const said = await api.talkTo(MAP.leagueNorthCenter, LEAGUE_GUARD, Math.min(300_000, api.left()))
-        await api.clearTalk(); await api.settle()
-        v = await vars()
+        v = await sceneUntil(api, (x) => x.guardMoved === true)
         note('문지기 (11,3)', `${said ? '말 걸었다' : '못 걸었다'} · 비켰다 ${String(v.guardMoved)}`)
         if (!v.guardMoved) return done()
       }
