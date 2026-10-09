@@ -8,7 +8,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { distortionSchema, type DistortionData } from '../data/schema'
 import { withDistortionTables } from '../data/distortionFile'
-import { MAP, PLATFORM_NONE, distortionBridge } from '../engine/world/distortion'
+import { Quaternion, Vector3 } from 'three'
+import {
+  MAP, PLATFORM_FLOOR, PLATFORM_NONE, distortionBridge, platformBasis,
+} from '../engine/world/distortion'
+import { surfaceQuaternion, turnQuaternion } from '../engine/actor/distortionSurface'
 
 const FILE = 'public/data/distortion.json'
 const real = existsSync(FILE)
@@ -109,5 +113,64 @@ describe.runIf(real)('판을 건너뛴다', () => {
     }
     mod.distortionJumpTick(1 / 60)
     expect(distortionBridge.jumpLift?.()).toBeNull()
+  })
+  it('갈아타는 동안 몸 · 카메라가 같은 k로 돌고, 입력 기저는 끝 프레임에야 바뀐다', () => {
+    const b3f = data!.maps.find((m) => m.map === MAP.b3f)!
+    const jump = b3f.jumps.find((j) => j.platformIndex === 0)!
+    const [lx, ly, lz] = [
+      jump.bounds.x - b3f.offsetX, jump.bounds.y - b3f.offsetY, jump.bounds.z - b3f.offsetZ,
+    ]
+    for (let i = 0; i < 20 && mod.distortionJumping(); i++) mod.distortionJumpTick(1 / 60)
+    mod.distortionEnter(MAP.b3f, lx, ly, lz)
+    worldState.player.position.set(lx + 0.5, ly, lz + 0.5)
+    expect(distortionBridge.poseTurn?.()).toBeNull()
+    // 판 밖에서 서쪽 벽(1)으로 — 입력 기저는 바닥이다
+    mod.distortionMoved(lx, ly, lz, jump.dir)
+    expect(distortionBridge.frame?.() ?? null).toBeNull()
+    for (let tick = 1; tick <= 15; tick++) {
+      mod.distortionJumpTick(1 / 60)
+      const turn = distortionBridge.poseTurn?.()
+      expect(turn?.k, `틱 ${tick}`).toBeCloseTo(tick / 16, 9)
+      expect(turn?.body).toBe(true)
+      expect(turn?.angle).toBe(jump.spriteAngle)
+      // 끝 프레임 전에는 입력 기저가 옛 판이다
+      expect(distortionBridge.frame?.() ?? null).toBeNull()
+    }
+    const before = distortionBridge.poseTurn?.()
+    expect(before).not.toBeNull()
+    mod.distortionJumpTick(1 / 60)
+    // 끝 프레임: 턴이 끝나고 입력 기저가 새 판이 된다
+    expect(distortionBridge.poseTurn?.()).toBeNull()
+    const frame = distortionBridge.frame?.() ?? null
+    expect(frame?.kind).toBe(1)
+    // 이어 붙는다 — 끝 직전 턴을 k=1로 읽은 자세가 새 판이 읽는 자세와 같다 (몸 · 카메라 기울기 둘 다)
+    const end = { ...before!, k: 1 }
+    const facing = worldState.player.facing
+    const q = new Quaternion()
+    expect(turnQuaternion(end, true, q).angleTo(surfaceQuaternion(frame, facing, new Quaternion())))
+      .toBeLessThan(1e-5)
+    expect(turnQuaternion(end, false, q).angleTo(surfaceQuaternion(frame, 0, new Quaternion())))
+      .toBeLessThan(1e-5)
+  })
+
+  it('자료의 점프 스물은 spriteAngle이 판 기저 표와 맞는다 (위쪽이 −spriteAngle도 돌아 닿는 판의 위쪽이 된다)', () => {
+    const z = new Vector3(0, 0, 1)
+    let count = 0
+    for (const m of data!.maps) {
+      for (const j of m.jumps) {
+        const to = m.platforms[j.platformIndex]?.kind ?? PLATFORM_FLOOR
+        const upTo = platformBasis(to).up
+        // 떠나는 판은 넷 중 하나다 — 어느 하나에서 돌아 닿으면 된다
+        const reached = [0, 1, 2, 3].some((from) => {
+          const u = platformBasis(from).up
+          return new Vector3(u[0], u[1], u[2]).applyAxisAngle(z, (-j.spriteAngle * Math.PI) / 180)
+            .distanceTo(new Vector3(upTo[0], upTo[1], upTo[2])) < 1e-9
+        })
+        expect(reached, `${m.map} → 판 ${j.platformIndex}`).toBe(true)
+        expect(Math.abs(j.spriteAngle)).toBe(90)
+        count++
+      }
+    }
+    expect(count).toBe(20)
   })
 })

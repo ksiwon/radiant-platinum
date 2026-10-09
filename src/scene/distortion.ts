@@ -28,6 +28,7 @@ import { SFX } from '../engine/audio/sfx'
 import { music } from '../engine/audio/music'
 import { distortionRiding, resetDistortionRide, startRide } from './distortionElevator'
 import { applyEvents, distortionEventRunning, resetDistortionEvents } from './distortionEvents'
+import { distortionPoseTurn } from './distortionTurn'
 import { applyJump, distortionJumpLift, resetDistortionJump } from './distortionJump'
 import { dropBoulder } from './distortionBoulder'
 import {
@@ -238,5 +239,6 @@ distortionBridge.groundLift = distortionGroundLift
 distortionBridge.behaviorAt = distortionBehaviorAt
 distortionBridge.jumpBlocked = distortionJumpBlocked
 distortionBridge.jumpLift = distortionJumpLift
+distortionBridge.poseTurn = distortionPoseTurn
 distortionBridge.dropBoulder = dropBoulder
 distortionBridge.boulderMoved = distortionBoulderMoved

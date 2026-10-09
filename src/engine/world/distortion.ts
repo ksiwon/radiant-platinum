@@ -450,6 +450,28 @@ export interface DistortionFrame {
 }
 
 /**
+ * 판을 갈아타는 **도중의 자세** (`RotateMapObject`).
+ *
+ * 원작은 건너뛰는 프레임 동안 몸을 `spriteAngle`도 돌린다. 몸 · 카메라 기울기가 같은 `k`를 읽어
+ * 같은 타임라인으로 돈다 — 입력 기저(`frame`)는 판이 갈리는 끝 프레임에 바뀌고, 그때 둘은 이미
+ * 새 판의 자세다 (`engine/actor/distortionSurface`의 `turnQuaternion`)
+ */
+export interface PoseTurn {
+  /** 떠나는 판 · 닿는 판의 갈래 (`PLATFORM_*`). 판 밖은 `PLATFORM_NONE`이고 바닥으로 읽힌다 */
+  fromKind: number
+  toKind: number
+  /** 시작 · 끝의 로컬 yaw (판 위의 몸이 보는 쪽) */
+  fromHeading: number
+  toHeading: number
+  /** 세계 Z축 둘레로 도는 각 (도, `playerSpriteRotAngle`). 0이면 두 자세를 그냥 잇는다 */
+  angle: number
+  /** 진행 0..1 — 지난 프레임 / `movementAnimSteps` */
+  k: number
+  /** 몸도 도는가. 폭포 끝은 몸이 제 물살 자세로 이미 눕는 중이라 카메라만 돈다 */
+  body: boolean
+}
+
+/**
  * 씬이 채우는 다리.
  *
  * `src/engine`은 스토어도 자료 파일도 못 읽는다 (PLAN §3.2). 이동 시스템이
@@ -520,6 +542,7 @@ export const distortionBridge: {
    *
    * 칸 좌표는 안 건드린다 — 원작이 `MapObject_GetSpriteJumpOffset1`에만 쓴다 (`world/distortionJumpArc`)
    */
+  poseTurn: (() => PoseTurn | null) | null
   jumpLift: (() => readonly [number, number, number] | null) | null
   /**
    * 난천이 막고 선 자리라 못 뛰는가 (`DistWorld_IsBlockedByCynthia`).
@@ -534,7 +557,7 @@ export const distortionBridge: {
   boulderMoved: ((boulder: { localID: number; x: number; z: number }) => void) | null
 } = {
   blockedAt: null, frame: null, inWorld: null, followsGround: null, groundLift: null, behaviorAt: null,
-  jumpBlocked: null, frontTile: null, cameraSwing: null, jumpLift: null, dropBoulder: null, boulderMoved: null,
+  jumpBlocked: null, frontTile: null, cameraSwing: null, poseTurn: null, jumpLift: null, dropBoulder: null, boulderMoved: null,
 }
 
 /** 깨어진 세계의 맵인가 */

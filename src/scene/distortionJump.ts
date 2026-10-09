@@ -7,9 +7,11 @@ import { jumpArcOffset } from '../engine/world/distortionJumpArc'
 import { SFX } from '../engine/audio/sfx'
 import { music } from '../engine/audio/music'
 import { worldState } from '../state/worldState'
+import { PLATFORM_FLOOR } from '../engine/world/distortion'
 import {
-  FACING_YAW, bindPlatform, distortionFloor, markCarried, setHeightCalc, toLocalTiles,
+  FACING_YAW, bindPlatform, distortionFloor, distortionKind, markCarried, setHeightCalc, toLocalTiles,
 } from './distortionCore'
+import { beginPoseTurn, endPoseTurn, setPoseTurnProgress } from './distortionTurn'
 
 /**
  * 벽·천장으로 건너뛰는 자리 (`HandleFloatingPlatformJumpPointAt`).
@@ -39,6 +41,7 @@ let jumping: PlatformJump | null = null
 /** 층을 나갈 때 뛰던 것을 버린다 (`distortionLeave`) */
 export function resetDistortionJump(): void {
   jumping = null
+  endPoseTurn()
 }
 
 /** 판을 건너뛰는 중인가. 그동안은 조작이 안 먹는다 */
@@ -77,6 +80,17 @@ export function applyJump(wx: number, wy: number, wz: number, dir: number): bool
     inverted: jump.inverted,
   }
   p.velocity.set(0, 0, 0)
+  // ⚠️ **몸은 뛰는 프레임 동안 돈다.** 원작이 건너뛰기를 시작할 때 `RotateMapObject(…, playerSpriteRotAngle,
+  // movementAnimSteps)`를 건다 (`ov9_02249960.c:2849`) — 이동과 같은 틱 수다. 몸 · 카메라 기울기가 같은 `k`를 읽고,
+  // 입력은 판이 갈리는 끝 프레임에 새 기저로 넘어간다(그때 둘은 이미 새 자세다)
+  beginPoseTurn({
+    fromKind: distortionKind(),
+    toKind: floor.platforms[jump.platformIndex]?.kind ?? PLATFORM_FLOOR,
+    fromHeading: p.facing,
+    toHeading: FACING_YAW[jump.facing] ?? p.facing,
+    angle: jump.spriteAngle,
+    body: true,
+  })
   return true
 }
 
@@ -94,6 +108,7 @@ export function distortionJumpTick(dt: number): void {
   )
   p.prevPosition.copy(p.position)
   p.velocity.set(0, 0, 0)
+  setPoseTurnProgress(k)
   // 뛰는 것은 걸음이 아니다 — 원작은 필드 태스크가 옮긴다(`JumpOnFloatingPlatform`)
   markCarried()
   if (j.frames < j.total) return
@@ -106,4 +121,6 @@ export function distortionJumpTick(dt: number): void {
   void music.playEffect(SFX.DISTORTION_LAND)
   p.facing = FACING_YAW[j.facing] ?? p.facing
   jumping = null
+  // 몸 · 카메라는 이미 새 판의 자세다 — 이제부터는 판(`frame`)이 읽힌다
+  endPoseTurn()
 }
