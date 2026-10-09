@@ -736,11 +736,19 @@ export async function eliteFour(api, ctx, page, {
      */
     let navigated = false
     const leftApp = (e) => /Execution context was destroyed|navigation|Target page, context or browser has been closed/i.test(String(e?.message ?? e))
+    /**
+     * 던지지 않고 넘어가기도 한다 — 다시 켜진 타이틀에서 읽으면 맵이 NaN이고 이야기 값이 비어 「졌다」로 읽힌다
+     * (실측 f9d7809: 「이겼다 false · 지금 맵 NaN」). 주소가 `/play`를 떠났으면 같은 일로 본다. 이겼는지는
+     * 이어하기 뒤 게임 클리어 깃발 · 전당 기록으로 따로 잰다(`_league` 다리 m)
+     */
+    const offPlay = async () => (await page.evaluate(() => location.pathname).catch(() => '/')) !== '/play'
     try {
       for (let i = 0; i < 20 && !(await vars()).cynthia; i++) {
+        if (await offPlay()) { navigated = true; break }
         if ((await api.now()).map === MAP.leagueNorthCenter) break
         await api.clearTalk(); await api.settle()
       }
+      if (!navigated && await offPlay()) navigated = true
     } catch (e) {
       if (!leftApp(e)) throw e
       navigated = true
