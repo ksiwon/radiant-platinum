@@ -24,7 +24,7 @@ import { distortionBridge, PLATFORM_FLOOR, terrainTileY } from '../world/distort
 import { surfaceHeading, surfaceVector } from './distortionSurface'
 import { mapFeatureBridge } from '../world/mapFeatures'
 import { DIR, DIR_STEP } from '../script/movement'
-import { fieldMoveBridge } from '../script/fieldMoves'
+import { fieldMoveBridge, TILE_BEHAVIOR_WATERFALL } from '../script/fieldMoves'
 import { cutInFrame } from '../battle/encounterCutIn'
 import { scriptCameraActive } from './camera'
 
@@ -226,6 +226,10 @@ function blocked(x: number, z: number, y = worldState.player.position.y): boolea
       // ⚠️ **물인지 땅인지가 층에 달린 칸이 있다** — 물 위의 다리다 (PARITY §1.16).
       // 위를 건널 때는 걸어갈 땅이고 밑을 지날 때는 파도를 탈 물이다
       (!surfing && isOnWater(grid.behaviorAtWorld(cx, cz), onElevatedBridge())) ||
+      // ⚠️ **폭포는 헤엄쳐도 못 지난다.** 격자에는 통행 불가로 안 찍혀 있어서, 막지 않으면
+      // 파도타기 중 폭포를 그냥 헤엄쳐 건넜다. 원작은 폭포 칸이 막혀 있어 부딪혀 서고,
+      // 지나가는 길은 폭포오르기(A 스크립트 6)와 남쪽 내리기(`ov5_021E04A8`)뿐이다
+      (surfing && grid.behaviorAtWorld(cx, cz) === TILE_BEHAVIOR_WATERFALL) ||
       // 벨 나무·깰 바위·밀 바위는 지형이 아니라 객체다 (`actor/obstacles`)
       obstacleAt(Math.floor(cx), Math.floor(cz)) !== null ||
       // 나머지 사람·물체도 막는다 (`sub_02063F00`) — 210번도로의 골덕 넷과

@@ -107,6 +107,23 @@ describe('물 위를 걷지 못한다', () => {
     expect(walkWest(true)).toBeLessThan(-5)
   })
 
+  it('파도타기 중에도 폭포 칸은 막혀 부딪혀 선다', () => {
+    activeZone.grid = { ...fake, behaviorAtWorld: (x: number) => (x < -3 ? 0x13 : x < 0 ? Behavior.WATER_OPEN : 0) }
+    const p = worldState.player
+    p.position.set(-1, 0, 0)
+    p.prevPosition.copy(p.position)
+    p.velocity.set(0, 0, 0)
+    p.hop.active = false
+    p.surfing = true
+    worldState.input.move.set(-1, 0)
+    worldState.camera.mode = 'third'
+    for (let i = 0; i < 180; i++) playerSystem.fixedUpdate(1 / 60)
+    worldState.input.move.set(0, 0)
+    activeZone.grid = null
+    expect(p.position.x).toBeGreaterThan(-3.4)
+    expect(p.position.x).toBeLessThan(-2.5)
+  })
+
   it('뭍에 올라서면 저절로 내린다', () => {
     activeZone.grid = fake
     const p = worldState.player
