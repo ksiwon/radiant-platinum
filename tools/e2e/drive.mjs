@@ -3194,20 +3194,33 @@ export async function driveStory(page, {
     let rock = { ...boulder }
     for (let i = 0; i < n; i++) {
       const next = { x: rock.x + dx, z: rock.z + dz }
-      const here = await now()
-      await page.keyboard.down(key)
       let moved = false
-      for (let k = 0; k < 40 && !moved; k++) {
-        await page.waitForTimeout(50)
-        const r = await obs.obstacleAt(next.x, next.z)
-        moved = r.known && r.value !== null
+      /**
+       * ⚠️ **밀다가 야생이 붙으면 그 밀기만 다시 한다.** 실측(2026-10-10 P4 진단 · d421490): 천관산 2F 3번째 밀기에
+       * 야생 배틀이 끼어 바위가 (14,47)에 남았고, 길이 안 열려 다리를 잃었다. 배틀을 끝내고 바위 뒤 칸에 다시 서서 민다
+       */
+      for (let retry = 0; retry < 3 && !moved; retry++) {
+        if (retry > 0) {
+          await settle()
+          const behind = { x: rock.x - dx, z: rock.z - dz }
+          const at = await now()
+          if (at.x !== behind.x || at.z !== behind.z) {
+            const went = await stepOn(mapId, behind, Math.max(30_000, budgetMs - (Date.now() - t0)))
+            if (went !== 'arrived') break
+          }
+        }
+        const here = await now()
+        await page.keyboard.down(key)
+        for (let k = 0; k < 40 && !moved; k++) {
+          await page.waitForTimeout(50)
+          const r = await obs.obstacleAt(next.x, next.z)
+          moved = r.known && r.value !== null
+        }
+        await page.keyboard.up(key)
+        await page.waitForTimeout(300)
+        if (!moved) log(`      괴력 ${String(i + 1)}번째 밀기 — 바위가 안 옮겨졌다 (${String(here.x)},${String(here.z)}) · ${String(retry + 1)}번째`)
       }
-      await page.keyboard.up(key)
-      await page.waitForTimeout(300)
-      if (!moved) {
-        log(`      괴력 ${String(i + 1)}번째 밀기 — 바위가 안 옮겨졌다 (${String(here.x)},${String(here.z)})`)
-        break
-      }
+      if (!moved) break
       obstacleGone(mapId, rock.x, rock.z)
       const pushedTo = `${String(matrixOf(mapId))}:${String(next.x)},${String(next.z)}`
       standingObstacles.add(pushedTo)
