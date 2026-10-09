@@ -44,7 +44,8 @@ let resume = null
 let toTheEnd = false
 const SAVE = PART !== null ? PART.start.save : flag('save', '.audit/journey/probe-badge7.rpsave')
 const BUDGET = Number(flag('budget', '7200')) * 1000
-const LEG = PART !== null ? 'all' : flag('leg', 'all')
+// 파트 판은 다리 전부다. 손으로 준 세이브(진단)에서만 `--leg`로 고를 수 있다 — 빠진 다리의 줄은 BLOCKED로 남는다
+const LEG = PART !== null && !PART.start.diagnostic ? 'all' : flag('leg', 'all')
 const URL = flag('url', null)
 const STAMP = new Date().toISOString().replace(/[:.]/g, '-')
 const OUT = resolve(ROOT, `shots/dw/${STAMP}`)

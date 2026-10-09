@@ -354,7 +354,14 @@ export async function coronetToSpear(api, ctx,
      * 실측(탐침 p7): 여기서 곧장 읽어 「깨진 창기둥이 아니다」로 난천 장면을 건너뛰고 다리를 잃었다. 그 뒤에 쓴
      * 리포트는 221에 서 있었다
      */
-    await untilMap(api, (m) => m !== MAP.spearPillar, 60_000)
+    /**
+     * ⚠️ **기다리는 동안에도 대사를 넘긴다.** 태홍 장면은 걷는 연출 사이사이에 대사가 다시 뜬다 — 실측(P4 진단 ·
+     * 0db4446 · 8FPS): 한 번 넘기고 60초를 맵만 봤더니 「태홍: …역시나」 창 앞에서 220에 선 채로 다리를 잃었다
+     */
+    for (const till = Date.now() + 300_000; Date.now() < till;) {
+      if (await untilMap(api, (m) => m !== MAP.spearPillar, 10_000)) break
+      await api.clearTalk(); await api.settle()
+    }
     v = await vars()
     note('마스·쥬피터 (31,32) → 컷신', `${mars} · 창기둥 상태 ${String(v.spear)} · 지금 맵 ${String((await api.now()).map)}`)
   }
