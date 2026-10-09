@@ -52,6 +52,15 @@ describe('waitTerrain — 지형이 설 때까지 기다리는 자', () => {
     expect(r.why).toContain('모듈을 못 열었다')
   })
 
+  it('한 번 묻는 데 tick을 넘겨도 상한 안에 돌아오면 그 답을 쓴다 — 새 물음은 안 연다', async () => {
+    // 실측(2026-10-09 P1): 무쇠시티에 들어서며 맵을 세우는 동안 한 물음이 3초를 넘겼다
+    const page = fakePage([() => new Promise((r) => { setTimeout(() => r({ ok: true, why: null }), 300) })])
+    const r = await waitTerrain(page, 2_000, 100)
+    expect(r.ok).toBe(true)
+    expect(r.slow).toBe(1)
+    expect(page.asked).toBe(1)
+  })
+
   it('한 번의 물음이 안 끝나도 바깥 상한이 듣는다', async () => {
     // ⚠️ 실측: 안 끝나는 프로미스를 `page.evaluate`에 주면 **26초**를 매달렸다.
     // 그 26초는 계약이 아니라 가비지 컬렉션의 우연이다 — 그러니 여기서 끊는다
@@ -59,7 +68,7 @@ describe('waitTerrain — 지형이 설 때까지 기다리는 자', () => {
     const page = fakePage([() => new Promise(() => {})])
     const r = await waitTerrain(page, 900, 200)
     expect(r.ok).toBe(false)
-    expect(r.why).toContain('넘겼다')
+    expect(r.why).toContain('안 돌아왔다')
     expect(Date.now() - t0).toBeLessThan(4_000)
     // ⚠️ **못 잰 것과 아직 안 된 것을 가른다** (후속 §7)
     expect(r.probeFailed).toBe(true)
