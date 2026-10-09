@@ -48,7 +48,7 @@ import { clearPanelSlide } from '../actor/slidePanel'
 import { clearIceSlide } from '../actor/ice'
 import { deepMud } from '../actor/player'
 import {
-  FIELD_MOVES, fieldMoveHere, flyDenial, menuMoveDenial, menuMoveOf, movesUsableHere, whyNot,
+  FIELD_MOVES, autoDescendsWaterfall, fieldMoveBridge, fieldMoveHere, flyDenial, menuMoveDenial, menuMoveOf, movesUsableHere, whyNot,
   type FieldMoveId, type FieldSpot, type FlyDenial, type MenuMoveId, type Trainer,
 } from './fieldMoves'
 import { TRAINER_TYPE, trainerInSight } from '../actor/sight'
@@ -1471,6 +1471,29 @@ function tryFieldMove(front: { x: number; z: number }): void {
   if (entry === undefined) { runFieldMove(id, front); return }
   start(FIELD_MOVES_SCRIPT + entry, currentMapFile())
 }
+
+/**
+ * 헤엄치며 남쪽의 폭포를 밀었다 — 컷인 없이 내려간다 (`FieldTask_UseWaterfall`의 내려가는 갈래).
+ *
+ * 같은 거동이 이어지는 만큼 내려가고(오르는 쪽과 같은 규칙), 96프레임이다. 오르는 몸짓(`waterfall` 연출)은 안 건다 —
+ * 원작도 이 길에는 컷인이 없고 몸이 물벽을 타는 것도 아니다. 내려설 칸이 막혔으면 안 내려간다
+ */
+function descendWaterfall(): boolean {
+  const p = worldState.player
+  const grid = mapWorld.grid
+  if (!grid || p.hop.active || distortionBridge.inWorld?.() === true) return false
+  const front = { x: Math.floor(p.position.x), z: Math.floor(p.position.z) + 1 }
+  const spot = spotAt(front)
+  if (spot === null) return false
+  if (!autoDescendsWaterfall({ ...spot, quarter: 0 }, trainerNow().knows(FIELD_MOVES.waterfall.move))) return false
+  let z = front.z
+  while (grid.behavior(front.x, z + 1) === spot.frontBehavior) z++
+  const landZ = z + 1
+  if (grid.isBlocked(front.x, landZ)) return false
+  hopTo(front.x + 0.5, landZ + 0.5, WATERFALL_SECONDS, 0)
+  return true
+}
+fieldMoveBridge.waterfallDescent = descendWaterfall
 
 /** 지금 앞에 무엇이 있는가. 격자가 없거나 뛰는 중이면 null */
 function spotAt(front: { x: number; z: number; y?: number }): FieldSpot | null {

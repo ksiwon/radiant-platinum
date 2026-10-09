@@ -184,6 +184,28 @@ export function flyDenial(who: Trainer, place: FlyPlace): FlyDenial | null {
   return null
 }
 
+/**
+ * 헤엄치며 남쪽으로 폭포에 부딪치면 묻지도 않고 **내려간다** (`ov5_021E04A8`, `ov5_021DFB54.c` 843–859).
+ *
+ * ⚠️ **오르는 것이 아니다.** 원작 검사는 `dir != DIR_SOUTH`(1)이면 돌아가고, 내려가는 쪽 태스크
+ * (`sWaterfallTasksDescend`, 컷인 없이 96프레임)로 간다. 오르는 쪽(북)은 A 키 스크립트 6번뿐이다.
+ * 조건은 탄 채 · 앞 칸이 폭포 · **파티에 폭포오르기가 있을 것** 셋이고 뱃지는 안 본다
+ * (`field_control.c` 214의 `Party_HasMonWithMove(MOVE_WATERFALL)`)
+ */
+export function autoDescendsWaterfall(spot: FieldSpot, partyKnowsWaterfall: boolean): boolean {
+  return spot.surfing
+    && partyKnowsWaterfall
+    && spot.frontBehavior === TILE_BEHAVIOR_WATERFALL
+    // 사분면 0이 +z(남)다
+    && spot.quarter === 0
+}
+
+/**
+ * 이동 쪽(`actor/player`)이 장면 쪽(`script/field`)을 부르는 다리. 이동 코드가 스크립트 엔진을 불러들이면 순환이라
+ * 장면 쪽이 올라올 때 여기에 걸어 둔다
+ */
+export const fieldMoveBridge: { waterfallDescent: (() => boolean) | null } = { waterfallDescent: null }
+
 /** 지금 여기서 실제로 나가는 기술. 없으면 null */
 export function fieldMoveHere(spot: FieldSpot, who: Trainer): FieldMoveId | null {
   return movesUsableHere(spot).find((id) => whyNot(id, who) === null) ?? null

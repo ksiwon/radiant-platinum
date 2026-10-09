@@ -12,7 +12,7 @@ import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
   BADGE, FIELD_MOVES, TILE_BEHAVIOR_ROCK_CLIMB_EW, TILE_BEHAVIOR_ROCK_CLIMB_NS,
-  TILE_BEHAVIOR_WATERFALL, canRockClimb, fieldMoveHere, partyHasMonWithMove, MENU_MOVES, menuMoveDenial, menuMoveOf, movesUsableHere, whyNot,
+  TILE_BEHAVIOR_WATERFALL, autoDescendsWaterfall, canRockClimb, fieldMoveHere, partyHasMonWithMove, MENU_MOVES, menuMoveDenial, menuMoveOf, movesUsableHere, whyNot,
   type FieldSpot,
 } from './fieldMoves'
 import { Behavior } from '../map/zone'
@@ -192,5 +192,25 @@ describe('알은 기술을 모른다 (Party_HasMonWithMove)', () => {
     const mon = { isEgg: false, moves: [{ move: FIELD_MOVES.cut.move }] }
     expect(partyHasMonWithMove([egg], FIELD_MOVES.cut.move)).toBe(false)
     expect(partyHasMonWithMove([egg, mon], FIELD_MOVES.cut.move)).toBe(true)
+  })
+})
+
+describe('헤엄쳐 폭포에 부딪치면 내려간다 (ov5_021E04A8)', () => {
+  const fall: FieldSpot = {
+    frontBehavior: TILE_BEHAVIOR_WATERFALL, frontSprite: null, quarter: 0, surfing: true,
+  }
+
+  it('탄 채 · 남쪽 · 폭포 · 파티에 기술이 있으면 내려간다 — 뱃지는 안 본다', () => {
+    expect(autoDescendsWaterfall(fall, true)).toBe(true)
+  })
+
+  it('북쪽(오르는 쪽)이면 자동으로 안 간다 — 오르는 것은 A 키 스크립트뿐이다', () => {
+    expect(autoDescendsWaterfall({ ...fall, quarter: 2 }, true)).toBe(false)
+  })
+
+  it('기술이 없거나 안 탔거나 폭포가 아니면 안 간다', () => {
+    expect(autoDescendsWaterfall(fall, false)).toBe(false)
+    expect(autoDescendsWaterfall({ ...fall, surfing: false }, true)).toBe(false)
+    expect(autoDescendsWaterfall({ ...fall, frontBehavior: 0 }, true)).toBe(false)
   })
 })
