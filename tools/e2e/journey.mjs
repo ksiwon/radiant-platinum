@@ -44,6 +44,7 @@ import { classify, INFRA, SHAPE, SLOW } from './budget.mjs'
 import { missingData, trainersOn } from './route.mjs'
 import { resumableAt, writeSegment } from './segments.mjs'
 import { JOURNEY_PARTS, keepPartEnd, partEnvelope, partStart, PARTS_DIR } from './parts.mjs'
+import { landDrawn, levelLook } from './partChecks.mjs'
 import {
   bindingDigest, dataDigest, describeEnvironment, rosterOf, sealEvidence,
 } from '../distribution/evidence.mjs'
@@ -922,7 +923,12 @@ async function shot(name, { world = true } = {}) {
         console.log(`        ⚠️ 실패한 그 실행에서 30초를 더 봤다 —`
           + ` ${late.length === 0 ? '끝내 안 채워졌다' : `${String(late[0].sec)}초에 채워졌다`}`)
       }
+      // 눈 · 물 맵의 3인칭 컷은 멀쩡해도 떨어진다 — 같은 자리 1인칭 수평으로 한 번 더 잰다 (`partChecks.landDrawn`)
       if (!one.canvas.drawn) {
+        one.canvas.level = await levelLook(page, sky, resolve(ROOT, `${head}-1인칭.png`))
+        console.log(`        1인칭 수평 컷 — ${one.canvas.level.unobservable ?? `지형칸 ${String(one.canvas.level.filled)}/${String(one.canvas.level.roi)} ${one.canvas.level.drawn ? '그려졌다' : '비었다'}`}`)
+      }
+      if (!landDrawn(one.canvas)) {
         console.log(`        ⚠️ ${at} — 3D가 거의 한 색이다 (색 ${String(cut.stats.colors)})`
           + ` · 그때 ${JSON.stringify(one.state?.world ?? null)}`
           + ` ${String(one.state?.player?.x)},${String(one.state?.player?.z)}`
@@ -3061,7 +3067,7 @@ try {
   const notReady = world.filter(
     (one) => one.readiness?.ok === false && one.readiness.probeFailed !== true)
   const judged = world.filter((one) => one.readiness?.ok !== false)
-  const blank = judged.filter((one) => !one.canvas.drawn)
+  const blank = judged.filter((one) => !landDrawn(one.canvas))
   const shook = judged.filter((one) => !one.canvas.steady)
   /** 실패한 그 실행에서 30초를 더 봤을 때 끝내 안 채워진 컷 */
   const stuck = blank.filter((one) => (one.after ?? []).every((r) => r.drawn !== true))
@@ -3075,7 +3081,9 @@ try {
           + probeBroke.map((one) => `${one.name}: ${String(one.readiness.why)}`).join(' · ')
       : !bad
         ? world.map((one) => `${one.name} 지형칸 ${String(one.canvas.filled)}`
-          + `/${String(one.canvas.roi)} · ${String(one.readiness.waitedMs)}ms 기다렸다`).join(' · ')
+          + `/${String(one.canvas.roi)}`
+          + (one.canvas.level ? ` → 1인칭 수평 ${String(one.canvas.level.filled)}/${String(one.canvas.level.roi)}` : '')
+          + ` · ${String(one.readiness.waitedMs)}ms 기다렸다`).join(' · ')
         : [
           notReady.length === 0 ? null
             : `준비 실패 ${String(notReady.length)}컷 (판정 불가) — `

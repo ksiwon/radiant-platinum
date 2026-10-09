@@ -54,6 +54,18 @@ describe('terrainRow', () => {
     expect(r.status).toBe('PASS')
     expect(r.detail).toContain('하늘 기준')
   })
+  it('기본 컷이 떨어져도 같은 자리 1인칭 수평 컷이 그려졌으면 PASS — 두 판정이 줄에 남는다', () => {
+    const snow = { ...blank('e'), canvas: { ...blank('e').canvas, filled: 5, level: { drawn: true, filled: 7, roi: 8 } } }
+    const r = terrainRow([good('start'), snow, good('f')], want)
+    expect(r.status).toBe('PASS')
+    expect(r.detail).toContain('e 지형칸 5/8 → 1인칭 수평 7/8')
+  })
+  it('1인칭 수평 컷도 떨어졌거나 못 쟀으면 FAIL', () => {
+    const both = { ...blank('e'), canvas: { ...blank('e').canvas, level: { drawn: false, filled: 2, roi: 8 } } }
+    const none = { ...blank('e'), canvas: { ...blank('e').canvas, level: { drawn: false, unobservable: '시점을 못 바꿨다' } } }
+    expect(terrainRow([good('start'), both, good('f')], want).status).toBe('FAIL')
+    expect(terrainRow([good('start'), none, good('f')], want).status).toBe('FAIL')
+  })
   it('잰 컷이 하나도 없으면 BLOCKED', () => { expect(terrainRow([], [])).toMatchObject({ status: 'BLOCKED' }) })
 })
 

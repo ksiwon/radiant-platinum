@@ -140,7 +140,7 @@ try {
     if (PART === null) return
     const cut = await takeCut(page, name, { file: resolve(OUT, `컷-${name}.png`) })
     cuts.push(cut)
-    console.log(`    컷 ${name} — ${cut.error ? `못 뗐다: ${cut.error}` : `지형칸 ${String(cut.canvas.filled)}/${String(cut.canvas.roi)} ${cut.canvas.drawn ? '그려졌다' : '비었다'}${cut.skyWhy ? ` (${cut.skyWhy})` : ''}`}`)
+    console.log(`    컷 ${name} — ${cut.error ? `못 뗐다: ${cut.error}` : `지형칸 ${String(cut.canvas.filled)}/${String(cut.canvas.roi)} ${cut.canvas.drawn ? '그려졌다' : '비었다'}${cut.canvas.level ? ` → 1인칭 수평 ${cut.canvas.level.unobservable ?? `${String(cut.canvas.level.filled)}/${String(cut.canvas.level.roi)} ${cut.canvas.level.drawn ? '그려졌다' : '비었다'}`}` : ''}${cut.skyWhy ? ` (${cut.skyWhy})` : ''}`}`)
   }
 
   await page.goto(url, { waitUntil: 'load', timeout: 600_000 })

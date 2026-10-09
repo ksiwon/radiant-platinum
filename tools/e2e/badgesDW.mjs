@@ -135,8 +135,18 @@ export async function candiceToAcuity(api, ctx, { levels = { lead: 64, bird: 62,
   api.setClimb(true)
 
   await via(api, note, [MAP.route217, MAP.acuityLakefront, MAP.lakeAcuity], '예지호수로 — 예지호수근처 벽을 올라')
-  await api.clearTalk(); await api.settle()
-  const v = (await api.storyVars()) ?? {}
+  /**
+   * ⚠️ **들어선 순간에는 장면이 아직 안 열렸을 수 있다** — 라이벌이 걸어 들어오는 동안은 대사도 스크립트도 안 보여
+   * `settle`이 곧바로 돌아온다. 실측(P4 진단 · 91dd5e1): 상태 1에서 재고 나간 뒤 「!!」 창이 떠 시작 메뉴가 안 열렸다.
+   * 상태 2가 될 때까지 60초 동안 대사를 넘기며 기다린다
+   */
+  let v = {}
+  for (const till = Date.now() + 60_000; Date.now() < till;) {
+    await api.clearTalk(); await api.settle()
+    v = (await api.storyVars()) ?? {}
+    if ((v.acuity ?? 0) >= 2) break
+    await new Promise((r) => { setTimeout(r, 1000) })
+  }
   out.acuity = v.acuity ?? null
   note('예지호수 장면', `예지호수 상태 ${String(v.acuity)} · 장막 그런트 숨김 ${String(v.stashGrunt)}`)
   out.ok = (v.acuity ?? 0) >= 2

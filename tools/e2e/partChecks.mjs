@@ -100,12 +100,13 @@ export function terrainRow(cuts, expect) {
   const probeBroke = world.filter((c) => c.readiness?.probeFailed === true)
   const notReady = world.filter((c) => c.readiness?.ok === false && c.readiness.probeFailed !== true)
   const judged = world.filter((c) => c.readiness?.ok !== false)
-  const blank = judged.filter((c) => !c.canvas.drawn)
+  const blank = judged.filter((c) => !landDrawn(c.canvas))
   const shook = judged.filter((c) => !c.canvas.steady)
   const bad = notReady.length > 0 || blank.length > 0 || shook.length > 0
   const skyNotes = world.filter((c) => c.skyWhy).map((c) => `${c.name}: ${c.skyWhy}`)
   const tail = skyNotes.length === 0 ? '' : ` ｜ 하늘 기준 — ${skyNotes.join(' · ')}`
   const cell = (c) => `${c.name} 지형칸 ${String(c.canvas.filled)}/${String(c.canvas.roi)}`
+    + (c.canvas.level ? ` → 1인칭 수평 ${String(c.canvas.level.filled)}/${String(c.canvas.level.roi)}` : '')
   if (bad) {
     return {
       status: 'FAIL',
@@ -131,6 +132,16 @@ export function terrainRow(cuts, expect) {
   }
   return { status: 'PASS', detail: world.map(cell).join(' · ') + tail }
 }
+
+/**
+ * 컷 하나가 지형으로 인정되는가 — 기본 시점 판정, 그것이 떨어졌으면 **같은 자리 1인칭 수평 컷**의 판정.
+ *
+ * ⚠️ **눈 · 물 맵의 3인칭 컷은 멀쩡해도 떨어진다.** 실측(2026-10-10 · 예지호수 318 · probe-acuity): 내려다본 컷은
+ * 눈밭과 호수만 들어 칸이 매끈하고 색이 하늘(맑은 파랑)에 가까워 5/8로 떨어졌다. 같은 자리 1인칭 수평 컷은 나무 줄 ·
+ * 기슭이 들어 7/8이다. 눈으로 본 두 컷 다 멀쩡했다. 지형이 정말 비었으면 1인칭에도 하늘만 비쳐 같이 떨어진다 —
+ * 그래서 이것은 문턱을 낮춘 것이 아니라 **같은 자리를 한 번 더 잰 것**이다. 첫 판정(`drawn`)은 덮어쓰지 않는다
+ */
+export const landDrawn = (canvas) => canvas.drawn === true || canvas.level?.drawn === true
 
 /** 캔버스 수 줄 — 컷마다 `{ name, stage, total }`(게임 캔버스 수 · 문서의 캔버스 수). 게임 캔버스는 하나여야 한다 */
 export function canvasRow(cuts) {
@@ -268,6 +279,35 @@ export async function skyRef(page) {
   }
 }
 
+/**
+ * 같은 자리에서 1인칭 수평으로 한 장 더 찍어 잰다 (`landDrawn`). 시점 · 시선은 되돌린다.
+ * 못 찍으면 `{ drawn: false, unobservable }` — 관측 못 한 것을 그려졌다로 접지 않는다
+ */
+export async function levelLook(page, sky, path) {
+  const was = await page.evaluate(() => {
+    const p = window.pt?.probe?.()
+    if (!p) return null
+    window.pt.view(1)
+    return { view: p.view, yaw: p.yaw, pitch: p.pitch }
+  }).catch(() => null)
+  if (was === null) return { drawn: false, unobservable: '시점을 못 바꿨다' }
+  try {
+    await page.evaluate((y) => window.pt.look((y * 180) / Math.PI, 0), was.yaw)
+    await page.waitForTimeout(900)
+    const shot = await atNoon(page, () => shootCanvas(page, { path }))
+    const land = judgeTerrain(shot.png, { sky })
+    return { file: path, steady: shot.steady, drawn: land.drawn && shot.steady, filled: land.filled, roi: land.roi, skyGaps: land.skyGaps, why: land.why }
+  } catch (e) {
+    return { drawn: false, unobservable: String(e?.message ?? e).slice(0, 120) }
+  } finally {
+    await page.evaluate((w) => {
+      window.pt.view(w.view === 'first' ? 1 : 0)
+      window.pt.look((w.yaw * 180) / Math.PI, (w.pitch * 180) / Math.PI)
+    }, was).catch(() => {})
+    await page.waitForTimeout(400)
+  }
+}
+
 /** 엔진의 날것의 자리와 세이브가 적어 둔 자리 */
 export const whereNow = (page) => page.evaluate(async () => {
   const w = await import('/src/engine/map/world.ts')
@@ -309,6 +349,7 @@ export async function takeCut(page, name, { file }) {
       drawn: land.drawn, filled: land.filled, roi: land.roi, voids: land.voids, ratio: land.ratio,
       landWhy: land.why, skyOnly: land.skyOnly, skyGaps: land.skyGaps, skyUsed: dec.use,
     }
+    if (!land.drawn) cut.canvas.level = await levelLook(page, dec.use ? sky : null, file.replace(/\.png$/, '-1인칭.png'))
   } catch (e) {
     cut.error = String(e?.message ?? e).slice(0, 160)
   }
