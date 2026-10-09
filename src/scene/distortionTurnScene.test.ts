@@ -8,7 +8,6 @@ import { withDistortionTables } from '../data/distortionFile'
 import {
   MAP, PLATFORM_CEILING, PLATFORM_FLOOR, PLATFORM_NONE, PLATFORM_WEST_WALL, newDistortionState,
 } from '../engine/world/distortion'
-import { DIR } from '../engine/script/movement'
 
 const FILE = 'public/data/distortion.json'
 const real = existsSync(FILE)
@@ -100,7 +99,7 @@ describe.runIf(real)('폭포 끝 — 닿을 판의 기저로 가는 카메라 �
         const pend = world.pending
         world.pending = null
         world.mapId = pend.to
-        mod.distortionEnter(pend.to, pend.x, pend.y, pend.z)
+        mod.distortionEnter(pend.to, pend.x, pend.y ?? 0, pend.z)
         worldState.player.position.x = pend.x + 0.5
         worldState.player.position.z = pend.z + 0.5
       }
