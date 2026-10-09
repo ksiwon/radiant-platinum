@@ -13,7 +13,7 @@ import { Quaternion, Vector3 } from 'three'
 import { worldState } from '../../state/worldState'
 import { mapById, world as mapWorld } from '../map/world'
 import { distortionBridge } from '../world/distortion'
-import { surfaceQuaternion } from './distortionSurface'
+import { surfaceQuaternion, turnQuaternion } from './distortionSurface'
 import { cutInFrame } from '../battle/encounterCutIn'
 
 /** 카메라 각을 도는 축 둘. 판 좌표라 기울이기 **전에** 돌린다 */
@@ -394,9 +394,11 @@ const head = new Vector3()
 const ahead = new Vector3()
 
 /**
- * 중력이 도는 데 걸리는 시간(초). 원작의 `movementAnimSteps` 16프레임이다 —
- * 벽으로 건너뛰는 동안 주인공이 그만큼에 걸쳐 돌고(`RotateMapObject`),
- * 판은 다 건너간 뒤에 갈린다 (`JumpOnFloatingPlatform`)
+ * 판을 갈아타는 **도중이 아닐 때** 기울기가 목표를 쫓는 시간(초) — 90도에 16프레임.
+ *
+ * 건너뛰기는 이 값을 안 쓴다: 몸이 뛰는 `movementAnimSteps` 프레임(`RotateMapObject`) 동안 도는 것을
+ * `PoseTurn`이 몸과 카메라에 같이 준다. 이것은 그 밖의 판 갈이(승강 · 층 갈이 · 폭포 끝의 마무리)에서
+ * 남는 추격이다
  */
 const FLIP_TIME = 16 / 60
 
@@ -558,6 +560,16 @@ export const cameraSystem = {
     eyeMemo.ready = false
   },
 
+  /**
+   * 기울기**만** 다음 프레임에 그대로 앉힌다 — 자리 · 화각은 안 건드린다.
+   *
+   * 깨어진 세계에서 이어하기로 판이 뒤늦게 잡힐 때(`distortionEnter`) 부른다. 자료를 받는 동안은 판이 없어
+   * 바닥 기울기로 앉아 있다가 판이 잡히면 목표가 벽 · 천장으로 바뀐다 — 그냥 두면 이어한 뒤 16프레임 동안 화면이 눕는다
+   */
+  snapTilt() {
+    tiltReady = false
+  },
+
   update(delta: number, alpha = 1) {
     const cam = worldState.camera
     const at = cameraSystem.free
@@ -596,7 +608,11 @@ export const cameraSystem = {
     // 목표 기울기로 **돌려서** 간다. 90도에 16프레임이라 천장(180도)은 그 두 배다
     surfaceQuaternion(frame, 0, tiltGoal)
     if (!tiltReady) { tilt.copy(tiltGoal); tiltReady = true }
-    tilt.rotateTowards(tiltGoal, (Math.PI / 2) * (delta / FLIP_TIME))
+    // ⚠️ **판을 갈아타는 동안은 쫓지 않고 몸과 같은 타임라인을 읽는다** (`PoseTurn`) — 건너뛰는 16프레임 동안
+    // 카메라 위쪽이 몸과 같이 돌아, 착지 뒤에 늦게 눕는 일이 없다. 끝 프레임에 판이 갈리면 목표가 이미 이 자세다
+    const turn = distortionBridge.poseTurn?.() ?? null
+    if (turn !== null) turnQuaternion(turn, false, tilt)
+    else tilt.rotateTowards(tiltGoal, (Math.PI / 2) * (delta / FLIP_TIME))
     const tilted = (x: number, y: number, z: number, out: Vector3): Vector3 =>
       out.set(x, y, z).applyQuaternion(tilt)
 

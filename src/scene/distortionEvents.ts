@@ -2,7 +2,8 @@
 //
 // 층 자료의 `events`가 명령 줄을 들고 있고, 여기서 한 줄씩 돌린다. 미는 판
 // (`slide`)과 뛰는 판(`hop`)은 프레임을 세며 도는 것이라 여기 상태가 남는다.
-import { EVENT_CMD, findPlatform, flagHolds } from '../engine/world/distortion'
+import { EVENT_CMD, PLATFORM_FLOOR, PLATFORM_NONE, findPlatform, flagHolds } from '../engine/world/distortion'
+import type { DistortionMap } from '../data/schema'
 import { DIR_STEP } from '../engine/script/movement'
 import {
   HOP_FRAMES, HOP_TILES, VIBRATION, hopDirOf, hopLift, platformFrames,
@@ -11,13 +12,14 @@ import { SFX } from '../engine/audio/sfx'
 import { music } from '../engine/audio/music'
 import { worldState } from '../state/worldState'
 import {
-  FACING_YAW, bindPlatform, distortionData, distortionHooks, distortionFloor, markCarried, platformIndex,
+  FACING_YAW, bindPlatform, distortionData, distortionHooks, distortionFloor, distortionKind, markCarried, platformIndex,
   setHeightCalc, setState, state, toWorldTiles,
 } from './distortionCore'
 import {
   beginArrival, distortionGhostRunning, distortionShadowDone, finishDistortionShadow,
   startDistortionShadow, startGhostRun, tickArrival,
 } from './distortionGiratina'
+import { beginTimedPoseTurn, distortionPoseTurn, endPoseTurn, tickTimedPoseTurn } from './distortionTurn'
 import { beginBoulderTuto, resetBoulderTuto, tickBoulderTuto } from './distortionTuto'
 
 /**
@@ -309,8 +311,8 @@ export function distortionEventTick(dt: number): void {
     if (distortionGhostRunning()) return
     run.ghost = false
     advanceEvent()
-  } else if (run.slide !== null) tickSlide(run, run.slide)
-  else if (run.hop !== null) tickHop(run, run.hop)
+  } else if (run.slide !== null) tickSlide(run, run.slide, dt)
+  else if (run.hop !== null) tickHop(run, run.hop, dt)
   else advanceEvent()
 }
 
@@ -322,7 +324,32 @@ function place(x: number, y: number, z: number): void {
   markCarried()
 }
 
-function tickSlide(run: EventRun, s: NonNullable<EventRun['slide']>): void {
+/** 몸 · 카메라가 도는 프레임 수 — 건너뛰기와 같다 (`movementAnimSteps` 16) */
+const KIND_TURN_FRAMES = 16
+
+/**
+ * 닿는 판의 갈래가 지금과 다르면 **몸 · 카메라가 먼저 돈 뒤에** 판을 갈아 끼운다.
+ *
+ * ⚠️ 판을 먼저 갈면 입력 기저가 먼저 새 판으로 넘어가고, 몸 · 카메라는 그 뒤에 따라 눕는다 (건너뛰기와 같은 순서
+ * 어긋남). 사건이 도는 동안은 조작이 안 먹으므로(`distortionEventRunning`) 돌 때까지 여기 붙잡아 둔다.
+ * 갈래가 같으면(판 밖 ↔ 바닥 포함) 돌 것이 없어 곧 false다. 도는 중이면 true — 다 돌면 false를 주고 부른 쪽이
+ * 판을 갈아 끼운 뒤 `endPoseTurn`을 부른다
+ */
+export function turningToPlatform(floor: DistortionMap, index: number, dt: number): boolean {
+  const toKind = floor.platforms[index]?.kind ?? PLATFORM_FLOOR
+  const current = distortionKind()
+  const fromKind = current === PLATFORM_NONE ? PLATFORM_FLOOR : current
+  if (distortionPoseTurn() === null) {
+    if (fromKind === toKind) return false
+    const facing = worldState.player.facing
+    beginTimedPoseTurn({
+      fromKind, toKind, fromHeading: facing, toHeading: facing, angle: 0, body: true,
+    }, KIND_TURN_FRAMES)
+  }
+  return !tickTimedPoseTurn(dt)
+}
+
+function tickSlide(run: EventRun, s: NonNullable<EventRun['slide']>, dt: number): void {
   const floor = distortionFloor()
   const shake = run.frame < VIBRATION.length
   if (shake) {
@@ -346,7 +373,10 @@ function tickSlide(run: EventRun, s: NonNullable<EventRun['slide']>): void {
   if (s.movePlayer && floor !== null) {
     const p = worldState.player.position
     const [wx, wy, wz] = toWorldTiles(p.x, p.y, p.z)
-    bindPlatform(findPlatform(floor.platforms, wx, wy, wz))
+    const landed = findPlatform(floor.platforms, wx, wy, wz)
+    if (turningToPlatform(floor, landed, dt)) return
+    bindPlatform(landed)
+    endPoseTurn()
     setHeightCalc(platformIndex() < 0)
   }
   music.stopEffect(SFX.DISTORTION_SLIDE)
@@ -354,7 +384,7 @@ function tickSlide(run: EventRun, s: NonNullable<EventRun['slide']>): void {
   advanceEvent()
 }
 
-function tickHop(run: EventRun, h: NonNullable<EventRun['hop']>): void {
+function tickHop(run: EventRun, h: NonNullable<EventRun['hop']>, dt: number): void {
   const floor = distortionFloor()
   const step = DIR_STEP[h.dir] ?? { x: 0, z: 0 }
   const f = Math.min(HOP_FRAMES, run.frame)
@@ -365,7 +395,10 @@ function tickHop(run: EventRun, h: NonNullable<EventRun['hop']>): void {
   if (floor !== null) {
     const p = worldState.player.position
     const [wx, wy, wz] = toWorldTiles(p.x, p.y, p.z)
-    bindPlatform(findPlatform(floor.platforms, wx, wy, wz))
+    const landed = findPlatform(floor.platforms, wx, wy, wz)
+    if (turningToPlatform(floor, landed, dt)) return
+    bindPlatform(landed)
+    endPoseTurn()
   }
   run.hop = null
   advanceEvent()

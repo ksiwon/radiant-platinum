@@ -117,6 +117,17 @@ export function movesUsableHere(spot: FieldSpot): FieldMoveId[] {
   return out
 }
 
+/**
+ * 파티에 그 기술을 아는 마리가 있는가 (`Party_HasMonWithMove`, `unk_02054884.c` 86–101).
+ *
+ * ⚠️ **알은 건너뛴다** — `MON_DATA_IS_EGG`를 먼저 보고 `continue`한다
+ */
+export function partyHasMonWithMove(
+  party: readonly { isEgg?: boolean; moves: readonly { move: number }[] }[], move: number,
+): boolean {
+  return party.some((mon) => !mon.isEgg && mon.moves.some((s) => s.move === move))
+}
+
 /** 자격 (`FieldMoves_Check*`). 뱃지 하나와 파티 하나가 전부다 */
 export interface Trainer {
   /** 뱃지 비트마스크 */
@@ -132,6 +143,32 @@ export function whyNot(id: FieldMoveId, who: Trainer): FieldMoveDenial | null {
   const spec = FIELD_MOVES[id]
   if (spec.badge !== null && (who.badges & (1 << spec.badge)) === 0) return 'badge'
   if (!who.knows(spec.move)) return 'party'
+  return null
+}
+
+/** 파티 화면에서 비전기술을 못 쓰는 까닭 (`FIELD_MOVE_ERROR_*`). `state`는 「이미 파도타기 중」이다 */
+type MenuFieldDenial = FieldMoveDenial | 'notHere' | 'partner' | 'state'
+
+/**
+ * 파티 화면에서 앞 칸 기술을 쓸 수 있는가 (`FieldMoves_CheckSurf` · `_CheckRockSmash` · `_CheckRockClimb` 따위, `field_move_tasks.c`).
+ *
+ * 차례가 자료다 — 뱃지 → (기술마다 다른 상태) → **자리** → 동행:
+ * - 파도타기 408–431: 뱃지 → **이미 탐 = `STATE`** → 자리 → 동행
+ * - 바위깨기 539–560: 뱃지 → **탄 채 = `LOCATION`**(상태 줄이 따로 없다) → 자리
+ * - 락클라임 625–648: 뱃지 → 자리 → **동행**
+ * - 나머지: 뱃지 → 자리
+ *
+ * ⚠️ 파티(`party`)는 원작 검사에 없다 — 원작은 그 기술을 아는 마리의 갈래에만 줄을 띄운다. 맨 앞에서 본다
+ */
+export function menuFieldMoveDenial(
+  id: FieldMoveId, who: Trainer, spot: FieldSpot, hasPartner: boolean,
+): MenuFieldDenial | null {
+  const denial = whyNot(id, who)
+  if (denial !== null) return denial
+  if (id === 'surf' && spot.surfing) return 'state'
+  if (id === 'rockSmash' && spot.surfing) return 'notHere'
+  if (!movesUsableHere(spot).includes(id)) return 'notHere'
+  if ((id === 'surf' || id === 'rockClimb') && hasPartner) return 'partner'
   return null
 }
 
@@ -172,6 +209,43 @@ export function flyDenial(who: Trainer, place: FlyPlace): FlyDenial | null {
   if (place.inSafari) return 'notHere'
   return null
 }
+
+/**
+ * 앞 칸에 대고 A를 눌렀을 때 걸리는 기술 (`Field_TileBehaviorToScript`, `field_control.c` 650–698).
+ *
+ * ⚠️ **폭포와 락클라임 벽은 자격을 안 본다.** 폭포는 **무조건** 스크립트 6, 벽은 방향만 맞으면 **무조건** 3이다 —
+ * 뱃지나 기술이 없으면 그 스크립트가 「물의 벽이다」(`WallOfWater`) · 「바위 벽…」(`RockyWallWillMoveScale`)를 띄운다.
+ * 순서도 원작 그대로 **폭포 → 락클라임 → 파도타기**다. 파도타기만 뱃지와 파티를 보고, 모자라면 아무 반응이 없다.
+ * 나머지(나무·바위·큰바위)는 객체가 제 스크립트를 건다
+ */
+export function tileMoveFor(spot: FieldSpot, who: Trainer): FieldMoveId | null {
+  const usable = movesUsableHere({ ...spot, fog: false, dark: false })
+  if (usable.includes('waterfall')) return 'waterfall'
+  if (usable.includes('rockClimb')) return 'rockClimb'
+  return fieldMoveHere({ ...spot, fog: false, dark: false }, who)
+}
+
+/**
+ * 헤엄치며 남쪽으로 폭포에 부딪치면 묻지도 않고 **내려간다** (`ov5_021E04A8`, `ov5_021DFB54.c` 843–859).
+ *
+ * ⚠️ **오르는 것이 아니다.** 원작 검사는 `dir != DIR_SOUTH`(1)이면 돌아가고, 내려가는 쪽 태스크
+ * (`sWaterfallTasksDescend`, 컷인 없이 96프레임)로 간다. 오르는 쪽(북)은 A 키 스크립트 6번뿐이다.
+ * 조건은 탄 채 · 앞 칸이 폭포 · **파티에 폭포오르기가 있을 것** 셋이고 뱃지는 안 본다
+ * (`field_control.c` 214의 `Party_HasMonWithMove(MOVE_WATERFALL)`)
+ */
+export function autoDescendsWaterfall(spot: FieldSpot, partyKnowsWaterfall: boolean): boolean {
+  return spot.surfing
+    && partyKnowsWaterfall
+    && spot.frontBehavior === TILE_BEHAVIOR_WATERFALL
+    // 사분면 0이 +z(남)다
+    && spot.quarter === 0
+}
+
+/**
+ * 이동 쪽(`actor/player`)이 장면 쪽(`script/field`)을 부르는 다리. 이동 코드가 스크립트 엔진을 불러들이면 순환이라
+ * 장면 쪽이 올라올 때 여기에 걸어 둔다
+ */
+export const fieldMoveBridge: { waterfallDescent: (() => boolean) | null } = { waterfallDescent: null }
 
 /** 지금 여기서 실제로 나가는 기술. 없으면 null */
 export function fieldMoveHere(spot: FieldSpot, who: Trainer): FieldMoveId | null {

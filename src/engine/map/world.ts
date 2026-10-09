@@ -128,6 +128,13 @@ export interface Npc {
   /** 돌아다니는 범위 (x, z) */
   range: [number, number]
   raw: number[]
+  /**
+   * 그림을 눕히는 각 (도) — 깨어진 세계 배치표의 `rotated` · `rotationAngle`. 없으면 안 눕는다.
+   *
+   * 원작이 사람을 세울 때 `rotated`면 `BindMapObjectRotator(…, rotationAngle)`을 건다 (`ov9_02249960.c:7255-7257`).
+   * 주인공이 판을 갈아탈 때 도는 것과 같은 회전이고 같은 부호다 (`engine/actor/distortionSurface`의 `spriteRollRadians`)
+   */
+  roll?: number
 }
 
 /** `ObjectEvent_HasNoScript` — 말을 걸어도 아무 일이 없다 */

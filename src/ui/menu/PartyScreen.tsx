@@ -95,6 +95,8 @@ const SUMMARY_HM_CANT_FORGET = 156
  */
 const DENIAL_LINE: Record<string, number> = {
   badge: 76,
+  /** `PartyMenu_Text_YoureAlreadySurfing` (`context_menu.c` 904, `FIELD_MOVE_ERROR_STATE`) */
+  state: 102,
   notHere: 104,
   partner: 196,
 }

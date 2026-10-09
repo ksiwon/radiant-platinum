@@ -24,6 +24,7 @@ import { distortionBridge, PLATFORM_FLOOR, terrainTileY } from '../world/distort
 import { surfaceHeading, surfaceVector } from './distortionSurface'
 import { mapFeatureBridge } from '../world/mapFeatures'
 import { DIR, DIR_STEP } from '../script/movement'
+import { fieldMoveBridge } from '../script/fieldMoves'
 import { cutInFrame } from '../battle/encounterCutIn'
 import { scriptCameraActive } from './camera'
 
@@ -843,6 +844,14 @@ export const playerSystem = {
     if (onWall) {
       p.velocity.x = 0
       p.position.x = frame.lock + 0.5
+    }
+
+    // 헤엄치며 남쪽으로 폭포를 밀면 내려간다 (`ov5_021E04A8` — 오르는 것은 A 키 스크립트뿐이다)
+    if (p.surfing && !p.hop.active && desired.z > 0.5 && Math.abs(desired.x) < 0.5
+      && fieldMoveBridge.waterfallDescent?.() === true) {
+      // 내려가는 동안은 이동이 아니라 뛰기(`hop`)가 몸을 옮긴다 — 이 걸음은 접는다
+      p.velocity.set(0, 0, 0)
+      p.facing = 0
     }
 
     const nx = p.position.x + p.velocity.x * dt

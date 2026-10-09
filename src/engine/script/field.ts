@@ -48,7 +48,7 @@ import { clearPanelSlide } from '../actor/slidePanel'
 import { clearIceSlide } from '../actor/ice'
 import { deepMud } from '../actor/player'
 import {
-  FIELD_MOVES, fieldMoveHere, flyDenial, menuMoveDenial, menuMoveOf, movesUsableHere, whyNot,
+  FIELD_MOVES, autoDescendsWaterfall, fieldMoveBridge, menuFieldMoveDenial, tileMoveFor, flyDenial, menuMoveDenial, menuMoveOf, whyNot,
   type FieldMoveId, type FieldSpot, type FlyDenial, type MenuMoveId, type Trainer,
 } from './fieldMoves'
 import { TRAINER_TYPE, trainerInSight } from '../actor/sight'
@@ -691,6 +691,24 @@ const FLAG_STRENGTH_ACTIVE = 2402
  * @param arrival 워프로 들어섰으면 원작이 적은 도착 칸(`location`). 진입 스크립트가 도는 동안만
  *   `GetPlayerMapPos`가 이 칸을 본다 (`mapWorld.arrival`). 존만 넘은 것이면 없다 — 걸어서 선 칸이 곧 그 칸이다
  */
+/** `MAP_TYPE_CAVE` (`data/map_headers.h`의 `enum MapType`) */
+const MAP_TYPE_CAVE = 3
+
+/**
+ * 워프로 굴이 **아닌** 맵에 들어서면 플래시·안개제거 표식을 지운다
+ * (`FieldSystem_InitFlagsWarp`, `field_map_change_flags.c` 80–85 — `!MapHeader_IsCave`).
+ *
+ * ⚠️ 날씨를 정하기(`field_map_change.c` 275) **전에** 지운다 — 그래서 안개 맵에 다시 들어서면 안개가 다시 낀다.
+ * 굴은 표식이 남는다. 존만 넘는 이동(`FieldSystem_InitFlagsOnMapChange`)은 이 줄이 없다
+ */
+export function clearLightFlagsOnWarp(
+  vars: { clearFlag(flag: number): void }, mapType: number,
+): void {
+  if (mapType === MAP_TYPE_CAVE) return
+  vars.clearFlag(SYSTEM_FLAG.flashActive)
+  vars.clearFlag(SYSTEM_FLAG.defogActive)
+}
+
 export function enterMap(mapId: number, arrival?: { x: number; z: number }): void {
   // 맵을 옮기면 창에 걸린 구역 뱅크는 뜻이 없다. 맵 뱅크가 다시 기준이다
   endCommon()
@@ -714,6 +732,10 @@ export function enterMap(mapId: number, arrival?: { x: number; z: number }): voi
   // 맵 지역 표식·변수는 맵(존)을 옮길 때마다 비운다 — `OnTransition`보다 먼저다 (REPAIR §126 ·
   // `FieldMapChange_UpdateGameData`의 첫 줄들 · 존 갈이도 같은 함수를 지난다 `fieldmap.c:417`)
   fieldScripts.vars.clearMapLocals()
+  // 워프(도착 칸이 있는 것)만이다. 이어하기가 저장한 자리를 세우는 것은 워프가 아니다
+  if (arrival && !worldState.restoring) {
+    clearLightFlagsOnWarp(fieldScripts.vars, mapById(mapId)?.mapType ?? 0)
+  }
   // 스크립트 · 자전거가 가로챈 곡을 놓는다 (`FieldBGM_ClearOverride` — 같은 함수의 **첫 줄**이다). 안 놓으면 그 방에서
   // 튼 곡이 신오 전역을 따라온다. ⚠️ **스크립트보다 먼저다** — 206번도로의 `OnResume`이 여기서 자전거로드 곡을
   // 거는데(`SetCyclingBGM`), 뒤에서 비우면 걸자마자 지워진다
@@ -1440,7 +1462,8 @@ function tryFieldMove(front: { x: number; z: number }): void {
   // A를 누르면 「안개제거를 쓸 수 있다」가 걸려 버리는데, 원작의
   // `Field_TileBehaviorToScript`에는 그 갈래가 아예 없다 — 그 둘은 기술 창
   // 전용이다 (`MENU_FIELD_MOVE_ENTRY`)
-  const id = fieldMoveHere({ ...spot, fog: false, dark: false }, trainerNow())
+  // ⚠️ 폭포·락클라임 벽은 자격이 없어도 스크립트가 돈다 — 거부 문구를 그 스크립트가 낸다 (`tileMoveFor`)
+  const id = tileMoveFor(spot, trainerNow())
   if (id === null) return
   const entry = TILE_FIELD_MOVE_ENTRY[id]
   // 표에 없는 것은 배치 객체가 제 스크립트로 이미 처리한다 (나무·바위·큰바위는
@@ -1449,6 +1472,29 @@ function tryFieldMove(front: { x: number; z: number }): void {
   if (entry === undefined) { runFieldMove(id, front); return }
   start(FIELD_MOVES_SCRIPT + entry, currentMapFile())
 }
+
+/**
+ * 헤엄치며 남쪽의 폭포를 밀었다 — 컷인 없이 내려간다 (`FieldTask_UseWaterfall`의 내려가는 갈래).
+ *
+ * 같은 거동이 이어지는 만큼 내려가고(오르는 쪽과 같은 규칙), 96프레임이다. 오르는 몸짓(`waterfall` 연출)은 안 건다 —
+ * 원작도 이 길에는 컷인이 없고 몸이 물벽을 타는 것도 아니다. 내려설 칸이 막혔으면 안 내려간다
+ */
+function descendWaterfall(): boolean {
+  const p = worldState.player
+  const grid = mapWorld.grid
+  if (!grid || p.hop.active || distortionBridge.inWorld?.() === true) return false
+  const front = { x: Math.floor(p.position.x), z: Math.floor(p.position.z) + 1 }
+  const spot = spotAt(front)
+  if (spot === null) return false
+  if (!autoDescendsWaterfall({ ...spot, quarter: 0 }, trainerNow().knows(FIELD_MOVES.waterfall.move))) return false
+  let z = front.z
+  while (grid.behavior(front.x, z + 1) === spot.frontBehavior) z++
+  const landZ = z + 1
+  if (grid.isBlocked(front.x, landZ)) return false
+  hopTo(front.x + 0.5, landZ + 0.5, WATERFALL_SECONDS, 0)
+  return true
+}
+fieldMoveBridge.waterfallDescent = descendWaterfall
 
 /** 지금 앞에 무엇이 있는가. 격자가 없거나 뛰는 중이면 null */
 function spotAt(front: { x: number; z: number; y?: number }): FieldSpot | null {
@@ -1585,7 +1631,7 @@ export function runFieldMove(id: FieldMoveId, front: { x: number; z: number }): 
 }
 
 /** 기술 창에서 골랐을 때 어떻게 되는가 */
-type FieldMoveVerdict = 'used' | 'fly' | 'badge' | 'party' | 'notHere' | 'partner'
+type FieldMoveVerdict = 'used' | 'fly' | 'badge' | 'party' | 'notHere' | 'partner' | 'state'
 
 /**
  * 지금 여기서 날 수 있는가 (`FieldMoves_CheckFly`). 날 수 있으면 null.
@@ -1665,11 +1711,14 @@ export function fieldMoveFromMenu(move: number): FieldMoveVerdict | null {
   if (id === undefined) return null
   // 공중날기는 앞 칸이 아니라 **맵**을 본다 — 헤더가 막으면 거기서 끝이다
   if (id === 'fly') return flyVerdictNow() ?? 'fly'
-  const denial = whyNot(id, trainerNow())
-  if (denial !== null) return denial
   const front = frontTile()
   const spot = spotAt(front)
-  if (spot === null || !movesUsableHere(spot).includes(id)) return 'notHere'
+  const who = trainerNow()
+  // 뱃지와 파티가 먼저다 — 자리를 못 읽는 중(`spot` 없음)이어도 그 까닭을 먼저 말한다
+  if (spot === null) return whyNot(id, who) ?? 'notHere'
+  const denial = menuFieldMoveDenial(
+    id, who, spot, fieldScripts.vars.checkFlag(SYSTEM_FLAG.hasPartner))
+  if (denial !== null) return denial
   const entry = MENU_FIELD_MOVE_ENTRY[id]
   if (entry === undefined) return runFieldMove(id, front) ? 'used' : 'notHere'
   // `taskData->mapObj` — 벨 나무·깰 바위·밀 바위가 그것이다

@@ -186,7 +186,33 @@ describe('기술 창에서 쓴다', () => {
     mapWorld.grid = fakeGrid(WATER)
     trainer(1 << BADGE.fen, [SURF])
     worldState.player.surfing = true
-    expect(fieldMoveFromMenu(SURF)).toBe('notHere')
+    // 「이미 파도타기를 하고 있습니다」 (`FIELD_MOVE_ERROR_STATE`) — 「여기서는 쓸 수 없습니다」가 아니다
+    expect(fieldMoveFromMenu(SURF)).toBe('state')
+  })
+
+  it('⚠️ 탄 채로는 바위깨기가 안 나간다 — 문구는 「여기서는 쓸 수 없습니다」', () => {
+    const rock: NpcActor = {
+      localID: 0,
+      info: { sprite: 85 } as NpcActor['info'],
+      gfx: 85,
+      x: 0, z: 1, y: 0, dir: 0, visible: true, movementType: 0, params: [], ambient: null, speed: 0, tickX: 0, tickZ: 0,
+    }
+    npcActors.list = [rock]
+    trainer(1 << BADGE.coal, [FIELD_MOVES.rockSmash.move])
+    worldState.player.surfing = true
+    expect(fieldMoveFromMenu(FIELD_MOVES.rockSmash.move)).toBe('notHere')
+    expect(rock.visible).toBe(true)
+  })
+
+  it('⚠️ 동행이 있으면 파도타기·락클라임은 「함께 걷고 있을 때는」', () => {
+    mapWorld.grid = fakeGrid(WATER)
+    trainer(0xff, [SURF])
+    fieldScripts.vars.setFlag(SYSTEM_FLAG.hasPartner)
+    expect(fieldMoveFromMenu(SURF)).toBe('partner')
+    // 락클라임 벽 (남북 벽을 남쪽에서 본다)
+    mapWorld.grid = fakeGrid(0x4b)
+    trainer(0xff, [FIELD_MOVES.rockClimb.move])
+    expect(fieldMoveFromMenu(FIELD_MOVES.rockClimb.move)).toBe('partner')
   })
 })
 

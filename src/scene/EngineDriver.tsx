@@ -38,13 +38,15 @@ import { battleStage, cinematicStage, starterStage } from './battle/stageRefs'
 import { createPostChain, type PostChain } from './fx/post'
 import { tickRetiredTextures } from './retireTexture'
 import { distortionBridge } from '../engine/world/distortion'
-import { surfaceHeading, surfaceQuaternion } from '../engine/actor/distortionSurface'
+import { surfaceHeading, surfaceQuaternion, turnQuaternion } from '../engine/actor/distortionSurface'
+import { stepBodyRotation, takePlayerPoseSnap } from '../engine/actor/bodyTurn'
 import { distortionCascadePose } from './distortion'
 
 let systemsRegistered = false
 /** `getDrawingBufferSize`가 받아 적을 그릇. 프레임마다 새로 안 만든다 */
 const drawnSize = new Vector2()
 const interpolated = new Vector3()
+const liftVec = new Vector3()
 const playerRotation = new Quaternion()
 /** 폭포에서 몸이 눕는 회전. 앞뒤 축(로컬 +Z) 둘레로 돈다 */
 const cascadeRoll = new Quaternion()
@@ -53,13 +55,6 @@ const WORLD_UP = new Vector3(0, 1, 0)
 const bodyForward = new Vector3()
 /** 흔들린 바라볼 점 — 프레임마다 새로 안 만든다 */
 const quakeTarget = new Vector3()
-/**
- * 주인공 몸이 도는 빠르기(rad/s) — 180°를 0.15초에 돈다. 우리 값이다: 원작은 한 칸 걸음 하나(`WALK_ON_SPOT_FASTER` 2프레임)에
- * 장을 바꿀 뿐이라 각속도가 없다. 사람이 걷다 뒤로 도는 데 한 발(조깅 걸음 0.36초의 절반)을 넘기지 않게 잡았다 —
- * 엔진의 감속이 0을 지나는 데 0.06초라(`actor/player`의 `lerp` 12) 몸이 70°쯤 돈 뒤에 새 방향으로 나간다
- */
-const PLAYER_TURN_RATE = Math.PI / 0.15
-
 /** 두 yaw의 차 (−π, π] */
 function angleBetween(a: number, b: number): number {
   let d = a - b
@@ -266,6 +261,9 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       // 깨어진 세계에서 지형을 딛는 동안은 칸이 아니라 판의 높이에 선다 — B5F 웅덩이의 반 칸
       // (`distortionBridge.groundLift`). 다른 곳은 0이다
       sceneRefs.player.position.y += distortionBridge.groundLift?.() ?? 0
+      // 판을 건너뛰는 동안 그림만 포물선으로 뜬다 (`sFloatingPlatformJumpOffsets`) — 칸 좌표는 그대로다
+      const lift = distortionBridge.jumpLift?.() ?? null
+      if (lift !== null) sceneRefs.player.position.add(liftVec.set(lift[0], lift[1], lift[2]))
       const frame = distortionBridge.frame?.() ?? null
       const along = surfaceHeading(frame, p.velocity.x, p.velocity.y, p.velocity.z, p.facing)
       // 뒤로 도는 중이면 엔진이 미는 쪽으로 돌려 둔 얼굴을 따른다 (`actor/player`의 `reversing`). 속도를 따르면
@@ -282,10 +280,16 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
         playerRotation.multiply(cascadeRoll)
         sceneRefs.player.position.x += pose.bob
       }
-      // ⚠️ **일정한 빠르기로 돈다** (`PLAYER_TURN_RATE`). 예전의 `slerp(…, delta · 12)`는 지수로 다가가서 처음은 빠르고
-      // 끝이 길게 늘어졌다 — 90%까지 0.19초, 나머지가 꼬리로 남아 몸이 새 방향으로 「흘러」 들어갔다
-      const left = sceneRefs.player.quaternion.angleTo(playerRotation)
-      sceneRefs.player.quaternion.slerp(playerRotation, left < 1e-4 ? 1 : Math.min(1, (PLAYER_TURN_RATE * delta) / left))
+      // 판을 갈아타는 동안은 **몸이 뛰는 프레임에 맞춰 돈다** (`RotateMapObject`) — 카메라 기울기와 같은 `k`를 읽는다.
+      // 그 밖에는 일정한 빠르기로 돈다 (`stepBodyRotation`). 맵이 갈린 첫 프레임에는 앉힌다 (`snapPlayerPose`)
+      const turn = distortionBridge.poseTurn?.() ?? null
+      const snap = takePlayerPoseSnap()
+      if (turn !== null && turn.body) {
+        turnQuaternion(turn, true, playerRotation)
+        sceneRefs.player.quaternion.copy(playerRotation)
+      } else {
+        stepBodyRotation(sceneRefs.player.quaternion, playerRotation, delta, snap)
+      }
       // 1인칭에서는 자기 몸이 화면을 가린다. 눈이 머리 안쪽에 있어서
       // 안 끄면 얼굴 텍스처가 통째로 보인다.
       //

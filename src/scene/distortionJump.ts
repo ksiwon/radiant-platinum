@@ -3,12 +3,15 @@
 // 뛸 자리는 층 자료의 `jumps`에 있고, 여기서는 **몇 프레임에 걸쳐 옮기고
 // 언제 판을 갈아 끼우는가**를 정한다.
 import { jumpAt } from '../engine/world/distortion'
+import { jumpArcOffset } from '../engine/world/distortionJumpArc'
 import { SFX } from '../engine/audio/sfx'
 import { music } from '../engine/audio/music'
 import { worldState } from '../state/worldState'
+import { PLATFORM_FLOOR } from '../engine/world/distortion'
 import {
-  FACING_YAW, bindPlatform, distortionFloor, markCarried, setHeightCalc, toLocalTiles,
+  FACING_YAW, bindPlatform, distortionFloor, distortionKind, markCarried, setHeightCalc, toLocalTiles,
 } from './distortionCore'
+import { beginPoseTurn, endPoseTurn, setPoseTurnProgress } from './distortionTurn'
 
 /**
  * 벽·천장으로 건너뛰는 자리 (`HandleFloatingPlatformJumpPointAt`).
@@ -28,6 +31,9 @@ interface PlatformJump {
   platformIndex: number
   /** 다 뛰고 나서 보는 쪽 (`finalFacingDir`) */
   facing: number
+  /** 그림이 뜨는 축 · 뒤집힘 (`jumpAxis` · `invertedJump`) */
+  axis: number
+  inverted: number
 }
 
 let jumping: PlatformJump | null = null
@@ -35,11 +41,24 @@ let jumping: PlatformJump | null = null
 /** 층을 나갈 때 뛰던 것을 버린다 (`distortionLeave`) */
 export function resetDistortionJump(): void {
   jumping = null
+  endPoseTurn()
 }
 
 /** 판을 건너뛰는 중인가. 그동안은 조작이 안 먹는다 */
 export function distortionJumping(): boolean {
   return jumping !== null
+}
+
+/**
+ * 뛰는 동안 **그림만** 띄우는 양 (칸) — `distortionBridge.jumpLift`.
+ *
+ * 포물선이다 (`sFloatingPlatformJumpOffsets`, `world/distortionJumpArc`). 칸 좌표는 안 건드리고
+ * 그리는 쪽이 몸에만 더한다. 안 뛰면 null
+ */
+export function distortionJumpLift(): readonly [number, number, number] | null {
+  const j = jumping
+  if (j === null) return null
+  return jumpArcOffset(j.frames, j.total, j.axis, j.inverted)
 }
 
 export function applyJump(wx: number, wy: number, wz: number, dir: number): boolean {
@@ -57,8 +76,21 @@ export function applyJump(wx: number, wy: number, wz: number, dir: number): bool
     to: [lx + 0.5, ly, lz + 0.5],
     platformIndex: jump.platformIndex,
     facing: jump.facing,
+    axis: jump.axis,
+    inverted: jump.inverted,
   }
   p.velocity.set(0, 0, 0)
+  // ⚠️ **몸은 뛰는 프레임 동안 돈다.** 원작이 건너뛰기를 시작할 때 `RotateMapObject(…, playerSpriteRotAngle,
+  // movementAnimSteps)`를 건다 (`ov9_02249960.c:2849`) — 이동과 같은 틱 수다. 몸 · 카메라 기울기가 같은 `k`를 읽고,
+  // 입력은 판이 갈리는 끝 프레임에 새 기저로 넘어간다(그때 둘은 이미 새 자세다)
+  beginPoseTurn({
+    fromKind: distortionKind(),
+    toKind: floor.platforms[jump.platformIndex]?.kind ?? PLATFORM_FLOOR,
+    fromHeading: p.facing,
+    toHeading: FACING_YAW[jump.facing] ?? p.facing,
+    angle: jump.spriteAngle,
+    body: true,
+  })
   return true
 }
 
@@ -76,6 +108,7 @@ export function distortionJumpTick(dt: number): void {
   )
   p.prevPosition.copy(p.position)
   p.velocity.set(0, 0, 0)
+  setPoseTurnProgress(k)
   // 뛰는 것은 걸음이 아니다 — 원작은 필드 태스크가 옮긴다(`JumpOnFloatingPlatform`)
   markCarried()
   if (j.frames < j.total) return
@@ -88,4 +121,6 @@ export function distortionJumpTick(dt: number): void {
   void music.playEffect(SFX.DISTORTION_LAND)
   p.facing = FACING_YAW[j.facing] ?? p.facing
   jumping = null
+  // 몸 · 카메라는 이미 새 판의 자세다 — 이제부터는 판(`frame`)이 읽힌다
+  endPoseTurn()
 }

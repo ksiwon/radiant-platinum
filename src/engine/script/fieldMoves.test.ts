@@ -12,7 +12,7 @@ import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
   BADGE, FIELD_MOVES, TILE_BEHAVIOR_ROCK_CLIMB_EW, TILE_BEHAVIOR_ROCK_CLIMB_NS,
-  TILE_BEHAVIOR_WATERFALL, canRockClimb, fieldMoveHere, MENU_MOVES, menuMoveDenial, menuMoveOf, movesUsableHere, whyNot,
+  TILE_BEHAVIOR_WATERFALL, autoDescendsWaterfall, tileMoveFor, canRockClimb, fieldMoveHere, partyHasMonWithMove, MENU_MOVES, menuMoveDenial, menuMoveOf, movesUsableHere, whyNot,
   type FieldSpot,
 } from './fieldMoves'
 import { Behavior } from '../map/zone'
@@ -183,5 +183,59 @@ describe('순간이동 · 구멍파기 자격 (`FieldMoves_CheckTeleport` · `_C
     expect(menuMoveDenial('chatter', { ...route, hasPartner: true })).toBeNull()
     expect(menuMoveDenial('chatter', { ...route, inDistortion: true })).toBe('notHere')
     expect(menuMoveOf(448)).toBe('chatter')
+  })
+})
+
+describe('알은 기술을 모른다 (Party_HasMonWithMove)', () => {
+  it('알이 풀베기를 들고 있어도 파티에 아는 마리가 없다', () => {
+    const egg = { isEgg: true, moves: [{ move: FIELD_MOVES.cut.move }] }
+    const mon = { isEgg: false, moves: [{ move: FIELD_MOVES.cut.move }] }
+    expect(partyHasMonWithMove([egg], FIELD_MOVES.cut.move)).toBe(false)
+    expect(partyHasMonWithMove([egg, mon], FIELD_MOVES.cut.move)).toBe(true)
+  })
+})
+
+describe('헤엄쳐 폭포에 부딪치면 내려간다 (ov5_021E04A8)', () => {
+  const fall: FieldSpot = {
+    frontBehavior: TILE_BEHAVIOR_WATERFALL, frontSprite: null, quarter: 0, surfing: true,
+  }
+
+  it('탄 채 · 남쪽 · 폭포 · 파티에 기술이 있으면 내려간다 — 뱃지는 안 본다', () => {
+    expect(autoDescendsWaterfall(fall, true)).toBe(true)
+  })
+
+  it('북쪽(오르는 쪽)이면 자동으로 안 간다 — 오르는 것은 A 키 스크립트뿐이다', () => {
+    expect(autoDescendsWaterfall({ ...fall, quarter: 2 }, true)).toBe(false)
+  })
+
+  it('기술이 없거나 안 탔거나 폭포가 아니면 안 간다', () => {
+    expect(autoDescendsWaterfall(fall, false)).toBe(false)
+    expect(autoDescendsWaterfall({ ...fall, surfing: false }, true)).toBe(false)
+    expect(autoDescendsWaterfall({ ...fall, frontBehavior: 0 }, true)).toBe(false)
+  })
+})
+
+describe('앞 칸 A — 폭포·락클라임은 자격을 안 본다 (Field_TileBehaviorToScript)', () => {
+  const nobody = { badges: 0, knows: () => false }
+  const base: FieldSpot = { frontBehavior: 0, frontSprite: null, quarter: 0, surfing: false }
+
+  it('뱃지도 기술도 없어도 폭포 앞이면 폭포 스크립트(거부 문구)가 걸린다', () => {
+    expect(tileMoveFor({ ...base, frontBehavior: TILE_BEHAVIOR_WATERFALL }, nobody)).toBe('waterfall')
+  })
+
+  it('락클라임 벽은 방향이 맞을 때만 걸린다', () => {
+    expect(tileMoveFor({ ...base, frontBehavior: TILE_BEHAVIOR_ROCK_CLIMB_NS, quarter: 2 }, nobody)).toBe('rockClimb')
+    expect(tileMoveFor({ ...base, frontBehavior: TILE_BEHAVIOR_ROCK_CLIMB_NS, quarter: 1 }, nobody)).toBeNull()
+  })
+
+  it('폭포는 파도타기보다 먼저다 — 자격이 다 있어도', () => {
+    const all = { badges: 0xff, knows: () => true }
+    expect(tileMoveFor({ ...base, frontBehavior: TILE_BEHAVIOR_WATERFALL }, all)).toBe('waterfall')
+  })
+
+  it('파도타기는 자격이 없으면 아무 반응이 없다', () => {
+    const sea = { ...base, frontBehavior: Behavior.WATER_OPEN }
+    expect(tileMoveFor(sea, { badges: 0xff, knows: () => true })).toBe('surf')
+    expect(tileMoveFor(sea, nobody)).toBeNull()
   })
 })

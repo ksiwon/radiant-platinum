@@ -53,6 +53,33 @@ export function flyUnlockedAt(mapId: number): number | null {
   return i < 0 ? null : i
 }
 
+/** `FLAG_FIRST_ARRIVAL_TWINLEAF_TOWN` — `SYSTEM_FLAGS_FIRST_ARRIVAL_TO_ZONE`의 첫 깃발 (`generated/vars_flags.txt`, 줄 번호 − 9) */
+const FIRST_ARRIVAL_FLAG_BASE = 2480
+
+/**
+ * 발을 들여도 안 열리는 날기 자리 셋이 여는 깃발 (`sTownMapFlyLocationUnlockFlags`, `town_map/context.c` 54–75).
+ *
+ * 키는 `spawns.json`의 자리 번호다. 값은 `first_arrival_to_zones.txt`의 0부터 센 번호다:
+ * 챔피언로드 앞 16 `OUTSIDE_VICTORY_ROAD`(남쪽 센터 `OnTransition`) · 팔파크 67 `POKE_PARK_FRONT_GATE`
+ * (`scripts_pal_park_lobby.s` 26) · 리그 정문 68 `POKEMON_LEAGUE`(북쪽 센터 `OnTransition`).
+ *
+ * ⚠️ 팔파크는 스폰 표의 `firstArrival`(66, `ROUTE_221`)이 아니라 **타운맵 표의** 67을 본다 — 66을 켜는 스크립트는 없다
+ */
+const SCRIPT_UNLOCKED_FLY: Readonly<Record<number, number>> = { 14: 16, 18: 67, 19: 68 }
+
+/**
+ * 타운맵에서 이 날기 자리가 열려 있는가 (`TownMapContext_Init`: 자리마다 `FirstArrivalToZone` 깃발 하나).
+ *
+ * 마을 열일곱은 우리가 따로 적어 둔 비트(`flySpots`)가 원작의 깃발 구실을 하고, 나머지 셋은 센터 스크립트가 세우는 깃발을 그대로 본다
+ */
+export function flySpotOpen(
+  spawn: number, flySpots: number, checkFlag: (flag: number) => boolean,
+): boolean {
+  if ((flySpots & (1 << spawn)) !== 0) return true
+  const arrival = SCRIPT_UNLOCKED_FLY[spawn]
+  return arrival !== undefined && checkFlag(FIRST_ARRIVAL_FLAG_BASE + arrival)
+}
+
 /** 부활 자리 하나를 워프 모양으로 편다. 목적지 맵이 없으면 null */
 export function spawnWarp(index: number, kind: 'blackOut' | 'fly') {
   const spot = spawnTable.list[index]?.[kind]

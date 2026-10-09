@@ -23,6 +23,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import type { MapGrid } from '../engine/map/grid'
 import { npcActors, type NpcActor } from '../engine/actor/npcs'
+import { spriteRollRadians } from '../engine/actor/distortionSurface'
 import { disguiseOf } from '../engine/actor/ambient'
 import { createRig, updateLocomotion, type Rig } from '../engine/actor/locomotion'
 import {
@@ -425,6 +426,16 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
         d -= Math.round(d / (Math.PI * 2)) * Math.PI * 2
         const max = TURN_RATE * delta
         slot.outer.rotation.y += Math.abs(d) <= max ? d : Math.sign(d) * max
+      }
+      // 벽에 선 사람은 그림이 눕는다 (`rotated` · `rotationAngle`) — 방향을 돌린 뒤 세계 Z축 둘레로 눕히는 순서라
+      // 오일러 순서가 ZYX다 (`R = Rz · Ry`). 안 누운 사람은 건드리지 않는다
+      const roll = actor.info.roll
+      if (roll !== undefined && roll !== 0) {
+        slot.outer.rotation.order = 'ZYX'
+        slot.outer.rotation.z = spriteRollRadians(roll)
+      } else if (slot.outer.rotation.z !== 0) {
+        // 칸(slot)은 돌려 쓴다 — 앞 주인의 누움이 남지 않게 한다
+        slot.outer.rotation.z = 0
       }
       slot.outer.visible = true
 

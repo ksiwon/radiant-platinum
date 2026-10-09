@@ -2,21 +2,22 @@
 //
 // 규칙은 `engine/world/distortionCascade`가 들고, 여기서는 **언제 타고 언제
 // 내리는가**만 정한다. 방아쇠는 `distortion`의 `distortionMoved`가 당긴다.
-import { connectionOf, findPlatform, mapOf } from '../engine/world/distortion'
+import { PLATFORM_FLOOR, PLATFORM_NONE, connectionOf, findPlatform, mapOf } from '../engine/world/distortion'
 import { DIR, DIR_STEP } from '../engine/script/movement'
 import { SFX } from '../engine/audio/sfx'
 import { music } from '../engine/audio/music'
 import {
-  CASCADE_UNIT, cascadeAt, cascadeBob, cascadeBobFix, cascadeCamerasBetween, cascadeFrames,
+  CASCADE_UNIT, cascadeAt, cascadeBob, cascadeBobFix, cascadeCamerasBetween, cascadeFinishFrame, cascadeFrames,
   cascadeLoadFrame, cascadeOffset, cascadeRoll, type CascadeSite,
 } from '../engine/world/distortionCascade'
 import { world } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import {
-  FACING_YAW, beginFloorLoad, bindPlatform, distortionData, distortionFloor, markCarried,
+  FACING_YAW, beginFloorLoad, bindPlatform, distortionData, distortionFloor, distortionKind, markCarried,
   setHeightCalc, setState, state, toLocalTiles, toWorldTiles,
 } from './distortionCore'
 import { turnCamera } from './distortionCamera'
+import { beginPoseTurn, endPoseTurn, setPoseTurnProgress } from './distortionTurn'
 
 /**
  * `DIST_WORLD_PLATFORM_FLAG_B5F_1` — 폭포로 내려가면 서는 B5F의 승강 발판.
@@ -37,6 +38,8 @@ interface Cascading {
   from: [number, number, number]
   /** 층을 이미 불렀는가 */
   loaded: boolean
+  /** 마무리 롤과 같이 카메라 기울기가 도는 중인가 (`finishTurn`) */
+  turning: boolean
   /**
    * 다 타고 물살에서 걸어 나오는 중 (`EVENT_CMD_CASCADE_*_STATE_MOVE_AWAY`).
    *
@@ -87,6 +90,7 @@ export function applyCascade(wx: number, wy: number, wz: number, dir: number): b
     loadAt: cascadeLoadFrame(site),
     from: [wx, wy, wz],
     loaded: false,
+    turning: false,
     away: null,
   }
   worldState.player.velocity.set(0, 0, 0)
@@ -135,7 +139,41 @@ export function distortionCascadeTick(dt: number): void {
     changeFloorTo(run.site.down)
     return
   }
+  finishTurn(run)
   if (run.frame >= run.total) endCascade(run)
+}
+
+/** 끝에 닿는 칸의 판 번호 (`FindAndPrepareNewCurrentFloatingPlatform`이 잡을 자리) */
+function landingPlatform(run: Cascading): number {
+  const floor = distortionFloor()
+  if (floor === null) return -1
+  const [wx, wy, wz] = run.from
+  return findPlatform(floor.platforms, wx, wy + run.site.finishY, wz)
+}
+
+/**
+ * 마무리 롤(`'finish'` 회전)이 시작되는 프레임부터 **카메라 기울기가 같이 돈다**.
+ *
+ * 몸은 제 물살 자세(`distortionCascadePose`)로 이미 눕는 중이라 끝에서 판이 갈려도 이어진다. 카메라는 그렇지
+ * 않다 — 끝에서 판이 갈리면 위쪽이 그제야 16프레임에 걸쳐 눕는다. 그래서 닿을 판의 기저로 가는 길을 마무리
+ * 롤의 시작에서 끝까지 깔아, 판이 갈리는 프레임에는 이미 와 있다. 갈래가 같으면 돌 것이 없다
+ */
+function finishTurn(run: Cascading): void {
+  const finishAt = cascadeFinishFrame(run.site)
+  if (run.frame < finishAt) return
+  if (!run.turning) {
+    const floor = distortionFloor()
+    if (floor === null) return
+    const current = distortionKind()
+    const fromKind = current === PLATFORM_NONE ? PLATFORM_FLOOR : current
+    const toKind = floor.platforms[landingPlatform(run)]?.kind ?? PLATFORM_FLOOR
+    if (fromKind === toKind) return
+    run.turning = true
+    beginPoseTurn({
+      fromKind, toKind, fromHeading: 0, toHeading: 0, angle: 0, body: false,
+    })
+  }
+  setPoseTurnProgress((run.frame - finishAt) / Math.max(1, run.total - finishAt))
 }
 
 /**
@@ -159,6 +197,7 @@ function endCascade(run: Cascading): void {
   worldState.player.facing = FACING_YAW[DIR.west] ?? worldState.player.facing
   const [nwx, nwy, nwz] = toWorldTiles(p.x, p.y, p.z)
   bindPlatform(findPlatform(floor.platforms, nwx, nwy, nwz))
+  endPoseTurn()
   setHeightCalc(run.site.down)
   // 다 내려선 자리에서 물소리를 끈다 (`Sound_StopEffect`)
   music.stopEffect(SFX.WATERFALL)

@@ -1113,9 +1113,18 @@ export async function driveStory(page, {
      * 그래서 창 동안 **턴이 넘어갔으면** 세지 않고 돌려준다 — 화면이 아직
      * `battle`이니 부르는 쪽이 곧 다시 부른다. 턴이 그대로일 때만 선 것으로 센다
      */
+    /**
+     * ⚠️ **끝난 배틀도 선 배틀이 아니다.** 실측(2026-10-09 P2 · 910548e):
+     * 209번도로 게이트 라이벌전이 22턴에 `phase: over`로 마지막 대사를 넘기던 중
+     * 120초를 넘겨 「안 끝났다」로 세였다. 창을 열 때 턴을 못 읽었으면(`null` —
+     * 배틀이 아직 안 섰다) 0에서 센다
+     */
+    const end = await obs.battleMoment().catch(() => null)
+    const phase1 = (end?.value ?? end)?.phase
     const turn1 = await turnAt()
-    if (turn0 !== null && turn1 !== null && turn1 > turn0) {
-      log(`    배틀이 길다 — ${String(turn0)}→${String(turn1)}턴 · 이어서 민다`)
+    const from = turn0 ?? 0
+    if (phase1 === 'over' || (turn1 !== null && turn1 > from)) {
+      log(`    배틀이 길다 — ${String(from)}→${String(turn1)}턴${phase1 === 'over' ? ' · 끝나는 중' : ''} · 이어서 민다`)
       fights.push({ kind, from: opened.map, to: null, taps: 800, ms: Date.now() - t0, movedAfter: null, long: true })
       return false
     }

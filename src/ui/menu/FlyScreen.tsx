@@ -10,7 +10,7 @@
 // 갈 수 있는 곳은 **가 본 마을**뿐이다. 원작도 존에 처음 발을 들일 때 열린다
 // (`unlockOnMapEntry`).
 import { useEffect, useState } from 'react'
-import { spawnWarp } from '../../engine/map/spawns'
+import { flySpotOpen, spawnWarp } from '../../engine/map/spawns'
 import {
   cellAt,
   flySpotAt,
@@ -120,7 +120,8 @@ export function FlyScreen() {
   const hidden = unlockedHidden((id) => fieldScripts.vars.get(id))
   const cellHere = cellAt(cells, at.x, at.z, hidden)
   const spot = flySpotAt(cellHere?.map ?? -1, at.x, at.z)
-  const unlocked = spot !== null && (flySpots & (1 << spot.spawn)) !== 0
+  const isOpen = (spawn: number): boolean => flySpotOpen(spawn, flySpots, (f) => fieldScripts.vars.checkFlag(f))
+  const unlocked = spot !== null && isOpen(spot.spawn)
   const cell = cellHere
   const caption = flyCaption(spot !== null, unlocked, viewOnly)
 
@@ -165,7 +166,7 @@ export function FlyScreen() {
     cancel: back,
   })
 
-  const open = FLY_SPOTS.filter((s) => (flySpots & (1 << s.spawn)) !== 0).length
+  const open = FLY_SPOTS.filter((s) => isOpen(s.spawn)).length
   const px = (v: number): number => v * ZOOM
 
   return (
@@ -193,7 +194,7 @@ export function FlyScreen() {
 
             {FLY_SPOTS.map((s, i) => {
               const [w, h] = SHAPE_SIZE[s.shape] ?? [GRID, GRID]
-              const lit = (flySpots & (1 << s.spawn)) !== 0
+              const lit = isOpen(s.spawn)
               return (
                 <span
                   key={`${String(s.spawn)}/${String(i)}`}

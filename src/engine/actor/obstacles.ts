@@ -17,6 +17,7 @@ import { activeZone } from '../map/zone'
 import { worldState } from '../../state/worldState'
 import { isBridgeOverWater, onElevatedBridge } from './bridge'
 import { npcActors, type NpcActor } from './npcs'
+import { edgeBlocks } from './edgeBlock'
 
 /** 그림 번호 → 어느 기술로 치우는가 */
 export const OBSTACLE_MOVE: Readonly<Record<number, 'strength' | 'rockSmash' | 'cut'>> = {
@@ -39,10 +40,15 @@ export function isObstacle(sprite: number): boolean {
  * 미는 것은 걸어가서 하는 일이다(`MOVEMENT_ACTION_PUSH_*`). 그래서 이 함수는
  * 이동 시스템이 부른다.
  *
- * 갈 자리가 막혔거나 다른 장애물이 있으면 안 민다 — 원작도 그 자리에서 멈춘다
+ * 갈 자리가 막혔거나 다른 장애물이 있으면 안 민다 — 원작도 그 자리에서 멈춘다.
+ *
+ * ⚠️ **막는 것이 셋이다** (`ov5_021DFF1C` → `sub_02063EBC` → `sub_02063E18`, `map_object_move.c` 576–604).
+ * 충돌 값이 0(바깥 범위 비트만 빼고)이어야 민다: ① 지형 ② **한쪽만 막힌 칸**(`sub_02064004` — 바위 칸이 그 방향으로
+ * 나가는 것, 갈 칸이 그 반대쪽에서 들어오는 것) ③ **다른 모든 객체**(`sub_02063F00` — 사람·간판·눈덩이도,
+ * 숨지 않고 서 있는 것은 전부). 한동안 ①과 장애물 셋만 봐서 사람이 선 칸으로 밀렸다
  */
 export function pushBoulder(
-  grid: { isBlockedAtWorld(x: number, z: number): boolean },
+  grid: { isBlockedAtWorld(x: number, z: number): boolean, behavior?(tx: number, tz: number): number },
   boulder: NpcActor,
   step: { x: number; z: number },
 ): boolean {
@@ -53,6 +59,14 @@ export function pushBoulder(
   const tz = Math.round(boulder.z) + step.z
   if (grid.isBlockedAtWorld(tx + 0.5, tz + 0.5)) return false
   if (obstacleAt(tx, tz) !== null) return false
+  // 한쪽만 막힌 칸 — 거동값을 아는 격자일 때만 본다
+  const fx = Math.round(boulder.x), fz = Math.round(boulder.z)
+  if (grid.behavior && edgeBlocks(grid.behavior(fx, fz), grid.behavior(tx, tz), step.x, step.z)) return false
+  // 서 있는 객체는 무엇이든 막는다. 칸 번호로 견준다 — 원작도 칸 좌표다
+  for (const other of npcActors.list) {
+    if (other === boulder || !other.visible) continue
+    if (Math.round(other.x) === tx && Math.round(other.z) === tz) return false
+  }
   boulder.x = tx
   boulder.z = tz
   // 깨어진 세계의 바위는 밀린 자리가 세이브에 남는다 (원작은 맵 물체째 담는다)
