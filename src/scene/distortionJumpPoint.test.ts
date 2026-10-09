@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { distortionSchema, type DistortionData } from '../data/schema'
 import { withDistortionTables } from '../data/distortionFile'
-import { MAP, PLATFORM_NONE } from '../engine/world/distortion'
+import { MAP, PLATFORM_NONE, distortionBridge } from '../engine/world/distortion'
 
 const FILE = 'public/data/distortion.json'
 const real = existsSync(FILE)
@@ -86,5 +86,28 @@ describe.runIf(real)('판을 건너뛴다', () => {
     mod.distortionMoved(lx, ly, lz, jump.dir)
     mod.distortionJumpTick(0)
     expect(worldState.player.position.x).toBe(at)
+  })
+  it('뛰는 동안 그림이 원작 표대로 뜨고 칸 좌표는 직선으로 간다 (`sFloatingPlatformJumpOffsets`)', () => {
+    const b3f = data!.maps.find((m) => m.map === MAP.b3f)!
+    const jump = b3f.jumps.find((j) => j.platformIndex === 0)!
+    const [lx, ly, lz] = [
+      jump.bounds.x - b3f.offsetX, jump.bounds.y - b3f.offsetY, jump.bounds.z - b3f.offsetZ,
+    ]
+    // 앞 시험이 뛰다 만 것을 끝낸다
+    for (let i = 0; i < 20 && mod.distortionJumping(); i++) mod.distortionJumpTick(1 / 60)
+    mod.distortionEnter(MAP.b3f, lx, ly, lz)
+    worldState.player.position.set(lx + 0.5, ly, lz + 0.5)
+    expect(distortionBridge.jumpLift?.()).toBeNull()
+    mod.distortionMoved(lx, ly, lz, jump.dir)
+    // 자료의 축은 Y(1) · 정방향이다 — 그림만 y로 뜬다
+    const want = [6, 8, 10, 11, 12, 12, 12, 11, 10, 9, 8, 6, 4, 0, 0]
+    for (let tick = 1; tick <= 15; tick++) {
+      mod.distortionJumpTick(1 / 60)
+      const lift = distortionBridge.jumpLift?.()
+      expect(lift?.[1] ?? NaN, `틱 ${tick}`).toBeCloseTo(want[tick - 1]! / 16, 6)
+      expect([lift?.[0], lift?.[2]]).toEqual([0, 0])
+    }
+    mod.distortionJumpTick(1 / 60)
+    expect(distortionBridge.jumpLift?.()).toBeNull()
   })
 })

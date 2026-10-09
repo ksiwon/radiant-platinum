@@ -28,7 +28,7 @@ import { SFX } from '../engine/audio/sfx'
 import { music } from '../engine/audio/music'
 import { distortionRiding, resetDistortionRide, startRide } from './distortionElevator'
 import { applyEvents, distortionEventRunning, resetDistortionEvents } from './distortionEvents'
-import { applyJump, resetDistortionJump } from './distortionJump'
+import { applyJump, distortionJumpLift, resetDistortionJump } from './distortionJump'
 import { dropBoulder } from './distortionBoulder'
 import {
   applyTeleport, distortionBoulderMoved, keepBoulderSpots, resetDistortionObjects, spawnFloorObjects,
@@ -52,7 +52,7 @@ export {
   distortionCascadePose, distortionCascadeTick, distortionCascading,
 } from './distortionCascade'
 export { distortionCameraTick, distortionResetCamera } from './distortionCamera'
-export { distortionJumpTick, distortionJumping } from './distortionJump'
+export { distortionJumpLift, distortionJumpTick, distortionJumping } from './distortionJump'
 export {
   distortionEventRunning, distortionEventTick, distortionSlideAt,
 } from './distortionEvents'
@@ -237,5 +237,6 @@ distortionBridge.followsGround = distortionFollowsGround
 distortionBridge.groundLift = distortionGroundLift
 distortionBridge.behaviorAt = distortionBehaviorAt
 distortionBridge.jumpBlocked = distortionJumpBlocked
+distortionBridge.jumpLift = distortionJumpLift
 distortionBridge.dropBoulder = dropBoulder
 distortionBridge.boulderMoved = distortionBoulderMoved

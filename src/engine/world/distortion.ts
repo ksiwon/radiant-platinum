@@ -516,6 +516,12 @@ export const distortionBridge: {
    */
   cameraSwing: (() => { x: number, y: number, z: number } | null) | null
   /**
+   * 판을 건너뛰는 동안 **그림만** 띄우는 양 (칸, 세계 x · y · z). 안 뛰면 null.
+   *
+   * 칸 좌표는 안 건드린다 — 원작이 `MapObject_GetSpriteJumpOffset1`에만 쓴다 (`world/distortionJumpArc`)
+   */
+  jumpLift: (() => readonly [number, number, number] | null) | null
+  /**
    * 난천이 막고 선 자리라 못 뛰는가 (`DistWorld_IsBlockedByCynthia`).
    *
    * 넘으려는 **앞 칸**(맵 좌표)을 받는다(`cynthiaBlocksJump`). 기라티나를 이긴 직후 그 방의 한 칸에서만 참이다
@@ -528,7 +534,7 @@ export const distortionBridge: {
   boulderMoved: ((boulder: { localID: number; x: number; z: number }) => void) | null
 } = {
   blockedAt: null, frame: null, inWorld: null, followsGround: null, groundLift: null, behaviorAt: null,
-  jumpBlocked: null, frontTile: null, cameraSwing: null, dropBoulder: null, boulderMoved: null,
+  jumpBlocked: null, frontTile: null, cameraSwing: null, jumpLift: null, dropBoulder: null, boulderMoved: null,
 }
 
 /** 깨어진 세계의 맵인가 */

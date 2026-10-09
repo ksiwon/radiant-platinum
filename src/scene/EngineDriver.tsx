@@ -45,6 +45,7 @@ let systemsRegistered = false
 /** `getDrawingBufferSize`가 받아 적을 그릇. 프레임마다 새로 안 만든다 */
 const drawnSize = new Vector2()
 const interpolated = new Vector3()
+const liftVec = new Vector3()
 const playerRotation = new Quaternion()
 /** 폭포에서 몸이 눕는 회전. 앞뒤 축(로컬 +Z) 둘레로 돈다 */
 const cascadeRoll = new Quaternion()
@@ -266,6 +267,9 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       // 깨어진 세계에서 지형을 딛는 동안은 칸이 아니라 판의 높이에 선다 — B5F 웅덩이의 반 칸
       // (`distortionBridge.groundLift`). 다른 곳은 0이다
       sceneRefs.player.position.y += distortionBridge.groundLift?.() ?? 0
+      // 판을 건너뛰는 동안 그림만 포물선으로 뜬다 (`sFloatingPlatformJumpOffsets`) — 칸 좌표는 그대로다
+      const lift = distortionBridge.jumpLift?.() ?? null
+      if (lift !== null) sceneRefs.player.position.add(liftVec.set(lift[0], lift[1], lift[2]))
       const frame = distortionBridge.frame?.() ?? null
       const along = surfaceHeading(frame, p.velocity.x, p.velocity.y, p.velocity.z, p.facing)
       // 뒤로 도는 중이면 엔진이 미는 쪽으로 돌려 둔 얼굴을 따른다 (`actor/player`의 `reversing`). 속도를 따르면

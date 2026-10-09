@@ -3,6 +3,7 @@
 // 뛸 자리는 층 자료의 `jumps`에 있고, 여기서는 **몇 프레임에 걸쳐 옮기고
 // 언제 판을 갈아 끼우는가**를 정한다.
 import { jumpAt } from '../engine/world/distortion'
+import { jumpArcOffset } from '../engine/world/distortionJumpArc'
 import { SFX } from '../engine/audio/sfx'
 import { music } from '../engine/audio/music'
 import { worldState } from '../state/worldState'
@@ -28,6 +29,9 @@ interface PlatformJump {
   platformIndex: number
   /** 다 뛰고 나서 보는 쪽 (`finalFacingDir`) */
   facing: number
+  /** 그림이 뜨는 축 · 뒤집힘 (`jumpAxis` · `invertedJump`) */
+  axis: number
+  inverted: number
 }
 
 let jumping: PlatformJump | null = null
@@ -40,6 +44,18 @@ export function resetDistortionJump(): void {
 /** 판을 건너뛰는 중인가. 그동안은 조작이 안 먹는다 */
 export function distortionJumping(): boolean {
   return jumping !== null
+}
+
+/**
+ * 뛰는 동안 **그림만** 띄우는 양 (칸) — `distortionBridge.jumpLift`.
+ *
+ * 포물선이다 (`sFloatingPlatformJumpOffsets`, `world/distortionJumpArc`). 칸 좌표는 안 건드리고
+ * 그리는 쪽이 몸에만 더한다. 안 뛰면 null
+ */
+export function distortionJumpLift(): readonly [number, number, number] | null {
+  const j = jumping
+  if (j === null) return null
+  return jumpArcOffset(j.frames, j.total, j.axis, j.inverted)
 }
 
 export function applyJump(wx: number, wy: number, wz: number, dir: number): boolean {
@@ -57,6 +73,8 @@ export function applyJump(wx: number, wy: number, wz: number, dir: number): bool
     to: [lx + 0.5, ly, lz + 0.5],
     platformIndex: jump.platformIndex,
     facing: jump.facing,
+    axis: jump.axis,
+    inverted: jump.inverted,
   }
   p.velocity.set(0, 0, 0)
   return true
