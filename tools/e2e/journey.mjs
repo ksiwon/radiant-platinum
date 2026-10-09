@@ -2405,7 +2405,9 @@ try {
          */
         // 선단 체육관 문은 (11,28) — 그 바로 안쪽 칸이 목표다(`events.json` 맵 167의 워프)
         const SNOWPOINT_GYM_DOOR = { x: 11, z: 27 }
-        const exitCtx = { log }
+        // ⚠️ `setWalls`를 같이 넘긴다 — 빠지면 길 찾기가 맥실러에게 갈 때의 낡은 물 높이 벽을 써서
+        // 문까지 길을 못 찾는다 (실측 2026-10-09 P2 · 3bec2fd: (17,9)에서 큐가 말랐다)
+        const exitCtx = { log, setWalls }
         const here = await api.now().catch(() => null)
         if (here?.map === PASTORIA.map) {
           await pastoriaClimb(api, exitCtx, { goal: PASTORIA.door, what: '들판 체육관 문' })
