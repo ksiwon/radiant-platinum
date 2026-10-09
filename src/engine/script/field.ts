@@ -691,6 +691,24 @@ const FLAG_STRENGTH_ACTIVE = 2402
  * @param arrival 워프로 들어섰으면 원작이 적은 도착 칸(`location`). 진입 스크립트가 도는 동안만
  *   `GetPlayerMapPos`가 이 칸을 본다 (`mapWorld.arrival`). 존만 넘은 것이면 없다 — 걸어서 선 칸이 곧 그 칸이다
  */
+/** `MAP_TYPE_CAVE` (`data/map_headers.h`의 `enum MapType`) */
+const MAP_TYPE_CAVE = 3
+
+/**
+ * 워프로 굴이 **아닌** 맵에 들어서면 플래시·안개제거 표식을 지운다
+ * (`FieldSystem_InitFlagsWarp`, `field_map_change_flags.c` 80–85 — `!MapHeader_IsCave`).
+ *
+ * ⚠️ 날씨를 정하기(`field_map_change.c` 275) **전에** 지운다 — 그래서 안개 맵에 다시 들어서면 안개가 다시 낀다.
+ * 굴은 표식이 남는다. 존만 넘는 이동(`FieldSystem_InitFlagsOnMapChange`)은 이 줄이 없다
+ */
+export function clearLightFlagsOnWarp(
+  vars: { clearFlag(flag: number): void }, mapType: number,
+): void {
+  if (mapType === MAP_TYPE_CAVE) return
+  vars.clearFlag(SYSTEM_FLAG.flashActive)
+  vars.clearFlag(SYSTEM_FLAG.defogActive)
+}
+
 export function enterMap(mapId: number, arrival?: { x: number; z: number }): void {
   // 맵을 옮기면 창에 걸린 구역 뱅크는 뜻이 없다. 맵 뱅크가 다시 기준이다
   endCommon()
@@ -714,6 +732,10 @@ export function enterMap(mapId: number, arrival?: { x: number; z: number }): voi
   // 맵 지역 표식·변수는 맵(존)을 옮길 때마다 비운다 — `OnTransition`보다 먼저다 (REPAIR §126 ·
   // `FieldMapChange_UpdateGameData`의 첫 줄들 · 존 갈이도 같은 함수를 지난다 `fieldmap.c:417`)
   fieldScripts.vars.clearMapLocals()
+  // 워프(도착 칸이 있는 것)만이다. 이어하기가 저장한 자리를 세우는 것은 워프가 아니다
+  if (arrival && !worldState.restoring) {
+    clearLightFlagsOnWarp(fieldScripts.vars, mapById(mapId)?.mapType ?? 0)
+  }
   // 스크립트 · 자전거가 가로챈 곡을 놓는다 (`FieldBGM_ClearOverride` — 같은 함수의 **첫 줄**이다). 안 놓으면 그 방에서
   // 튼 곡이 신오 전역을 따라온다. ⚠️ **스크립트보다 먼저다** — 206번도로의 `OnResume`이 여기서 자전거로드 곡을
   // 거는데(`SetCyclingBGM`), 뒤에서 비우면 걸자마자 지워진다
