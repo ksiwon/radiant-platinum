@@ -48,7 +48,7 @@ import { clearPanelSlide } from '../actor/slidePanel'
 import { clearIceSlide } from '../actor/ice'
 import { deepMud } from '../actor/player'
 import {
-  FIELD_MOVES, autoDescendsWaterfall, fieldMoveBridge, fieldMoveHere, tileMoveFor, flyDenial, menuMoveDenial, menuMoveOf, movesUsableHere, whyNot,
+  FIELD_MOVES, autoDescendsWaterfall, fieldMoveBridge, tileMoveFor, flyDenial, menuMoveDenial, menuMoveOf, movesUsableHere, whyNot,
   type FieldMoveId, type FieldSpot, type FlyDenial, type MenuMoveId, type Trainer,
 } from './fieldMoves'
 import { TRAINER_TYPE, trainerInSight } from '../actor/sight'
