@@ -29,8 +29,11 @@ import { music } from '../engine/audio/music'
 import { distortionRiding, resetDistortionRide, startRide } from './distortionElevator'
 import { applyEvents, distortionEventRunning, resetDistortionEvents } from './distortionEvents'
 import { distortionPoseTurn } from './distortionTurn'
-import { applyJump, distortionJumpLift, resetDistortionJump } from './distortionJump'
-import { dropBoulder } from './distortionBoulder'
+import { applyJump, distortionJumpLift, distortionJumping, resetDistortionJump } from './distortionJump'
+import { distortionBoulderFalling, dropBoulder } from './distortionBoulder'
+import { distortionGhostRunning } from './distortionGiratina'
+import { cameraSystem } from '../engine/actor/camera'
+import { snapPlayerPose } from '../engine/actor/bodyTurn'
 import {
   applyTeleport, distortionBoulderMoved, keepBoulderSpots, resetDistortionObjects, spawnFloorObjects,
 } from './distortionObjects'
@@ -64,6 +67,30 @@ export {
   distortionShadowTick, finishDistortionShadow, startDistortionShadow,
 } from './distortionGiratina'
 export { distortionAddObject, distortionRemoveObject } from './distortionObjects'
+
+/**
+ * 필드 태스크가 도는가 — 걸음 · 메뉴 · 저장이 막힌다 (`MapStreamer`가 `player.riding`에 얹고
+ * `fieldTaskRunning`이 읽는다 → `MenuLayer`가 메뉴를 안 연다).
+ *
+ * 원작은 승강 · 건너뛰기 · 폭포 · 사건 · 바위가 **필드 태스크**라 그동안 메뉴가 안 열리고 따라서 저장도 못 한다.
+ * 열리면 저장되는 것이 「공중 좌표 + 옛 판 번호」인데 건너뛰기 · 승강 · 폭포 상태는 모듈 변수라 저장에 안 담겨,
+ * 이어하면 판 판정이 어긋난다. 그래서 이 여섯이 하나라도 서 있으면 참이다
+ */
+export function distortionBusy(): boolean {
+  return distortionRiding() || distortionBoulderFalling() || distortionGhostRunning()
+    || distortionJumping() || distortionEventRunning() || distortionCascading()
+}
+
+/**
+ * 판이 잡힌 자리에 몸 · 카메라 기울기를 **돌리지 않고 앉힌다** (이어하기 · 워프로 들어설 때).
+ *
+ * ⚠️ 자료를 받는 동안은 판이 없어 바닥 자세로 앉아 있다가 판이 뒤늦게 잡히면 목표가 벽 · 천장으로 바뀐다 — 그냥 두면
+ * 이어한 뒤 몸이 0.15초, 카메라가 16프레임 동안 눕는다. 층 갈이는 판이 안 바뀌므로 부르지 않는다
+ */
+function seatPose(): void {
+  cameraSystem.snapTilt()
+  snapPlayerPose()
+}
 
 /**
  * 이 세계의 맵에 들어섰다 (`DistWorld_DynamicMapFeaturesInit` · 층 갈이면 `PrepareLoadingActiveFloor`).
@@ -103,6 +130,7 @@ export function distortionEnter(mapId: number, x: number, y: number, z: number):
     // 판이 없으면 「판 개수」가 적힌다 — 0을 적으면 다음에 판이 있는 층에서 판 0이 잡힌다
     bindPlatform(findPlatform(floor.platforms, wx, wy, wz))
     seatCamera()
+    seatPose()
     initPlayer()
     spawnFloorObjects(mapId)
     return
@@ -120,6 +148,7 @@ export function distortionEnter(mapId: number, x: number, y: number, z: number):
   // 판 개수 이상이면 「어느 판도 아니다」다 — 보통 격자로 걷는다
   setPlatformIndex(s.platformIndex < floor.platforms.length ? s.platformIndex : -1)
   seatCamera()
+  seatPose()
   initPlayer()
   spawnFloorObjects(mapId)
 }

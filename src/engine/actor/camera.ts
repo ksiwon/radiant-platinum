@@ -560,6 +560,16 @@ export const cameraSystem = {
     eyeMemo.ready = false
   },
 
+  /**
+   * 기울기**만** 다음 프레임에 그대로 앉힌다 — 자리 · 화각은 안 건드린다.
+   *
+   * 깨어진 세계에서 이어하기로 판이 뒤늦게 잡힐 때(`distortionEnter`) 부른다. 자료를 받는 동안은 판이 없어
+   * 바닥 기울기로 앉아 있다가 판이 잡히면 목표가 벽 · 천장으로 바뀐다 — 그냥 두면 이어한 뒤 16프레임 동안 화면이 눕는다
+   */
+  snapTilt() {
+    tiltReady = false
+  },
+
   update(delta: number, alpha = 1) {
     const cam = worldState.camera
     const at = cameraSystem.free

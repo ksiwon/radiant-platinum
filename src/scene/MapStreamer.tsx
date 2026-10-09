@@ -68,30 +68,26 @@ import { facingOfDir, resetStepFeatureTile } from '../engine/script/field'
 import { fieldMoveTaskBusy, fieldWarpArrived, resetFieldMoveTask } from './fieldMoveTask'
 import { resetBridge } from '../engine/actor/bridge'
 import { cameraSystem } from '../engine/actor/camera'
+import { snapPlayerPose } from '../engine/actor/bodyTurn'
 import {
   distortionAddObject,
-  distortionBoulderFalling,
   distortionBoulderTick,
+  distortionBusy,
   distortionEnter,
   distortionPropTick,
-  distortionGhostRunning,
   groundYAt,
   distortionGhostTick,
   distortionShadowTick,
   distortionCameraTick,
   distortionCascadeTick,
-  distortionCascading,
-  distortionEventRunning,
   distortionEventTick,
   distortionJumpTick,
-  distortionJumping,
   distortionHooks,
   distortionLeave,
   distortionLoaded,
   distortionPreload,
   distortionUnavailable,
   distortionRideTick,
-  distortionRiding,
   isDistortionFloor,
   romTileToLocal,
 } from './distortion'
@@ -523,6 +519,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       // 기울기는 굴리지 않고 그대로 잡는다 — 깨어진 세계의 벽에서 밖으로 나갈 때
       // 새 맵 첫 화면이 90도를 굴러 들어오면 안 된다
       cameraSystem.snap()
+      // 몸도 카메라처럼 앉힌다 — 안 그러면 벽 · 천장에서 이어하거나 벽에서 나설 때 몸이 0.15초 돌아 앉는다
+      snapPlayerPose()
       // 피리는 맵을 벗어나면 끝이다 (`FieldSystem_InitFlagsWarp`). 걸음을 안 세는
       // 대신 이 한 줄이 유일한 만료 조건이라, 빠지면 한 번 불고 영영 도는 값이 된다
       if (useSaveStore.getState().flute !== 0) useSaveStore.setState({ flute: 0 })
@@ -1151,9 +1149,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // ⚠️ `distortionUnavailable`이 여기 있는 이유는 연출이 아니다 — 판이 없는
     // 세계에서 격자로 걷게 두지 않으려는 것이다 (REPAIR §1.3)
     worldState.player.riding = distortionUnavailable()
-      || distortionRiding() || distortionBoulderFalling()
-      || distortionGhostRunning() || distortionJumping() || distortionEventRunning()
-      || distortionCascading()
+      || distortionBusy()
       || platformLiftBusy()
       || canalaveBusy() || veilstoneBusy()
       || fieldMoveTaskBusy()
