@@ -28,6 +28,7 @@ import {
   useFieldMoveNow,
 } from '../engine/script/field'
 import { hmCutInDone, startHmCutInFor } from './hmCutInScene'
+import { partyHasMonWithMove } from '../engine/script/fieldMoves'
 import { elevatorLightDone, startElevatorLight, stopElevatorLight } from './elevatorLight'
 import { healingFinalDone, healingTick, playHealingFinal, startHealing, stopHealing } from './healingMachine'
 import {
@@ -1288,8 +1289,7 @@ const services: FieldServices = {
 
   fieldMoves: {
     badges: () => useSaveStore.getState().badges,
-    knows: (move: number) =>
-      useSaveStore.getState().party.some((mon) => mon.moves.some((s) => s.move === move)),
+    knows: (move: number) => partyHasMonWithMove(useSaveStore.getState().party, move),
     /**
      * ⚠️ **`fieldMoveFromMenu`로 되돌아가면 안 된다.** 그쪽은 이제 원작
      * `FIELD_MOVES` 스크립트를 거는 자리고, 이 서비스를 부르는 것이 **바로 그

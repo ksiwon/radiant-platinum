@@ -117,6 +117,17 @@ export function movesUsableHere(spot: FieldSpot): FieldMoveId[] {
   return out
 }
 
+/**
+ * 파티에 그 기술을 아는 마리가 있는가 (`Party_HasMonWithMove`, `unk_02054884.c` 86–101).
+ *
+ * ⚠️ **알은 건너뛴다** — `MON_DATA_IS_EGG`를 먼저 보고 `continue`한다
+ */
+export function partyHasMonWithMove(
+  party: readonly { isEgg?: boolean; moves: readonly { move: number }[] }[], move: number,
+): boolean {
+  return party.some((mon) => !mon.isEgg && mon.moves.some((s) => s.move === move))
+}
+
 /** 자격 (`FieldMoves_Check*`). 뱃지 하나와 파티 하나가 전부다 */
 export interface Trainer {
   /** 뱃지 비트마스크 */
