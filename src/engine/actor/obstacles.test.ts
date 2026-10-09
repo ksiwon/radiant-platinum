@@ -62,6 +62,37 @@ describe('무엇이 장애물인가', () => {
     expect([rock.x, rock.z]).toEqual([5, 6])
     npcActors.list = []
   })
+
+  it('사람·간판이 선 칸으로는 안 밀린다 — 숨은 사람은 비켜 준다', () => {
+    const rock = actor(STRENGTH_BOULDER, 5, 5)
+    const person = actor(1, 6, 5)
+    const sign = actor(93, 5, 6)
+    npcActors.list = [rock, person, sign]
+    const open = { isBlockedAtWorld: () => false }
+    expect(pushBoulder(open, rock, { x: 1, z: 0 })).toBe(false)
+    expect(pushBoulder(open, rock, { x: 0, z: 1 })).toBe(false)
+    expect([rock.x, rock.z]).toEqual([5, 5])
+    person.visible = false
+    expect(pushBoulder(open, rock, { x: 1, z: 0 })).toBe(true)
+    expect([rock.x, rock.z]).toEqual([6, 5])
+    npcActors.list = []
+  })
+
+  it('한쪽만 막힌 칸이 길을 막으면 안 밀린다', () => {
+    const rock = actor(STRENGTH_BOULDER, 5, 5)
+    npcActors.list = [rock]
+    // 0x33 = 남쪽으로 못 나가는 칸. 바위가 그 위에 서 있다
+    const ledge = { isBlockedAtWorld: () => false, behavior: (_x: number, z: number) => (z === 5 ? 0x33 : 0) }
+    expect(pushBoulder(ledge, rock, { x: 0, z: 1 })).toBe(false)
+    // 북쪽(나가는 쪽이 열린 방향)으로는 간다
+    expect(pushBoulder(ledge, rock, { x: 0, z: -1 })).toBe(true)
+    // 들어갈 칸이 반대쪽에서 들어오는 것을 막는 경우 — 0x32(북쪽으로 못 나감)는 남쪽에서 들어오는 걸 막는다
+    const rock2 = actor(STRENGTH_BOULDER, 5, 5)
+    npcActors.list = [rock2]
+    const into = { isBlockedAtWorld: () => false, behavior: (_x: number, z: number) => (z === 6 ? 0x32 : 0) }
+    expect(pushBoulder(into, rock2, { x: 0, z: 1 })).toBe(false)
+    npcActors.list = []
+  })
 })
 
 maybe('막아도 갈 데가 남는가', () => {
