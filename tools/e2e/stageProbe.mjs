@@ -162,6 +162,8 @@ export async function waitTerrain(page, capMs = 20_000, tickMs = 3_000) {
    * **명시적인 진단 실패**로 끝낸다 (다시 열지 않는다)
    */
   let asked = 0
+  /** 한 번 묻는 데 `tickMs`를 넘긴 물음 수 — 그래도 상한 안에 돌아왔으면 판정에 쓴다 */
+  let slow = 0
   while (Date.now() - t0 < capMs) {
     const left = capMs - (Date.now() - t0)
     const wait = Math.min(tickMs, Math.max(1, left))
@@ -182,17 +184,37 @@ export async function waitTerrain(page, capMs = 20_000, tickMs = 3_000) {
       }),
     ])
     clearTimeout(bell)
+    let answer = got
     if (timedOut) {
+      /**
+       * ⚠️ **늦은 물음은 버리지 않고 바깥 상한까지 그 물음을 기다린다.** 새로 열지
+       * 않으므로 떠 있는 물음은 여전히 하나다. 실측(2026-10-09 P1 · d424f18):
+       * 무쇠시티에 들어선 stop-08 · 09에서 한 번 묻는 데 3초를 넘겨 바로 관측
+       * 실패로 끝났다 — 맵을 세우는 동안 메인 스레드가 잠깐 막힌 것이다
+       */
+      slow += 1
+      const rest = capMs - (Date.now() - t0)
+      let bell2
+      let still = rest <= 0
+      if (!still) {
+        answer = await Promise.race([
+          ask.catch((e) => ({ ok: false, why: `못 물었다 — ${String(e?.message ?? e).slice(0, 80)}` })),
+          new Promise((r) => { bell2 = setTimeout(() => { still = true; r(null) }, rest) }),
+        ])
+        clearTimeout(bell2)
+      }
       // ⚠️ **못 잰 것을 「아직 안 됐다」로 적지 않는다.** 앞은 재는 자의
       // 고장이고 뒤는 화면의 상태다 — 같은 글로 적으면 나중에 못 가른다
-      return {
-        ok: false, probeFailed: true, asked, waitedMs: Date.now() - t0,
-        why: `한 번 묻는 데 ${String(wait)}ms를 넘겼다 — 관측 실패다 (마지막에 본 것: ${why})`,
+      if (still) {
+        return {
+          ok: false, probeFailed: true, asked, slow, waitedMs: Date.now() - t0,
+          why: `물음 하나가 상한 ${String(capMs)}ms 안에 안 돌아왔다 — 관측 실패다 (마지막에 본 것: ${why})`,
+        }
       }
     }
-    if (got.ok) return { ok: true, why: null, asked, waitedMs: Date.now() - t0 }
-    why = got.why ?? '까닭을 안 줬다'
+    if (answer.ok) return { ok: true, why: null, asked, slow, waitedMs: Date.now() - t0 }
+    why = answer.why ?? '까닭을 안 줬다'
     await page.waitForTimeout(250)
   }
-  return { ok: false, probeFailed: false, asked, waitedMs: Date.now() - t0, why }
+  return { ok: false, probeFailed: false, asked, slow, waitedMs: Date.now() - t0, why }
 }
