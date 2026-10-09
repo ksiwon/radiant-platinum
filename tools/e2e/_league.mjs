@@ -122,7 +122,8 @@ try {
     url = vite.url
   }
   browser = await chromium.launch({ args: gpuArgs('gl'), headless: !HEADED })
-  page = await browser.newPage({ viewport: { width: 960, height: 640 } })
+  // 영상은 납품물이다 (journey와 같다) — 걷고 싸우는 것은 정지 화면으로 못 보인다. 맥락이 닫힐 때 파일이 쓰인다
+  page = await browser.newPage({ viewport: { width: 960, height: 640 }, recordVideo: { dir: OUT, size: { width: 960, height: 640 } } })
   page.on('pageerror', (e) => { console.error(`  pageerror ${String(e.message).slice(0, 160)}`) })
 
   await page.goto(url, { waitUntil: 'load', timeout: 600_000 })
@@ -268,13 +269,15 @@ try {
   out.crash = String(e?.stack ?? e?.message ?? e).slice(0, 900)
   console.error(`  터졌다 — ${out.crash}`)
 } finally {
+  const clip = page?.video() ?? null
   await browser?.close()
+  if (clip !== null) out.video = await clip.path().catch(() => null)
   vite?.child.kill()
 }
 
 writeFileSync(`${OUT}/실행.json`, `${JSON.stringify(out, null, 1)}\n`)
 if (PART !== null) {
-  process.exit(sealProbePart(PART_N, PART, { legsRun, end: partEnd, crash: out.crash ?? null, extra: { probe: OUT, trouble: out.trouble ?? null, battles: out.battles ?? null, cleared: out.cleared ?? null } }))
+  process.exit(sealProbePart(PART_N, PART, { legsRun, end: partEnd, crash: out.crash ?? null, extra: { probe: OUT, video: out.video ?? null, trouble: out.trouble ?? null, battles: out.battles ?? null, cleared: out.cleared ?? null } }))
 }
 console.log(`\n  ${OUT}`)
 console.log(`  배지 ${String(out.end?.badges ?? out.atLoad?.badges ?? '?')}`)

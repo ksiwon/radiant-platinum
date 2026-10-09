@@ -206,6 +206,10 @@ export function judgeTerrain(png, { sky = null } = {}) {
     voids: all.length - roi.length,
     ratio: Number(ratio.toFixed(2)),
     need: NEED_RATIO,
+    // `SKY_DIST`가 맞는지 재는 자 — 매끄러운 지형 칸의 하늘색 거리 전부(작은 것부터)와,
+    // 하늘 규칙 덕분에만 산 칸 수. 문턱 바로 위아래에 칸이 몰리면 문턱이 위험하다
+    skyGaps: roi.filter((x) => x.edge < CELL_EDGE && x.skyGap !== null).map((x) => x.skyGap).sort((a, b) => a - b),
+    skyOnly: roi.filter((x) => x.edge < CELL_EDGE && lives(x)).length,
     why: drawn ? null
       : roi.length < MIN_LIVE
         ? `지형 자리 ${String(all.length)}칸이 전부 검다 — 그릴 것이 아무것도 없다`

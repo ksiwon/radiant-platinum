@@ -889,7 +889,7 @@ async function shot(name, { world = true } = {}) {
         flatOnly: looksDrawn(cut.stats), steady: cut.steady,
         contract: land.contract,
         drawn: land.drawn, filled: land.filled, roi: land.roi, voids: land.voids,
-        ratio: land.ratio, landWhy: land.why,
+        ratio: land.ratio, landWhy: land.why, skyOnly: land.skyOnly, skyGaps: land.skyGaps,
       }
       one.stage = await stageState(page).catch(() => null)
       /**
