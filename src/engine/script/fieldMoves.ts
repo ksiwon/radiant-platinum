@@ -185,6 +185,21 @@ export function flyDenial(who: Trainer, place: FlyPlace): FlyDenial | null {
 }
 
 /**
+ * 앞 칸에 대고 A를 눌렀을 때 걸리는 기술 (`Field_TileBehaviorToScript`, `field_control.c` 650–698).
+ *
+ * ⚠️ **폭포와 락클라임 벽은 자격을 안 본다.** 폭포는 **무조건** 스크립트 6, 벽은 방향만 맞으면 **무조건** 3이다 —
+ * 뱃지나 기술이 없으면 그 스크립트가 「물의 벽이다」(`WallOfWater`) · 「바위 벽…」(`RockyWallWillMoveScale`)를 띄운다.
+ * 순서도 원작 그대로 **폭포 → 락클라임 → 파도타기**다. 파도타기만 뱃지와 파티를 보고, 모자라면 아무 반응이 없다.
+ * 나머지(나무·바위·큰바위)는 객체가 제 스크립트를 건다
+ */
+export function tileMoveFor(spot: FieldSpot, who: Trainer): FieldMoveId | null {
+  const usable = movesUsableHere({ ...spot, fog: false, dark: false })
+  if (usable.includes('waterfall')) return 'waterfall'
+  if (usable.includes('rockClimb')) return 'rockClimb'
+  return fieldMoveHere({ ...spot, fog: false, dark: false }, who)
+}
+
+/**
  * 헤엄치며 남쪽으로 폭포에 부딪치면 묻지도 않고 **내려간다** (`ov5_021E04A8`, `ov5_021DFB54.c` 843–859).
  *
  * ⚠️ **오르는 것이 아니다.** 원작 검사는 `dir != DIR_SOUTH`(1)이면 돌아가고, 내려가는 쪽 태스크

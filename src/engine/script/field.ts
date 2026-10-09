@@ -48,7 +48,7 @@ import { clearPanelSlide } from '../actor/slidePanel'
 import { clearIceSlide } from '../actor/ice'
 import { deepMud } from '../actor/player'
 import {
-  FIELD_MOVES, autoDescendsWaterfall, fieldMoveBridge, fieldMoveHere, flyDenial, menuMoveDenial, menuMoveOf, movesUsableHere, whyNot,
+  FIELD_MOVES, autoDescendsWaterfall, fieldMoveBridge, fieldMoveHere, tileMoveFor, flyDenial, menuMoveDenial, menuMoveOf, movesUsableHere, whyNot,
   type FieldMoveId, type FieldSpot, type FlyDenial, type MenuMoveId, type Trainer,
 } from './fieldMoves'
 import { TRAINER_TYPE, trainerInSight } from '../actor/sight'
@@ -1462,7 +1462,8 @@ function tryFieldMove(front: { x: number; z: number }): void {
   // A를 누르면 「안개제거를 쓸 수 있다」가 걸려 버리는데, 원작의
   // `Field_TileBehaviorToScript`에는 그 갈래가 아예 없다 — 그 둘은 기술 창
   // 전용이다 (`MENU_FIELD_MOVE_ENTRY`)
-  const id = fieldMoveHere({ ...spot, fog: false, dark: false }, trainerNow())
+  // ⚠️ 폭포·락클라임 벽은 자격이 없어도 스크립트가 돈다 — 거부 문구를 그 스크립트가 낸다 (`tileMoveFor`)
+  const id = tileMoveFor(spot, trainerNow())
   if (id === null) return
   const entry = TILE_FIELD_MOVE_ENTRY[id]
   // 표에 없는 것은 배치 객체가 제 스크립트로 이미 처리한다 (나무·바위·큰바위는
