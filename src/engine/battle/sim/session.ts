@@ -7,9 +7,9 @@
 // ⚠️ 이 폴더는 지연 로딩 경계다 (bridge.ts 주석 참고). 오버월드에서 정적 import 금지.
 import { BattleStreams, Teams } from '@pkmn/sim'
 import type { Species, Stats } from '../../../data/schema'
-import type { BattleRequest, FinalMon, SideId } from '../events'
+import { statusOf, type BattleRequest, type FinalMon, type SideId } from '../events'
 import type { ItemPlan } from '../meta/bagItem'
-import type { PokemonInstance, Status } from '../../pokemon/instance'
+import type { PokemonInstance } from '../../pokemon/instance'
 import { abilityOf, genderOf, isShiny, maxPpOf, natureOf } from '../../pokemon/instance'
 import { romMove, simAbility, simItem, simMove, simSpecies } from './bridge'
 import type { ChatterOdds, TerrainBattle } from '../dex/mechanics'
@@ -1035,7 +1035,7 @@ export class BattleSession {
       key: p.name,
       hp: p.hp,
       maxHp: p.maxhp,
-      status: (p.status || 'ok') as Status,
+      status: statusOf(p.status),
       fainted: p.fainted,
       // 남은 PP를 그대로 준다. `syncPp`가 들어갈 때 우리 값으로 맞춰 놨으므로
       // 여기 숫자는 이미 세이브와 같은 척도다.

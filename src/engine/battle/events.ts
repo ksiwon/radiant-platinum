@@ -739,6 +739,17 @@ export function parseSide(raw: string): SideId | null {
 const STATUSES: Status[] = ['slp', 'psn', 'tox', 'brn', 'frz', 'par']
 
 /**
+ * 시뮬레이터의 상태 글자를 **우리 상태로** 접는다. 모르는 글자는 `ok`다.
+ *
+ * ⚠️ **쓰러진 마리는 시뮬레이터가 `fnt`로 적는다.** 원작에서 기절은 상태이상이
+ * 아니라 HP 0이다 — 그대로 파티에 넘겼더니 세이브 스키마가 리포트를 거절했다
+ * (2026-10-09 P1 · 영원시티 센터에서 리포트를 쓰다 `party.1.status`)
+ */
+export function statusOf(raw: string | null | undefined): Status {
+  return (STATUSES as string[]).includes(raw ?? '') ? raw as Status : 'ok'
+}
+
+/**
  * `58/62 par`, `0 fnt`, `100/100` → 숫자.
  *
  * 쓰러진 줄은 `0 fnt`라 **최대치를 안 알려준다.** 그래서 null을 돌려주고 이전 값을
