@@ -60,7 +60,25 @@ const ROWS = 3
 const CELL_EDGE = 0.40
 
 /** 이 판정의 계약 번호. 뜻이 바뀌면 올린다 — 옛 JSON의 판정과 안 섞으려고 적는다 */
-export const JUDGE_CONTRACT = 2
+export const JUDGE_CONTRACT = 3
+/**
+ * **계약 3 — 매끈한 칸은 「하늘과 같은 색인가」로 한 번 더 본다.**
+ *
+ * ⚠️ **계약 2는 매끈하게 그려진 BDSP 땅을 거절했다.** 실측(2026-10-09 P1 ·
+ * 0ed16a1, 정오로 돌려 찍은 컷): 무쇠시티 흙바닥(stop-09)과 203번도로 잔디
+ * (stop-19)는 눈으로 멀쩡한데 칸값이 0.00~0.04였다 — 망가진 컷의 죽은 칸
+ * (0.00~0.08)과 겹쳐 그림 한 장으로는 못 가른다(가로·세로 변화 · 흩어짐 ·
+ * 색상 비율 모두 겹쳤다).
+ *
+ * 갈리는 것은 **그 색이 하늘·안개 색인가**다. 못 그린 자리에는 하늘이나 안개가
+ * 비친다. 그래서 부르는 쪽이 **같은 자리에서 하늘을 올려다본 컷**의 색
+ * (`sky`, 같은 렌더 경로를 지난 실제 화소라 톤 매핑 차이가 없다)을 주면,
+ * 칸값이 문턱 밑인 칸도 **평균색이 하늘색 어느 것과도 `SKY_DIST` 넘게 멀고
+ * 어둡지 않으면** 채워진 칸으로 센다. `sky`를 안 주면 계약 2와 같다 —
+ * 대조군(하늘색 기록이 없다)의 판정은 그대로다. 칸마다 `skyGap`을 적어 둔다
+ */
+const SKY_DIST = 60
+const DARK_MEAN = 24
 
 /**
  * **화면 밖**으로 치는 칸 — 거의 완전한 검정.
@@ -101,7 +119,7 @@ export function cellStats(png) {
       const x0 = Math.floor(c * w / COLS), x1 = Math.floor((c + 1) * w / COLS)
       const y0 = Math.floor(r * h / ROWS), y1 = Math.floor((r + 1) * h / ROWS)
       const set = new Set()
-      let sum = 0, sum2 = 0, n = 0
+      let sum = 0, sum2 = 0, n = 0, sr = 0, sg = 0, sb = 0
       // 이웃 화소와의 차이 — 칸 오른쪽·아래 한 줄은 짝이 없어 못 센다
       let edge = 0, en = 0
       const at = (x, y) => {
@@ -113,7 +131,7 @@ export function cellStats(png) {
           const o = (y * w + x) * bpp
           const R = pixels[o], G = pixels[o + 1], B = pixels[o + 2]
           const l = (R * 299 + G * 587 + B * 114) / 1000
-          sum += l; sum2 += l * l; n += 1
+          sum += l; sum2 += l * l; n += 1; sr += R; sg += G; sb += B
           set.add((R >> 3 << 10) | (G >> 3 << 5) | (B >> 3))
           if (x + 1 < x1 && y + 1 < y1) {
             edge += Math.abs(at(x + 1, y) - l) + Math.abs(at(x, y + 1) - l)
@@ -124,6 +142,7 @@ export function cellStats(png) {
       const mean = sum / n
       out.push({
         r, c, colors: set.size, mean: Number(mean.toFixed(1)),
+        rgb: [Math.round(sr / n), Math.round(sg / n), Math.round(sb / n)],
         stdev: Number(Math.sqrt(Math.max(0, sum2 / n - mean * mean)).toFixed(1)),
         /** 계약 2가 보는 값 — 이웃 화소 차이의 평균 */
         edge: Number((en === 0 ? 0 : edge / en).toFixed(3)),
@@ -162,18 +181,26 @@ function voidRows(all) {
  *
  * @returns `{ drawn, filled, need, roi, why, cells }` — `filled`는 채워진 아래칸 수
  */
-export function judgeTerrain(png) {
+export function judgeTerrain(png, { sky = null } = {}) {
   const cells = cellStats(png)
+  /** 하늘색 어느 것과의 가장 가까운 거리 — `sky`가 없으면 null */
+  for (const x of cells) {
+    x.skyGap = sky === null || sky.length === 0 ? null
+      : Math.round(Math.min(...sky.map((k) => Math.hypot(x.rgb[0] - k[0], x.rgb[1] - k[1], x.rgb[2] - k[2]))))
+  }
+  const lives = (x) => x.edge >= CELL_EDGE
+    || (x.skyGap !== null && x.skyGap > SKY_DIST && x.mean >= DARK_MEAN)
   const all = cells.filter((x) => x.r >= 1)
   const roi = all.filter((x) => !voidRows(all).includes(x.r))
   // ⚠️ **계약 2다.** 색 개수·흩어짐은 계속 재서 표에 적지만(사람이 읽는 값이고
   // 옛 판정과 견주는 값이다) **판정에는 안 쓴다** — 그 둘이 정상 실내를 거절했다
-  const filled = roi.filter((x) => x.edge >= CELL_EDGE).length
+  const filled = roi.filter(lives).length
   const ratio = roi.length === 0 ? 0 : filled / roi.length
   const drawn = roi.length >= MIN_LIVE && ratio >= NEED_RATIO
   return {
     contract: JUDGE_CONTRACT,
     drawn,
+    sky: sky === null ? null : sky.length,
     filled,
     roi: roi.length,
     voids: all.length - roi.length,

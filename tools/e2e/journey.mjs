@@ -35,7 +35,7 @@ import {
 } from './badges67.mjs'
 import { looksFlat, statsOf } from '../shot/png.mjs'
 import { WATCH_INIT, looksDrawn, missingShots, shootCanvas } from './canvasShot.mjs'
-import { judgeTerrain } from './terrainJudge.mjs'
+import { cellStats, judgeTerrain } from './terrainJudge.mjs'
 import { stageState, waitTerrain } from './stageProbe.mjs'
 import { SPY } from './perfSpy.mjs'
 import { LOAD_SPY, startLoadSpy } from './loadSpy.mjs'
@@ -750,6 +750,35 @@ const marks = () => page.evaluate(() => ({ ...document.documentElement.dataset }
  * 원래 시각으로 되돌린다 — 시간대 인카운터 · 이야기는 실제 시계를 그대로 따른다
  */
 const NOON = 12
+/**
+ * **같은 자리에서 하늘을 올려다본 색** — `terrainJudge` 계약 3에 준다.
+ *
+ * 1인칭으로 바꿔 50° 올려다보고 캔버스를 찍어 **윗줄 네 칸의 평균색**을 낸다.
+ * 같은 렌더 경로를 지난 화소라 톤 매핑 · 안개가 그대로 묻어 있다. 찍고 나면 시점과
+ * 시선을 원래대로 돌린다. 못 찍으면 null — 판정은 계약 2와 같아진다(관측 불가를
+ * 「하늘 없음」으로 접지 않는다)
+ */
+const skyRef = async () => {
+  const was = await page.evaluate(() => {
+    const p = window.pt?.probe?.()
+    if (!p) return null
+    window.pt.view(1)
+    return { view: p.view, yaw: p.yaw, pitch: p.pitch }
+  }).catch(() => null)
+  if (was === null) return null
+  try {
+    await page.evaluate((y) => window.pt.look((y * 180) / Math.PI, 50), was.yaw)
+    await page.waitForTimeout(800)
+    const up = await shootCanvas(page, {})
+    return cellStats(up.png).filter((x) => x.r === 0).map((x) => x.rgb)
+  } catch { return null } finally {
+    await page.evaluate((w) => {
+      window.pt.view(w.view === 'first' ? 1 : 0)
+      window.pt.look((w.yaw * 180) / Math.PI, (w.pitch * 180) / Math.PI)
+    }, was).catch(() => {})
+    await page.waitForTimeout(400)
+  }
+}
 const atNoon = async (shoot) => {
   const was = await page.evaluate(async (h) => {
     const w = await import('/src/state/worldState.ts')
@@ -839,6 +868,8 @@ async function shot(name, { world = true } = {}) {
     try {
       const at = `${head}-캔버스.png`
       const cut = await atNoon(() => shootCanvas(page, { path: resolve(ROOT, at) }))
+      const sky = await atNoon(skyRef)
+      one.sky = sky
       /**
        * ⚠️ **색 개수로 지형을 인정하지 않는다.** 실측(2026-09-08)에서 까만
        * 원반 위에 주인공만 뜬 컷과 바닥이 한 줄만 그려진 컷이 색 개수로는
@@ -850,7 +881,7 @@ async function shot(name, { world = true } = {}) {
        * 무언가 있는가」를 본다. **옛 실행의 JSON에 적힌 판정과 안 섞는다** —
        * 그쪽은 계약 1의 값이라 `contract` 번호로 갈린다
        */
-      const land = judgeTerrain(cut.png)
+      const land = judgeTerrain(cut.png, { sky })
       one.canvas = {
         file: at, colors: cut.stats.colors, stdev: Number(cut.stats.stdev.toFixed(1)),
         // 옛 잣대도 같이 남긴다 — 두 자가 언제 갈리는지가 그대로 증거다
@@ -879,7 +910,7 @@ async function shot(name, { world = true } = {}) {
           const late = `${head}-이어서-${String(sec).padStart(2, '0')}초.png`
           const c = await atNoon(() => shootCanvas(page, { path: resolve(ROOT, late) })).catch(() => null)
           if (c === null) { one.after.push({ sec, unobservable: '캔버스를 못 뗐다' }); continue }
-          const j = judgeTerrain(c.png)
+          const j = judgeTerrain(c.png, { sky })
           one.after.push({
             sec, file: late, colors: c.stats.colors,
             stdev: Number(c.stats.stdev.toFixed(1)), drawn: j.drawn, filled: j.filled,

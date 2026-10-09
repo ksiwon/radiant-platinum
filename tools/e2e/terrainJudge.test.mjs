@@ -59,6 +59,27 @@ const load = () => cuts.cuts.map((c) => {
   return { ...c, j: judgeTerrain(buf) }
 })
 
+describe('지형 판정자 — 계약 3 (하늘색을 같이 준 판)', () => {
+  // 위는 하늘, 아래 두 줄은 **무늬 없는** 잔디 한 색 — 계약 2만으로는 죽은 칸이다
+  const SKY = [150, 190, 230]
+  const GRASS = [86, 138, 72]
+  const smooth = synth((x, y) => (y < 80 ? SKY : GRASS))
+  const skyOnly = synth(() => SKY)
+  it('하늘색을 안 주면 계약 2와 같다 — 매끈한 잔디는 거절한다', () => {
+    expect(judgeTerrain(smooth).drawn).toBe(false)
+  })
+  it('하늘색과 먼 매끈한 땅은 채워진 칸이다', () => {
+    const j = judgeTerrain(smooth, { sky: [SKY] })
+    expect(j.drawn).toBe(true)
+  })
+  it('하늘만 비친 화면은 하늘색을 줘도 거절한다', () => {
+    expect(judgeTerrain(skyOnly, { sky: [SKY] }).drawn).toBe(false)
+  })
+  it('검은 화면은 하늘색과 멀어도 거절한다', () => {
+    expect(judgeTerrain(synth(() => [4, 4, 4]), { sky: [SKY] }).drawn).toBe(false)
+  })
+})
+
 describe.skipIf(!HAVE)('지형 판정자 — 실측 컷 (`.audit/terrain-controls/`)', () => {
   it('목록의 컷이 전부 제 신원대로 있고 기대한 대로 갈린다', () => {
     for (const c of load()) {
@@ -78,10 +99,10 @@ describe.skipIf(!HAVE)('지형 판정자 — 실측 컷 (`.audit/terrain-control
     // ⚠️ **이 한 장이 계약 1을 무너뜨렸다.** 눈으로 봐 완전히 정상인 축복시티
     // 센터인데 색 개수·흩어짐으로는 **2/8**로 떨어졌다. 흩어짐 문턱을 낮추면
     // 「검정 바탕에 두 칸만」이 도로 통과하므로 문턱으로는 못 고쳤다 —
-    // 계약 2가 보는 것은 무늬의 세기가 아니라 **가장자리까지 무언가 있는가**다
+    // 계약 2부터 보는 것은 무늬의 세기가 아니라 **가장자리까지 무언가 있는가**다
     const c = load().find((x) => x.path.includes('매끄러운장판'))
     expect(c, '반례 컷이 목록에 없다').toBeDefined()
-    expect(c.j.contract).toBe(2)
+    expect(c.j.contract).toBe(3)
     expect(c.j.drawn, `${String(c.j.filled)}/${String(c.j.roi)}칸`).toBe(true)
   })
 
