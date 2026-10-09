@@ -48,7 +48,7 @@ import { clearPanelSlide } from '../actor/slidePanel'
 import { clearIceSlide } from '../actor/ice'
 import { deepMud } from '../actor/player'
 import {
-  FIELD_MOVES, autoDescendsWaterfall, fieldMoveBridge, tileMoveFor, flyDenial, menuMoveDenial, menuMoveOf, movesUsableHere, whyNot,
+  FIELD_MOVES, autoDescendsWaterfall, fieldMoveBridge, menuFieldMoveDenial, tileMoveFor, flyDenial, menuMoveDenial, menuMoveOf, whyNot,
   type FieldMoveId, type FieldSpot, type FlyDenial, type MenuMoveId, type Trainer,
 } from './fieldMoves'
 import { TRAINER_TYPE, trainerInSight } from '../actor/sight'
@@ -1631,7 +1631,7 @@ export function runFieldMove(id: FieldMoveId, front: { x: number; z: number }): 
 }
 
 /** 기술 창에서 골랐을 때 어떻게 되는가 */
-type FieldMoveVerdict = 'used' | 'fly' | 'badge' | 'party' | 'notHere' | 'partner'
+type FieldMoveVerdict = 'used' | 'fly' | 'badge' | 'party' | 'notHere' | 'partner' | 'state'
 
 /**
  * 지금 여기서 날 수 있는가 (`FieldMoves_CheckFly`). 날 수 있으면 null.
@@ -1711,11 +1711,14 @@ export function fieldMoveFromMenu(move: number): FieldMoveVerdict | null {
   if (id === undefined) return null
   // 공중날기는 앞 칸이 아니라 **맵**을 본다 — 헤더가 막으면 거기서 끝이다
   if (id === 'fly') return flyVerdictNow() ?? 'fly'
-  const denial = whyNot(id, trainerNow())
-  if (denial !== null) return denial
   const front = frontTile()
   const spot = spotAt(front)
-  if (spot === null || !movesUsableHere(spot).includes(id)) return 'notHere'
+  const who = trainerNow()
+  // 뱃지와 파티가 먼저다 — 자리를 못 읽는 중(`spot` 없음)이어도 그 까닭을 먼저 말한다
+  if (spot === null) return whyNot(id, who) ?? 'notHere'
+  const denial = menuFieldMoveDenial(
+    id, who, spot, fieldScripts.vars.checkFlag(SYSTEM_FLAG.hasPartner))
+  if (denial !== null) return denial
   const entry = MENU_FIELD_MOVE_ENTRY[id]
   if (entry === undefined) return runFieldMove(id, front) ? 'used' : 'notHere'
   // `taskData->mapObj` — 벨 나무·깰 바위·밀 바위가 그것이다

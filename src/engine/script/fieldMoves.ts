@@ -146,6 +146,32 @@ export function whyNot(id: FieldMoveId, who: Trainer): FieldMoveDenial | null {
   return null
 }
 
+/** 파티 화면에서 비전기술을 못 쓰는 까닭 (`FIELD_MOVE_ERROR_*`). `state`는 「이미 파도타기 중」이다 */
+export type MenuFieldDenial = FieldMoveDenial | 'notHere' | 'partner' | 'state'
+
+/**
+ * 파티 화면에서 앞 칸 기술을 쓸 수 있는가 (`FieldMoves_CheckSurf` · `_CheckRockSmash` · `_CheckRockClimb` 따위, `field_move_tasks.c`).
+ *
+ * 차례가 자료다 — 뱃지 → (기술마다 다른 상태) → **자리** → 동행:
+ * - 파도타기 408–431: 뱃지 → **이미 탐 = `STATE`** → 자리 → 동행
+ * - 바위깨기 539–560: 뱃지 → **탄 채 = `LOCATION`**(상태 줄이 따로 없다) → 자리
+ * - 락클라임 625–648: 뱃지 → 자리 → **동행**
+ * - 나머지: 뱃지 → 자리
+ *
+ * ⚠️ 파티(`party`)는 원작 검사에 없다 — 원작은 그 기술을 아는 마리의 갈래에만 줄을 띄운다. 맨 앞에서 본다
+ */
+export function menuFieldMoveDenial(
+  id: FieldMoveId, who: Trainer, spot: FieldSpot, hasPartner: boolean,
+): MenuFieldDenial | null {
+  const denial = whyNot(id, who)
+  if (denial !== null) return denial
+  if (id === 'surf' && spot.surfing) return 'state'
+  if (id === 'rockSmash' && spot.surfing) return 'notHere'
+  if (!movesUsableHere(spot).includes(id)) return 'notHere'
+  if ((id === 'surf' || id === 'rockClimb') && hasPartner) return 'partner'
+  return null
+}
+
 /**
  * 공중날기를 못 쓰는 까닭 (`FieldMoves_CheckFly`의 `FIELD_MOVE_ERROR_*`).
  *
