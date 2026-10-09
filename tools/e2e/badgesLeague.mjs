@@ -729,9 +729,28 @@ export async function eliteFour(api, ctx, page, {
       note('챔피언 승강기 → 난천', `맵 ${String(r.map)}`)
     }
     // 난천전은 방의 프레임 스크립트가 연다 — `settle`이 치르고, 이기면 복도 → 전당으로 스크립트가 옮긴다
-    for (let i = 0; i < 20 && !(await vars()).cynthia; i++) {
-      if ((await api.now()).map === MAP.leagueNorthCenter) break
-      await api.clearTalk(); await api.settle()
+    /**
+     * ⚠️ **대사를 넘기다 전당 · 크레딧까지 넘겨 타이틀로 나갈 수 있다** — 크레딧 끝은 `location.assign`으로 앱을 다시 켠다
+     * (`CreditsScreen`의 `leave`). 실측(2026-10-10 P5 진단 · 12b961a): 난천을 이긴 뒤 `settle`이 전당과 크레딧을 넘겨
+     * 「Execution context was destroyed」로 판이 터졌다. 그 이동은 엔딩을 다 지난 것이다 — 타이틀에서 이어 잰다
+     */
+    let navigated = false
+    const leftApp = (e) => /Execution context was destroyed|navigation|Target page, context or browser has been closed/i.test(String(e?.message ?? e))
+    try {
+      for (let i = 0; i < 20 && !(await vars()).cynthia; i++) {
+        if ((await api.now()).map === MAP.leagueNorthCenter) break
+        await api.clearTalk(); await api.settle()
+      }
+    } catch (e) {
+      if (!leftApp(e)) throw e
+      navigated = true
+    }
+    if (navigated) {
+      await page.waitForLoadState('load').catch(() => {})
+      note('챔피언 난천', '이긴 뒤 엔딩을 지나 앱이 다시 켜졌다 (타이틀에서 이어 잰다)')
+      out.rooms.push({ round, who: '난천', won: true, party: null, via: 'navigated' })
+      out.navigated = true
+      break
     }
     v = await vars()
     const party = await api.partyState()
@@ -739,7 +758,7 @@ export async function eliteFour(api, ctx, page, {
     note('챔피언 난천', `이겼다 ${String(v.cynthia)} · 지금 맵 ${String((await api.now()).map)}`)
     if (!v.cynthia) { await untilMap(api, (m) => m === MAP.leagueNorthCenter, 60_000); await api.clearTalk(); await api.settle() }
   }
-  if (!v.cynthia) return done()
+  if (!v.cynthia && !out.navigated) return done()
   out.ending = await watchEnding(api, ctx, page)
   note('명예의 전당 → 크레딧 → 타이틀', JSON.stringify(out.ending))
   out.ok = out.ending.title === true
