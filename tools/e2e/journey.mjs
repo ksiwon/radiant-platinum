@@ -32,6 +32,7 @@ import {
 } from './badges.mjs'
 import {
   canalaveGym, canalaveToLakes, celesticToCanalave, coronetToSnowpoint, pastoriaToCelestic, snowpointGym,
+  snowpointSlide,
 } from './badges67.mjs'
 import { looksFlat, statsOf } from '../shot/png.mjs'
 import { WATCH_INIT, looksDrawn, missingShots, shootCanvas } from './canvasShot.mjs'
@@ -2396,6 +2397,21 @@ try {
        */
       let partEnd = null
       if (PART !== null) {
+        /**
+         * ⚠️ **기믹 체육관은 관장 앞에서 문까지 길이 없을 수 있다.** 실측(2026-10-09
+         * P2 · 910548e): 들판 체육관에서 맥실러를 이긴 뒤 물 높이가 그대로라 (13,5)에서
+         * 문으로 가는 길이 없어 센터 123에 못 갔다. 들어갈 때 쓴 풀이를 문을 목표로
+         * 한 번 더 돌린다 — 선단 체육관도 같은 꼴이다(미끄럼판)
+         */
+        // 선단 체육관 문은 (11,28) — 그 바로 안쪽 칸이 목표다(`events.json` 맵 167의 워프)
+        const SNOWPOINT_GYM_DOOR = { x: 11, z: 27 }
+        const exitCtx = { log }
+        const here = await api.now().catch(() => null)
+        if (here?.map === PASTORIA.map) {
+          await pastoriaClimb(api, exitCtx, { goal: PASTORIA.door, what: '들판 체육관 문' })
+        } else if (here?.map === B3MAP.snowpointGym) {
+          await snowpointSlide(api, exitCtx, { goals: [[SNOWPOINT_GYM_DOOR.x, SNOWPOINT_GYM_DOOR.z]], what: '선단 체육관 문' })
+        }
         const healed = await api.healAt(PART.center, Math.min(600_000, Math.max(120_000, api.left())))
         await api.settle()
         const where = await whereNow()
@@ -3017,7 +3033,9 @@ try {
   // 여러 결함처럼 세지 않는다
   // ⚠️ **영원 체육관 한 컷이 늘었다.** 꽃시계 방은 이 구간에서 처음 그려지는
   // 실내이고, 바늘이 도는 자리라 정지 화면으로도 볼 것이 있다
-  const WORLD_NEED = ['bedroom', 'after-gym', 'after-gym2', 'resumed']
+  // ⚠️ **침실은 새 게임에서만 지난다.** 파트 2부터는 앞 파트의 끝 세이브(센터)에서
+  // 서므로 그 컷이 없다 — 실측(2026-10-09 P2)에서 이것 하나로 ⑮가 BLOCKED였다
+  const WORLD_NEED = [...(PART_START?.save ? [] : ['bedroom']), 'after-gym', 'after-gym2', 'resumed']
   const short = missingShots(WORLD_NEED, shots.map((one) => one.name))
   const world = shots.filter((one) => one.canvas !== undefined)
   /**
