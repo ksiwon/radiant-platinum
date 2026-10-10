@@ -19,10 +19,12 @@
 //
 // ⚠️ **아이기스·포케리듬과 같은 서식을 쓴다.** 받는 함이 하나라 제목에 게임
 // 이름을 박는다 — 안 그러면 셋의 제보가 섞인다.
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { menuBeep } from '../../engine/audio/lazy'
+import { KeyHints } from '../common/KeyHints'
 import { useMenuKeys } from '../menu/useMenuKeys'
 import { APP_VERSION } from '../../state/save/contract'
+import * as win from './appWindow.css'
 import * as css from './bugReport.css'
 
 const API = 'https://api.emailjs.com/api/v1.0/email/send'
@@ -38,18 +40,25 @@ const MAX_BODY = 2000
 export type Phase = 'idle' | 'sending' | 'done' | 'fail'
 
 /**
- * 사람이 안 적어 주는 것들.
+ * 사람이 안 적어 주는 것들 — 보내는 값과 화면의 「함께 가는 것」 표가 **같은 소스**다.
  *
  * ⚠️ **여기에 롬에서 온 것을 넣지 않는다.** 지역판·설치 해시·리포트는 손만 뻗으면
  * 닿지만, 그것이 곧 COPYRIGHT.md가 「안 나간다」고 적은 그것이다
  */
-function machine(): string {
+export function describeMachine(): { label: string, value: string }[] {
   return [
     // 판은 `package.json`의 것이다 — 패치노트 맨 앞 판은 안쪽 정리만 한 판을 안 센다
-    `판 v${APP_VERSION}`,
-    `창 ${window.innerWidth}×${window.innerHeight}`,
-    navigator.userAgent,
-  ].join('\n')
+    { label: '게임 판', value: `v${APP_VERSION}` },
+    { label: '창 크기', value: `${String(window.innerWidth)}×${String(window.innerHeight)}` },
+    { label: '브라우저', value: navigator.userAgent },
+  ]
+}
+
+/** 메일 본문 끝에 붙는 줄들. `describeMachine`과 같은 값이다 */
+function machine(): string {
+  return describeMachine().map((row) => (
+    row.label === '게임 판' ? `판 ${row.value}` : row.label === '창 크기' ? `창 ${row.value}` : row.value
+  )).join('\n')
 }
 
 /**
@@ -86,6 +95,13 @@ export function BugReport({ onClose }: Props) {
   const [body, setBody] = useState('')
   const [phase, setPhase] = useState<Phase>('idle')
   const first = useRef<HTMLInputElement | null>(null)
+  // 「함께 가는 것」 표의 창 크기는 보내는 값 그대로 실시간이다
+  const [machineRows, setMachineRows] = useState(describeMachine)
+  useEffect(() => {
+    const refresh = (): void => { setMachineRows(describeMachine()) }
+    window.addEventListener('resize', refresh)
+    return () => { window.removeEventListener('resize', refresh) }
+  }, [])
 
   useEffect(() => { first.current?.focus() }, [])
 
@@ -127,22 +143,30 @@ export function BugReport({ onClose }: Props) {
 
   return (
     <div
-      className={css.over}
+      className={win.over}
       onClick={(e) => { if (e.target === e.currentTarget && phase !== 'sending') onClose() }}
     >
-      <div className={css.panel}>
-        <h2 className={css.title}>버그 제보</h2>
+      <div
+        className={win.window_}
+        style={{ ['--w' as string]: `${String(css.WIDTH)}px`, ['--h' as string]: `${String(css.HEIGHT)}px` }}
+      >
+        <div className={win.head}>
+          <h2 className={win.title}>버그 제보</h2>
+          <span className={win.note}>만든 사람에게 곧장 갑니다. 계정도 로그인도 없습니다.</span>
+        </div>
 
         {phase === 'done' ? (
           <>
-            <p className={css.done}>보냈습니다. 읽고 고치겠습니다.</p>
-            <p className={css.intro}>
-              같은 것이 또 보이면 한 번 더 적어 주세요 — 어디서 무엇을 하다가 났는지가
-              적혀 있으면 훨씬 빨리 찾습니다.
-            </p>
-            <div className={css.foot}>
-              <span className={css.hint} />
-              <button className={css.close} onClick={onClose}>돌아가기</button>
+            <div className={css.doneBody}>
+              <p className={css.done}>보냈습니다. 읽고 고치겠습니다.</p>
+              <p className={css.intro}>
+                같은 것이 또 보이면 한 번 더 적어 주세요 — 어디서 무엇을 하다가 났는지가
+                적혀 있으면 훨씬 빨리 찾습니다.
+              </p>
+            </div>
+            <div className={win.foot}>
+              <span className={win.hint} />
+              <button type="button" className={win.plain} onClick={onClose}>돌아가기</button>
             </div>
           </>
         ) : (
@@ -159,57 +183,71 @@ export function BugReport({ onClose }: Props) {
               onClose()
             }}
           >
-            <p className={css.intro}>만든 사람에게 곧장 갑니다. 계정도 로그인도 없습니다.</p>
+            <div className={css.split}>
+              <div className={css.write}>
+                <label className={css.row}>
+                  <span className={css.label}>무엇이</span>
+                  <input
+                    ref={first}
+                    className={css.input}
+                    type="text"
+                    value={title}
+                    maxLength={MAX_TITLE}
+                    placeholder="한 줄로 — 「연고시티에서 못 나감」처럼"
+                    onChange={(e) => { setTitle(e.target.value) }}
+                  />
+                </label>
 
-            <label className={css.row}>
-              <span className={css.label}>무엇이</span>
-              <input
-                ref={first}
-                className={css.input}
-                type="text"
-                value={title}
-                maxLength={MAX_TITLE}
-                placeholder="한 줄로 — 「연고시티에서 못 나감」처럼"
-                onChange={(e) => { setTitle(e.target.value) }}
-              />
-            </label>
+                <label className={`${css.row} ${css.rowGrow}`}>
+                  <span className={css.label}>어떻게</span>
+                  <textarea
+                    className={css.textarea}
+                    value={body}
+                    maxLength={MAX_BODY}
+                    placeholder={'어디서 무엇을 하다가 났는지 적어 주시면 가장 빠릅니다.'}
+                    onChange={(e) => { setBody(e.target.value) }}
+                  />
+                </label>
 
-            <label className={css.row}>
-              <span className={css.label}>어떻게</span>
-              <textarea
-                className={css.textarea}
-                value={body}
-                maxLength={MAX_BODY}
-                placeholder={'어디서 무엇을 하다가 났는지 적어 주시면 가장 빠릅니다.'}
-                onChange={(e) => { setBody(e.target.value) }}
-              />
-            </label>
+                {phase === 'fail' && (
+                  <p className={css.fail}>
+                    못 보냈습니다. 잠시 뒤에 다시 눌러 보세요. 인터넷이 끊겨 있어도 게임은
+                    그대로 됩니다.
+                  </p>
+                )}
+              </div>
 
-            {/* ⚠️ 접지 않는다 — 첫 화면이 「서버로 안 간다」를 약속한 게임이다 */}
-            <p className={css.what}>
-              적으신 글과 <b>게임 판 · 창 크기 · 브라우저 종류</b>가 함께 갑니다.
-              <br />
-              롬에서 나온 것은 하나도 안 갑니다 — 설치본도, 리포트도, 파일 이름도입니다.
-            </p>
+              {/* ⚠️ 접지 않는다 — 첫 화면이 「서버로 안 간다」를 약속한 게임이다 */}
+              <div className={css.promise}>
+                <h3 className={css.promiseHead}>함께 가는 것</h3>
+                <dl className={css.table}>
+                  <dt className={css.cellHead}>적으신 글</dt>
+                  <dd className={css.cellValue}>제목과 내용</dd>
+                  {machineRows.map((row) => (
+                    <Fragment key={row.label}>
+                      <dt className={css.cellHead}>{row.label}</dt>
+                      <dd className={css.cellValue}>{row.value}</dd>
+                    </Fragment>
+                  ))}
+                </dl>
+                <h3 className={css.promiseHead}>가지 않는 것</h3>
+                <p className={css.never}>
+                  롬에서 나온 것은 하나도 안 갑니다 — 설치본도, 리포트도, 파일 이름도입니다.
+                </p>
+              </div>
+            </div>
 
-            {phase === 'fail' && (
-              <p className={css.fail}>
-                못 보냈습니다. 잠시 뒤에 다시 눌러 보세요. 인터넷이 끊겨 있어도 게임은
-                그대로 됩니다.
-              </p>
-            )}
-
-            <div className={css.foot}>
-              <span className={css.hint}>{BUG_HINT}</span>
+            <div className={win.foot}>
+              <span className={win.hint}><KeyHints text={BUG_HINT} /></span>
               <button
                 type="button"
-                className={css.close}
+                className={win.plain}
                 onClick={onClose}
                 disabled={phase === 'sending'}
               >
                 그만두기
               </button>
-              <button type="submit" className={css.send} disabled={!ready}>
+              <button type="submit" className={win.primary} disabled={!ready}>
                 {phase === 'sending' ? '보내는 중…' : '보내기'}
               </button>
             </div>

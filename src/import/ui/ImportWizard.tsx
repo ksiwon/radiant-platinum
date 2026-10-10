@@ -718,11 +718,484 @@ export function ImportWizard({ onClose, onReady, why, from = 'title' }: {
     <div className={css.wrap}>
       {/* 타이틀 그림. 설치 전에는 이 화면이 곧 첫 화면이다 (`importWizard.css`) */}
       <div className={css.sky} />
+      {/*
+        ⚠️ **한 화면에 든다.** 창 한 장 안에서 왼쪽은 「이 기기 안에서만」의 사실 넷, 오른쪽은 준비물과 설치다 — 고르는 곳과
+        누르는 곳(「설치 시작」)이 한 구획이다. 모자란 높이는 오른쪽 구획만 스크롤한다. 문장 · 단추 이름은 한 글자도 안 바꾸고
+        자리만 옮긴다 (`DECISIONS.md` 앱 화면)
+      */}
       <div className={css.sheet}>
         <header className={css.crest}>
           <h1 className={css.crestName}>Radiant Platinum</h1>
           <span className={css.crestNote}>비공식 팬 프로젝트 · 비영리</span>
         </header>
+
+
+        <div className={css.split}>
+          <div className={css.facts}>
+            {/* ⚠️ **이 네 사실은 접지 않는다** (IMPORT.md §4 표) — 서버로 안 보낸다,
+                다시 안 고른다, 사이트 데이터를 지우면 사라진다, 브라우저·기기·주소마다 따로다 */}
+            <div className={css.body}>
+              {'고른 파일은 이 기기 안에서만 읽습니다. 바이트도, 파일 이름도, 폴더 목록도, '}
+              {'판정 결과도 서버로 보내지 않습니다. 변환은 전부 브라우저 안에서 일어납니다.\n'}
+              {'설치가 끝나면 다음부터는 파일을 다시 고르지 않습니다 — 이 브라우저의 '}
+              {'저장 공간에서 바로 엽니다. 게임이 도는 동안 원본은 한 번도 안 읽습니다.\n'}
+              {'다만 나중에 일부를 다시 변환해야 할 때 또 고르라고 묻지 않으려고, '}
+              {'지난번에 고른 파일·폴더를 이 브라우저 안에만 기억합니다. 바이트도 '}
+              {'경로 문자열도 서버로 가지 않고, 읽기 권한은 그때 한 번 더 물어봅니다 — '}
+              {'아래 「고른 파일·폴더 기억 지우기」로 지울 수 있고 「전부 지우기」에도 함께 지워집니다.\n'}
+              {'주의 — 설치본은 이 브라우저 · 이 기기 · 이 주소에만 있습니다. 다른 브라우저나 '}
+              {'다른 기기에서는 다시 설치해야 하고, 주소가 바뀌어도 이어받지 못합니다.\n'}
+              {'사이트 데이터를 지우면 설치된 에셋도 함께 사라집니다. 리포트는 '}
+              {'.rpsave 파일로 따로 내보내 둘 수 있습니다 (타이틀 화면) — 에셋을 다시 '}
+              {'설치한 뒤 그 파일로 진행 상태를 되돌립니다.'}
+            </div>
+
+          </div>
+
+          <div className={css.main}>
+            <div className={css.scroll}>
+              <h2 className={css.title}>에셋 설치</h2>
+
+
+              {/* ⚠️ **준비물을 맨 앞에 둔다.** 여기서 사람이 제일 먼저 알아야 하는 것은
+                  단계 목록이 아니라 무엇을 미리 갖고 와야 하는가다. 그것이 없으면
+                  아래를 아무리 읽어도 할 수 있는 것이 없다 */}
+              <div className={css.lead}>
+                <div className={css.leadHead}>시작하려면 준비물 둘이 먼저 필요합니다</div>
+                <ul className={css.needs}>
+                  <li>
+                    {/* 속이 빈 원(아직) → 속이 찬 원(됨). 글자 ✓ ○ 대신 그림이다 */}
+                    <span
+                      className={`${css.needDot} ${platinum?.ok ? css.needDotOn : ''}`}
+                      role="img"
+                      aria-label={platinum?.ok ? '준비됨' : '아직 없음'}
+                    />
+                    <b>Platinum .nds 파일</b>
+                    {' — 본인이 적법하게 보유한 것. 영어 · 한국어 · 일본어판을 받습니다'}
+                  </li>
+                  <li>
+                    {/* 속이 빈 원(아직) → 속이 찬 원(됨). 글자 ✓ ○ 대신 그림이다 */}
+                    <span
+                      className={`${css.needDot} ${bdsp?.ok ? css.needDotOn : ''}`}
+                      role="img"
+                      aria-label={bdsp?.ok ? '준비됨' : '아직 없음'}
+                    />
+                    <b>AssetAssistant 폴더</b>
+                    {' — BDSP에서 이미 추출해 둔 것 '}
+                    <AssetAssistantHelp />
+                  </li>
+                </ul>
+                <div className={css.body}>
+                  {'아래에서 두 가지를 고르면 브라우저가 그 자리에서 변환해 설치합니다. '}
+                  {/* 부팅에서 떴으면 끝난 순간 게임으로 넘어가고, 타이틀에서 열었으면 그리로 돌아간다 */}
+                  {from === 'boot'
+                    ? '설치가 끝나면 이 화면이 스스로 게임으로 넘어가고, 다음부터는 파일을 다시 묻지 않습니다.'
+                    : '다 고치면 타이틀로 돌아갑니다. 다음부터는 파일을 다시 묻지 않습니다.'}
+                </div>
+              </div>
+
+              {/* ⚠️ **이유를 적는다.** 설치본이 아예 없는 것과, 산출물 판이 올라 그
+                  그룹만 다시 만들면 되는 것은 사용자가 할 일이 다르다. 그동안 이 값이
+                  `data-boot`에만 있어서 화면에는 늘 처음 설치처럼 보였다 */}
+              {why && why.reason !== 'none' && (
+                <div className={css.banner}>
+                  {reasonText(why.reason)}
+                  {why.detail ? `\n${why.detail}` : ''}
+                  {why.raw && <Fold label="자세히">{why.raw}</Fold>}
+                </div>
+              )}
+
+              {/* ⚠️ **여기 적힌 것이 사실이어야 한다.** 한때 "설치를 끝내도 아직 게임은
+                  시작할 수 없습니다"가 박혀 있었는데, 그 말이 참이 아니게 된 뒤에도
+                  남아 있었다. 그래서 숫자는 전부 표에서 세어 온다.
+                  모자란 것이 있으면 누구에게나 보이고, 다 됐을 때의 진행 보고는 개발판에서만.
+                  공개판에서 감추지 않는다 — 감추면 설치가 끝났는데 왜 게임이 안 열리는지 알 길이 없다
+                  (사용자 결정 2026-10-02: 남기고 사람 말로만 다듬는다) */}
+              {(import.meta.env.DEV || stillMissing.length > 0) && (
+                <div className={css.banner}>
+                  {stillMissing.length > 0
+                    ? `이 버전은 게임에 필요한 것 ${String(stillMissing.length)}가지를 아직 만들 수 없어서, `
+                      + `설치를 마쳐도 게임을 시작할 수 없습니다 — ${groupLabels(stillMissing)}\n`
+                    : `변환 ${String(ready.length)}개가 전부 옮겨졌습니다.\n`}
+                  {import.meta.env.DEV && '여기서 실제로 도는 것은 입력 검증 · 폴더 판정 · 저장 공간 · '
+                    + 'Worker 변환 · OPFS 설치와 재개 · 파일별 무결성 검증입니다.'}
+                </div>
+              )}
+
+              {/* ── 0. 환경 ─────────────────────────────────────────────── */}
+              {/* ⚠️ **다 되면 한 줄이다.** 「보안 컨텍스트 · OPFS · Worker」 체크리스트는
+                  사람이 할 일이 없는 정보다 — 안 되는 것만, 무엇을 하면 되는지와 함께 적는다 */}
+              <section className={css.step}>
+                <div className={css.stepHead}>
+                  환경 확인
+                  <span className={supported ? css.ok : css.bad}>
+                    {supported ? '이 브라우저에서 설치할 수 있습니다' : '이 브라우저에서는 설치할 수 없습니다'}
+                  </span>
+                </div>
+                {envProblems.length > 0 && (
+                  <ul className={`${css.list} ${css.bad}`}>
+                    {envProblems.map((p) => <li key={p}>{p}</li>)}
+                  </ul>
+                )}
+                {/* 고장이 아니라 다른 길이다 — 빨갛게 칠하지 않는다 (IMPORT.md §3) */}
+                {!caps.directoryPicker && (
+                  <div className={css.stepNote}>
+                    {'이 브라우저는 폴더를 파일 목록으로 고릅니다 — 다시 이어 할 때 폴더를 한 번 더 고릅니다.'}
+                  </div>
+                )}
+                {gpuWarning !== null && <div className={`${css.body} ${css.bad}`}>{gpuWarning}</div>}
+                {import.meta.env.DEV && (
+                  <div className={css.groups}>
+                    <Line label="보안 컨텍스트 (HTTPS·localhost)" ok={caps.secure} />
+                    <Line label="OPFS" ok={caps.opfs && !unsupportedHere} />
+                    <Line label="Worker" ok={caps.worker} />
+                    <Line label="폴더 선택 API" ok={caps.directoryPicker} note={caps.directoryPicker ? '' : 'webkitdirectory 폴백'} />
+                    <Line label="3D" ok={gpu === 'webgpu' || gpu === 'webgl2'} note={gpu ?? (from === 'boot' ? '재는 중' : '안 잼')} />
+                  </div>
+                )}
+              </section>
+
+              {/* ── 1. Platinum ─────────────────────────────────────────── */}
+              <section className={css.step}>
+                <div className={css.stepHead}>
+                  ① Platinum
+                  <span className={css.stepNote}>이 기기에서 선택 · 전송하지 않음</span>
+                </div>
+                <div className={css.row}>
+                  <button
+                    className={css.button}
+                    disabled={checking || !caps.worker}
+                    onClick={pickRom}
+                  >
+                    {checking ? '확인하는 중…' : '이 기기에서 Platinum 선택'}
+                  </button>
+                  {remembered.rom && !platinum && (
+                    <button className={css.button} disabled={checking || !caps.worker} onClick={reuseRom}>
+                      {`지난번 그대로 (${remembered.rom.name})`}
+                    </button>
+                  )}
+                  <input
+                    ref={romPicker}
+                    type="file"
+                    accept=".nds"
+                    hidden
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      e.target.value = ''
+                      if (file) pickPlatinum(file)
+                    }}
+                  />
+                </div>
+                {platinum && (
+                  <div className={`${css.body} ${platinum.ok ? css.ok : css.bad}`}>
+                    {explain(platinum as Validation)}
+                    {platinum.ok && `\n설치될 언어: ${platinum.locales.map((l) => LOCALE_NAME[l] ?? l).join(' · ')}`}
+                    {platinum.ok && import.meta.env.DEV
+                      && `\n파일 ${String(platinum.measured.files)}개 · 오버레이 ${String(platinum.measured.overlays)}개`
+                        + `\n상점 표: ARM9+${platinum.release.marts.common.arm9RelativeOffset}`
+                        + ` · ${String(SUPPORTED.martCounts.common)}줄`}
+                    {!platinum.ok && platinum.detail !== undefined && <Fold label="자세히">{platinum.detail}</Fold>}
+                  </div>
+                )}
+              </section>
+
+              {/* ── 2. BDSP ─────────────────────────────────────────────── */}
+              <section className={css.step}>
+                <div className={css.stepHead}>
+                  ② BDSP 폴더
+                  <AssetAssistantHelp />
+                  <span className={css.stepNote}>이미 추출된 AssetAssistant (또는 그 상위)</span>
+                </div>
+                <div className={css.row}>
+                  <button className={css.button} disabled={scanning || !caps.worker} onClick={pickDirectory}>
+                    {scanning ? '살펴보는 중…' : '이 기기에서 BDSP 폴더 선택'}
+                  </button>
+                  {remembered.bdsp && !bdsp && (
+                    <button className={css.button} disabled={scanning || !caps.worker} onClick={reuseBdsp}>
+                      {`지난번 그대로 (${remembered.bdsp.name})`}
+                    </button>
+                  )}
+                  <input
+                    ref={dirPicker}
+                    type="file"
+                    hidden
+                    // @ts-expect-error — 표준에 없지만 크로미움·사파리가 받는다
+                    webkitdirectory=""
+                    onChange={(e) => {
+                      const files = [...(e.target.files ?? [])]
+                      e.target.value = ''
+                      if (files.length > 0) scanDir({ files })
+                    }}
+                  />
+                </div>
+                <div className={css.body}>
+                  {`이 폴더에서 만드는 것 — ${groupLabels(REQUIRED_BDSP_GROUPS)}\n`}
+                  {'폴더를 못 고르면 여기서 멈춥니다. 이미 추출된 지원 폴더가 필요합니다.\n'}
+                  {/* ⚠️ 여기가 사람들이 "그럼 그건 어디서 구하나요"를 묻는 자리다.
+                      안내하지 않는다는 것을 그 자리에서 말한다 (COPYRIGHT.md §4) */}
+                  {'파일을 구하는 방법, 콘솔 개조, 키 획득, 복호화, 보호조치 우회는 '}
+                  {'안내하지 않습니다. 원본 게임 파일이나 키를 요구하지도 않습니다.'}
+                </div>
+                {bdsp && (
+                  <>
+                    <div className={`${css.body} ${bdsp.ok ? css.ok : css.bad}`}>
+                      {bdsp.ok
+                        ? `찾았습니다: ${bdsp.root || '(고른 폴더가 뿌리입니다)'}`
+                          + `\n파일 ${bdsp.files.toLocaleString()}개 · ${formatBytes(bdsp.bytes)}`
+                        : bdsp.why}
+                    </div>
+                    {import.meta.env.DEV && bdsp.groups && (
+                      <div className={css.groups}>
+                        {bdsp.groups.map((g) => (
+                          <Line
+                            key={g.name}
+                            label={g.name}
+                            ok={g.index && g.bundles > 0}
+                            note={g.index ? `번들 ${g.bundles.toLocaleString()}개` : '색인 없음'}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </section>
+
+              {/* ── 3. 공간 ─────────────────────────────────────────────── */}
+              {/* ⚠️ **누르지 않아도 잰다.** 예전에는 「공간 확인하고 자리 잡기」를 눌러야만
+                  값이 채워졌고, 그 전에는 「설치 시작」이 이유 없이 잠겨 있었다 */}
+              <section className={css.step}>
+                <div className={css.stepHead}>
+                  ③ 저장 공간
+                  <span className={css.stepNote}>원본 크기가 아니라 변환 결과와 임시 여유를 더한 크기</span>
+                </div>
+                {storage === null
+                  ? <div className={css.body}>{'저장 공간을 재는 중…'}</div>
+                  : (
+                    <div className={`${css.body} ${storage.enough ? css.ok : css.bad}`}>
+                      {storage.measurable
+                        ? `여유 ${formatBytes(storage.free)} / 전체 ${formatBytes(storage.quota)}`
+                          + ` · 필요 ${formatBytes(need)}`
+                          + (need < NEEDED_BYTES ? ' (이미 설치된 것은 뺐습니다)' : '')
+                          + (storage.enough ? ''
+                            : `\n${formatBytes(need - storage.free)}가 더 필요합니다 — 디스크를 비우고 다시 재 주세요. `
+                              + '시크릿 창은 할당량이 작으니 일반 창에서 열어 주세요.')
+                          + `\n브라우저가 설치본을 지우지 않도록 보호: ${storage.persisted ? '켜짐' : '안 켜짐 (브라우저가 정합니다)'}`
+                        : '이 브라우저는 저장 공간을 알려 주지 않아 설치를 시작할 수 없습니다 — '
+                          + '데스크톱 Chrome·Edge 최신판의 일반 창에서 열어 주세요.'}
+                    </div>
+                  )}
+                {/* 디스크를 비운 사람이 다시 잴 길이다. 넉넉하면 누를 까닭이 없다 */}
+                {storage !== null && !storage.enough && (
+                  <div className={css.row}>
+                    <button className={css.button} onClick={() => { void measure() }}>다시 재기</button>
+                  </div>
+                )}
+              </section>
+
+            </div>
+
+            <div className={css.actions}>
+            {/* ── 4. 설치 ─────────────────────────────────────────────── */}
+            <section className={css.step}>
+              <div className={css.stepHead}>④ 설치</div>
+              <div className={css.row}>
+                <button className={css.button} disabled={!canInstall} onClick={() => { install() }}>
+                  {phase === 'installing' ? '변환하는 중…' : '설치 시작'}
+                </button>
+                <button
+                  className={css.button}
+                  disabled={phase !== 'installing'}
+                  onClick={() => {
+                    // 둘 다 켠다 — 어느 창에서 눌렸는지 모른다 (`abort` 참고)
+                    if (abort.current) abort.current.aborted = true
+                    client.current?.cancel()
+                  }}
+                >
+                  취소
+                </button>
+                {canReinstall && (reinstallArmed
+                  ? (
+                    <>
+                      <button className={`${css.button} ${css.bad}`} onClick={reinstall}>
+                        정말 처음부터 다시 만듭니다
+                      </button>
+                      <button className={css.button} onClick={() => { setReinstallArmed(false) }}>
+                        그만두기
+                      </button>
+                    </>
+                  )
+                  : (
+                    <button
+                      className={css.button}
+                      onClick={() => { setReinstallArmed(true); setWipeArmed(false) }}
+                    >
+                      에셋 다시 설치 (리포트는 남습니다)
+                    </button>
+                  ))}
+                {/* 기억한 파일·폴더를 지운다. 위 안내문이 약속한 그 단추다 — 없으면
+                    "기억합니다"만 있고 무를 길이 없다 */}
+                {(remembered.rom ?? remembered.bdsp) && (
+                  <button
+                    className={css.button}
+                    disabled={phase === 'installing'}
+                    onClick={() => {
+                      void forgetSources().then(() => {
+                        setRemembered({ rom: null, bdsp: null })
+                        say('고른 파일·폴더를 잊었습니다 — 다음에는 다시 고릅니다')
+                      })
+                    }}
+                  >
+                    고른 파일·폴더 기억 지우기
+                  </button>
+                )}
+              </div>
+              {canReinstall && reinstallArmed && (
+                <div className={css.body}>
+                  {'변환 결과와 이어하기 기록을 지우고 처음부터 다시 만듭니다 — 리포트는 남습니다. '}
+                  {'깨진 것만 고치려면 「설치 시작」을 누르세요 (온전한 그룹은 건너뜁니다).'}
+                </div>
+              )}
+              {/* ⚠️ **하다 죽었을 때만 보인다.** 늘 띄워 두면 리포트를 지우는 단추가
+                  설치가 잘된 사람 눈앞에도 있게 된다. 여기 오는 사람은 이미 같은
+                  자리에서 두 번 막힌 사람이고, 그때 브라우저 설정을 뒤지게 두는
+                  대신 이 자리에서 끝내게 한다 */}
+              {broke && (
+                <div className={css.row}>
+                  {wipeArmed ? (
+                    <>
+                      {/* 지우기 전에 받아 둘 마지막 기회다 — 위 ⚠️ 참고 */}
+                      <button className={css.button} onClick={backupReportFile}>
+                        먼저 리포트를 파일로 받기
+                      </button>
+                      <button className={`${css.button} ${css.bad}`} onClick={wipeAll}>
+                        정말 전부 지웁니다
+                      </button>
+                      <button className={css.button} onClick={() => { setWipeArmed(false) }}>
+                        그만두기
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className={css.button}
+                      disabled={phase === 'installing'}
+                      onClick={() => { setWipeArmed(true); setReinstallArmed(false) }}
+                    >
+                      전부 지우고 처음부터 (리포트도 사라집니다)
+                    </button>
+                  )}
+                </div>
+              )}
+              {broke && wipeArmed && (
+                <div className={`${css.body} ${css.bad}`}>
+                  {'이 사이트가 이 브라우저에 남긴 것을 전부 지웁니다 — '}
+                  {'에셋 · 설치 기록 · 설정, 그리고 리포트까지.\n'}
+                  {'진행이 있으면 먼저 파일로 받아 두세요 — 여기서는 게임 안 백업 화면에 못 갑니다.\n'}
+                  {'에셋만 다시 만들 거라면 「에셋 다시 설치」를 쓰세요. 지운 뒤에는 화면이 새로 열립니다.'}
+                </div>
+              )}
+              {!canInstall && phase !== 'installing' && (
+                <div className={css.body}>
+                  {'설치를 시작하려면 — '}
+                  {[
+                    platinum?.ok ? null : 'Platinum 확인',
+                    bdsp?.ok ? null : 'BDSP 폴더',
+                    storage === null ? '저장 공간 재는 중'
+                      : !storage.measurable ? '저장 공간을 잴 수 없음'
+                        : storage.enough ? null : '저장 공간 부족',
+                    supported ? null : '브라우저 지원',
+                  ].filter(Boolean).join(' · ')}
+                </div>
+              )}
+              {/* ⚠️ **막대 위에 지금 무엇을 하는지 적는다.** 이어하기는 먼저 이미 만든 것을
+                  다시 읽고, 끝에는 전부를 한 번 더 읽는다 — 그 두 구간에서 막대가 0으로
+                  돌아가는데 까닭이 안 보이면 멈춘 것처럼 읽힌다 */}
+              {phase === 'installing' && (
+                <>
+                  <div className={css.progressHead}>
+                    <span>
+                      {progress === null ? '준비하는 중'
+                        : progress.stage === 'checking' ? '이미 만든 것 확인 중'
+                          : progress.stage === 'verifying' ? '마지막 확인 중'
+                            : `만드는 중: ${groupLabel(progress.name)} `
+                              + `(${String(progress.index + 1)}/${String(progress.total)})`}
+                    </span>
+                    <span>{progress === null ? '' : pct(progress.value)}</span>
+                    <span className={css.stepNote}>{`지금까지 ${formatBytes(wrote)}`}</span>
+                  </div>
+                  <div className={css.bar}>
+                    <div
+                      className={css.barFill}
+                      style={{ width: pct(progress?.value ?? 0) }}
+                    />
+                  </div>
+                </>
+              )}
+              {failure !== null && (
+                <div className={`${css.body} ${css.bad}`}>
+                  {failure.text}
+                  <Fold label="자세히">{failure.raw}</Fold>
+                </div>
+              )}
+              {phase === 'cancelled' && (
+                <div className={css.body}>{'취소했습니다. 끝난 그룹은 건너뛰고 남은 것부터 이어서 합니다.'}</div>
+              )}
+              {phase === 'done' && missing.length > 0 && (
+                <div className={`${css.body} ${css.bad}`}>
+                  {`만든 것은 설치됐지만 게임을 시작하려면 ${String(missing.length)}가지가 더 필요합니다:\n`}
+                  {groupLabels(missing)}
+                  {/* ⚠️ **왜 없는지가 이름보다 중요하다.** 무엇을 다시 고르면 되는지
+                      알려면 "arenas가 없다"가 아니라 "무대를 하나도 못 만들었다"가
+                      필요하다 — 설치는 죽은 그룹을 건너뛰고 끝까지 간다. 이름은 여기,
+                      변환기가 준 원문 이유는 바로 아래 「자세히」에 둔다 */}
+                  {/* Worker가 죽으면 남은 그룹이 줄줄이 같은 말을 하므로 몇 개만 */}
+                  {failed.length > 0 && `\n\n못 만든 것 ${String(failed.length)}가지: `
+                    + groupLabels(failed.slice(0, FAILURES_SHOWN).map((f) => f.name))
+                    + (failed.length > FAILURES_SHOWN ? ` … 외 ${String(failed.length - FAILURES_SHOWN)}가지` : '')}
+                  {failed.length > 0 && (
+                    <Fold label="자세히">
+                      {failed.slice(0, FAILURES_SHOWN).map((f) => `${f.name} — ${f.why}`).join('\n')}
+                    </Fold>
+                  )}
+                </div>
+              )}
+              {log.length > 0 && (
+                <ul className={css.list}>
+                  {log.slice(-12).map((line, i) => <li key={`${String(i)}-${line}`}>{line}</li>)}
+                </ul>
+              )}
+              {/* 파일 경로·바이트·원문. 기본으로 접혀 있다 — 여는 사람은 지원 문의를 쓰는 사람이다 */}
+              {diag.length > 0 && <Fold label="진단 정보">{diag.slice(-40).join('\n')}</Fold>}
+            </section>
+
+            {/* ── 남은 일 ─────────────────────────────────────────────── */}
+            {(import.meta.env.DEV || blocked.length > 0) && (
+              <section className={css.step}>
+                <div className={css.stepHead}>
+                  아직 만들지 못하는 것
+                  <span className={css.stepNote}>{`${String(blocked.length)}가지`}</span>
+                </div>
+                <ul className={css.list}>
+                  {blocked.map((g) => <li key={g.name}><b>{groupLabel(g.name)}</b> — {g.blockedBy}</li>)}
+                  {blocked.length === 0 && <li>{'없습니다 — 필수 그룹이 전부 옮겨졌습니다.'}</li>}
+                </ul>
+              </section>
+            )}
+
+            <div className={css.row}>
+              {/* ⚠️ **설치 중에는 못 누른다.** 타이틀에서는 닫으면 화면이 내려가 설치가
+                  주인을 잃고, 부팅에서는 다시 물어도 「설치 중」이라 할 말이 없다 */}
+              <button className={css.button} disabled={phase === 'installing'} onClick={leave}>
+                {from === 'boot' ? '설치 상태 다시 확인' : '타이틀로 돌아가기'}
+              </button>
+            </div>
+            {rechecked && (
+              <div className={css.body}>
+                {`다시 확인했습니다 — 아직 게임을 열 수 없습니다. ${reasonText(why.reason)}`}
+              </div>
+            )}
+            </div>
+          </div>
+        </div>
 
         {/* ⚠️ **여기가 이 고지의 유일한 자리다** (COPYRIGHT.md §11). 설치 전
             사용자는 타이틀에 못 간다 — `BootGate`가 설치 전에는 `<App/>`을 아예
@@ -736,459 +1209,6 @@ export function ImportWizard({ onClose, onReady, why, from = 'title' }: {
           받거나 저장하지 않습니다.
         </p>
 
-        {/* ⚠️ **준비물을 맨 앞에 둔다.** 여기서 사람이 제일 먼저 알아야 하는 것은
-            단계 목록이 아니라 무엇을 미리 갖고 와야 하는가다. 그것이 없으면
-            아래를 아무리 읽어도 할 수 있는 것이 없다 */}
-        <div className={css.lead}>
-          <div className={css.leadHead}>시작하려면 준비물 둘이 먼저 필요합니다</div>
-          <ul className={css.needs}>
-            <li>
-              <span
-                className={`${css.needMark} ${platinum?.ok ? css.ok : css.stepNote}`}
-                aria-label={platinum?.ok ? '준비됨' : '아직 없음'}
-              >
-                {platinum?.ok ? '✓' : '○'}
-              </span>
-              <b>Platinum .nds 파일</b>
-              {' — 본인이 적법하게 보유한 것. 영어 · 한국어 · 일본어판을 받습니다'}
-            </li>
-            <li>
-              <span
-                className={`${css.needMark} ${bdsp?.ok ? css.ok : css.stepNote}`}
-                aria-label={bdsp?.ok ? '준비됨' : '아직 없음'}
-              >
-                {bdsp?.ok ? '✓' : '○'}
-              </span>
-              <b>AssetAssistant 폴더</b>
-              {' — BDSP에서 이미 추출해 둔 것 '}
-              <AssetAssistantHelp />
-            </li>
-          </ul>
-          <div className={css.body}>
-            {'아래에서 두 가지를 고르면 브라우저가 그 자리에서 변환해 설치합니다. '}
-            {/* 부팅에서 떴으면 끝난 순간 게임으로 넘어가고, 타이틀에서 열었으면 그리로 돌아간다 */}
-            {from === 'boot'
-              ? '설치가 끝나면 이 화면이 스스로 게임으로 넘어가고, 다음부터는 파일을 다시 묻지 않습니다.'
-              : '다 고치면 타이틀로 돌아갑니다. 다음부터는 파일을 다시 묻지 않습니다.'}
-          </div>
-        </div>
-
-        <h2 className={css.title}>에셋 설치</h2>
-
-        {/* ⚠️ **이유를 적는다.** 설치본이 아예 없는 것과, 산출물 판이 올라 그
-            그룹만 다시 만들면 되는 것은 사용자가 할 일이 다르다. 그동안 이 값이
-            `data-boot`에만 있어서 화면에는 늘 처음 설치처럼 보였다 */}
-        {why && why.reason !== 'none' && (
-          <div className={css.banner}>
-            {reasonText(why.reason)}
-            {why.detail ? `\n${why.detail}` : ''}
-            {why.raw && <Fold label="자세히">{why.raw}</Fold>}
-          </div>
-        )}
-
-        {/* ⚠️ **여기 적힌 것이 사실이어야 한다.** 한때 "설치를 끝내도 아직 게임은
-            시작할 수 없습니다"가 박혀 있었는데, 그 말이 참이 아니게 된 뒤에도
-            남아 있었다. 그래서 숫자는 전부 표에서 세어 온다.
-            모자란 것이 있으면 누구에게나 보이고, 다 됐을 때의 진행 보고는 개발판에서만.
-            공개판에서 감추지 않는다 — 감추면 설치가 끝났는데 왜 게임이 안 열리는지 알 길이 없다
-            (사용자 결정 2026-10-02: 남기고 사람 말로만 다듬는다) */}
-        {(import.meta.env.DEV || stillMissing.length > 0) && (
-          <div className={css.banner}>
-            {stillMissing.length > 0
-              ? `이 버전은 게임에 필요한 것 ${String(stillMissing.length)}가지를 아직 만들 수 없어서, `
-                + `설치를 마쳐도 게임을 시작할 수 없습니다 — ${groupLabels(stillMissing)}\n`
-              : `변환 ${String(ready.length)}개가 전부 옮겨졌습니다.\n`}
-            {import.meta.env.DEV && '여기서 실제로 도는 것은 입력 검증 · 폴더 판정 · 저장 공간 · '
-              + 'Worker 변환 · OPFS 설치와 재개 · 파일별 무결성 검증입니다.'}
-          </div>
-        )}
-
-        {/* ⚠️ **이 네 사실은 접지 않는다** (IMPORT.md §4 표) — 서버로 안 보낸다,
-            다시 안 고른다, 사이트 데이터를 지우면 사라진다, 브라우저·기기·주소마다 따로다 */}
-        <div className={css.body}>
-          {'고른 파일은 이 기기 안에서만 읽습니다. 바이트도, 파일 이름도, 폴더 목록도, '}
-          {'판정 결과도 서버로 보내지 않습니다. 변환은 전부 브라우저 안에서 일어납니다.\n'}
-          {'설치가 끝나면 다음부터는 파일을 다시 고르지 않습니다 — 이 브라우저의 '}
-          {'저장 공간에서 바로 엽니다. 게임이 도는 동안 원본은 한 번도 안 읽습니다.\n'}
-          {'다만 나중에 일부를 다시 변환해야 할 때 또 고르라고 묻지 않으려고, '}
-          {'지난번에 고른 파일·폴더를 이 브라우저 안에만 기억합니다. 바이트도 '}
-          {'경로 문자열도 서버로 가지 않고, 읽기 권한은 그때 한 번 더 물어봅니다 — '}
-          {'아래 「고른 파일·폴더 기억 지우기」로 지울 수 있고 「전부 지우기」에도 함께 지워집니다.\n'}
-          {'주의 — 설치본은 이 브라우저 · 이 기기 · 이 주소에만 있습니다. 다른 브라우저나 '}
-          {'다른 기기에서는 다시 설치해야 하고, 주소가 바뀌어도 이어받지 못합니다.\n'}
-          {'사이트 데이터를 지우면 설치된 에셋도 함께 사라집니다. 리포트는 '}
-          {'.rpsave 파일로 따로 내보내 둘 수 있습니다 (타이틀 화면) — 에셋을 다시 '}
-          {'설치한 뒤 그 파일로 진행 상태를 되돌립니다.'}
-        </div>
-
-        {/* ── 0. 환경 ─────────────────────────────────────────────── */}
-        {/* ⚠️ **다 되면 한 줄이다.** 「보안 컨텍스트 · OPFS · Worker」 체크리스트는
-            사람이 할 일이 없는 정보다 — 안 되는 것만, 무엇을 하면 되는지와 함께 적는다 */}
-        <section className={css.step}>
-          <div className={css.stepHead}>
-            환경 확인
-            <span className={supported ? css.ok : css.bad}>
-              {supported ? '이 브라우저에서 설치할 수 있습니다' : '이 브라우저에서는 설치할 수 없습니다'}
-            </span>
-          </div>
-          {envProblems.length > 0 && (
-            <ul className={`${css.list} ${css.bad}`}>
-              {envProblems.map((p) => <li key={p}>{p}</li>)}
-            </ul>
-          )}
-          {/* 고장이 아니라 다른 길이다 — 빨갛게 칠하지 않는다 (IMPORT.md §3) */}
-          {!caps.directoryPicker && (
-            <div className={css.stepNote}>
-              {'이 브라우저는 폴더를 파일 목록으로 고릅니다 — 다시 이어 할 때 폴더를 한 번 더 고릅니다.'}
-            </div>
-          )}
-          {gpuWarning !== null && <div className={`${css.body} ${css.bad}`}>{gpuWarning}</div>}
-          {import.meta.env.DEV && (
-            <div className={css.groups}>
-              <Line label="보안 컨텍스트 (HTTPS·localhost)" ok={caps.secure} />
-              <Line label="OPFS" ok={caps.opfs && !unsupportedHere} />
-              <Line label="Worker" ok={caps.worker} />
-              <Line label="폴더 선택 API" ok={caps.directoryPicker} note={caps.directoryPicker ? '' : 'webkitdirectory 폴백'} />
-              <Line label="3D" ok={gpu === 'webgpu' || gpu === 'webgl2'} note={gpu ?? (from === 'boot' ? '재는 중' : '안 잼')} />
-            </div>
-          )}
-        </section>
-
-        {/* ── 1. Platinum ─────────────────────────────────────────── */}
-        <section className={css.step}>
-          <div className={css.stepHead}>
-            ① Platinum
-            <span className={css.stepNote}>이 기기에서 선택 · 전송하지 않음</span>
-          </div>
-          <div className={css.row}>
-            <button
-              className={css.button}
-              disabled={checking || !caps.worker}
-              onClick={pickRom}
-            >
-              {checking ? '확인하는 중…' : '이 기기에서 Platinum 선택'}
-            </button>
-            {remembered.rom && !platinum && (
-              <button className={css.button} disabled={checking || !caps.worker} onClick={reuseRom}>
-                {`지난번 그대로 (${remembered.rom.name})`}
-              </button>
-            )}
-            <input
-              ref={romPicker}
-              type="file"
-              accept=".nds"
-              hidden
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                e.target.value = ''
-                if (file) pickPlatinum(file)
-              }}
-            />
-          </div>
-          {platinum && (
-            <div className={`${css.body} ${platinum.ok ? css.ok : css.bad}`}>
-              {explain(platinum as Validation)}
-              {platinum.ok && `\n설치될 언어: ${platinum.locales.map((l) => LOCALE_NAME[l] ?? l).join(' · ')}`}
-              {platinum.ok && import.meta.env.DEV
-                && `\n파일 ${String(platinum.measured.files)}개 · 오버레이 ${String(platinum.measured.overlays)}개`
-                  + `\n상점 표: ARM9+${platinum.release.marts.common.arm9RelativeOffset}`
-                  + ` · ${String(SUPPORTED.martCounts.common)}줄`}
-              {!platinum.ok && platinum.detail !== undefined && <Fold label="자세히">{platinum.detail}</Fold>}
-            </div>
-          )}
-        </section>
-
-        {/* ── 2. BDSP ─────────────────────────────────────────────── */}
-        <section className={css.step}>
-          <div className={css.stepHead}>
-            ② BDSP 폴더
-            <AssetAssistantHelp />
-            <span className={css.stepNote}>이미 추출된 AssetAssistant (또는 그 상위)</span>
-          </div>
-          <div className={css.row}>
-            <button className={css.button} disabled={scanning || !caps.worker} onClick={pickDirectory}>
-              {scanning ? '살펴보는 중…' : '이 기기에서 BDSP 폴더 선택'}
-            </button>
-            {remembered.bdsp && !bdsp && (
-              <button className={css.button} disabled={scanning || !caps.worker} onClick={reuseBdsp}>
-                {`지난번 그대로 (${remembered.bdsp.name})`}
-              </button>
-            )}
-            <input
-              ref={dirPicker}
-              type="file"
-              hidden
-              // @ts-expect-error — 표준에 없지만 크로미움·사파리가 받는다
-              webkitdirectory=""
-              onChange={(e) => {
-                const files = [...(e.target.files ?? [])]
-                e.target.value = ''
-                if (files.length > 0) scanDir({ files })
-              }}
-            />
-          </div>
-          <div className={css.body}>
-            {`이 폴더에서 만드는 것 — ${groupLabels(REQUIRED_BDSP_GROUPS)}\n`}
-            {'폴더를 못 고르면 여기서 멈춥니다. 이미 추출된 지원 폴더가 필요합니다.\n'}
-            {/* ⚠️ 여기가 사람들이 "그럼 그건 어디서 구하나요"를 묻는 자리다.
-                안내하지 않는다는 것을 그 자리에서 말한다 (COPYRIGHT.md §4) */}
-            {'파일을 구하는 방법, 콘솔 개조, 키 획득, 복호화, 보호조치 우회는 '}
-            {'안내하지 않습니다. 원본 게임 파일이나 키를 요구하지도 않습니다.'}
-          </div>
-          {bdsp && (
-            <>
-              <div className={`${css.body} ${bdsp.ok ? css.ok : css.bad}`}>
-                {bdsp.ok
-                  ? `찾았습니다: ${bdsp.root || '(고른 폴더가 뿌리입니다)'}`
-                    + `\n파일 ${bdsp.files.toLocaleString()}개 · ${formatBytes(bdsp.bytes)}`
-                  : bdsp.why}
-              </div>
-              {import.meta.env.DEV && bdsp.groups && (
-                <div className={css.groups}>
-                  {bdsp.groups.map((g) => (
-                    <Line
-                      key={g.name}
-                      label={g.name}
-                      ok={g.index && g.bundles > 0}
-                      note={g.index ? `번들 ${g.bundles.toLocaleString()}개` : '색인 없음'}
-                    />
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </section>
-
-        {/* ── 3. 공간 ─────────────────────────────────────────────── */}
-        {/* ⚠️ **누르지 않아도 잰다.** 예전에는 「공간 확인하고 자리 잡기」를 눌러야만
-            값이 채워졌고, 그 전에는 「설치 시작」이 이유 없이 잠겨 있었다 */}
-        <section className={css.step}>
-          <div className={css.stepHead}>
-            ③ 저장 공간
-            <span className={css.stepNote}>원본 크기가 아니라 변환 결과와 임시 여유를 더한 크기</span>
-          </div>
-          {storage === null
-            ? <div className={css.body}>{'저장 공간을 재는 중…'}</div>
-            : (
-              <div className={`${css.body} ${storage.enough ? css.ok : css.bad}`}>
-                {storage.measurable
-                  ? `여유 ${formatBytes(storage.free)} / 전체 ${formatBytes(storage.quota)}`
-                    + ` · 필요 ${formatBytes(need)}`
-                    + (need < NEEDED_BYTES ? ' (이미 설치된 것은 뺐습니다)' : '')
-                    + (storage.enough ? ''
-                      : `\n${formatBytes(need - storage.free)}가 더 필요합니다 — 디스크를 비우고 다시 재 주세요. `
-                        + '시크릿 창은 할당량이 작으니 일반 창에서 열어 주세요.')
-                    + `\n브라우저가 설치본을 지우지 않도록 보호: ${storage.persisted ? '켜짐' : '안 켜짐 (브라우저가 정합니다)'}`
-                  : '이 브라우저는 저장 공간을 알려 주지 않아 설치를 시작할 수 없습니다 — '
-                    + '데스크톱 Chrome·Edge 최신판의 일반 창에서 열어 주세요.'}
-              </div>
-            )}
-          {/* 디스크를 비운 사람이 다시 잴 길이다. 넉넉하면 누를 까닭이 없다 */}
-          {storage !== null && !storage.enough && (
-            <div className={css.row}>
-              <button className={css.button} onClick={() => { void measure() }}>다시 재기</button>
-            </div>
-          )}
-        </section>
-
-        {/* ── 4. 설치 ─────────────────────────────────────────────── */}
-        <section className={css.step}>
-          <div className={css.stepHead}>④ 설치</div>
-          <div className={css.row}>
-            <button className={css.button} disabled={!canInstall} onClick={() => { install() }}>
-              {phase === 'installing' ? '변환하는 중…' : '설치 시작'}
-            </button>
-            <button
-              className={css.button}
-              disabled={phase !== 'installing'}
-              onClick={() => {
-                // 둘 다 켠다 — 어느 창에서 눌렸는지 모른다 (`abort` 참고)
-                if (abort.current) abort.current.aborted = true
-                client.current?.cancel()
-              }}
-            >
-              취소
-            </button>
-            {canReinstall && (reinstallArmed
-              ? (
-                <>
-                  <button className={`${css.button} ${css.bad}`} onClick={reinstall}>
-                    정말 처음부터 다시 만듭니다
-                  </button>
-                  <button className={css.button} onClick={() => { setReinstallArmed(false) }}>
-                    그만두기
-                  </button>
-                </>
-              )
-              : (
-                <button
-                  className={css.button}
-                  onClick={() => { setReinstallArmed(true); setWipeArmed(false) }}
-                >
-                  에셋 다시 설치 (리포트는 남습니다)
-                </button>
-              ))}
-            {/* 기억한 파일·폴더를 지운다. 위 안내문이 약속한 그 단추다 — 없으면
-                "기억합니다"만 있고 무를 길이 없다 */}
-            {(remembered.rom ?? remembered.bdsp) && (
-              <button
-                className={css.button}
-                disabled={phase === 'installing'}
-                onClick={() => {
-                  void forgetSources().then(() => {
-                    setRemembered({ rom: null, bdsp: null })
-                    say('고른 파일·폴더를 잊었습니다 — 다음에는 다시 고릅니다')
-                  })
-                }}
-              >
-                고른 파일·폴더 기억 지우기
-              </button>
-            )}
-          </div>
-          {canReinstall && reinstallArmed && (
-            <div className={css.body}>
-              {'변환 결과와 이어하기 기록을 지우고 처음부터 다시 만듭니다 — 리포트는 남습니다. '}
-              {'깨진 것만 고치려면 「설치 시작」을 누르세요 (온전한 그룹은 건너뜁니다).'}
-            </div>
-          )}
-          {/* ⚠️ **하다 죽었을 때만 보인다.** 늘 띄워 두면 리포트를 지우는 단추가
-              설치가 잘된 사람 눈앞에도 있게 된다. 여기 오는 사람은 이미 같은
-              자리에서 두 번 막힌 사람이고, 그때 브라우저 설정을 뒤지게 두는
-              대신 이 자리에서 끝내게 한다 */}
-          {broke && (
-            <div className={css.row}>
-              {wipeArmed ? (
-                <>
-                  {/* 지우기 전에 받아 둘 마지막 기회다 — 위 ⚠️ 참고 */}
-                  <button className={css.button} onClick={backupReportFile}>
-                    먼저 리포트를 파일로 받기
-                  </button>
-                  <button className={`${css.button} ${css.bad}`} onClick={wipeAll}>
-                    정말 전부 지웁니다
-                  </button>
-                  <button className={css.button} onClick={() => { setWipeArmed(false) }}>
-                    그만두기
-                  </button>
-                </>
-              ) : (
-                <button
-                  className={css.button}
-                  disabled={phase === 'installing'}
-                  onClick={() => { setWipeArmed(true); setReinstallArmed(false) }}
-                >
-                  전부 지우고 처음부터 (리포트도 사라집니다)
-                </button>
-              )}
-            </div>
-          )}
-          {broke && wipeArmed && (
-            <div className={`${css.body} ${css.bad}`}>
-              {'이 사이트가 이 브라우저에 남긴 것을 전부 지웁니다 — '}
-              {'에셋 · 설치 기록 · 설정, 그리고 리포트까지.\n'}
-              {'진행이 있으면 먼저 파일로 받아 두세요 — 여기서는 게임 안 백업 화면에 못 갑니다.\n'}
-              {'에셋만 다시 만들 거라면 「에셋 다시 설치」를 쓰세요. 지운 뒤에는 화면이 새로 열립니다.'}
-            </div>
-          )}
-          {!canInstall && phase !== 'installing' && (
-            <div className={css.body}>
-              {'설치를 시작하려면 — '}
-              {[
-                platinum?.ok ? null : 'Platinum 확인',
-                bdsp?.ok ? null : 'BDSP 폴더',
-                storage === null ? '저장 공간 재는 중'
-                  : !storage.measurable ? '저장 공간을 잴 수 없음'
-                    : storage.enough ? null : '저장 공간 부족',
-                supported ? null : '브라우저 지원',
-              ].filter(Boolean).join(' · ')}
-            </div>
-          )}
-          {/* ⚠️ **막대 위에 지금 무엇을 하는지 적는다.** 이어하기는 먼저 이미 만든 것을
-              다시 읽고, 끝에는 전부를 한 번 더 읽는다 — 그 두 구간에서 막대가 0으로
-              돌아가는데 까닭이 안 보이면 멈춘 것처럼 읽힌다 */}
-          {phase === 'installing' && (
-            <>
-              <div className={css.progressHead}>
-                <span>
-                  {progress === null ? '준비하는 중'
-                    : progress.stage === 'checking' ? '이미 만든 것 확인 중'
-                      : progress.stage === 'verifying' ? '마지막 확인 중'
-                        : `만드는 중: ${groupLabel(progress.name)} `
-                          + `(${String(progress.index + 1)}/${String(progress.total)})`}
-                </span>
-                <span>{progress === null ? '' : pct(progress.value)}</span>
-                <span className={css.stepNote}>{`지금까지 ${formatBytes(wrote)}`}</span>
-              </div>
-              <div className={css.bar}>
-                <div
-                  className={css.barFill}
-                  style={{ width: pct(progress?.value ?? 0) }}
-                />
-              </div>
-            </>
-          )}
-          {failure !== null && (
-            <div className={`${css.body} ${css.bad}`}>
-              {failure.text}
-              <Fold label="자세히">{failure.raw}</Fold>
-            </div>
-          )}
-          {phase === 'cancelled' && (
-            <div className={css.body}>{'취소했습니다. 끝난 그룹은 건너뛰고 남은 것부터 이어서 합니다.'}</div>
-          )}
-          {phase === 'done' && missing.length > 0 && (
-            <div className={`${css.body} ${css.bad}`}>
-              {`만든 것은 설치됐지만 게임을 시작하려면 ${String(missing.length)}가지가 더 필요합니다:\n`}
-              {groupLabels(missing)}
-              {/* ⚠️ **왜 없는지가 이름보다 중요하다.** 무엇을 다시 고르면 되는지
-                  알려면 "arenas가 없다"가 아니라 "무대를 하나도 못 만들었다"가
-                  필요하다 — 설치는 죽은 그룹을 건너뛰고 끝까지 간다. 이름은 여기,
-                  변환기가 준 원문 이유는 바로 아래 「자세히」에 둔다 */}
-              {/* Worker가 죽으면 남은 그룹이 줄줄이 같은 말을 하므로 몇 개만 */}
-              {failed.length > 0 && `\n\n못 만든 것 ${String(failed.length)}가지: `
-                + groupLabels(failed.slice(0, FAILURES_SHOWN).map((f) => f.name))
-                + (failed.length > FAILURES_SHOWN ? ` … 외 ${String(failed.length - FAILURES_SHOWN)}가지` : '')}
-              {failed.length > 0 && (
-                <Fold label="자세히">
-                  {failed.slice(0, FAILURES_SHOWN).map((f) => `${f.name} — ${f.why}`).join('\n')}
-                </Fold>
-              )}
-            </div>
-          )}
-          {log.length > 0 && (
-            <ul className={css.list}>
-              {log.slice(-12).map((line, i) => <li key={`${String(i)}-${line}`}>{line}</li>)}
-            </ul>
-          )}
-          {/* 파일 경로·바이트·원문. 기본으로 접혀 있다 — 여는 사람은 지원 문의를 쓰는 사람이다 */}
-          {diag.length > 0 && <Fold label="진단 정보">{diag.slice(-40).join('\n')}</Fold>}
-        </section>
-
-        {/* ── 남은 일 ─────────────────────────────────────────────── */}
-        {(import.meta.env.DEV || blocked.length > 0) && (
-          <section className={css.step}>
-            <div className={css.stepHead}>
-              아직 만들지 못하는 것
-              <span className={css.stepNote}>{`${String(blocked.length)}가지`}</span>
-            </div>
-            <ul className={css.list}>
-              {blocked.map((g) => <li key={g.name}><b>{groupLabel(g.name)}</b> — {g.blockedBy}</li>)}
-              {blocked.length === 0 && <li>{'없습니다 — 필수 그룹이 전부 옮겨졌습니다.'}</li>}
-            </ul>
-          </section>
-        )}
-
-        <div className={css.row}>
-          {/* ⚠️ **설치 중에는 못 누른다.** 타이틀에서는 닫으면 화면이 내려가 설치가
-              주인을 잃고, 부팅에서는 다시 물어도 「설치 중」이라 할 말이 없다 */}
-          <button className={css.button} disabled={phase === 'installing'} onClick={leave}>
-            {from === 'boot' ? '설치 상태 다시 확인' : '타이틀로 돌아가기'}
-          </button>
-        </div>
-        {rechecked && (
-          <div className={css.body}>
-            {`다시 확인했습니다 — 아직 게임을 열 수 없습니다. ${reasonText(why.reason)}`}
-          </div>
-        )}
       </div>
     </div>
   )

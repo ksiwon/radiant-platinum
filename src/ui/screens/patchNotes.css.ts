@@ -1,141 +1,90 @@
-// 패치노트 창 — 타이틀 위에 서는 창 하나.
+// 패치노트 — 덮는 창이되 내용 크기(880×560). 판마다 탭 하나, 본문은 왼쪽 「판의 얼굴」과 오른쪽 줄 목록이다.
 //
-// ⚠️ **새 창 문법을 들이지 않는다.** 「이런 게임은 어떠세요?」와 같은 자리에서
-// 같은 방식으로 열리므로 몸도 같아야 한다 (`otherGames.css`와 나란히 읽을 것).
-// 여기만 다른 판을 쓰면 X를 누르는 순간 다른 게임이 된다 (DESIGN.md §3).
+// 줄마다 상자 딱지를 달지 않는다 — 갈래는 12px 글자 하나(36px 칸)다. 창의 틀(머리 · 바닥 · 단추)은 `appWindow.css`에서 온다.
 import { style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
-import { GAP, RADIUS, TEXT } from '../theme/scale'
-import { WINDOW, WINDOW_SMALL, scrim } from '../theme/window.css'
+import { GAP, TEXT } from '../theme/scale'
+import { RULE } from '../theme/window.css'
 
-export const over = style([scrim, { zIndex: 20 }])
+export const WIDTH = 880
+export const HEIGHT = 560
 
-export const panel = style({
-  ...WINDOW,
+/** 탭 줄 */
+export const tabs = style({
+  flex: '0 0 auto',
+  padding: `0 ${String(GAP.wide)}px`,
+  borderBottom: RULE,
+})
+
+export const split = style({
+  flex: '1 1 auto',
+  minHeight: 0,
+  display: 'grid',
+  gridTemplateColumns: '244px minmax(0, 1fr)',
+})
+
+/** 판의 얼굴 — 판 이름 · 날짜 · lead · 맨 아래 갈래별 건수 */
+export const hero = style({
   display: 'flex',
   flexDirection: 'column',
-  gap: GAP.base,
-  width: 'min(560px, calc(100vw - 32px))',
-  // 테두리와 여백을 폭 안에 넣는다 — `otherGames.css`가 같은 줄을 들고 있는 이유다
-  boxSizing: 'border-box',
-  maxHeight: 'calc(100vh - 48px)',
-  overflowY: 'auto',
-  padding: `${GAP.wide}px ${GAP.wide}px ${GAP.base}px`,
-  fontFamily: vars.font.ui,
+  gap: GAP.small,
+  padding: `${String(GAP.wide)}px ${String(GAP.wide)}px ${String(GAP.base)}px`,
+  borderRight: RULE,
+  minHeight: 0,
 })
 
-export const title = style({
-  margin: 0,
-  fontSize: TEXT.title,
-  fontWeight: 700,
-  color: vars.ink.strong,
-})
+export const version = style({ margin: 0, fontSize: TEXT.big, fontWeight: 700, color: vars.ink.strong })
+export const date = style({ fontSize: TEXT.small, color: vars.ink.dim, fontVariantNumeric: 'tabular-nums' })
+export const lead = style({ margin: 0, fontSize: TEXT.small, lineHeight: 1.6, color: vars.ink.normal })
 
-export const intro = style({
-  margin: 0,
+export const counts = style({
+  marginTop: 'auto',
+  paddingTop: GAP.base,
+  borderTop: RULE,
   fontSize: TEXT.small,
-  lineHeight: 1.6,
   color: vars.ink.dim,
+  fontVariantNumeric: 'tabular-nums',
 })
+
+/** 오른쪽 목록 — 긴 판은 안에서 스크롤한다 (끝 6px 페이드) */
+export const listBox = style({ position: 'relative', minHeight: 0 })
 
 export const list = style({
-  display: 'flex',
-  flexDirection: 'column',
-  gap: GAP.wide,
+  position: 'absolute',
+  inset: 0,
   margin: 0,
-  padding: 0,
+  padding: `${String(GAP.base)}px ${String(GAP.wide)}px`,
   listStyle: 'none',
+  overflowY: 'auto',
+  scrollbarWidth: 'thin',
 })
 
-export const head = style({
-  display: 'flex',
-  alignItems: 'baseline',
-  gap: GAP.small,
-})
-
-export const version = style({
-  fontSize: TEXT.base,
-  fontWeight: 700,
-  color: vars.ink.strong,
-})
-
-export const date = style({
-  fontSize: TEXT.tiny,
-  color: vars.ink.faint,
-})
-
-export const lead = style({
-  margin: `${GAP.tight}px 0 0`,
-  fontSize: TEXT.small,
-  lineHeight: 1.5,
-  color: vars.ink.dim,
-})
-
-export const items = style({
-  display: 'flex',
-  flexDirection: 'column',
-  gap: GAP.small,
-  margin: `${GAP.small}px 0 0`,
-  padding: 0,
-  listStyle: 'none',
-})
-
-/**
- * 갈래 머리글 — 정식판처럼 줄이 많은 판에서만 선다 (`patchLog`의 `group`).
- *
- * 판 이름(`version`)보다 한 치수 작고 흐리다. 판 > 갈래 > 줄 순서로 읽힌다
- */
 export const group = style({
-  marginTop: GAP.small,
-  fontSize: TEXT.tiny,
+  margin: `${String(GAP.base)}px 0 ${String(GAP.tight)}px`,
+  fontSize: TEXT.small,
   fontWeight: 700,
   color: vars.ink.dim,
   selectors: { '&:first-child': { marginTop: 0 } },
 })
 
-/**
- * 한 줄 — 딱지와 글, 두 칸.
- *
- * ⚠️ **표(grid)로 둔다.** 딱지를 글 흐름에 흘려 두면 글이 접힐 때 둘째 줄이
- * 딱지 밑으로 파고들어 왼쪽 줄이 흐트러진다
- */
 export const item = style({
   display: 'grid',
-  gridTemplateColumns: '3.6em 1fr',
-  gap: GAP.small,
-  fontSize: TEXT.small,
-  lineHeight: 1.5,
+  gridTemplateColumns: '36px minmax(0, 1fr)',
+  alignItems: 'baseline',
+  padding: `${String(GAP.tight)}px 0`,
+  fontSize: TEXT.base,
+  lineHeight: 1.62,
+  color: vars.ink.normal,
 })
 
-export const tag = style({
-  ...WINDOW_SMALL,
-  alignSelf: 'start',
-  padding: '1px 0',
-  borderRadius: RADIUS.bar,
-  fontSize: TEXT.tiny,
-  textAlign: 'center',
-})
+export const kind = style({ fontSize: TEXT.tiny, fontWeight: 700, color: vars.ink.dim })
 
-export const foot = style({
-  display: 'flex',
-  alignItems: 'center',
-  gap: GAP.base,
-  flexWrap: 'wrap',
-})
-
-export const hint = style({
-  flex: '1 1 auto',
-  fontSize: TEXT.tiny,
-  color: vars.ink.faint,
-})
-
-export const close = style({
-  ...WINDOW_SMALL,
-  appearance: 'none',
-  padding: `7px ${GAP.base}px`,
-  fontFamily: vars.font.ui,
-  fontSize: TEXT.tiny,
-  borderRadius: RADIUS.cell,
-  cursor: 'pointer',
-  selectors: { '&:hover': { borderColor: vars.pick.edge } },
+export const fadeEnd = style({
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  bottom: 0,
+  height: 6,
+  pointerEvents: 'none',
+  background: `linear-gradient(180deg, transparent, ${vars.window.faceBottom})`,
 })
