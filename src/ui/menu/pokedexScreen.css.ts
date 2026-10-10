@@ -42,18 +42,11 @@ export const pane = style({
   padding: `${GAP.small}px ${GAP.wide}px ${GAP.small}px`,
 })
 
-/** 쪽 띠 — 열리지 않은 쪽은 흐리다. 흐림은 칸 번호별 변수(`--tab-1`…)로 건다 (`PageTabs`가 탭을 `button`으로 그린다) */
-const tabDim = Object.fromEntries(
-  [1, 2, 3, 4, 5].map((n) => [
-    `& [role="tab"]:nth-of-type(${String(n)})`,
-    { opacity: `var(--tab-${String(n)}, 1)` },
-  ]),
-)
+/** 쪽 띠 — 열리지 않은 쪽은 `PageTabs`의 `disabled`가 흐리게 잠근다 */
 export const tabsRow = style({
   flex: '0 0 auto',
   paddingBottom: GAP.small,
   borderBottom: RULE,
-  selectors: tabDim,
 })
 
 const pageIn = keyframes({

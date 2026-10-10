@@ -15,7 +15,7 @@
 //
 // 키: ↑↓ 종 · Q/E 여덟 줄 · ←→ 쪽(모습 쪽은 모습, 끝에서 한 번 더 밀면 쪽) · Tab 검색 · Z 울음 · Shift 쪽마다 하나(분포는
 // 시간대, 울음소리는 볼 판 들어가기) · X 닫기.
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useGameLocale } from '../../state/optionsStore'
 import {
   NO_FILTER, SORT_ORDER_COUNT, FILTER_SHAPE_COUNT, FILTER_TYPE_COUNT, dexList, isPlain, type DexQuery,
@@ -229,10 +229,6 @@ export function PokedexScreen() {
           ? words.cryFoot
           : words.listFoot(shown === PAGE_FORMS && forms > 1 ? words.formsPage : words.page)
 
-  const tabVars = Object.fromEntries(
-    PAGE_KEYS.map((_, i) => [`--tab-${String(i + 1)}`, open.includes(i) ? 1 : 0.35]),
-  )
-
   return (
     <MenuScreen
       title={effective.national ? words.titleNational : words.title}
@@ -242,9 +238,9 @@ export function PokedexScreen() {
     >
       <div className={own.body}>
         <section className={own.pane}>
-          <div className={own.tabsRow} style={tabVars as CSSProperties}>
+          <div className={own.tabsRow}>
             <PageTabs
-              pages={PAGE_KEYS.map((key, i) => ({ key, label: pageLabel(i, ui) }))}
+              pages={PAGE_KEYS.map((key, i) => ({ key, label: pageLabel(i, ui), disabled: !open.includes(i) }))}
               at={shown}
               onPick={(i) => { if (open.includes(i)) { setPage(i); setForm(0) } }}
             />
