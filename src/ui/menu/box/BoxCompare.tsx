@@ -22,6 +22,12 @@ const STAT_ROWS: readonly (readonly [string, keyof ReturnType<typeof statsOf>])[
   ['특공', 'spa'], ['특방', 'spd'], ['스피드', 'spe'],
 ]
 
+/**
+ * ⚠️ **알은 능력치도 기술도 안 보인다.** 안에 든 종족이 새기 때문이다 — 원작도 알이면 성격 · 능력치 · 기술 줄을 안 찍는다
+ * (`compareMon->isEgg == FALSE`일 때만 `ov19_021DEC04.c`가 그린다). 알 쪽은 「—」이고 막대가 없다
+ */
+const seen = (mon: PokemonInstance | null | undefined): mon is PokemonInstance => !!mon && !mon.isEgg
+
 /** 막대 길이의 기준 — 두 마리의 여섯 값 가운데 가장 큰 것. 비슷한 값은 비슷한 길이가 된다 */
 function statMax(
   mons: readonly (PokemonInstance | null)[], species: SpeciesTable | null,
@@ -29,7 +35,7 @@ function statMax(
   if (species === null) return 0
   let top = 0
   for (const mon of mons) {
-    if (mon === null) continue
+    if (mon === null || mon.isEgg) continue
     const stats = statsOf(mon, species.of(mon))
     for (const [, key] of STAT_ROWS) top = Math.max(top, stats[key])
   }
@@ -81,25 +87,32 @@ export function BoxCompare(
       {page === 0 && species && left && right && (
         <div className={own.compareRows}>
           {STAT_ROWS.map(([label, key]) => {
-            const a = statsOf(left, species.of(left))[key]
-            const b = statsOf(right, species.of(right))[key]
+            const a = seen(left) ? statsOf(left, species.of(left))[key] : null
+            const b = seen(right) ? statsOf(right, species.of(right))[key] : null
+            // 이긴 쪽은 둘 다 보일 때만 가린다
+            const aWin = a !== null && b !== null && a > b
+            const bWin = a !== null && b !== null && b > a
             return (
               <div key={label} className={own.compareRow}>
-                <span className={`${a > b ? own.compareWin : own.compareValue} ${own.compareValueLeft}`}>{a}</span>
+                <span className={`${aWin ? own.compareWin : own.compareValue} ${own.compareValueLeft}`}>{a ?? '—'}</span>
                 <span className={own.compareTrack}>
-                  <span
-                    className={a > b ? `${own.compareBarLeft} ${own.compareBarWin}` : own.compareBarLeft}
-                    style={{ width: `${String(compareBar(a, top) * 100)}%` }}
-                  />
+                  {a !== null && (
+                    <span
+                      className={aWin ? `${own.compareBarLeft} ${own.compareBarWin}` : own.compareBarLeft}
+                      style={{ width: `${String(compareBar(a, top) * 100)}%` }}
+                    />
+                  )}
                 </span>
                 <span className={own.compareLabel}>{label}</span>
                 <span className={own.compareTrack}>
-                  <span
-                    className={b > a ? `${own.compareBarRight} ${own.compareBarWin}` : own.compareBarRight}
-                    style={{ width: `${String(compareBar(b, top) * 100)}%` }}
-                  />
+                  {b !== null && (
+                    <span
+                      className={bWin ? `${own.compareBarRight} ${own.compareBarWin}` : own.compareBarRight}
+                      style={{ width: `${String(compareBar(b, top) * 100)}%` }}
+                    />
+                  )}
                 </span>
-                <span className={b > a ? own.compareWin : own.compareValue}>{b}</span>
+                <span className={bWin ? own.compareWin : own.compareValue}>{b ?? '—'}</span>
               </div>
             )
           })}
@@ -111,11 +124,11 @@ export function BoxCompare(
           {[0, 1, 2, 3].map((i) => (
             <div key={i} className={own.compareMoveRow}>
               <span className={`${own.compareMoveText} ${own.compareMoveLeft}`}>
-                {left?.moves[i] ? moveNames[left.moves[i].move] ?? '' : '—'}
+                {seen(left) && left.moves[i] ? moveNames[left.moves[i].move] ?? '' : '—'}
               </span>
               <span className={own.compareLabel}>{i + 1}</span>
               <span className={own.compareMoveText}>
-                {right?.moves[i] ? moveNames[right.moves[i].move] ?? '' : '—'}
+                {seen(right) && right.moves[i] ? moveNames[right.moves[i].move] ?? '' : '—'}
               </span>
             </div>
           ))}
