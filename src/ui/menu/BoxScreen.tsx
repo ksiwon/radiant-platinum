@@ -10,16 +10,19 @@
 // ⚠️ 그림은 **원작 아이콘**이다. 배틀 그림을 줄여 쓰면 서른 칸이 그림으로 덮인다
 // (`data/pokeIcons.png`). 벽지도 원작 것이다 — 박스 열여덟 개를 눈으로 가르는
 // 것이 이름이 아니라 벽지 색이다.
+//
+// 그리는 일은 `box/*`가 나눠 맡는다 — 이 파일은 상태(`cursor` · `held` · `menu` · `say` · …)와 키 · 동작만 쥔다.
+// 알림 글은 모두 `say`(대사)로 띄운다 — 갈래 창 안에 섞지 않는다. X는 묻지 않고 바로 닫는다(결정).
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
-  loadBoxWallpapers, loadItemNames, loadItems, loadMoveNames, loadMoves, loadPokeIcons, loadSpecies,
-  loadSpeciesNames,
+  loadBoxWallpapers, loadItemDescriptions, loadItemIcons, loadItemNames, loadItems, loadMoveNames, loadMoves,
+  loadPokeIcons, loadSpecies, loadSpeciesNames,
 } from '../../data/gameData'
 import type { ItemTable, MoveTable, SpeciesTable } from '../../data/gameData'
-import type { BoxWallpapers, PokeIcons } from '../../data/schema'
+import type { BoxWallpapers, ItemIcons, PokeIcons } from '../../data/schema'
 import { BOX_TEXT, fillMenuText, loadUiText, PC_MENU } from '../../data/uiText'
-import { genderOf, maxHp, natureOf, PARTY_MAX, statsOf } from '../../engine/pokemon/instance'
+import { maxHp, natureOf, PARTY_MAX } from '../../engine/pokemon/instance'
 import type { PokemonInstance } from '../../engine/pokemon/instance'
 import {
   BOX_COLS, BOX_COUNT, BOX_MODE, BOX_ROWS, BOX_SIZE, countAll, countInBox, onLastAliveMon,
@@ -31,24 +34,27 @@ import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { SPECIES_CHATOT } from '../../engine/pokemon/chatotCry'
-import { ITEM_GRISEOUS_ORB, SPECIES_EGG, SPECIES_GIRATINA, spriteKey } from '../../engine/pokemon/form'
+import type { PixelScale } from '../theme/scale'
+import { ITEM_GRISEOUS_ORB, SPECIES_GIRATINA } from '../../engine/pokemon/form'
 import { mailTypeOfItem } from '../../engine/world/mail'
 import { LocationEvent } from '../../engine/world/journal'
 import { journalPlain } from '../../scene/journal'
-import { useAssetImage } from '../../data/providers/useAssetUrl'
 import { withHeldItem } from './formChange'
+import { ChoiceMenu } from '../common/ChoiceMenu'
+import type { ChoiceItem } from '../common/ChoiceMenu'
+import { iconHop } from '../common/iconHop'
+import { MessageDock } from '../common/MessageDock'
+import { boxFoot, boxNote, filled, filmCells, nameOfMon, occupancyDots } from './box/boxMenus'
+import { BoxCensus, BoxDetail } from './box/BoxDetail'
+import { BoxCompare, COMPARE_PAGES } from './box/BoxCompare'
+import { BoxFilm } from './box/BoxFilm'
+import { BoxParty } from './box/BoxParty'
+import { BoxWall } from './box/BoxWall'
+import { itemIconAt } from './itemIcon'
 import { MenuScreen } from './MenuScreen'
-import { boxWallpaper, monIcon } from './pokeIcon'
 import { SummaryScreen } from './SummaryScreen'
 import { useMenuKeys, wrapCursor } from './useMenuKeys'
-import * as css from './menuChrome.css'
 import * as own from './boxScreen.css'
-import { pointerMoved } from '../pointerMoved'
-
-/** 벽지·아이콘을 화면 픽셀로 옮기는 배수. css 쪽과 같은 값이다 */
-const K = 3
-/** 박스 칸의 아이콘 크기 (원작 32) */
-const SLOT_ICON = 32 * K
 
 /** 커서가 앉을 수 있는 곳 — 박스 이름 머리(`header`)는 박스 맨 윗줄 위다 */
 type Pane = 'box' | 'party' | 'header'
@@ -164,6 +170,9 @@ export function BoxScreen() {
   const [species, setSpecies] = useState<SpeciesTable | null>(null)
   const [names, setNames] = useState<string[]>([])
   const [icons, setIcons] = useState<PokeIcons>()
+  const [itemIcons, setItemIcons] = useState<ItemIcons>()
+  /** 도구 설명 — 도구 옮기기에서 선 도구의 설명이 대사에 상시 선다 */
+  const [itemText, setItemText] = useState<string[]>([])
   const [walls, setWalls] = useState<BoxWallpapers>()
   /** `pokemon_storage_system` — 박스 이름 18개 */
   const [boxText, setBoxText] = useState<string[]>([])
@@ -200,7 +209,13 @@ export function BoxScreen() {
   const unlockedWallpapers = useSaveStore((s) => s.unlockedWallpapers)
   const boxNames = useSaveStore((s) => s.boxNames)
   const pushNaming = useMenuStore((s) => s.pushNaming)
-  const [notice, setNotice] = useState<string | null>(null)
+  /** 꺼내기 모드의 첫 안내 — 처음 키를 누르면 사라진다 */
+  const [intro, setIntro] = useState(true)
+  /** 갈래 창이 가리킬 칸 · 벽지 · 이름 띠 (DOM) */
+  const boxSlots = useRef<(HTMLElement | null)[]>([])
+  const partySlots = useRef<(HTMLElement | null)[]>([])
+  const [wallEl, setWallEl] = useState<HTMLElement | null>(null)
+  const [stageEl, setStageEl] = useState<HTMLElement | null>(null)
   /** 메뉴 자리에 띄운 원작 줄. Z·X로 한 줄씩 넘기고 다 읽으면 닫힌다 */
   const [say, setSay] = useState<string[] | null>(null)
   /**
@@ -233,14 +248,14 @@ export function BoxScreen() {
       loadSpecies(), loadSpeciesNames(locale), loadPokeIcons(), loadBoxWallpapers(),
       loadUiText('storageSystem', locale), loadUiText('boxMessages', locale),
       loadUiText('menuEntries', locale), loadItemNames(locale), loadMoveNames(locale),
-      loadUiText('natureNames', locale), loadItems(), loadMoves(),
+      loadUiText('natureNames', locale), loadItems(), loadMoves(), loadItemIcons(), loadItemDescriptions(locale),
     ])
-      .then(([table, list, icon, wall, names18, names19, entries, itemText, moves, natures, itemData, moveData]) => {
+      .then(([table, list, icon, wall, names18, names19, entries, itemText, moves, natures, itemData, moveData, itemArt, itemDesc]) => {
         if (!alive) return
         setSpecies(table); setNames(list); setIcons(icon); setWalls(wall)
         setBoxText(names18); setMsg(names19); setPcText(entries)
         setItemNames(itemText); setMoveNames(moves); setNatureNames(natures)
-        setItems(itemData); setMoveTable(moveData)
+        setItems(itemData); setMoveTable(moveData); setItemIcons(itemArt); setItemText(itemDesc)
       })
       .catch(() => { /* 그림과 이름만 빈다. 자리는 선다 */ })
     return () => { alive = false }
@@ -252,7 +267,7 @@ export function BoxScreen() {
   const selected = monAt(cursor)
 
   const step = (dx: number, dz: number) => () => {
-    setNotice(null)
+    if (intro) setIntro(false)
     if (say !== null) return false
     if (menu !== null) {
       const d = dz !== 0 ? dz : dx
@@ -403,6 +418,11 @@ export function BoxScreen() {
     }
   }
 
+  /** 알림 글을 대사로 띄운다. 글이 아직 안 왔으면 아무것도 안 한다 */
+  const notify = (text: string | undefined): void => {
+    if (text !== undefined && text !== '') setSay([text])
+  }
+
   /** 띄운 줄을 한 줄 넘긴다. 마지막 줄 다음은 닫는다 */
   const nextSay = (): void => {
     if (say === null) return
@@ -417,7 +437,7 @@ export function BoxScreen() {
   }
 
   const turnBox = (d: number) => () => {
-    setNotice(null)
+    if (intro) setIntro(false)
     if (say !== null || menu !== null) return false
     setCurrentBox(wrapCursor(box, d, BOX_COUNT))
   }
@@ -430,7 +450,6 @@ export function BoxScreen() {
    * 싸울 수 있는 마지막 한 마리는 못 맡긴다
    */
   const grab = (): void => {
-    setNotice(null)
     // 띄운 줄은 끝까지 읽고 닫아야 다음 손짓이 선다
     if (say !== null) return
     // 도구 옮기기(3)·비교하기(4)는 마리가 아니라 다른 것을 집는다
@@ -472,11 +491,11 @@ export function BoxScreen() {
    */
   const grabItem = (): void => {
     // 알은 도구를 못 든다 — 집을 것도 놓을 데도 없다 (`BoxApp_IsPreviewedMonEgg`)
-    if (selected?.isEgg) { setNotice(msg[MON_TEXT.eggNoItem] ?? null); return }
+    if (selected?.isEgg) { notify(msg[MON_TEXT.eggNoItem]); return }
     if (heldItem === null) {
-      if (!selected || selected.heldItem === 0) { setNotice('지닌 물건이 없다'); return }
+      if (!selected || selected.heldItem === 0) { notify(msg[BOX_TEXT.noItem]); return }
       // 편지는 떼어 낼 수 없다 (`BOX_MENU_TAKE`의 `Item_IsMail`)
-      if (mailTypeOfItem(selected.heldItem) !== null) { setNotice(msg[MON_TEXT.cantTakeMail] ?? null); return }
+      if (mailTypeOfItem(selected.heldItem) !== null) { notify(msg[MON_TEXT.cantTakeMail]); return }
       const from = here()
       giveItem(from, selected, 0)
       setHeldItem({ from, item: selected.heldItem })
@@ -484,14 +503,14 @@ export function BoxScreen() {
       moved.current = true
       return
     }
-    if (!selected) { setNotice(msg[BOX_TEXT.noItem] ?? '여기에는 못 놓는다'); return }
+    if (!selected) { notify(msg[BOX_TEXT.noItem]); return }
     // 백금옥은 기라티나만 든다 (`BOX_MENU_GIVE` · `BOX_MENU_SWITCH`)
     if (heldItem.item === ITEM_GRISEOUS_ORB && selected.species !== SPECIES_GIRATINA) {
-      setNotice(itemLine(MON_TEXT.cantHold, ITEM_GRISEOUS_ORB))
+      notify(itemLine(MON_TEXT.cantHold, ITEM_GRISEOUS_ORB))
       return
     }
     // 맞바꿀 것이 편지면 못 바꾼다 (`BOX_MENU_SWITCH`의 `Item_IsMail`)
-    if (mailTypeOfItem(selected.heldItem) !== null) { setNotice(msg[MON_TEXT.cantTakeMail] ?? null); return }
+    if (mailTypeOfItem(selected.heldItem) !== null) { notify(msg[MON_TEXT.cantTakeMail]); return }
     const to = here()
     // 상대가 이미 들고 있으면 **맞바꾼다** — 원작도 그렇다
     const swapped = selected.heldItem
@@ -533,15 +552,15 @@ export function BoxScreen() {
     if (from.pane === 'party') {
       // 맡긴다. 자리는 스토어가 원작 규칙으로 고른다 — 커서가 선 칸이 비어
       // 있으면 그 칸이지만, 차 있으면 그다음 빈 칸이다
-      if (countAll(boxes) >= BOX_COUNT * BOX_SIZE) { setNotice(msg[BOX_TEXT.boxFull] ?? null); return false }
+      if (countAll(boxes) >= BOX_COUNT * BOX_SIZE) { notify(msg[BOX_TEXT.boxFull]); return false }
       const put = depositMon(from.at)
-      if (put === null) { setNotice(msg[BOX_TEXT.lastMon] ?? null); return false }
+      if (put === null) { notify(msg[BOX_TEXT.lastMon]); return false }
       setCursor({ pane: 'box', at: put.slot })
       setCurrentBox(put.box)
       return true
     }
     // 꺼낸다
-    if (party.length >= PARTY_MAX) { setNotice(msg[BOX_TEXT.partyFull] ?? null); return false }
+    if (party.length >= PARTY_MAX) { notify(msg[BOX_TEXT.partyFull]); return false }
     if (!withdrawMon(from.at)) return false
     setCursor({ pane: 'party', at: party.length })
     return true
@@ -561,7 +580,7 @@ export function BoxScreen() {
     pageUp: turnBox(-1),
     pageDown: turnBox(1),
     tab: () => {
-      setNotice(null)
+      if (intro) setIntro(false)
       if (say !== null || menu !== null) return false
       // 비교하기에서는 Tab이 쪽을 넘긴다 (`enum CompareMode`)
       if (mode === BOX_MODE.compare) {
@@ -571,6 +590,7 @@ export function BoxScreen() {
       setCursor((c) => ({ pane: c.pane === 'box' ? 'party' : 'box', at: 0 }))
     },
     confirm: () => {
+      if (intro) setIntro(false)
       if (say !== null) { nextSay(); return }
       if (menu !== null) { pickMenu(); return }
       if (cursor.pane === 'header') {
@@ -585,7 +605,7 @@ export function BoxScreen() {
       grab()
     },
     cancel: () => {
-      setNotice(null)
+      if (intro) setIntro(false)
       if (say !== null) { nextSay(); return }
       if (menu !== null) { backMenu(); return }
       // ⚠️ **들고 있던 도구를 돌려놓고 닫는다.** 안 그러면 도구가 사라진다
@@ -612,8 +632,7 @@ export function BoxScreen() {
   }, viewing === null)
 
   // ⚠️ 알은 「알」이다 — 종족 이름을 찍으면 안에 무엇이 들었는지가 새어 나간다 (`BoxApp_LoadBoxMonIntoPreview`)
-  const nameOf = (mon: PokemonInstance): string =>
-    (mon.isEgg ? names[SPECIES_EGG] : mon.nickname ?? names[mon.species]) ?? ''
+  const nameOf = (mon: PokemonInstance): string => nameOfMon(mon, names)
   /** 메뉴 위의 물음 — 머리 셋은 고정 줄, 마리 메뉴는 그 마리 이름이 든 줄 */
   const askOf = (open: HeaderMenu): string => {
     switch (open.kind) {
@@ -630,23 +649,20 @@ export function BoxScreen() {
       default: return ''
     }
   }
-  const info = species && selected ? species.of(selected) : undefined
   const boxName = nameOfBox(box)
   const title = pcText[PC_MENU.storageModes + mode] ?? ''
 
-  const foot = say !== null
-    ? 'Z 다음'
-    : menu !== null
-      ? '↑↓ 고르기 · Z 결정 · X 그만둔다'
-      : mode === BOX_MODE.compare
-        ? `↑↓←→ 고르기 · Z 올린다/내린다 · Tab ${COMPARE_PAGES[comparePage]} · X 닫기`
-        : mode === BOX_MODE.items
-          ? (heldItem !== null
-            ? '↑↓←→ 옮기기 · Z 놓기 · Q/E 박스 · X 도구 돌려놓기'
-            : '↑↓←→ 고르기 · Z 도구 집기 · Tab 파티/박스 · Q/E 박스 · X 닫기')
-          : held !== null
-            ? '↑↓←→ 옮기기 · Z 놓기 · Q/E 박스 · X 되돌리기'
-            : '↑↓←→ 고르기 · Z 메뉴 · Tab 파티/박스 · Q/E 박스 · X 닫기'
+  const foot = boxFoot(
+    {
+      say: say !== null,
+      menu: menu !== null,
+      mode,
+      held: held !== null,
+      heldItem: heldItem !== null,
+      comparePage: COMPARE_PAGES[comparePage],
+    },
+    { compare: BOX_MODE.compare, items: BOX_MODE.items },
+  )
 
   if (viewing !== null) {
     const shownBox = box
@@ -665,215 +681,229 @@ export function BoxScreen() {
     )
   }
 
+  const hopOf = (mon: PokemonInstance, scale: PixelScale) =>
+    mon.isEgg || species === null ? null : iconHop(mon.hp, maxHp(mon, species.of(mon)), mon.status, scale)
+  const maxHpOf = (mon: PokemonInstance): number | null => (species === null ? null : maxHp(mon, species.of(mon)))
+
+  // 손에 든 것 — 마리는 커서가 선 쪽(박스 · 파티)에서 위로 떠서 따라간다
+  const heldMon = held !== null ? monAtHeld(held) : null
+  const liftItem = heldItem !== null && mode === BOX_MODE.items ? heldItem.item : null
+  const wallChoosing = menu?.kind === 'walls' ? menu.items[menu.at] : undefined
+  const wallIndex = wallChoosing !== undefined ? wallChoosing - BOX_MENU.firstWall : wallpapers[box] ?? 0
+  const peek = menu?.kind === 'jump' ? menu.items[menu.at] ?? null : null
+  const inBox = filled(boxes, box)
+
+  // 대사 — 띄운 줄 · 갈래 창의 물음 · 꺼내기의 첫 안내 · 도구 옮기기에서 선 도구의 설명 (없으면 자리를 안 잡는다)
+  const sayLine = say !== null ? say[0] ?? '' : null
+  const askLine = say === null && menu !== null ? askOf(menu) : ''
+  const itemInHand = heldItem?.item ?? selected?.heldItem ?? 0
+  const dockText = sayLine
+    ?? (askLine !== '' ? askLine
+      : intro && mode === BOX_MODE.withdraw ? msg[BOX_TEXT.pickWithdraw] ?? ''
+        : mode === BOX_MODE.items && itemInHand !== 0 ? itemText[itemInHand] ?? '' : '')
+  const docked = dockText !== ''
+
+  /** 점프 · 맡기기 목록의 항목 — 이름 ··· 채움 수. 하네스는 항목 글(`textContent`)을 읽으므로 수는 `::after`가 그린다 */
+  const boxChoice = (at: number): ChoiceItem => {
+    const n = filled(boxes, at)
+    return {
+      key: String(at),
+      label: (
+        <span
+          className={[own.jumpItem, n >= BOX_SIZE ? own.jumpFull : n === 0 ? own.jumpEmpty : ''].filter(Boolean).join(' ')}
+          data-count={`${String(n)}/${String(BOX_SIZE)}`}
+        >
+          {nameOfBox(at)}
+        </span>
+      ),
+    }
+  }
+
+  const menuChoices = (open: HeaderMenu): ChoiceItem[] => open.items.map((item) => (
+    open.kind === 'jump' || open.kind === 'store'
+      ? boxChoice(item)
+      : { key: String(item), label: boxText[MENU_LABEL + item] ?? '' }
+  ))
+
+  const menuAnchorEl = (open: HeaderMenu): HTMLElement | null => {
+    const target = open.target
+    if (!target) return null
+    return target.pane === 'box' ? boxSlots.current[target.at.slot] ?? null : partySlots.current[target.at] ?? null
+  }
+
+  /** 갈래 창 — 마리 메뉴는 그 칸 옆에 뜨고, 머리 메뉴는 이름 띠 아래 가운데에 뜬다 */
+  const renderMenu = (open: HeaderMenu): ReactNode => {
+    const onBox = open.target?.pane === 'box'
+    const fromHeader = open.target === undefined
+    return (
+      <ChoiceMenu
+        key={open.kind}
+        items={menuChoices(open)}
+        at={open.at}
+        anchor={fromHeader ? null : menuAnchorEl(open)}
+        within={onBox ? wallEl : stageEl}
+        side="right"
+        enabled={false}
+        {...(open.kind === 'jump' || open.kind === 'store' ? { scroll: 8 } : {})}
+        itemRole="menuitem"
+        rootProps={{
+          role: 'menu',
+          'data-box-menu': open.kind,
+          ...(fromHeader ? { style: { left: HEADER_MENU.left, top: HEADER_MENU.top, width: HEADER_MENU.width } } : {}),
+        }}
+        onAt={(i) => { setMenu((m) => (m === null ? m : { ...m, at: i })) }}
+        onPick={(i) => { pickMenu(i) }}
+      />
+    )
+  }
+
+  const heldHere = held !== null && held.pane === 'box' && held.at.box === box ? held.at.slot : null
+  const heldParty = held !== null && held.pane === 'party' ? held.at : null
+
+  const detail = (() => {
+    if (mode === BOX_MODE.compare) {
+      return (
+        <BoxCompare
+          page={comparePage}
+          mons={compare.map((c) => (c === null ? null : monAtHeld(c)))}
+          names={names}
+          species={species}
+          moveNames={moveNames}
+        />
+      )
+    }
+    // 든 마리가 있으면 그 마리를 보인다 (원작도 든 마리를 미리본다)
+    const shown = heldMon ?? selected
+    const shownInfo = species && shown ? species.of(shown) : undefined
+    if (shown && shownInfo) {
+      return (
+        <>
+          <BoxDetail
+            mon={shown}
+            name={nameOf(shown)}
+            info={shownInfo}
+            held={heldMon !== null}
+            natureName={natureNames[natureOf(shown.pid)] ?? ''}
+            itemName={itemNames[shown.heldItem] ?? ''}
+            itemIcons={itemIcons}
+            moveNames={moveNames}
+            moveTable={moveTable}
+            labels={{
+              nature: msg[BOX_TEXT.nature] ?? '',
+              hp: msg[BOX_TEXT.hp] ?? '',
+              moves: msg[BOX_TEXT.moves] ?? '',
+              item: boxText[MENU_LABEL + BOX_MENU.item] ?? '',
+              noItem: msg[BOX_TEXT.noItem] ?? '',
+            }}
+            docked={docked}
+          />
+          {mode === BOX_MODE.items && heldItem !== null && (
+            <div className={own.detailRow}>
+              <span className={own.detailItemIcon} style={itemIconAt(itemIcons, heldItem.item, 1)} aria-hidden />
+              <span>{itemNames[heldItem.item] ?? ''}</span>
+            </div>
+          )}
+        </>
+      )
+    }
+    // 빈 칸이나 머리 — 이 박스의 현황
+    return (
+      <BoxCensus
+        name={boxName}
+        wallName={boxText[MENU_LABEL + BOX_MENU.firstWall + (wallpapers[box] ?? 0)] ?? ''}
+        dots={occupancyDots(current, cursor.pane === 'box' ? cursor.at : null)}
+        count={inBox}
+        size={BOX_SIZE}
+        total={countAll(boxes)}
+        capacity={BOX_COUNT * BOX_SIZE}
+      />
+    )
+  })()
+
   return (
     <MenuScreen
       title={title}
-      note={`박스 ${String(countAll(boxes))}/${String(BOX_COUNT * BOX_SIZE)} · 파티 ${String(party.length)}/${String(PARTY_MAX)}`}
+      note={boxNote(inBox, countAll(boxes), party.length, PARTY_MAX, BOX_COUNT * BOX_SIZE)}
       foot={foot}
     >
-      <div className={own.stage}>
+      <div className={own.stage} ref={setStageEl}>
         <div className={own.boxSide}>
-          <div className={own.pager}>
-            <span className={own.pagerArrow} onClick={turnBox(-1)}>◀</span>
-            <span className={own.pagerCount}>
-              {box + 1} / {BOX_COUNT} · {countInBox(boxes, box)}/{BOX_SIZE}
-            </span>
-            <span className={own.pagerArrow} onClick={turnBox(1)}>▶</span>
-          </div>
-
-          <div
-            className={own.wall}
-            style={boxWallpaper(walls, wallpapers[box] ?? 0, K)}
+          <BoxWall
+            walls={walls}
+            wallIndex={wallIndex}
+            icons={icons}
+            itemIcons={itemIcons}
+            mons={current}
+            name={boxName}
+            cursorAt={cursor.pane === 'box' ? cursor.at : null}
+            header={cursor.pane === 'header'}
+            ghost={heldHere}
+            lift={cursor.pane === 'box' ? heldMon : null}
+            liftItem={cursor.pane === 'box' ? liftItem : null}
+            itemDots={mode === BOX_MODE.items}
+            hopOf={hopOf}
+            slotRef={(i, el) => { boxSlots.current[i] = el }}
+            wallRef={setWallEl}
+            onHover={(i) => { setCursor({ pane: 'box', at: i }) }}
+            onGrab={grab}
+            onBanner={() => { setCursor({ pane: 'header', at: 0 }) }}
+            onTurn={(d) => { turnBox(d)() }}
           >
+            {menu !== null && menu.target === undefined && renderMenu(menu)}
+          </BoxWall>
+          <BoxFilm
+            walls={walls}
+            wallpapers={wallpapers}
+            cells={filmCells(boxes, BOX_COUNT)}
+            names={Array.from({ length: BOX_COUNT }, (_, i) => nameOfBox(i))}
+            current={box}
+            peek={peek}
+            here={inBox}
+            onPick={(i) => { if (say === null && menu === null) setCurrentBox(i) }}
+          />
+        </div>
+
+        <div className={own.pillar}>
+          <div className={own.head}>
+            <span className={cursor.pane === 'party' ? own.headOn : undefined}>{PARTY_LABEL[locale]}</span>
+            <span className={own.headCount}>{party.length}/{PARTY_MAX}</span>
+          </div>
+          <BoxParty
+            party={party}
+            names={names}
+            icons={icons}
+            maxHpOf={maxHpOf}
+            cursorAt={cursor.pane === 'party' ? cursor.at : null}
+            ghost={heldParty}
+            lift={cursor.pane === 'party' ? heldMon : null}
+            hopOf={hopOf}
+            slotRef={(i, el) => { partySlots.current[i] = el }}
+            onHover={(i) => { setCursor({ pane: 'party', at: i }) }}
+            onGrab={grab}
+          />
+          {detail}
+          {docked && (
             <div
-              className={own.boxName}
-              data-box-header={cursor.pane === 'header' ? 'on' : 'off'}
-              style={cursor.pane === 'header' ? { outline: '3px solid currentColor', outlineOffset: 2, borderRadius: 6 } : undefined}
-              onClick={() => { setCursor({ pane: 'header', at: 0 }) }}
+              className={own.say}
+              role="status"
+              {...(sayLine !== null ? { 'data-box-say': '' } : askLine !== '' ? { 'data-box-ask': '' } : {})}
+              onClick={nextSay}
             >
-              {boxName}
+              <MessageDock lines={dockText} />
             </div>
-            {say !== null ? (
-              <div role="status" data-box-say className={own.headerMenu} onClick={nextSay}>
-                <div className={own.headerItem} style={{ paddingLeft: 16 }}>{say[0]}</div>
-              </div>
-            ) : menu !== null && (
-              <div role="menu" data-box-menu={menu.kind} className={own.headerMenu}>
-                {menu.kind !== 'header' && (
-                  <div className={own.headerAsk}>{askOf(menu)}</div>
-                )}
-                {menu.items.map((item, i) => (
-                  <div
-                    key={item}
-                    role="menuitem"
-                    aria-selected={i === menu.at}
-                    className={i === menu.at ? own.headerItemOn : own.headerItem}
-                    onPointerMove={(e) => { if (pointerMoved(e) && menu.at !== i) setMenu({ ...menu, at: i }) }}
-                    onClick={() => { pickMenu(i) }}
-                  >
-                    {menu.kind === 'jump' || menu.kind === 'store' ? nameOfBox(item) : boxText[MENU_LABEL + item] ?? ''}
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className={own.grid}>
-              {cursor.pane === 'box' && (
-                <span
-                  className={own.cursor}
-                  style={{
-                    left: (cursor.at % BOX_COLS) * own.SLOT_PITCH,
-                    top: Math.floor(cursor.at / BOX_COLS) * own.SLOT_PITCH,
-                  }}
-                />
-              )}
-              {current.map((mon, i) => (
-                <span
-                  key={i}
-                  className={[
-                    own.slot,
-                    held?.pane === 'box' && held.at.box === box && held.at.slot === i
-                      ? own.picked : '',
-                  ].filter(Boolean).join(' ')}
-                  style={{
-                    left: (i % BOX_COLS) * own.SLOT_PITCH,
-                    top: Math.floor(i / BOX_COLS) * own.SLOT_PITCH,
-                    ...(mon ? monIcon(icons, mon, SLOT_ICON) : { width: SLOT_ICON, height: SLOT_ICON }),
-                  }}
-                  onPointerMove={(e) => { if (pointerMoved(e) && (cursor.pane !== 'box' || cursor.at !== i)) setCursor({ pane: 'box', at: i }) }}
-                  onClick={grab}
-                />
-              ))}
-            </div>
-          </div>
+          )}
         </div>
-
-        <div className={own.side}>
-          <div className={own.partyHead}>파티</div>
-          <div className={own.party}>
-            {Array.from({ length: PARTY_MAX }, (_, i) => {
-              const mon = party[i]
-              const on = cursor.pane === 'party' && cursor.at === i
-              const kind = mon ? (on ? 'on' : 'off') : 'empty'
-              return (
-                <div
-                  key={i}
-                  className={[
-                    own.partySlot[kind],
-                    held?.pane === 'party' && held.at === i ? own.picked : '',
-                  ].filter(Boolean).join(' ')}
-                  onPointerMove={(e) => { if (pointerMoved(e) && (cursor.pane !== 'party' || cursor.at !== i)) setCursor({ pane: 'party', at: i }) }}
-                  onClick={grab}
-                >
-                  <span
-                    className={own.partyIcon}
-                    style={mon ? monIcon(icons, mon, 40) : undefined}
-                  />
-                  {mon && (
-                    <span className={own.partyName}>
-                      <span className={css.label}>{nameOf(mon)}</span>
-                      {!mon.isEgg && <span className={own.partyLevel}>Lv{mon.level}</span>}
-                    </span>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          <div className={own.notice}>{notice}</div>
-
-          <div className={own.detail}>
-            {mode === BOX_MODE.compare ? (
-              <ComparePanel
-                page={comparePage}
-                mons={compare.map((c) => (c === null ? null : monAtHeld(c)))}
-                names={names}
-                species={species}
-                moveNames={moveNames}
-              />
-            ) : selected && info ? (
-              <Preview mon={selected} name={nameOf(selected)}>
-                {!selected.isEgg && (
-                  <>
-                    <div className={own.detailName}>
-                      {nameOf(selected)}
-                      <Gender mon={selected} ratio={info.genderRatio} />
-                      {/* 배틀 체력판과 같은 꼴이다 (BattleScreen의 `Lv{mon.level}`) */}
-                      <span className={own.detailSub}>Lv{selected.level}</span>
-                    </div>
-                    <div className={own.detailRow}>
-                      <span className={own.detailLabel}>종족</span>
-                      <span>
-                        No.{String(selected.species).padStart(3, '0')} {names[selected.species] ?? ''}
-                      </span>
-                    </div>
-                    <div className={own.detailRow}>
-                      <span className={own.detailLabel}>성격</span>
-                      <span>{natureNames[natureOf(selected.pid)] ?? ''}</span>
-                    </div>
-                    <div className={own.detailRow}>
-                      <span className={own.detailLabel}>HP</span>
-                      <span>{selected.hp} / {maxHp(selected, info)}</span>
-                    </div>
-                    {/* 원작 미리보기도 늘 지닌 물건 줄을 둔다 — 빈손이면 「지닌물건 없음」이다 */}
-                    <div className={own.detailRow} data-box-held={selected.heldItem}>
-                      {selected.heldItem === 0 ? (
-                        <span className={own.detailNone}>{msg[BOX_TEXT.noItem] ?? ''}</span>
-                      ) : (
-                        <>
-                          <span className={own.detailLabel}>{boxText[MENU_LABEL + BOX_MENU.item] ?? ''}</span>
-                          <span>{itemNames[selected.heldItem] ?? ''}</span>
-                        </>
-                      )}
-                    </div>
-                  </>
-                )}
-              </Preview>
-            ) : null}
-            {mode === BOX_MODE.items && heldItem !== null && (
-              <div className={own.detailRow}>
-                <span className={own.detailLabel}>손에</span>
-                <span>{itemNames[heldItem.item] ?? ''}</span>
-              </div>
-            )}
-          </div>
-        </div>
+        {menu !== null && menu.target !== undefined && renderMenu(menu)}
       </div>
     </MenuScreen>
   )
 }
 
-/**
- * 고른 한 마리의 미리보기 (`BoxApp_LoadBoxMonIntoPreview` · `ov19_021DB0E4`).
- *
- * 원작은 위 화면 왼쪽 기둥에 그 마리의 **정면 그림**을 크게 세우고(80px 그림을 `44, 84`에)
- * 그 둘레에 종족 이름 · 도감 번호 · 별명 · 성별 · 레벨 · 지닌 물건을 찍는다. 알이면 이름 칸에
- * 「알」만 남고 번호 · 레벨 · 지닌 물건이 다 빠진다 — 그래서 알은 그림과 이름뿐이다.
- *
- * ⚠️ 마킹 줄(`ov19_021DB24C`의 여섯 칸)은 없다 — 마리에 마킹 칸이 없다
- */
-function Preview({ mon, name, children }: { mon: PokemonInstance; name: string; children: ReactNode }) {
-  const art = useAssetImage(`data/pokemon/${spriteKey(mon.species, mon.form, mon.isEgg)}_front.png`)
-  return (
-    <div className={own.preview} data-box-preview={mon.isEgg ? 'egg' : 'mon'}>
-      {art === null
-        ? <div className={own.previewArt} />
-        : <img className={own.previewArt} src={art} alt="" />}
-      <div className={own.previewText}>
-        {mon.isEgg ? <div className={own.detailName}>{name}</div> : children}
-      </div>
-    </div>
-  )
-}
+/** 파티 머리의 낱말 — 롬에 없는 말이라 세 언어를 든다 (원작 박스에는 이 머리가 없다) */
+const PARTY_LABEL: Record<string, string> = { ko: '파티', en: 'Party', ja: '手持ち' }
 
-const GENDER_MARK: Record<string, { mark: string; cls: string }> = {
-  male: { mark: '♂', cls: own.male },
-  female: { mark: '♀', cls: own.female },
-}
-
-function Gender({ mon, ratio }: { mon: PokemonInstance; ratio: number }) {
-  const gender = GENDER_MARK[genderOf(mon.pid, ratio)]
-  return gender ? <span className={gender.cls}>{gender.mark}</span> : null
-}
+/** 머리 갈래 창 — 이름 띠 아래 가운데 (벽지 좌표). 폭 176, 꼭지 없음 */
+const HEADER_MENU = { left: 164, top: 104, width: 176 } as const
 
 /**
  * 커서 한 칸 옮기기.
@@ -902,83 +932,4 @@ export function move(cursor: Cursor, dx: number, dz: number, partyCount: number)
   // 빈 칸도 커서가 선다 — 거기에 놓을 수 있어야 한다. 다만 파티는 앞에서부터
   // 차므로 들어 있는 수 **바로 다음 칸**까지만 간다
   return { pane: 'party', at: Math.min(nz * 3 + nx, Math.min(partyCount, PARTY_MAX - 1)) }
-}
-
-/**
- * 비교 쪽 둘 (`enum CompareMode`의 능력치 · 기술).
- *
- * ⚠️ 원작의 가운데 쪽(콘테스트 능력치)은 **접었다** — 콘테스트는 범위 밖이라 멋짐·아름다움
- * 다섯 값을 담는 계통이 없다. 빈 쪽을 넘겨 보게 두지 않는다
- */
-const COMPARE_PAGES = ['능력치', '기술'] as const
-
-const STAT_ROWS: readonly (readonly [string, keyof ReturnType<typeof statsOf>])[] = [
-  ['HP', 'hp'], ['공격', 'atk'], ['방어', 'def'],
-  ['특공', 'spa'], ['특방', 'spd'], ['스피드', 'spe'],
-]
-
-/** 두 마리를 나란히 놓고 본다 (`PC_MODE_COMPARE`). 쪽은 `COMPARE_PAGES`의 둘이다 */
-function ComparePanel(
-  { page, mons, names, species, moveNames }: {
-    page: number
-    mons: (PokemonInstance | null)[]
-    names: string[]
-    species: SpeciesTable | null
-    moveNames: string[]
-  },
-) {
-  // 알은 「알」이다 (`BoxApp_LoadBoxMonIntoComparison`이 알이면 종족 이름 칸을 쓴다)
-  const nameOf = (mon: PokemonInstance): string =>
-    (mon.isEgg ? names[SPECIES_EGG] : mon.nickname ?? names[mon.species]) ?? `#${String(mon.species)}`
-  const both = mons.filter((m): m is PokemonInstance => m !== null)
-  if (!both.length) {
-    return <div className={own.compareNote}>Z로 두 마리를 올린다 · Tab으로 쪽을 넘긴다</div>
-  }
-
-  return (
-    <div className={own.compare}>
-      <div className={own.compareHead}>
-        {mons.map((mon, i) => (
-          <span key={i} className={own.compareName}>{mon ? nameOf(mon) : '—'}</span>
-        ))}
-      </div>
-      <div className={own.comparePage}>{COMPARE_PAGES[page]}</div>
-
-      {page === 0 && species && mons[0] && mons[1] && (
-        <div className={own.compareRows}>
-          {STAT_ROWS.map(([label, key]) => {
-            const a = statsOf(mons[0]!, species.of(mons[0]!))[key]
-            const b = statsOf(mons[1]!, species.of(mons[1]!))[key]
-            return (
-              <div key={label} className={own.compareRow}>
-                <span className={a > b ? own.compareWin : own.compareValue}>{a}</span>
-                <span className={own.compareLabel}>{label}</span>
-                <span className={b > a ? own.compareWin : own.compareValue}>{b}</span>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {page === 1 && (
-        <div className={own.compareRows}>
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className={own.compareRow}>
-              <span className={own.compareValue}>
-                {mons[0]?.moves[i] ? moveNames[mons[0].moves[i].move] ?? '' : '—'}
-              </span>
-              <span className={own.compareLabel}>{i + 1}</span>
-              <span className={own.compareValue}>
-                {mons[1]?.moves[i] ? moveNames[mons[1].moves[i].move] ?? '' : '—'}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {(!mons[0] || !mons[1]) && (
-        <div className={own.compareNote}>한 마리를 더 올린다</div>
-      )}
-    </div>
-  )
 }
