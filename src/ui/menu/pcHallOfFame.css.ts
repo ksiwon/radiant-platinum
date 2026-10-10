@@ -164,7 +164,18 @@ export const cell = style({
   filter: 'grayscale(0.9)',
   opacity: 0.65,
 })
-export const cellOn = style({ ...PICKED, width: 48, height: 48, borderRadius: RADIUS.cell, filter: 'none', opacity: 1 })
+// ⚠️ `cell`과 따로 쓰는 클래스라 `display: grid`를 다시 준다 — 없으면 아이콘 `span`이 인라인이 되어 폭 · 높이를 못 받고
+// 고른 칸만 빈 금 상자로 선다
+export const cellOn = style({
+  ...PICKED,
+  width: 48,
+  height: 48,
+  display: 'grid',
+  placeItems: 'center',
+  borderRadius: RADIUS.cell,
+  filter: 'none',
+  opacity: 1,
+})
 export const icon = style({
   imageRendering: 'pixelated',
   backgroundRepeat: 'no-repeat',
