@@ -384,7 +384,32 @@ export const lastPlan = {
  *   (`map/world`의 `doorEntry`), 문 바로 앞 칸에 문 쪽을 보고 들어서면 **그
  *   프레임에** 건물 안이다. `avoid`로는 못 막는다 — 막을 것이 칸이 아니다
  */
-export function planPath(
+/**
+ * **깊은 진흙** — 들어서면 붙들린다 (`Behavior.MUD_DEEP` 0xA5 · `MUD_DEEP_WITH_GRASS` 0xA7 · `actor/player`의 `deepMudStep`).
+ *
+ * ⚠️ **격자에는 길이 있고 게임은 붙든다.** 빠져나오려면 보는 쪽과 다른 방향을 다섯 번 눌러야 한다(원작
+ * `FieldSystem_TryGetStuckInDeepMud`). 계획은 그것을 몰라 진흙 위로 곧장 걸었다 — 실측(2026-10-10 연쇄 P3 · 3a23bc0):
+ * 212번도로 남(맵 371) (534,856)~(534,857)에서 25분을 「되밀리는 중」으로 오갔다. 얕은 진흙만 밟는 길이 따로 있다.
+ *
+ * 그래서 **먼저 깊은 진흙을 피해** 찾고, 그 길이 없을 때만 진흙을 지나는 길을 낸다 (`planPath`)
+ */
+const DEEP_MUD = new Set([0xa5, 0xa7])
+
+export function planPath(matrixId, from, isGoal, opts = {}) {
+  if (opts.mud === true) return planPathOnce(matrixId, from, isGoal, opts)
+  const grid = gridOf(matrixId)
+  const mudBan = (nx, nz, key) => DEEP_MUD.has(grid.at(nx, nz) & 0x7fff)
+    || (opts.avoidStep !== null && opts.avoidStep !== undefined && opts.avoidStep(nx, nz, key))
+  // 출발 칸이 이미 깊은 진흙이면 피할 것이 없다 — 첫 걸음부터 막힌다
+  const startMud = DEEP_MUD.has(grid.at(from.x, from.z) & 0x7fff)
+  if (!startMud) {
+    const dry = planPathOnce(matrixId, from, isGoal, { ...opts, avoidStep: mudBan })
+    if (dry.status === PLAN.found || dry.status === PLAN.cancelled || dry.status === PLAN.invalid) return dry
+  }
+  return planPathOnce(matrixId, from, isGoal, opts)
+}
+
+function planPathOnce(
   matrixId, from, isGoal,
   {
     limit = NODE_CAP, avoid = null, avoidStep = null, cancelled = null, enterBlockedGoal = false,

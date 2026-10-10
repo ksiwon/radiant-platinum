@@ -2093,6 +2093,17 @@ export async function driveStory(page, {
       const where = `${String(s.x)},${String(s.z)}`
       stuckFor = where === stuckAt ? stuckFor + 1 : 0
       stuckAt = where
+      /**
+       * ⚠️ **깊은 진흙에 붙들렸으면 다른 방향을 번갈아 누른다** — 한 방향을 꾹 눌러서는 못 빠진다(`actor/player`의
+       * `deepMudStep` · 보는 쪽과 다른 방향 다섯 번). 실측(2026-10-10 연쇄 P3 · 3a23bc0): 212번도로 남 (534,856)에서
+       * 25분을 오갔다. 계획은 깊은 진흙을 먼저 피하지만(`route.planPath`) 피할 길이 없거나 이미 빠졌을 때를 위해 둔다
+       */
+      if (stuckFor >= 1 && [0xa5, 0xa7].includes(grid.at(s.x, s.z) & 0x7fff)) {
+        if (verbose) log(`      깊은 진흙 (${where}) — 좌우를 번갈아 눌러 빠진다`)
+        for (let i = 0; i < 6; i++) await tap(i % 2 === 0 ? 'ArrowLeft' : 'ArrowRight', 120)
+        await settle()
+        continue
+      }
       if (stuckFor >= 3) {
         stuckFor = 0
         /**
