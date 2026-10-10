@@ -318,14 +318,31 @@ export async function pastoriaToCelestic(api, ctx,
 /**
  * **비전머신을 가르친다** — 그 계통의 마리에게, 비전기술은 안 잊게.
  *
- * 잊을 칸은 `keep`에 없는 첫 칸이다. 공격 기술까지 지키고 싶으면 부르는 쪽이 넘긴다
+ * 잊을 칸은 `keep`에 없는 첫 칸이다. 공격 기술까지 지키고 싶으면 부르는 쪽이 넘긴다.
+ *
+ * ⚠️ **그 마리의 네 칸이 다 비전기술이면 다른 마리에게 간다.** 원작은 비전기술을 가르칠 때 못 잊게 하고
+ * (`REPAIR §76` — 삭제사만이 길이다), 사람은 칸이 남은 다른 마리에게 가르친다. 실측(2026-10-10 연쇄 P4 ·
+ * 3910d72): 비버통이 괴력 · 바위깨기 · 풀베기 · 파도타기로 꽉 차 락클라임 앞에서 「그만둔다」를 골라
+ * 「아무도 못 배웠다」로 다리를 잃었다. 그 계통 다음으로 파티 차례대로, 비전기술 아닌 가장 약한 기술 하나를
+ * 내놓고 배워 보게 한다 — 「배울 수 없다」면 다음 마리다
  */
 export async function teachTo(api, item, move, line, { keep = [] } = {}) {
   const party = (await api.partyState()) ?? []
-  const slot = party.findIndex((one) => line.includes(one.species))
-  if (slot < 0) return { ok: false, why: `가르칠 마리가 없다 (${JSON.stringify(line)})` }
-  return api.teachHm(item, move, Math.min(300_000, api.left()),
-    { only: [slot], keep: [...HM_MOVES, ...keep] })
+  const first = party.findIndex((one) => line.includes(one.species))
+  const hmOnly = (one) => one.moves.length >= 4 && one.moves.every((m) => HM_MOVES.includes(m.move))
+  const slots = [
+    ...(first >= 0 && !hmOnly(party[first]) ? [first] : []),
+    ...party.map((_, i) => i).filter((i) => i !== first && !hmOnly(party[i]) && party[i].species !== 0),
+  ]
+  if (slots.length === 0) return { ok: false, why: `가르칠 마리가 없다 (${JSON.stringify(line)} · 다 비전기술로 찼다)` }
+  let r = null
+  for (const slot of slots) {
+    const mine = slot === first ? keep : keepAllButWeakest(party, [party[slot].species])
+    r = await api.teachHm(item, move, Math.min(300_000, api.left()),
+      { only: [slot], keep: [...HM_MOVES, ...mine] })
+    if (r.ok || r.why !== '아무도 못 배웠다') return { ...r, learner: party[slot].species, fallback: slot !== first }
+  }
+  return r
 }
 
 // ── 여섯째 배지 — 봉신 → 운하 (지시서 §3.3·§3.4) ────────────────────────────────

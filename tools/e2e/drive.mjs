@@ -3466,6 +3466,8 @@ export async function driveStory(page, {
       await clearTalk(); await settle()
       r = await teachHmOnce(item, move, Math.max(30_000, till - Date.now()), opts)
       if (r.ok || r.why !== '아무도 못 배웠다' || Date.now() >= till) return { ...r, attempts: attempt + 1 }
+      // 「배울 수 없다」(그 마리가 못 배우는 비전머신) · 「포기하겠습니까」(지킬 기술만 남았다)는 다시 해도 같다
+      if ((r.said ?? []).some((one) => one.includes('배울 수 없') || one.includes('포기하겠습니까'))) return { ...r, attempts: attempt + 1 }
       log(`      비전머신 ${String(item)} 못 배웠다 (${String(attempt + 1)}번째) — 화면 ${JSON.stringify((r.said ?? []).slice(-2).map((one) => one.slice(0, 120)))}`)
     }
     return { ...r, attempts: 3 }
