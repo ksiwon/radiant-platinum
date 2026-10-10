@@ -53,6 +53,8 @@ export const tab = style({
 })
 
 export const tabOn = style({ color: vars.ink.strong, fontWeight: 700 })
+/** 잠긴 탭 — 흐리고 손 모양도 없다 */
+export const tabOff = style({ opacity: 0.35, cursor: 'default' })
 
 /** 쪽 색 점. 색은 `--mark`로 온다 (`vars.page.*`). 탭 표식과 원 빛에만 쓴다 */
 export const tabMark = style({

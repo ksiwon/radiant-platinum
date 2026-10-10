@@ -13,6 +13,8 @@ export interface PageTab {
   label: string
   /** 쪽 색 점 (`vars.page.*`). 탭 표식에만 쓴다 */
   mark?: string
+  /** 흐리게 잠근다 — 눌러도 아무 일도 없고 키보드 차례에서도 빠진다 (알의 메모 말고 나머지 탭) */
+  disabled?: boolean
 }
 
 /** 탭 글이 규칙을 지키는가 — 숫자와 `/`가 없다 */
@@ -61,7 +63,9 @@ export function PageTabs(
           role="tab"
           aria-selected={i === at}
           tabIndex={i === at ? 0 : -1}
-          className={i === at ? `${css.tab} ${css.tabOn}` : css.tab}
+          disabled={page.disabled === true}
+          aria-disabled={page.disabled === true ? true : undefined}
+          className={[css.tab, i === at ? css.tabOn : '', page.disabled === true ? css.tabOff : ''].filter(Boolean).join(' ')}
           onClick={() => { onPick?.(i) }}
         >
           {page.mark !== undefined && (
