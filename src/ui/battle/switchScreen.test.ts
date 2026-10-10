@@ -12,6 +12,8 @@ import { TYPE } from '../../engine/battle/ai/typeChart'
 import { MATCH_LABEL, sharedMatch } from '../../engine/battle/movePreview'
 import type { Move, Stats } from '../../data/schema'
 import * as css from './switchScreen.css'
+import { bestMatch, firstPickable, matchText, matchView, whyLine, type Foe } from './switchLogic'
+import { PARTY } from './romText'
 
 const mon = (over: Partial<BattleRequest['side']['pokemon'][0]>) => ({
   ident: 'p1: turtwig',
@@ -68,6 +70,17 @@ describe('교체 화면이 읽는 파티', () => {
     expect(rows[0]!.moves).toEqual([
       { id: 'tackle', move: 33 }, { id: 'withdraw', move: null },
     ])
+  })
+
+  it('능력치 · 도구 · 성별도 요청에서 나온다 (신상 창이 읽는다)', () => {
+    const got = partySummary(request([
+      mon({ details: 'Luxray, L26, M', item: 'leftovers' }),
+      mon({ ident: 'p1: roselia', details: 'Roselia, L25, F', item: '' }),
+      mon({ ident: 'p1: mesprit', details: 'Mesprit, L50' }),
+    ]))
+    expect(got[0]).toMatchObject({ stats: { atk: 20, def: 22, spa: 18, spd: 18, spe: 15 }, item: 'leftovers', gender: 'male' })
+    expect(got[1]).toMatchObject({ item: '', gender: 'female' })
+    expect(got[2]!.gender).toBeNull()
   })
 
   it('요청이 없으면 빈 목록', () => {
@@ -187,5 +200,85 @@ describe('파티 카드', () => {
     // 요청의 차례(`i`·`one.index`)가 아니라 키로 찾는다
     expect(body).toContain('one.key.slice(3)')
     expect(body).toContain('saved.species === it.species')
+  })
+})
+
+
+describe('교체 화면의 판단 (`switchLogic`)', () => {
+  const thunder = (over: Partial<Move> = {}): Move => ({
+    id: 85, effect: 0, category: 'special', power: 95, type: TYPE.ELECTRIC,
+    accuracy: 100, alwaysHits: false, pp: 15, effectChance: 10, target: 0,
+    priority: 0, flags: 0, contact: false, protectable: true,
+    ...over,
+  })
+  const foe = (name: string, type: number, known = true): Foe => ({ name, types: [type], known })
+
+  it('처음 커서는 첫 번째로 고를 수 있는 칸이다 — 기절한 뒤에 쓰러진 마리에 서지 않는다', () => {
+    expect(firstPickable([false, true, true])).toBe(1)
+    expect(firstPickable([true, true])).toBe(0)
+    // 고를 칸이 하나도 없으면 0이다
+    expect(firstPickable([false, false])).toBe(0)
+    expect(firstPickable([])).toBe(0)
+  })
+
+  it('못 고르는 까닭의 롬 줄 — 기절 77 · 나와 있음 76 · 앞 자리가 고름 93 · 고를 수 있으면 6', () => {
+    expect(PARTY.cantSwitchWithAlreadySelectedPokemon).toBe(93)
+    expect(whyLine({ fainted: true, active: false }, false)).toBe(77)
+    expect(whyLine({ fainted: false, active: true }, false)).toBe(76)
+    expect(whyLine({ fainted: false, active: false }, false)).toBe(93)
+    expect(whyLine({ fainted: false, active: false }, true)).toBe(6)
+    expect(whyLine(null, false)).toBeNull()
+  })
+
+  it('더블에서 상대 둘의 결과가 갈리면 이름을 붙여 둘 다 적는다', () => {
+    const view = matchView(thunder(), [foe('무우마직', TYPE.WATER), foe('팽태자', TYPE.GROUND)], null)
+    expect(view).toEqual({ kind: 'split', parts: [{ name: '무우마직', match: 'super' }, { name: '팽태자', match: 'immune' }] })
+    expect(matchText(view!)).toBe('무우마직 효과가 굉장함 · 팽태자 효과가 없음')
+    // 같으면 한 마디다
+    expect(matchView(thunder(), [foe('a', TYPE.WATER), foe('b', TYPE.FLYING)], null)).toEqual({ kind: 'one', match: 'super' })
+  })
+
+  it('띠 모서리 표시 — 약점이 하나라도 있으면 그것, 보통으로 치는 기술이 있으면 막힌 것은 안 적는다', () => {
+    const ghost = [foe('고스트', TYPE.GHOST)]
+    const bite = thunder({ id: 44, type: TYPE.DARK, power: 60 })
+    const tackle = thunder({ id: 33, type: TYPE.NORMAL, power: 40 })
+    const growl = thunder({ id: 45, type: TYPE.NORMAL, power: 0, category: 'status' })
+    expect(bestMatch([bite, tackle, growl], ghost, null)).toBe('super')
+    expect(bestMatch([tackle, growl], ghost, null)).toBe('immune')
+    expect(bestMatch([tackle, thunder({ type: TYPE.GHOST })], ghost, null)).toBe('super')
+    // 변화 기술만 있으면 적을 것이 없다
+    expect(bestMatch([growl], ghost, null)).toBeNull()
+    // 보통으로 맞는 기술이 섞이면 「효과가 없음」을 안 띄운다
+    expect(bestMatch([tackle, thunder({ type: TYPE.PSYCHIC })], ghost, null)).toBeNull()
+    expect(bestMatch([bite], [], null)).toBeNull()
+  })
+})
+
+describe('교체 화면의 배치 (소스에서 다시 빠지지 않게)', () => {
+  const css_src = readFileSync(new URL('./switchScreen.css.ts', import.meta.url), 'utf8')
+  const screen = readFileSync(new URL('./SwitchScreen.tsx', import.meta.url), 'utf8')
+
+  it('SYSTEM 4.17 — 덮개 y200 · 띠 204~352 · 신상 360~556 · 글 564~628', () => {
+    expect(css_src).toContain('const RAIL_TOP = 204')
+    expect(css_src).toContain('const RAIL_H = 148')
+    expect(css_src).toContain('const SHEET_TOP = 360')
+    expect(css_src).toContain('const SHEET_H = 196')
+    expect(css_src).toContain('const LINE_TOP = 564')
+    expect(css_src).toContain('const LINE_H = 64')
+    expect(css_src).toContain('260px')
+  })
+
+  it('칸은 button이고 클릭 한 번이 교체다 — 두 단으로 안 나눈다', () => {
+    const cards = readFileSync(new URL('./PartyCards.tsx', import.meta.url), 'utf8')
+    expect(cards).toContain('<button')
+    expect(cards).toContain('disabled={!can}')
+    expect(cards).toContain('if (can) onPick(i)')
+    // 이 화면에 「그만둔다」 글을 가진 button이 없다
+    expect(screen).not.toContain('그만둔다')
+  })
+
+  it('처음 커서와 롬 93을 쓴다', () => {
+    expect(screen).toContain('firstPickable(')
+    expect(screen).toContain('whyLine(')
   })
 })

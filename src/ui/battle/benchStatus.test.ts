@@ -16,6 +16,7 @@ const send = (actor: Actor, status: 'ok' | 'psn' = 'ok'): BattleEvent => ({
 
 const slot = (key: string, status: string | null, active = false): PartySlot => ({
   index: 1, key, hp: 20, maxHp: 20, status, active, fainted: false, ability: '', moves: [],
+  stats: { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 }, item: '', gender: null,
 })
 
 afterEach(() => { useBattleStore.setState({ phase: 'off', view: null, party: [] }) })

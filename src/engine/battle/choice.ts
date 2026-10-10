@@ -149,6 +149,18 @@ export interface PartySlot {
   ability: string
   /** 기술. 프로토콜 아이디와 우리가 푼 롬 번호 */
   moves: { id: string; move: number | null }[]
+  /** 최대 체력을 뺀 능력치 다섯 (요청의 `stats`) */
+  stats: { atk: number; def: number; spa: number; spd: number; spe: number }
+  /** 지닌 도구의 프로토콜 아이디. 없거나 배틀 중에 썼으면 빈 문자열이다 */
+  item: string
+  /** 성별 (`details`의 끝 글자 `F`·`M`). 무성이면 null */
+  gender: 'male' | 'female' | null
+}
+
+/** `Turtwig, L13, F` 꼴의 끝 글자에서 성별을 읽는다 */
+export function genderOfDetails(details: string): 'male' | 'female' | null {
+  const last = details.split(',').at(-1)?.trim()
+  return last === 'F' ? 'female' : last === 'M' ? 'male' : null
 }
 
 /**
@@ -186,6 +198,9 @@ export function partySummary(
       moves: p.moves
         .filter((_, at) => at + 1 !== hidden)
         .map((id) => ({ id, move: moveId(id) })),
+      stats: p.stats,
+      item: p.item,
+      gender: genderOfDetails(p.details),
     }
   })
 }
