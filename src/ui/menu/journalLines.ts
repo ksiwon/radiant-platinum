@@ -220,6 +220,14 @@ function onlineLine(
   return null
 }
 
+/** 한 줄이 어느 갈래의 일인가 — 장소 일은 발자국 줄로, 나머지는 점 없이 그린다 */
+export type JournalLineKind = 'place' | 'mon' | 'trainer' | 'online'
+
+export interface JournalLine {
+  kind: JournalLineKind
+  text: string
+}
+
 export interface JournalPage {
   /** 「8월 13일」 */
   date: string
@@ -228,7 +236,7 @@ export interface JournalPage {
   /** 「떡잎마을에서 시작!」 */
   from: string
   /** 자리 일 · 포켓몬 · 트레이너 · 통신을 원작 차례대로 이어 붙인 것 */
-  lines: string[]
+  lines: JournalLine[]
 }
 
 /** 한 쪽. 아직 안 쓴 쪽이면 null */
@@ -239,22 +247,22 @@ export function journalPage(entry: JournalEntry, names: JournalNames): JournalPa
   const date = fillMenuText(at(names.entries, J.date),
     [monthText(t.month, { location: [], special: [], month: names.months }), String(t.day)])
 
-  const lines: string[] = []
+  const lines: JournalLine[] = []
   for (const packed of entry.locationEvents) {
     // ⚠️ **빈 칸을 만나면 멈춘다.** 원작 인쇄기가 `return`한다 — 앞이 비고
     // 뒤가 찬 상태는 저장 규칙상 생기지 않지만, 생겨도 원작과 같이 군다
     if (eventType(packed) === LocationEvent.NONE) break
     const line = locationEventLine(packed, names)
-    if (line !== null) lines.push(line)
+    if (line !== null) lines.push({ kind: 'place', text: line })
   }
   const mon = monLine(entry, names)
-  if (mon !== null) lines.push(mon)
+  if (mon !== null) lines.push({ kind: 'mon', text: mon })
   const trainer = trainerLine(entry, names)
-  if (trainer !== null) lines.push(trainer)
+  if (trainer !== null) lines.push({ kind: 'trainer', text: trainer })
   for (const ev of entry.online) {
     if (ev.type === 0) break
     const line = onlineLine(ev, names)
-    if (line !== null) lines.push(line)
+    if (line !== null) lines.push({ kind: 'online', text: line })
   }
 
   return {
@@ -263,4 +271,14 @@ export function journalPage(entry: JournalEntry, names: JournalNames): JournalPa
     from: fillMenuText(at(names.entries, J.startedFrom), [placeOf(names, t.mapId)]),
     lines,
   }
+}
+
+/** 책갈피 글자 — 롬 날짜 문장 그대로다 (「8월 13일」). 줄이거나 지어 쓰지 않는다 */
+export function bookmarkLabels(pages: readonly JournalPage[]): string[] {
+  return pages.map((p) => p.date)
+}
+
+/** A(원작 `JournalController`의 다음 쪽). 마지막 쪽에서는 그대로다 */
+export function nextPage(at: number, count: number): number {
+  return Math.max(0, Math.min(at + 1, count - 1))
 }

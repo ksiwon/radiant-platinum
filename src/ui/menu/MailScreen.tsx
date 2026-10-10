@@ -28,8 +28,9 @@ import { useSaveStore } from '../../state/saveStore'
 import { loadWordLookup, type WordLookup } from './easyChatWords'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
 import { POCKET_MAIL } from './BagScreen'
+import { MailSheet, mailSheetIcons } from './MailSheet'
 import { MenuScreen } from './MenuScreen'
-import * as css from './menuChrome.css'
+import * as own from './mailScreen.css'
 
 /** 커서가 갈 수 있는 자리 — 낱말 여섯 + 「결정」 */
 const SLOTS = MAIL_LINES * MAIL_WORDS_PER_LINE
@@ -161,46 +162,39 @@ export function MailScreen() {
 
   if (!mail) return null
 
+  // 새겨질 아이콘 — 쓰기는 고른 자리부터 파티 끝까지 최대 셋, 읽기는 편지가 든 것 (`mailSheetIcons`)
+  const icons = mail.mode === 'write' ? mailSheetIcons(party, mail.slot) : held?.icons ?? []
+  const signer = mail.mode === 'write' ? trainer.name : held?.trainerName ?? ''
+
   return (
     <MenuScreen
       title={writing ? '메일' : held?.trainerName ?? '메일'}
       note={mailPaperName(type, itemNames) || undefined}
       foot={mailFoot(writing)}
+      variant="center"
+      width={own.WIDTH}
     >
-      <div className={css.stageWide}>
-        <ul className={css.list}>
-          {Array.from({ length: MAIL_LINES }, (_, line) => (
-            <li key={line} className={css.row}>
-              {Array.from({ length: MAIL_WORDS_PER_LINE }, (_, word) => {
-                const slot = line * MAIL_WORDS_PER_LINE + word
-                const value = lines[line]?.[word] ?? EASY_CHAT_WORD_NONE
-                const text = lookup ? lookup(value) : ''
-                return (
-                  <span
-                    key={word}
-                    className={css.label}
-                    style={{
-                      minWidth: 96,
-                      outline: writing && slot === at ? '1px solid currentColor' : 'none',
-                      opacity: text === '' ? 0.4 : 1,
-                    }}
-                  >
-                    {text === '' ? '…' : text}
-                  </span>
-                )
-              })}
-            </li>
-          ))}
-          {writing && (
-            <li className={at >= SLOTS ? css.rowOn : css.row}>
-              <span className={css.label}>{say[0] ?? '결정'}</span>
-            </li>
-          )}
-        </ul>
-        {notice !== null && <div className={css.detailText}>{notice}</div>}
-        {!writing && held !== null && (
-          <div className={css.detailText}>
-            {held.icons.length > 0 && `그림 ${String(held.icons.length)}`}
+      <div className={own.body}>
+        <MailSheet
+          lines={lines}
+          lookup={lookup}
+          type={type}
+          icons={icons}
+          signer={signer}
+          {...(writing && at < SLOTS ? { at } : {})}
+        />
+        {writing && (
+          <div className={own.doRow}>
+            {/* 낱말이 없을 때 알림 (롬 `mail` 뱅크 2번) */}
+            <span className={own.warn}>{notice ?? ''}</span>
+            {/* 마지막 칸에서 Z가 결정이던 규칙이 그대로다 — 커서가 이 단추에 선다 */}
+            <button
+              type="button"
+              className={at >= SLOTS ? own.actOn : own.act}
+              onClick={() => { setNotice(null); attach() }}
+            >
+              {say[0] ?? '결정'}
+            </button>
           </div>
         )}
       </div>

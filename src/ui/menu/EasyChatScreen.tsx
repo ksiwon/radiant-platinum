@@ -22,16 +22,19 @@ import { gameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { loadWordLookup, type WordLookup } from './easyChatWords'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
+import { MAIL_WORDS_PER_LINE } from '../../engine/world/mail'
+import { EasyChatFrame } from './EasyChatFrame'
 import { MenuScreen } from './MenuScreen'
-import * as css from './menuChrome.css'
-
-/** `ul`의 기본 들여쓰기(40px)를 뗀다 — 줄이 `width: 100%`라 그만큼 오른쪽으로 새어 낱말 수가 잘렸다 */
-const UL_RESET = { margin: 0, padding: 0, listStyle: 'none' } as const
-const COUNT_GAP = { marginLeft: 10, opacity: 0.7 } as const
+import { MailSheet, mailSheetIcons } from './MailSheet'
+import { SHEET_W } from './mailSheet.css'
 
 export function EasyChatScreen() {
   const back = useMenuStore((s) => s.back)
   const setWord = useMenuStore((s) => s.setMailWord)
+  const mail = useMenuStore((s) => s.mail)
+  const easyChatAt = useMenuStore((s) => s.easyChatAt)
+  const party = useSaveStore((s) => s.party)
+  const trainer = useSaveStore((s) => s.trainer)
   const pokedex = useSaveStore((s) => s.pokedex)
   const unlocks = useSaveStore((s) => s.easyChatUnlocks)
   const [say, setSay] = useState<readonly string[]>([])
@@ -101,37 +104,45 @@ export function EasyChatScreen() {
     },
   })
 
+  const nameOf = (i: number): string => {
+    const g = groups[i]
+    return g ? names[g.index] ?? g.group.name : ''
+  }
+  // 종이에 보일 것 — 지금 만드는 편지. 쓰는 편지가 아니면(열린 길이 다르면) 빈 종이다
+  const writing = mail?.mode === 'write' ? mail : null
+  const slot = easyChatAt === null ? undefined : easyChatAt.line * MAIL_WORDS_PER_LINE + easyChatAt.word
+  // 낱말 줄을 훑는 동안 그 낱말이 종이의 고른 칸에 **미리** 보인다 (Z로 확정, X는 되돌린다)
+  const previewText = inWords ? words[at]?.text : undefined
+
   return (
     <MenuScreen
       title={say[0] ?? '단어를 선택하세요.'}
+      note={nameOf(group) || undefined}
       foot={inWords
         ? '↑↓ 단어 · Q/E 한 쪽씩 · Z 넣는다 · X 무리로'
         : '↑↓ 무리 · Z 연다 · X 비우고 나간다'}
     >
-      <div className={css.stage}>
-        <ul className={css.list} style={UL_RESET}>
-          {groups.map((g, i) => (
-            <li
-              key={g.index}
-              className={!inWords && i === group ? css.rowOn : css.row}
-            >
-              <span className={css.label}>{names[g.index] ?? g.group.name}</span>
-              {/* 줄이 `block`이라 `count`의 `margin-left: auto`가 안 먹는다 — 「포켓몬7」로 붙지 않게 사이를 띈다 */}
-              <span className={css.count} style={COUNT_GAP}>{g.words.length}</span>
-            </li>
-          ))}
-        </ul>
-        <ul className={css.list} style={UL_RESET}>
-          {words.slice(Math.max(0, at - 7), Math.max(0, at - 7) + 15).map((w, i) => {
-            const idx = Math.max(0, at - 7) + i
-            return (
-              <li key={w.word} className={inWords && idx === at ? css.rowOn : css.row}>
-                {w.text}
-              </li>
-            )
-          })}
-        </ul>
-      </div>
+      <EasyChatFrame
+        sheetWidth={SHEET_W}
+        sheet={(
+          <MailSheet
+            lines={writing?.lines ?? []}
+            lookup={lookup}
+            type={writing?.type ?? 0}
+            icons={writing ? mailSheetIcons(party, writing.slot) : []}
+            signer={writing ? trainer.name : ''}
+            {...(slot !== undefined ? { at: slot } : {})}
+            {...(previewText !== undefined ? { preview: previewText } : {})}
+          />
+        )}
+        groups={{
+          labels: groups.map((_, i) => nameOf(i)),
+          counts: groups.map((g) => g.words.length),
+          at: group,
+          focus: inWords ? 'kept' : 'on',
+        }}
+        words={{ texts: words.map((w) => w.text), at, focus: inWords }}
+      />
     </MenuScreen>
   )
 }

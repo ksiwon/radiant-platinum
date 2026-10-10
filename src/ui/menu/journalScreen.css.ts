@@ -1,137 +1,153 @@
-// 모험노트 — 종이 한 장.
+// 모험노트 — 창 얼굴 위에 종이 한 장.
 //
-// ⚠️ **다른 메뉴의 상자를 안 쓴다.** 이 화면은 고르는 목록이 아니라 주인공이
-// 적어 둔 종이라, 어두운 판에 흰 글을 얹으면 그 자리에서 「설정 화면」이 된다.
-// 종이색 바탕 · 왼쪽 빨간 여백선 · 줄지 · 철한 구멍 넷이 공책을 만든다.
-import { globalStyle, keyframes, style } from '@vanilla-extract/css'
-import { RADIUS, TIME } from '../theme/scale'
+// 판을 더 깔지 않는다 (L2 예외 「물건으로 그린 판: 종이」). 종이의 줄지 · 여백선 · 구멍은 `PaperSheet`가 그리고,
+// 여기는 종이 안의 줄과 오른쪽 가장자리의 날짜 책갈피만 안다. 줄 간격 36 · 구멍 지름 13 같은 값은 지역 상수다.
+import { keyframes, style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
+import { EDGE, GAP, RADIUS, TEXT, TIME } from '../theme/scale'
+import { PAPER_ROW } from './paperSheet.css'
 
-/** 줄 간격. 줄지와 글줄이 **같은 값**을 써야 글이 줄 위에 앉는다 */
-const ROW = 30
-/** 왼쪽 여백선 자리. 철한 구멍과 글 사이 */
-const MARGIN = 64
+/** 종이 폭. 책갈피가 오른쪽에 서도 창(928)에 든다 */
+const PAPER_W = 700
+/** 발자국 줄이 앉는 왼쪽 자리 — 줄 글에서 이만큼 안쪽이다 */
+const TRAIL_X = 22
 
-const rise = keyframes({
-  from: { opacity: 0, transform: 'translateY(10px) rotate(-0.4deg)' },
+export const body = style({
+  flex: '1 1 auto',
+  minHeight: 0,
+  position: 'relative',
+  display: 'flex',
+  justifyContent: 'center',
+  padding: `${String(GAP.base)}px ${String(GAP.wide)}px`,
+})
+
+const turn = keyframes({
+  from: { opacity: 0, transform: 'translateX(var(--turn, 8px))' },
   to: { opacity: 1, transform: 'none' },
 })
+const fade = keyframes({ from: { opacity: 0 }, to: { opacity: 1 } })
 
+/** 종이. 바탕은 `PaperSheet`이고 여기는 크기와 쪽 넘김 움직임이다 */
 export const paper = style({
-  position: 'relative',
-  margin: 'auto',
-  width: 'min(620px, calc(100vw - 72px))',
-  minHeight: 360,
-  padding: `26px 30px 30px ${String(MARGIN + 18)}px`,
-  // 아주 옅게 누런 종이. 가운데가 밝고 가장자리가 죽는다
-  background: `linear-gradient(180deg, ${vars.paper.face} 0%, ${vars.paper.faceDim} 100%)`,
-  color: vars.paper.text,
-  border: `2px solid ${vars.paper.edge}`,
-  borderRadius: RADIUS.cell,
-  animation: `${rise} ${TIME.fade} ease-out`,
-})
-
-/** 줄지와 여백선. 종이 위에 한 겹으로 깐다 */
-globalStyle(`${paper}::before`, {
-  content: '""',
-  position: 'absolute',
-  inset: 0,
-  borderRadius: RADIUS.cell,
-  background:
-    `repeating-linear-gradient(transparent 0 ${String(ROW - 1)}px,`
-    + ` ${vars.paper.rule} ${String(ROW - 1)}px ${String(ROW)}px)`,
-  backgroundPosition: `0 ${String(ROW + 26)}px`,
-  pointerEvents: 'none',
-})
-
-globalStyle(`${paper}::after`, {
-  content: '""',
-  position: 'absolute',
-  top: 0,
-  bottom: 0,
-  left: MARGIN,
-  width: 1,
-  background: vars.state.bad,
-  pointerEvents: 'none',
-})
-
-/** 철한 구멍. 왼쪽 여백에 세로로 늘어선다 */
-export const rings = style({
-  position: 'absolute',
-  top: 22,
-  bottom: 22,
-  left: 22,
-  width: 20,
-  display: 'flex',
-  flexDirection: 'column',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-})
-
-export const ring = style({
-  width: 13,
-  height: 13,
-  borderRadius: RADIUS.round,
-  background: vars.paper.textDim,
-})
-
-export const sheet = style({
-  position: 'relative',
-  zIndex: 1,
+  width: PAPER_W,
+  alignSelf: 'stretch',
+  padding: '22px 36px 24px 88px',
+  animation: `${turn} ${TIME.page} ease-out`,
+  '@media': { '(prefers-reduced-motion: reduce)': { animation: `${fade} ${TIME.page} ease-out` } },
 })
 
 export const dateRow = style({
   display: 'flex',
   alignItems: 'baseline',
-  gap: 12,
-  height: ROW,
+  gap: GAP.base,
+  height: PAPER_ROW,
 })
 
-export const date = style({
-  fontSize: 24,
-  fontWeight: 800,
-  color: vars.paper.text,
-})
+export const date = style({ fontSize: TEXT.big, fontWeight: 700, color: vars.paper.text })
 
-export const weekday = style({
-  fontSize: 16,
-  fontWeight: 700,
-  color: vars.paper.textDim,
-})
+export const weekday = style({ fontSize: TEXT.base, fontWeight: 700, color: vars.paper.textDim })
 
 /** 「…에서 시작!」 — 원작도 이 한 줄만 머리글과 본문 사이에 둔다 */
 export const from = style({
   margin: 0,
-  height: ROW,
-  lineHeight: `${String(ROW)}px`,
-  fontSize: 17,
+  height: PAPER_ROW,
+  lineHeight: `${String(PAPER_ROW)}px`,
+  fontSize: TEXT.list,
   fontWeight: 700,
-  color: vars.paper.text,
 })
 
-export const lines = style({
+export const trail = style({
+  position: 'relative',
   listStyle: 'none',
-  margin: 0,
+  margin: `0 0 0 ${String(TRAIL_X)}px`,
   padding: 0,
 })
 
+/** 장소 일 묶음 — 세로선이 점들을 잇는다 */
+export const place = style({
+  '::before': {
+    content: '""',
+    position: 'absolute',
+    left: -17,
+    top: PAPER_ROW / 2,
+    bottom: PAPER_ROW / 2,
+    width: EDGE.bar,
+    background: vars.paper.gilt,
+    opacity: 0.5,
+  },
+})
+
 export const line = style({
-  height: ROW,
-  lineHeight: `${String(ROW)}px`,
-  fontSize: 16,
-  color: vars.paper.text,
+  position: 'relative',
+  height: PAPER_ROW,
+  lineHeight: `${String(PAPER_ROW)}px`,
+  fontSize: TEXT.list,
   whiteSpace: 'nowrap',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
 })
 
+/** 장소 일 앞의 금 점 (속이 빈 원) */
+export const dot = style({
+  '::before': {
+    content: '""',
+    position: 'absolute',
+    left: -22,
+    top: 13,
+    width: 10,
+    height: 10,
+    boxSizing: 'border-box',
+    borderRadius: RADIUS.round,
+    background: vars.paper.face,
+    border: `${String(EDGE.bar)}px solid ${vars.paper.gilt}`,
+  },
+})
+
+/** 장소 일과 포켓몬 · 트레이너 일 사이 */
+export const gap = style({ height: PAPER_ROW / 2 })
+
 export const blank = style({
-  position: 'relative',
-  zIndex: 1,
   margin: 0,
-  paddingTop: ROW * 3,
+  paddingTop: PAPER_ROW * 3,
   textAlign: 'center',
-  fontFamily: vars.font.ui,
-  fontSize: 16,
+  fontSize: TEXT.base,
   color: vars.paper.textDim,
+})
+
+/** 날짜 책갈피 — 존재하는 쪽만 종이 오른쪽에 세로로 선다. 읽기 전용(`aria-hidden`) */
+export const tabs = style({
+  position: 'absolute',
+  right: GAP.wide + 6,
+  top: 40,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: GAP.tight,
+})
+
+const tabBase = {
+  boxSizing: 'border-box',
+  height: PAPER_ROW,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: `0 ${String(GAP.small)}px`,
+  fontSize: TEXT.small,
+  fontWeight: 700,
+  whiteSpace: 'nowrap',
+  fontVariantNumeric: 'tabular-nums',
+  background: vars.window.faceTop,
+  color: vars.ink.dim,
+  border: `${String(EDGE.bar)}px solid ${vars.window.edgeDim}`,
+  borderLeft: 'none',
+  borderRadius: `0 ${String(RADIUS.cell)}px ${String(RADIUS.cell)}px 0`,
+} as const
+
+/** 롬 날짜 「8월 13일」은 「8/13」보다 길다 — 폭 96, 고른 것은 조금 더 길다 */
+export const tab = style({ ...tabBase, width: 96 })
+export const tabOn = style({
+  ...tabBase,
+  width: 104,
+  background: vars.pick.face,
+  borderColor: vars.pick.edge,
+  color: vars.pick.text,
 })
