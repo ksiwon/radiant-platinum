@@ -52,6 +52,20 @@ export interface Words {
   continue: string
   preparing: string
   leave: string
+  /** 더블에서 기술의 목표를 고르는 단의 물음 */
+  aim: string
+  /** 파티 카드의 「이미 나와 있다」 표시 */
+  here: string
+  /** 기술 단의 안내 앞쪽 */
+  pickMove: string
+  /** 가방의 안내 앞쪽 — 주머니를 넘기는 키 */
+  pocketKeys: string
+  /** 가방 상태 줄 — 볼 · 도망 도구 · 나와 있는 한 마리에게 쓰는 도구 */
+  throwBall: string
+  escapes: string
+  useActive: string
+  /** 안내 줄에 붙는 「X 닫기」 */
+  close: string
 }
 
 /**

@@ -30,6 +30,7 @@ import { MonSheet, type SheetMove, type SheetPage } from './MonSheet'
 import { PartyCards, type PartyCard } from './PartyCards'
 import { romLine } from './romLine'
 import { PARTY, PARTY_BANK } from './romText'
+import { useBattleWords } from './battleWords'
 import { useRomLines } from './useRomLines'
 import { bestMatch, firstPickable, matchView, whyLine, type Foe } from './switchLogic'
 import * as css from './switchScreen.css'
@@ -185,13 +186,14 @@ export function SwitchScreen(
 
   // 배틀 안 파티 화면의 글 (PARITY §2.26). 원작도 이 화면은 배틀 위 화면과 **다른 뱅크**를 연다
   const partyLines = useRomLines(PARTY_BANK)
+  const words = useBattleWords()
   const who = cards[cursor]?.label ?? null
   const lineId = whyLine(chosen, actionAt(cursor) !== null)
   const say = lineId === null ? null : romLine(partyLines, lineId, who)
   const keys = [
     ...(actionAt(cursor) !== null ? [`Z ${romLine(partyLines, PARTY.shiftButton) ?? ''}`] : []),
     `Tab ${romLine(partyLines, page === 'moves' ? PARTY.summaryButton : PARTY.checkMovesButton) ?? ''}`,
-    ...(onBack !== null ? ['X 닫기'] : []),
+    ...(onBack !== null ? [words.close] : []),
   ].join(' · ')
 
   const sheetMoves: SheetMove[] = (chosen?.moves ?? []).map((m, i) => {
@@ -236,7 +238,7 @@ export function SwitchScreen(
         <PartyCards
           cards={cards}
           cursor={cursor}
-          hereText="나와 있다"
+          hereText={words.here}
           replacing={replacing ?? null}
           onHover={goto}
           onPick={(i) => { const a = actionAt(i); if (a) onPick(a) }}
@@ -261,7 +263,7 @@ export function SwitchScreen(
           item={item}
         />
       ) : (
-        <div className={css.empty}>내보낼 포켓몬이 없다</div>
+        <div className={css.empty}>{words.partyBlocked}</div>
       )}
 
       <div className={css.line}>
