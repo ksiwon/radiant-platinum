@@ -118,13 +118,26 @@ describe('「건네준다」는 파티 화면으로 넘어간다 (`PARTY_MENU_MO
 describe('자리 기억 (`BagCursor`)', () => {
   afterEach(() => { bagMemory.pocket = 0; bagMemory.pos = [] })
 
-  it('주머니마다 커서를 따로 기억하고, 목록이 줄었으면 끝 칸으로 당긴다', () => {
+  it('주머니마다 커서를 따로 기억하고, 목록이 줄었으면 끝 칸(「닫는다」 줄)으로 당긴다', () => {
     bagMemory.pos[1] = 4
     bagMemory.pos[3] = 10
     expect(recallCursor(1, 9)).toBe(4)
-    expect(recallCursor(3, 4)).toBe(3)
+    // 줄은 `0..itemCount`다 — 도구 넷이면 넷째(0부터)가 「닫는다」다
+    expect(recallCursor(3, 4)).toBe(4)
     expect(recallCursor(2, 9)).toBe(0)
+  })
+
+  it('「닫는다」 줄에 서 있었으면 그대로 그 줄이다 — 하네스 bagCursor가 items와 같은 값으로 읽는다', () => {
+    bagMemory.pos[1] = 9
+    expect(recallCursor(1, 9)).toBe(9)
+    // 그새 도구가 하나 줄어도 끝 줄에 남는다
+    expect(recallCursor(1, 8)).toBe(8)
+  })
+
+  it('빈 주머니는 「닫는다」 한 줄뿐이라 0이다', () => {
+    bagMemory.pos[3] = 10
     expect(recallCursor(3, 0)).toBe(0)
+    expect(recallCursor(6, 0)).toBe(0)
   })
 })
 
@@ -138,6 +151,33 @@ describe('바닥 안내', () => {
 
   it('등록 표식은 실제 등록 키 이름이다', () => {
     expect(keyList(BINDINGS.register, 'ko')).toBe('F')
+  })
+
+  it('줄 옮기기는 옮길 수 있는 주머니에서만 Shift를 안내한다', () => {
+    expect(bagFoot('normal', true)).toContain('Shift 옮기기')
+    expect(bagFoot('normal', false)).not.toContain('Shift')
+    expect(bagFoot('move')).not.toContain('Tab')
+  })
+})
+
+describe('알림은 바닥에 안 뜬다', () => {
+  const source = readFileSync(resolve(__dirname, 'BagScreen.tsx'), 'utf8')
+
+  it('바닥(foot)은 bagFoot뿐이고 알림 · 칸 수가 섞이지 않는다', () => {
+    expect(source).toContain('foot={bagFoot(mode, canMove)}')
+    expect(source).not.toContain('notice ??')
+    expect(source).not.toMatch(/칸`/)
+  })
+
+  it('알림은 설명 띠의 대사 줄로 간다', () => {
+    expect(source).toContain('own.speech')
+  })
+})
+
+describe('열매 태그는 이웃 열매 목록을 받는다 (`openBerryTag(item, list)`)', () => {
+  it('가방이 줄 차례 그대로 목록을 넘긴다', () => {
+    const source = readFileSync(resolve(__dirname, 'BagScreen.tsx'), 'utf8')
+    expect(source).toContain('openBerryTag(id, slots.map((s) => s.item))')
   })
 })
 
@@ -156,5 +196,12 @@ withData(`dialogue/ko/${String(UI_BANK.bag)}.json`)('가방 뱅크의 글', () =
     expect(text[BAG_ACTION_LINE.checkTag]).toBe('태그확인')
     expect(text[BAG_ACTION_LINE.cancel]).toBe('그만둔다')
     expect(text[BAG_MENU.trashOk]).toContain('버려도 괜찮겠습니까?')
+  })
+
+  it('「닫는다」 줄(41)과 그 설명(94) · 줄 옮기기 물음(45)이 롬 글이다', () => {
+    const text = bank()
+    expect(text[41]).toBe('닫는다')
+    expect(text[94]).toBe('가방을 닫습니다')
+    expect(text[45]).toContain('어디에 넣겠습니까?')
   })
 })
