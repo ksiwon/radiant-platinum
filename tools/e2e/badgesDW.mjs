@@ -342,9 +342,19 @@ export async function coronetToSpear(api, ctx,
   }
   v = await vars()
   if ((v.spear ?? 0) < 1) {
-    const grunts = await api.stepOn(MAP.spearPillar, SPEAR_GRUNTS, Math.min(300_000, api.left()))
-    await api.clearTalk(); await api.settle()
-    v = await vars()
+    /**
+     * ⚠️ **밟은 순간에는 장면이 아직 안 열렸을 수 있다** — 그런트들이 걸어 오는 동안은 대사가 없어 `settle`이 곧 돌아온다.
+     * 실측(2026-10-10 연쇄 P4 · 50f1849): 「arrived · 창기둥 상태 0」으로 재고 넘어가 마스 칸을 건너뛰었고, 그 뒤에야
+     * 그런트 배틀이 열렸다. 상태가 1이 될 때까지 대사를 넘기며 기다리고, 안 바뀌면 다시 밟는다
+     */
+    let grunts = null
+    for (let i = 0; i < 3 && (v.spear ?? 0) < 1; i++) {
+      grunts = await api.stepOn(MAP.spearPillar, SPEAR_GRUNTS, Math.min(300_000, api.left()))
+      for (const till = Date.now() + 120_000; Date.now() < till && (v.spear ?? 0) < 1;) {
+        await api.clearTalk(); await api.settle()
+        v = await vars()
+      }
+    }
     note('창기둥 그런트 (31,48)', `${grunts} · 창기둥 상태 ${String(v.spear)}`)
   }
   if ((v.spear ?? 0) >= 1 && (v.spear ?? 0) < 3) {
