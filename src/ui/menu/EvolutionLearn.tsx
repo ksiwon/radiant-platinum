@@ -45,10 +45,10 @@ import { clampCursor, useMenuKeys } from './useMenuKeys'
 import * as own from './evolutionScreen.css'
 
 /** 기술 창의 바닥 안내. 「그만둔다」는 일을 버린다는 뜻이라 L6의 「X 닫기」로 합치지 않는다 */
-export const LEARN_FOOT = '↑↓ 고르기 · Z 결정 · X 그만둔다'
+const LEARN_FOOT = '↑↓ 고르기 · Z 결정 · X 그만둔다'
 
 /** 이 화면이 필요로 하는 표 — 진화 화면이 이미 받아 둔 것이다 */
-export interface LearnTables {
+interface LearnTables {
   moves: MoveTable
   moveNames: readonly string[]
   items: ItemTable

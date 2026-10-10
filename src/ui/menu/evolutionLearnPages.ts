@@ -17,7 +17,7 @@ import { romLine } from '../battle/romLine'
 import { MSG } from '../battle/romText'
 
 /** 쪽이 찍힐 때 나는 소리 — 원작 `{CALLBACK 4}`(KON)와 `{CALLBACK 5}`(팡파르) */
-export type LearnSound = 'poof' | 'learned'
+type LearnSound = 'poof' | 'learned'
 
 export interface LearnPage {
   text: string
