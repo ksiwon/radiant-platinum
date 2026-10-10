@@ -29,13 +29,13 @@ import { RECORD_TRAINER_SCORE, recordValue } from '../../engine/world/gameRecord
 import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
-import { BADGE_ART, hasBadge } from '../common/BadgeRail'
+import { BADGE_ART, BADGE_WINDOW, badgeArtStyle, hasBadge } from '../common/BadgeRail'
 import { badgeOff } from '../common/parts.css'
 import { dexCounts, nationalDexCompleted } from './dexCounts'
 import { useMenuKeys } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
 import {
-  BADGE_COUNT, BADGE_LEADERS, BADGE_WINDOW, BADGE_WINDOW_TOP, badgeNames, firstPick, stepBadge, usableName,
+  BADGE_COUNT, BADGE_LEADERS, badgeNames, firstPick, stepBadge, usableName,
 } from './trainerBadges'
 import * as own from './trainerCard.css'
 
@@ -167,20 +167,9 @@ const heroStyle = (url: string, girl: boolean): CSSProperties => {
   }
 }
 
-/** 배지 한 칸의 그림. 받은 것과 못 받은 것이 **같은 그림**이고 못 받은 쪽만 `brightness(0)`이 걸린다 */
-function badgeArt(url: string | null, bit: number): CSSProperties {
-  const { cellW, cellH, cols, rows } = BADGE_ART
-  const k = BADGE_SCALE
-  return {
-    width: BADGE_WINDOW * k,
-    height: BADGE_WINDOW * k,
-    ...(url === null ? {} : { backgroundImage: `url(${url})` }),
-    backgroundSize: `${String(cols * cellW * k)}px ${String(rows * cellH * k)}px`,
-    backgroundPosition: `-${String(bit * cellW * k)}px -${String((BADGE_DIRT_ROW * cellH + BADGE_WINDOW_TOP[bit]!) * k)}px`,
-    backgroundRepeat: 'no-repeat',
-    imageRendering: 'pixelated',
-  }
-}
+/** 배지 한 칸의 그림. 받은 것과 못 받은 것이 **같은 그림**이고 못 받은 쪽만 `brightness(0)`이 걸린다 (`badgeArtStyle`) */
+const badgeArt = (url: string | null, bit: number): CSSProperties =>
+  badgeArtStyle(url, bit, BADGE_SCALE, BADGE_DIRT_ROW)
 
 export function TrainerCard() {
   const back = useMenuStore((s) => s.back)

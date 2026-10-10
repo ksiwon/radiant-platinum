@@ -713,7 +713,7 @@ function TitleMenu() {
                 <div className={css.pair}>
                   <dt>{at(MAIN_MENU.badges, '가지고 있는 배지')}</dt>
                   <dd>
-                    <BadgeRail badges={report.badges} size={24} />
+                    <BadgeRail badges={report.badges} size={40} />
                     {countBadges(report.badges)}개
                   </dd>
                 </div>

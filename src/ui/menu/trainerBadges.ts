@@ -46,16 +46,6 @@ export const BADGE_LEADERS: readonly BadgeLeader[] = [
  */
 export const BADGE_BIT_OF_LINE: readonly number[] = [0, 1, 4, 2, 3, 5, 6, 7]
 
-/**
- * 배지 한 칸(40×63) 안에서 도트가 서는 높이 — 정사각 40×40 창의 위 끝.
- *
- * 시트 한 칸은 위 줄 배지(0~3)와 아래 줄 배지(4~7)를 한 상자에 담느라 63이다. 도트는 위 줄이 y 0~40, 아래 줄이 y 25~63에
- * 선다(`badges.png` 알파로 잰 값). 칸 전체를 그대로 놓으면 아래 줄 배지가 홈 안에서 한 단 낮게 선다 — 창을 이 높이에서
- * 40만큼만 잘라 모든 배지가 **같은 정사각 칸의 같은 기준선**에 서게 한다 (DECISIONS 사용자 지적 ①)
- */
-export const BADGE_WINDOW_TOP: readonly number[] = [0, 0, 0, 0, 23, 23, 23, 23]
-/** 창의 크기 — 위 · 아래 줄 도트가 다 든다 */
-export const BADGE_WINDOW = 40
 /** 받은 배지인가 */
 export function hasBit(badges: number, bit: number): boolean {
   return (badges & (1 << bit)) !== 0

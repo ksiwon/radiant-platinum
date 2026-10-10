@@ -2,9 +2,9 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DATA, decodePng, withData, withDecomp } from '../../data/romData.testkit'
+import { DATA, withData, withDecomp } from '../../data/romData.testkit'
 import {
-  BADGE_BIT_OF_LINE, BADGE_COUNT, BADGE_LEADERS, BADGE_WINDOW, BADGE_WINDOW_TOP, badgeNames, earnedBits, firstPick, stepBadge, usableName,
+  BADGE_BIT_OF_LINE, BADGE_COUNT, BADGE_LEADERS, badgeNames, earnedBits, firstPick, stepBadge, usableName,
 } from './trainerBadges'
 
 const readJson = <T>(file: string): T => JSON.parse(readFileSync(resolve(DATA, file), 'utf8')) as T
@@ -128,25 +128,5 @@ withDecomp('generated/trainer_classes.txt')('관장 갈래 — 디컴프 `TRAINE
     expect(BADGE_LEADERS.map((l) => l.cls)).toEqual(
       ['ROARK', 'GARDENIA', 'MAYLENE', 'WAKE', 'FANTINA', 'BYRON', 'CANDICE', 'VOLKNER'].map(classOf),
     )
-  })
-})
-
-withData('trainerCase/badges.png')('배지 그림 — 홈 정사각 창에 도트가 다 든다', () => {
-  it('받은 줄(때 줄 1)의 여덟 칸 도트가 40×40 창(`BADGE_WINDOW_TOP`) 안에 있다', async () => {
-    const { width, height, pixels } = decodePng(resolve(DATA, 'trainerCase/badges.png'))
-    const cell = { w: 40, h: 63 }
-    expect(width).toBe(cell.w * 8)
-    expect(height).toBe(cell.h * 4)
-    for (let bit = 0; bit < 8; bit++) {
-      let min = Infinity
-      let max = -Infinity
-      for (let y = 0; y < cell.h; y++) {
-        for (let x = 0; x < cell.w; x++) {
-          if (pixels[((cell.h + y) * width + bit * cell.w + x) * 4 + 3]! > 0) { min = Math.min(min, y); max = Math.max(max, y) }
-        }
-      }
-      expect(min).toBeGreaterThanOrEqual(BADGE_WINDOW_TOP[bit]!)
-      expect(max).toBeLessThan(BADGE_WINDOW_TOP[bit]! + BADGE_WINDOW)
-    }
   })
 })
