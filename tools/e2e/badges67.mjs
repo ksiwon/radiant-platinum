@@ -721,17 +721,9 @@ export async function coronetToSnowpoint(api, ctx,
   }
 
   // ① 괴력 → 비버통 (비전기술만 지킨다 — 물대포 자리를 준다)
-  /**
-   * ⚠️ **마스 장면 바로 뒤에서 가르치면 한 번 헛돈다** (탐침 c4 「아무도 못 배웠다」 — 같은 자리의
-   * 리포트를 이어서 가르치면 배운다). 글·장면을 걷고 한 번 더 해 본다
-   */
-  for (let round = 0; round < 2; round++) {
-    await api.clearTalk(); await api.settle()
-    out.strength = await teachTo(api, ITEM.hm04, MOVE.strength, BIDOOF_LINE,
-      { keep: keepAllButWeakest((await api.partyState()) ?? [], BIDOOF_LINE) })
-    if (out.strength.ok) break
-    note('비전머신04 괴력 (헛돈 판의 화면)', JSON.stringify((out.strength.said ?? []).map((one) => one.slice(0, 120))))
-  }
+  // 마스 장면 바로 뒤라 첫 가르치기가 헛돌 수 있다(탐침 c4) — `teachHm`이 글·장면을 걷고 다시 한다
+  out.strength = await teachTo(api, ITEM.hm04, MOVE.strength, BIDOOF_LINE,
+    { keep: keepAllButWeakest((await api.partyState()) ?? [], BIDOOF_LINE) })
   note('비전머신04 괴력 → 비버통', out.strength.ok ? `배웠다 · 잊은 것 ${JSON.stringify(out.strength.lost ?? [])}` : String(out.strength.why))
 
   // ② 봉신으로 날아 211번도로 동 → 천관산 1F 북 방1 — 큰바위를 민다

@@ -3316,7 +3316,7 @@ export async function driveStory(page, {
    *   칸이다. ⚠️ 원작은 비전기술을 못 잊게 막는데 제품은 안 막는다(REPAIR §76) —
    *   그래서 부르는 쪽이 비전기술을 여기 넣는다
    */
-  const teachHm = async (item, move, budgetMs, { only = null, keep = [] } = {}) => {
+  const teachHmOnce = async (item, move, budgetMs, { only = null, keep = [] } = {}) => {
     const t0 = Date.now()
     const till = Math.min(Date.now() + budgetMs, started + totalMs)
     const knows = async () => {
@@ -3450,6 +3450,25 @@ export async function driveStory(page, {
       lost, movesBefore, movesAfter,
       why: learned >= 0 ? null : '아무도 못 배웠다',
     }
+  }
+  /**
+   * **비전머신은 세 번까지 가르쳐 본다** — 글·장면을 걷고 다시.
+   *
+   * ⚠️ **장면·대사 바로 뒤의 첫 가르치기는 헛돌 수 있다.** 실측: 마스전 뒤 괴력(탐침 c4), 217번도로
+   * 트레이너전 · 도구 볼 대사 뒤 락클라임(2026-10-10 연쇄 P4 · 8300444) — 둘 다 「아무도 못 배웠다」였고
+   * 같은 자리에서 한 번 더 하면 배웠다. 다리마다 감싸지 않고 여기서 받는다. 가방에 없다 · 파티를 못 읽었다
+   * 같은 다른 실패는 다시 해도 같으므로 바로 돌려준다
+   */
+  const teachHm = async (item, move, budgetMs, opts = {}) => {
+    const till = Math.min(Date.now() + budgetMs, started + totalMs)
+    let r = null
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await clearTalk(); await settle()
+      r = await teachHmOnce(item, move, Math.max(30_000, till - Date.now()), opts)
+      if (r.ok || r.why !== '아무도 못 배웠다' || Date.now() >= till) return { ...r, attempts: attempt + 1 }
+      log(`      비전머신 ${String(item)} 못 배웠다 (${String(attempt + 1)}번째) — 화면 ${JSON.stringify((r.said ?? []).slice(-2).map((one) => one.slice(0, 120)))}`)
+    }
+    return { ...r, attempts: 3 }
   }
 
   /**
