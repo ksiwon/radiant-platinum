@@ -408,15 +408,15 @@ export function BattleBag({
       ? romLine(partyLines, PARTY.embargoPreventsItemUse, here?.label ?? null, embargoName)
       : romLine(partyLines, PARTY.itemWontHaveAnyEffect)
     return (
-      <div className={css.sheet}>
-        <div className={css.left}>
+      <div className={`${css.sheet} ${css.sheetTarget}`}>
+        <div className={css.railTop}>
           <PartyCards
             cards={cards} cursor={target}
             onHover={setTarget}
             onPick={(i) => { setTarget(i); if (step === 'target') pickTarget() }}
           />
         </div>
-        <div className={css.panel}>
+        <div className={`${css.panel} ${css.panelBelow}`}>
           {/* 고른 도구 한 줄 — 잠겨 있다. 위쪽 탭 · 목록 자리가 이 한 줄로 접힌다 */}
           <div className={css.picked}>
             <div className={`${css.row} ${css.rowOn}`}>
