@@ -70,10 +70,23 @@ function roomIndex(): Promise<ReadonlySet<string>> {
  *   그 사이 (8, 0)이다(카운터 타일은 z 2 줄). BDSP는 알코브 없는 홀로 다시 지어 뒷벽이 z 2.5 통벽이고 카운터를 그 앞
  *   z 5~6에 놓았다 — 원작 사람과 PC가 통벽 **뒤**에 서서 안 보이고, 원작 충돌로는 카운터에 못 닿고 BDSP 기계 속을 걷는다
  *   (`.audit/probe/rfCheck.mjs` — 사람 칸이 바닥 밖 · 벽 뒤인지 방마다 잰다)
+ * · `c04r0401`(맵 80) — 원작은 벽(x 5 · x 9, z 3~12)으로 나뉜 통로 셋(x 2~4 · 6~8 · 10~12)이다. BDSP는 트인 홀 하나에 바닥이
+ *   x 1~10이라 오른쪽 통로 사람 (10, 7)이 오른벽 밖에 서고, 원작 충돌로는 보이지 않는 벽에 막힌다
+ * · `c05r0101`(맵 103) — 원작은 위 복도(z 3~4) 아래로 오른쪽 x 11~20이 z 12까지 트여 있다. BDSP는 그 자리에 칸막이 벽(z 7 줄,
+ *   가운데만 뚫림)을 세워 원작 사람 (19, 7) · (20, 7)이 벽 속에 서고 주인공이 벽을 지나간다
  */
 export const MISFIT_ROOMS: ReadonlySet<string> = new Set([
   'c02gym0101', 'c04gym0101', 'c07gym0101', 'c05gym0101', 'c05gym0104', 'c01r0601', 'c07r0101', 'd31r0201', 'c10r0101',
+  'c04r0401', 'c05r0101',
 ])
+
+/**
+ * **같은 행렬의 남의 방을 빌리지 않는** 맵 (원작 맵 이름, 소문자). 제 방이 없을 때 `roomFor`는 같은 행렬의 다른 맵 방을 빌리는데,
+ * 생김이 다르면 원작 그림으로 둔다. 빌려 주는 쪽의 제 방은 그대로다(`MISFIT_ROOMS`와 다른 점).
+ * · `c05r0601`(맵 110) — `r218r0101`(218번 도로 게이트)을 빌렸는데 원작은 북쪽 벽에 알코브(x 8~10 · z 3~4)가 있고 사람이
+ *   (9, 4)에 선다. 빌린 방은 북쪽 벽이 z 4.5 통벽이라 그 사람이 벽 속에 묻힌다
+ */
+export const NO_BORROW_MAPS: ReadonlySet<string> = new Set(['c05r0601'])
 
 /**
  * **칸 단위로 통째 밀려 지어진 방** — 그만큼 옮겨 놓는다 (칸, [x, z]). 잰 법: 바깥으로 나가는 문 워프 칸 한가운데 ↔ 같은 x의
@@ -97,6 +110,7 @@ export function roomFor(mapId: number, rooms: ReadonlySet<string>): string | nul
   const fits = (name: string): boolean => rooms.has(name) && !MISFIT_ROOMS.has(name)
   const own = here.name.toLowerCase()
   if (rooms.has(own)) return fits(own) ? own : null
+  if (NO_BORROW_MAPS.has(own)) return null
   for (const m of world.maps ?? []) {
     if (m.matrix !== here.matrix) continue
     const name = m.name.toLowerCase()
