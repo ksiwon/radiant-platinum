@@ -78,7 +78,13 @@ export function whitenBody(root: Object3D): Whitener {
     fade: (alpha) => {
       const a = Math.min(1, Math.max(0, alpha))
       for (const at of held) {
-        at.material.transparent = a < 1 ? true : at.transparent
+        const transparent = a < 1 ? true : at.transparent
+        // ⚠️ 투명 여부가 바뀔 때만 `needsUpdate`를 준다 — WebGPU는 파이프라인 키에 투명을 넣어서, 안 알리면 이전 파이프라인으로
+        // 그린다. 프레임마다 주면 매번 다시 짓는다
+        if (at.material.transparent !== transparent) {
+          at.material.transparent = transparent
+          at.material.needsUpdate = true
+        }
         at.material.opacity = at.opacity * a
       }
     },
