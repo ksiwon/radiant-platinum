@@ -15,6 +15,7 @@ import { StarterStage } from './field/StarterStage'
 import { DAY } from './fx/sky'
 import { CinematicStage } from './CinematicStage'
 import { PokemonPreviewStage } from './PokemonPreviewStage'
+import { MonViewportStage } from './MonViewportStage'
 import { HmCutInStage } from './HmCutInStage'
 import { HallOfFameStage } from './HallOfFameStage'
 import { attachKeyboard } from '../engine/input/keyboard'
@@ -150,6 +151,8 @@ export function Stage() {
             </Suspense>
           </group>
           <PokemonPreviewStage />
+          {/* 메뉴 창 구멍 안의 3D 포켓몬. 월드 씬에는 아무것도 안 넣고 자기 씬을 구멍에만 그린다 (`monViewportPass`) */}
+          <MonViewportStage />
           {/* 비전기술 컷인의 몸. 띠는 DOM 쪽이다 (`ui/field/HmCutInOverlay`) */}
           <HmCutInStage />
           {inBattle && <BattleStage />}

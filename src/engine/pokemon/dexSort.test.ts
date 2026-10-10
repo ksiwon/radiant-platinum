@@ -22,10 +22,29 @@ const all = () => true
 const only = (...ids: number[]) => (s: number) => ids.includes(s)
 
 describe('본 것만 남는다', () => {
-  it('안 본 자리는 번호순에서 **빈 칸**으로 남는다 — 번호가 안 밀린다', () => {
+  it('사이에 낀 안 본 자리는 번호순에서 **빈 칸**으로 남는다 — 번호가 안 밀린다', () => {
     const got = dexList(LISTS, NO_FILTER, only(2, 4), only(2))
     expect(got.map((e) => e.species)).toEqual([1, 2, 3, 4])
     expect(got.map((e) => e.blank)).toEqual([true, false, true, false])
+  })
+
+  it('⚠️ 목록은 **마지막으로 본 번호에서 끊긴다** — 그 뒤의 빈 칸은 줄이 아니다', () => {
+    // 4번을 못 봤으면 3번이 끝이다 (`PopulateDisplayPokedex_Blanks`)
+    const got = dexList(LISTS, NO_FILTER, only(2), only(2))
+    expect(got.map((e) => e.species)).toEqual([1, 2])
+    expect(got.map((e) => e.blank)).toEqual([true, false])
+  })
+
+  it('본 것이 하나도 없으면 목록이 비고, 다 봤으면 전체다', () => {
+    expect(dexList(LISTS, NO_FILTER, () => false, () => false)).toEqual([])
+    expect(dexList(LISTS, NO_FILTER, all, all)).toHaveLength(4)
+  })
+
+  it('전국도감도 같은 규칙이다', () => {
+    const got = dexList(LISTS, { ...NO_FILTER, national: true }, only(1, 5), all)
+    expect(got.map((e) => e.species)).toEqual([1, 2, 3, 4, 5])
+    const short = dexList(LISTS, { ...NO_FILTER, national: true }, only(1, 3), all)
+    expect(short.map((e) => e.species)).toEqual([1, 2, 3])
   })
 
   it('전국도감을 켜면 다섯째가 들어온다', () => {

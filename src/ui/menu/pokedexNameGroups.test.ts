@@ -87,23 +87,44 @@ describe('이름 거르기 넘기기', () => {
 })
 
 describe('←→ — 쪽과 모습', () => {
+  // 쪽 다섯: 설명 0 · 분포 1 · 울음소리 2 · 크기 3 · 모습 4. `open`을 안 주면 다 열린 것이다
   it('모습이 하나면 쪽만 넘긴다', () => {
     expect(stepPage(0, 0, 1, 1)).toEqual({ page: 1, form: 0 })
-    expect(stepPage(2, 0, 1, 1)).toEqual({ page: 0, form: 0 })
-    expect(stepPage(0, 0, 1, -1)).toEqual({ page: 2, form: 0 })
+    expect(stepPage(4, 0, 1, 1)).toEqual({ page: 0, form: 0 })
+    expect(stepPage(0, 0, 1, -1)).toEqual({ page: 4, form: 0 })
   })
 
-  it('폼 쪽에서는 모습을 넘기고, 끝에서 한 번 더 밀면 쪽을 넘긴다', () => {
+  it('모습 쪽에서는 모습을 넘기고, 끝에서 한 번 더 밀면 쪽을 넘긴다', () => {
     // 안농 28
-    expect(stepPage(2, 0, 28, 1)).toEqual({ page: 2, form: 1 })
-    expect(stepPage(2, 27, 28, 1)).toEqual({ page: 0, form: 0 })
-    expect(stepPage(2, 5, 28, -1)).toEqual({ page: 2, form: 4 })
-    expect(stepPage(2, 0, 28, -1)).toEqual({ page: 1, form: 0 })
+    expect(stepPage(4, 0, 28, 1)).toEqual({ page: 4, form: 1 })
+    expect(stepPage(4, 27, 28, 1)).toEqual({ page: 0, form: 0 })
+    expect(stepPage(4, 5, 28, -1)).toEqual({ page: 4, form: 4 })
+    expect(stepPage(4, 0, 28, -1)).toEqual({ page: 3, form: 0 })
   })
 
   it('오른쪽으로 들어오면 첫 모습, 왼쪽으로 들어오면 끝 모습이다', () => {
-    expect(stepPage(1, 0, 28, 1)).toEqual({ page: 2, form: 0 })
-    expect(stepPage(0, 0, 28, -1)).toEqual({ page: 2, form: 27 })
+    expect(stepPage(3, 0, 28, 1)).toEqual({ page: 4, form: 0 })
+    expect(stepPage(0, 0, 28, -1)).toEqual({ page: 4, form: 27 })
+  })
+
+  it('⚠️ 열리지 않은 쪽은 건너뛴다 — 본 종이면 크기를, 모습이 하나면 모습을 (`ov21_021E29DC.c:543-555`)', () => {
+    // 본 종 · 모습 하나: 설명 · 분포 · 울음소리만 열려 있다
+    const seenOnly = [0, 1, 2]
+    expect(stepPage(2, 0, 1, 1, seenOnly)).toEqual({ page: 0, form: 0 })
+    expect(stepPage(0, 0, 1, -1, seenOnly)).toEqual({ page: 2, form: 0 })
+    // 잡은 종 · 모습 하나: 크기까지
+    const caught = [0, 1, 2, 3]
+    expect(stepPage(2, 0, 1, 1, caught)).toEqual({ page: 3, form: 0 })
+    expect(stepPage(3, 0, 1, 1, caught)).toEqual({ page: 0, form: 0 })
+    // 본 종 · 안농: 크기가 닫히고 모습이 열린다
+    const unown = [0, 1, 2, 4]
+    expect(stepPage(2, 0, 28, 1, unown)).toEqual({ page: 4, form: 0 })
+    expect(stepPage(0, 0, 28, -1, unown)).toEqual({ page: 4, form: 27 })
+  })
+
+  it('열린 쪽이 설명 하나뿐이면 제자리다', () => {
+    expect(stepPage(0, 0, 1, 1, [0])).toEqual({ page: 0, form: 0 })
+    expect(stepPage(0, 0, 1, -1, [0])).toEqual({ page: 0, form: 0 })
   })
 })
 
@@ -114,9 +135,13 @@ describe('다시 열 때의 커서', () => {
     expect(restoreCursor(order, 389)).toBe(2)
   })
 
-  it('목록에 없거나 처음이면 맨 위다', () => {
-    expect(restoreCursor(order, 25)).toBe(0)
+  it('처음이면 맨 위다', () => {
     expect(restoreCursor(order, 0)).toBe(0)
+    expect(restoreCursor([], 0)).toBe(0)
+  })
+
+  it('⚠️ 기억한 종이 목록 밖이면 끝으로 당긴다 — 목록이 마지막으로 본 번호에서 끊기므로 밖은 그 뒤다', () => {
+    expect(restoreCursor(order, 25)).toBe(2)
     expect(restoreCursor([], 389)).toBe(0)
   })
 })

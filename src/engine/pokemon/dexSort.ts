@@ -100,7 +100,7 @@ export function isPlain(q: DexQuery): boolean {
     && q.shape === 0
 }
 
-interface DexEntry {
+export interface DexEntry {
   species: number
   /** 안 본 자리. 번호순일 때만 생긴다 */
   blank: boolean
@@ -139,8 +139,19 @@ export function dexList(
     if (!now.length) return []
   }
 
-  // ④ 아무것도 안 걸었으면 **빈 칸을 남긴다** — 번호가 어긋나면 안 된다
+  // ④ 아무것도 안 걸었으면 **빈 칸을 남긴다** — 번호가 어긋나면 안 된다. 단 **마지막으로 본 번호에서 끊는다**
   if (!isPlain(q)) return now.map((species) => ({ species, blank: false }))
-  const have = new Set(now)
-  return full.map((species) => ({ species, blank: !have.has(species) }))
+  return cutAtLastSeen(full, new Set(now))
+}
+
+/**
+ * 번호순 목록을 **마지막으로 본 종에서 끊는다** (`PopulateDisplayPokedex_Blanks`).
+ *
+ * 원작은 본 종 목록(`caughtStatusArray`)을 다 소화하면 그 번호에서 목록을 끝낸다 — 그 뒤의 안 본 칸은 줄로 세우지 않는다.
+ * 본 것이 하나도 없으면 목록이 비고, 모든 칸을 본 판은 전체가 그대로다. 사이에 낀 안 본 칸은 빈 칸으로 남는다 (번호가 안 밀린다)
+ */
+function cutAtLastSeen(full: readonly number[], seen: ReadonlySet<number>): DexEntry[] {
+  let last = -1
+  for (let i = 0; i < full.length; i++) if (seen.has(full[i]!)) last = i
+  return full.slice(0, last + 1).map((species) => ({ species, blank: !seen.has(species) }))
 }

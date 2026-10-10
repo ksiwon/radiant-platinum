@@ -39,6 +39,36 @@ export const MAX_CRY_SPECIES = 494
  * `sound_playback.c`의 `POKECRY_FAINT`가 `SOUND_SEMITONES(-3.5)`를 건다
  */
 export const FAINT_SEMITONES = -3.5
+
+/**
+ * 도감 울음소리 쪽의 조절값 (`crysub.c`).
+ *
+ *   pitch   1/64반음 (`Sound_SetPitchForHandle`). 원작은 0과 −1536(= 두 옥타브 아래) 둘뿐이다
+ *   pan     −127~127 (`UpdatePan`)
+ *   echo    0~127 — 코러스 목소리의 음량 (`UpdateEchoVolume` · `SetEchoVolume`). 0이면 코러스가 안 들린다
+ */
+export interface CryTune { pitch: number, pan: number, echo: number }
+export const NO_TUNE: CryTune = { pitch: 0, pan: 0, echo: 0 }
+/** 코러스 목소리는 본 목소리보다 20/64반음 높다 (`crysub.c`의 `SetPitch`: `20 + pitch`) */
+export const ECHO_PITCH = 20
+/** 1/64반음 → 재생 빠르기. 반음 열둘이 한 옥타브(2배)다 */
+export function pitchRate(pitch: number): number {
+  return 2 ** (pitch / 64 / 12)
+}
+/** 원작 좌우 −127~127 → 웹오디오 −1~1 */
+export function panValue(pan: number): number {
+  return Math.max(-1, Math.min(1, pan / 127))
+}
+
+/** 도감이 쥐는 울음소리 한 번 — 울리는 동안 값을 바꾸고, 파형을 읽고, 끊을 수 있다 */
+export interface CryVoice {
+  /** 지금 나는 소리의 실제 파형. 문맥이 없으면 null */
+  readonly analyser: AnalyserNode | null
+  set(tune: Partial<CryTune>): void
+  stop(): void
+  /** 끝났거나 끊겼을 때 (한 번) */
+  readonly ended: Promise<void>
+}
 /** 곡을 바꿀 때 겹치는 시간 (초) */
 const FADE = 0.6
 /**
@@ -477,6 +507,76 @@ export class Music {
     if (!buf) { cry.release(); return }
     // 음량 0~127 (`Sound_PlayPokemonCryEx`) — 안 주면 가득
     this.oneShot(buf, (opts?.volume ?? 127) / 127, cry, opts?.pan ?? 0)
+  }
+
+  /**
+   * 도감 울음소리 쪽의 울음 (`POKECRY_POKEDEX_CHORUS`) — 본 목소리에 **코러스 목소리**가 겹치고, 울리는 동안
+   * 높낮이 · 좌우 · 코러스 음량을 바꿀 수 있다 (`CryVoice.set`). 합성은 `playCry`와 같은 캐시(`cry:n`)를 쓴다.
+   *
+   * 페라페도 기본 울음으로 낸다 — 도감은 배운 말이 아니라 종족의 울음을 보여 준다
+   */
+  async playCryVoice(species: number, tune: CryTune = NO_TUNE): Promise<CryVoice | null> {
+    const ctx = this.ctx, bus = this.bus
+    if (!ctx || !bus) return null
+    if (species < 1 || species > MAX_CRY_SPECIES) return null
+    const ring = this.cries.start(CRY_SEQ)
+    let buf = null
+    try {
+      buf = await this.render(`cry:${String(species)}`, CRY_SEQ, { warOverride: species, maxSeconds: SHORT_SECONDS })
+    } catch { /* 울음소리만 빠진다 */ }
+    if (!buf) { ring.release(); return null }
+
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 2048
+    const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null
+    const mix = ctx.createGain()
+    const mainGain = ctx.createGain()
+    const echoGain = ctx.createGain()
+    const main = ctx.createBufferSource()
+    const echo = ctx.createBufferSource()
+    main.buffer = buf
+    echo.buffer = buf
+    mainGain.connect(mix)
+    echoGain.connect(mix)
+    if (panner) { mix.connect(panner); panner.connect(analyser) } else mix.connect(analyser)
+    analyser.connect(bus)
+    main.connect(mainGain)
+    echo.connect(echoGain)
+
+    const apply = (t: CryTune): void => {
+      main.playbackRate.value = pitchRate(t.pitch)
+      echo.playbackRate.value = pitchRate(ECHO_PITCH + t.pitch)
+      echoGain.gain.value = Math.max(0, Math.min(127, t.echo)) / 127
+      if (panner) panner.pan.value = panValue(t.pan)
+    }
+    let now: CryTune = { ...tune }
+    apply(now)
+
+    let finish: () => void = () => undefined
+    const ended = new Promise<void>((resolve) => { finish = resolve })
+    let over = false
+    const done = (): void => {
+      if (over) return
+      over = true
+      for (const node of [main, echo, mainGain, echoGain, mix, panner, analyser]) node?.disconnect()
+      ring.release()
+      finish()
+    }
+    main.onended = done
+    main.start()
+    echo.start()
+    // 문맥이 멈춰 있으면 `onended`가 안 온다 — 소리 길이만큼 지나면 끝난 것으로 센다 (`oneShot`과 같은 이유)
+    ring.by((buf.duration / pitchRate(Math.min(0, now.pitch)) + 0.5) * 1000)
+    return {
+      analyser,
+      set: (t) => { now = { ...now, ...t }; if (!over) apply(now) },
+      stop: () => {
+        if (over) return
+        try { main.stop(); echo.stop() } catch { /* 이미 끝났다 */ }
+        done()
+      },
+      ended,
+    }
   }
 
   /**
