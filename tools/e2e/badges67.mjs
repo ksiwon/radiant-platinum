@@ -76,6 +76,10 @@ export async function sprayBest(api) {
  * 에서 213번도로(373)로 가라 했더니 체육관·센터·관측소 게이트를 차례로 들락날락했다.
  * 들판 ↔ 213은 게이트(374)로만 이어진다. 배지 4·5 다리가 게이트를 하나씩 적는 까닭과 같다
  */
+/** 입지호수근처에서 210번도로 남까지 — 214 · 장막 · 215를 거꾸로 */
+const TO_210_SOUTH = [MAP.valorLakefront, MAP.route214, MAP.gate214, MAP.veilstone, MAP.gate215,
+  MAP.route215, MAP.route210south]
+
 export async function via(api, note, maps, what, budget = 900_000) {
   const here = (await api.now()).map
   let last = 'arrived'
@@ -175,8 +179,16 @@ export async function pastoriaToCelestic(api, ctx,
   }
   if (stopAt === MAP.pastoria) return done()
 
+  /**
+   * ⚠️ **호수를 지났으면 ④~⑨를 건너뛴다.** `journey`는 자리마다 이 다리를 처음부터 부른다. 실측(2026-10-10 연쇄 P3 ·
+   * 6b74747): 고라파덕 뒤 봉신 자리에서 부르자 `via`가 210번도로에서 「목록에 없는 맵」이라 들판부터 다시 걸어
+   * 213 · 로비 · 입지호수근처로 되돌아갔고, 거기서 210 남까지 길 찾기가 214번도로(380)와 건물(286) 사이를 25분 맴돌았다
+   */
+  const pastLake = v.psyduck === true
+    || ((await api.bagState())?.items ?? []).some((one) => one.item === ITEM.secretPotion)
   // ④~⑥ 213번도로 조무래기 둘
-  if ((await api.now()).map !== MAP.route213) {
+  if (pastLake) out.route213 = { went: 'skipped' }
+  else if ((await api.now()).map !== MAP.route213) {
     await spray('213번도로')
     out.route213 = { went: await via(api, note, [MAP.pastoria, MAP.gate213, MAP.route213], '213번도로로') }
   } else out.route213 = { went: 'arrived' }
@@ -200,13 +212,13 @@ export async function pastoriaToCelestic(api, ctx,
    * 나서야 213 북쪽 (706,812)에 선다. 맵 그래프는 그 갈림을 몰라서 `goTo(336)`이 213과 들판
    * 게이트(374) 사이를 12분 오갔다(2026-09-24 탐침 3판)
    */
-  if ((await api.now()).map === MAP.route213) {
+  if (!pastLake && (await api.now()).map === MAP.route213) {
     out.lobby = await walk(MAP.grandLakeLobby, '그랜드레이크 로비(376) — 213 남쪽에서 북쪽으로', 900_000)
   }
-  out.valor = { went: await walk(MAP.valorLakefront, '입지호수근처(336) — 로비 북쪽 문으로') }
+  out.valor = { went: pastLake ? 'skipped' : await walk(MAP.valorLakefront, '입지호수근처(336) — 로비 북쪽 문으로') }
   v = await vars()
   for (const [i, spot] of VALOR_GRUNT.entries()) {
-    if (i === 0 && v.valorGrunt === true) continue
+    if (pastLake || (i === 0 && v.valorGrunt === true)) continue
     if (i === 1 && (v.pastoria ?? 0) >= 6) continue
     const said = await api.talkTo(MAP.valorLakefront, spot, Math.min(600_000, api.left()))
     await api.clearTalk(); await api.settle()
@@ -226,8 +238,7 @@ export async function pastoriaToCelestic(api, ctx,
   if (v.psyduck !== true) {
     await spray('214·215번도로')
     out.psyduck = {
-      went: await via(api, note, [MAP.valorLakefront, MAP.route214, MAP.gate214, MAP.veilstone, MAP.gate215,
-        MAP.route215, MAP.route210south], '210번도로 남으로 — 214·장막·215를 거꾸로', 1_200_000),
+      went: await via(api, note, TO_210_SOUTH, '210번도로 남으로 — 214·장막·215를 거꾸로', 1_200_000),
     }
     if (out.psyduck.went === 'arrived') {
       const said = await api.talkTo(MAP.route210south, PSYDUCK, Math.min(600_000, api.left()))
@@ -246,7 +257,9 @@ export async function pastoriaToCelestic(api, ctx,
   v = await vars()
   if (v.charm !== true) {
     out.celestic = {
-      went: await via(api, note, [MAP.route210south, MAP.route210north, MAP.celestic], '봉신마을로 — 210번도로 북을 지나', 1_500_000),
+      // 210 남 밖(호수 쪽)에서 부르면 ⑩과 같은 길로 간다 — 맵 그래프의 지름길은 214번도로에서 맴돌았다(위 ⚠️)
+      went: await via(api, note, [...(TO_210_SOUTH.includes((await api.now()).map) ? TO_210_SOUTH.slice(0, -1) : []),
+        MAP.route210south, MAP.route210north, MAP.celestic], '봉신마을로 — 210번도로 북을 지나', 1_500_000),
     }
     if (out.celestic.went === 'arrived') {
       const said = await api.talkTo(MAP.celestic, CELESTIC_GRUNT, Math.min(600_000, api.left()))
