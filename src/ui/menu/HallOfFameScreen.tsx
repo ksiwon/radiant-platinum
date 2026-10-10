@@ -48,6 +48,7 @@ import { START_LOCATION, useSaveStore } from '../../state/saveStore'
 import { healParty } from '../../scene/pokecenter'
 import { HOF_FRAME_MS, hofTextLift, hofWindow, type HofBeat as Beat } from '../../scene/hallOfFameChoreo'
 import { KeyHints } from '../common/KeyHints'
+import { footWords } from './footWords'
 import { MenuScreen } from './MenuScreen'
 import { hofGroups, hofGroupShown } from './recordsLayout'
 import * as css from './hallOfFame.css'
@@ -450,7 +451,7 @@ export function HallOfFameScreen() {
 
           {beat === 'confetti' && (
             <div className={css.hint}>
-              <KeyHints text="Z 계속" tone="dark" />
+              <KeyHints text={footWords(locale).next} tone="dark" />
             </div>
           )}
 

@@ -1,7 +1,7 @@
 // 도감 화면의 우리 글 — 롬 도감 뱅크(697)에 없는 이름표 · 키 안내 · 제목을 세 언어로.
 //
 // 롬에 있는 말(코러스 · 팬 · 검색 줄 이름 · 발견한 수 …)은 `dexText`의 줄 번호로 읽는다. 이 표는 그 밖의 글이다.
-// 영어 제목과 일본어 제목은 롬 졸업장 글(`National Pokédex` · `ぜんこく　ポケモンずかん`)의 말을 따랐다.
+// 영어 제목과 일본어 제목은 롬 졸업장 글(`National Pokédex` · `ぜんこく ポケモンずかん`)의 말을 따랐다.
 import type { DataLocale } from '../../../data/gameData'
 import { useGameLocale } from '../../../state/optionsStore'
 

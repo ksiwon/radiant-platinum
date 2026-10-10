@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ChallengeType } from '../../engine/frontier/factory'
 import {
-  factoryFoot, factoryNote, SLOT_FOOT, SLOT_KEY_X, slotScale, type FactoryAsk,
+  factoryFoot, factoryNote, slotFoot, slotScale, type FactoryAsk,
 } from './facilitiesText'
 
 /** 프런티어 기록 뱅크(16)의 앞쪽 — 자리만 맞춘 가짜 */
@@ -90,14 +90,30 @@ describe('슬롯 확대 식', () => {
   })
 })
 
-describe('슬롯 바닥 안내와 릴 키', () => {
+describe('슬롯 바닥 안내', () => {
   it('조작 다음에 닫기다', () => {
-    expect(SLOT_FOOT.indexOf('C 동전')).toBeLessThan(SLOT_FOOT.indexOf('Esc'))
+    expect(slotFoot().indexOf('C 동전')).toBeLessThan(slotFoot().indexOf('Esc'))
   })
 
-  it('릴 아래 키 자리가 셋이고 왼쪽부터 늘어선다', () => {
-    expect(SLOT_KEY_X).toHaveLength(3)
-    expect(SLOT_KEY_X[0]).toBeLessThan(SLOT_KEY_X[1])
-    expect(SLOT_KEY_X[1]).toBeLessThan(SLOT_KEY_X[2])
+  it('en · ja에는 한글이 없고 키가 그대로 있다', () => {
+    for (const lang of ['en', 'ja'] as const) {
+      expect(slotFoot(lang), lang).not.toMatch(/[가-힣]/)
+      expect(slotFoot(lang), lang).toContain('Esc')
+    }
+  })
+})
+
+describe('시설 바닥 안내의 세 언어', () => {
+  const asks: FactoryAsk[] = ['list', 'options', 'confirm', 'receive', 'accept', 'cancelTrade', 'done']
+  it('en · ja에는 한글이 없다', () => {
+    for (const lang of ['en', 'ja'] as const) {
+      for (const phase of ['rental', 'trade'] as const) {
+        for (const ask of asks) expect(factoryFoot(phase, ask, lang), `${lang} ${phase} ${ask}`).not.toMatch(/[가-힣]/)
+      }
+    }
+  })
+
+  it('아무 일도 안 하는 X는 어느 언어에서도 안 약속한다', () => {
+    for (const lang of ['ko', 'en', 'ja'] as const) expect(factoryFoot('trade', 'cancelTrade', lang)).not.toContain('X')
   })
 })

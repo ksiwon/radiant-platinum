@@ -42,6 +42,7 @@ import {
 import { APP_ROOT } from '../../data/assetBase'
 import { useGameLocale } from '../../state/optionsStore'
 import { useMenuStore } from '../../state/menuStore'
+import { footWords } from './footWords'
 import * as css from './credits.css'
 
 /** 원작 화면 크기. 자리를 백분율로 옮기는 데 쓴다 */
@@ -338,7 +339,7 @@ export function CreditsScreen() {
         )}
         {/* 하늘 위에서 읽히도록 글 뒤에 1px 그림자 */}
         <div className={css.hint} style={{ textShadow: `1px 1px 0 ${vars.scrim.deep}` }}>
-          <KeyHints text={maker ? 'Z 타이틀로' : 'Z 넘기기'} tone="dark" />
+          <KeyHints text={maker ? footWords(locale).toTitle : footWords(locale).skip} tone="dark" />
         </div>
       </div>
     </div>

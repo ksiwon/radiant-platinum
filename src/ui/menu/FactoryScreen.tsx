@@ -274,7 +274,7 @@ export function FactoryScreen() {
     <MenuScreen
       title={names.title}
       note={factoryNote(round, names.records)}
-      foot={factoryFoot(phase, ask.kind)}
+      foot={factoryFoot(phase, ask.kind, locale)}
     >
       <div className={own.board} ref={setWithin}>
         <div className={own.left}>

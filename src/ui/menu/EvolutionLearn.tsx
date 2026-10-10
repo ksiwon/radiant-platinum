@@ -14,7 +14,7 @@
 // 기술 잊기」 규칙(`forgetPick`)이 진화에서도 돈다 — 다섯째 칸(배우려던 기술 + 「그만둔다」)은 PP가 없고 새 기술의
 // `data-move-id`를 달아 거기서 빠진다.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { loadLabels, type ItemTable, type MoveTable } from '../../data/gameData'
+import { loadLabels, type DataLocale, type ItemTable, type MoveTable } from '../../data/gameData'
 import type { Move } from '../../data/schema'
 import { isHmMove } from '../../engine/bag/fieldUse'
 import { music } from '../../engine/audio/music'
@@ -41,11 +41,12 @@ import { pointerMoved } from '../pointerMoved'
 import { LINE } from '../theme/scale'
 import { caret, pickBand } from '../theme/window.css'
 import { askText, confirmText, introPages, pickText, resultPages, type LearnPage } from './evolutionLearnPages'
+import { footWords } from './footWords'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
 import * as own from './evolutionScreen.css'
 
 /** 기술 창의 바닥 안내. 「그만둔다」는 일을 버린다는 뜻이라 L6의 「X 닫기」로 합치지 않는다 */
-const LEARN_FOOT = '↑↓ 고르기 · Z 결정 · X 그만둔다'
+const learnFoot = (locale: DataLocale): string => `${footWords(locale).pick} · ${footWords(locale).cancel}`
 
 /** 이 화면이 필요로 하는 표 — 진화 화면이 이미 받아 둔 것이다 */
 interface LearnTables {
@@ -135,9 +136,13 @@ export function EvolutionLearn(
   }, [phase, intro.length])
 
   // 결과 쪽이 없으면(안 찍히는 경우) 곧장 끝낸다
+  // ⚠️ `onFinish`는 ref로 받는다 — 부모가 인라인 함수로 넘기면 다시 그릴 때마다 새 함수라, 의존에 걸면 이 효과가 또 돌아
+  // 끝을 두 번 알린다(다음 기술을 건너뛴다)
+  const finishRef = useRef(onFinish)
+  finishRef.current = onFinish
   useEffect(() => {
-    if (phase.kind === 'result' && phase.at >= phase.pages.length) onFinish()
-  }, [phase, onFinish])
+    if (phase.kind === 'result' && phase.at >= phase.pages.length) finishRef.current()
+  }, [phase])
 
   // 「그럼...」은 포기 확인의 앞머리다 — 롬 진화 줄(1197)이 둘을 한 쪽으로 이어 말하므로 쪽을 따로 안 둔다
   useEffect(() => {
@@ -275,6 +280,7 @@ function ForgetPanel(
 ) {
   const rows = flow.rows
   const tail = rows.length
+  const locale = useGameLocale()
   const [cursor, setCursor] = useState(0)
   const step = (d: number) => (): boolean => {
     const next = clampCursor(cursor, d, rows.length + 1)
@@ -344,7 +350,7 @@ function ForgetPanel(
         </div>
       </div>
       <div className={own.panelFoot}>
-        <KeyHints text={LEARN_FOOT} />
+        <KeyHints text={learnFoot(locale)} />
       </div>
     </div>
   )

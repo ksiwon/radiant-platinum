@@ -3,7 +3,9 @@
 // 화면이 그리는 글과 숫자를 화면 밖에서 시험할 수 있게 뗐다 (`facilitiesFoot.test.ts`).
 // 바닥 동사는 SYSTEM §0 L6의 한 벌이다 — 「X 닫기」 하나, 뜻이 다른 「중지」 · 「한 마리 되돌리기」는 그대로 둔다.
 import { ChallengeType } from '../../engine/frontier/factory'
+import type { DataLocale } from '../../data/gameData'
 import { fillMenuText, FRONTIER_TEXT } from '../../data/uiText'
+import { footWords } from './footWords'
 
 /** 팩토리가 지금 무엇을 묻고 있나 — `FactoryScreen`의 `Ask`와 같은 이름이다 */
 export type FactoryAsk = 'list' | 'options' | 'confirm' | 'receive' | 'accept' | 'cancelTrade' | 'done'
@@ -14,16 +16,17 @@ export type FactoryAsk = 'list' | 'options' | 'confirm' | 'receive' | 'accept' |
  * 빌리기 목록의 X는 **아무 일도 안 한다** — 셋을 골라야 나간다. 안 되는 키를 약속하지 않는다.
  * 바꾸기 목록의 X는 「포켓몬 교환을 중지하겠습니까?」를 연다(`중지`). 확인(`confirm`)의 X는 마지막 한 마리를 되돌린다
  */
-export function factoryFoot(phase: 'rental' | 'trade', ask: FactoryAsk): string {
+export function factoryFoot(phase: 'rental' | 'trade', ask: FactoryAsk, locale: DataLocale = 'ko'): string {
+  const w = footWords(locale)
   switch (ask) {
-    case 'list': return phase === 'trade' ? '↑↓ 고르기 · Z 결정 · X 중지' : '↑↓ 고르기 · Z 결정'
-    case 'receive': return '↑↓ 고르기 · Z 결정 · X 중지'
+    case 'list': return phase === 'trade' ? `${w.pick} · ${w.stop}` : w.pick
+    case 'receive': return `${w.pick} · ${w.stop}`
     case 'options':
-    case 'accept': return '↑↓ 고르기 · Z 결정 · X 닫기'
-    case 'confirm': return '↑↓ 고르기 · Z 결정 · X 한 마리 되돌리기'
+    case 'accept': return `${w.pick} · ${w.close}`
+    case 'confirm': return `${w.pick} · ${w.undoOne}`
     // X가 아무 일도 안 한다 — 「중지하겠습니까?」에는 예 · 아니오로만 답한다
-    case 'cancelTrade': return '↑↓ 고르기 · Z 결정'
-    case 'done': return 'Z · X 닫기'
+    case 'cancelTrade': return w.pick
+    case 'done': return w.anyClose
   }
 }
 
@@ -50,8 +53,17 @@ export function factoryNote(
   return [kind, level, fillMenuText(streak, [String(round.streak)])].join(' · ')
 }
 
-/** 슬롯 바닥 안내 — 조작 → 닫기 차례다 (L6) */
-export const SLOT_FOOT = 'C 동전 · S 레버 · F X Space 릴 멈춤 · Esc 그만두기'
+/**
+ * 슬롯 바닥 안내 — 조작 → 닫기 차례다 (L6). 기계 그림이 CREDIT · PAYOUT 숫자를 스스로 그리므로
+ * 키 안내는 화면에 이 한 줄뿐이다
+ */
+export function slotFoot(locale: DataLocale = 'ko'): string {
+  switch (locale) {
+    case 'en': return 'C Coin · S Lever · F X Space Stop reel · Esc Quit'
+    case 'ja': return 'C コイン · S レバー · F X Space リール停止 · Esc やめる'
+    case 'ko': return 'C 동전 · S 레버 · F X Space 릴 멈춤 · Esc 그만두기'
+  }
+}
 
 /** 슬롯 기계 그림(원작 한 판)의 크기 — `slot/slotStage`의 `SCREEN_W` · `SCREEN_H`와 같다 */
 const SLOT_W = 256
@@ -72,12 +84,3 @@ export function slotScale(bodyW: number, bodyH: number): 1 | 2 | 3 | 4 {
   const byW = Math.floor((bodyW - SLOT_SIDE) / SLOT_W)
   return Math.min(4, Math.max(1, Math.min(byH, byW))) as 1 | 2 | 3 | 4
 }
-
-/**
- * 기계의 릴 셋 아래 키 안내 자리 — 원작 단추(Y · B · A) 칸의 가운데 x (원작 256 기준).
- * 단추 칸 타일 (7,17) · (15,17) · (22,17)의 3×2에서 나왔다
- */
-export const SLOT_KEY_X = [68, 132, 188] as const
-
-/** 릴 아래 키 안내 — 왼쪽(F) · 가운데(X) · 오른쪽(Space) */
-export const SLOT_REEL_KEYS = ['F', 'X', 'Space'] as const
