@@ -26,7 +26,7 @@ function cssFiles(dir) {
 }
 
 const files = cssFiles(join(ROOT, 'src'))
-const compiler = createCompiler({ root: ROOT, identifiers: 'short' })
+const compiler = createCompiler({ root: ROOT, identifiers: 'short', enableFileWatcher: false })
 const bad = []
 try {
   for (const f of files) {

@@ -15,7 +15,7 @@ import {
   GRID, LIFT, PARTY_SCALE, boxFoot, boxNote, compareBar, filled, filmCells, fitGrid, gridOverflow, iconCellIsolated, iconOf,
   liftOf, nameOfMon, occupancyDots, partyEntry, ringAt, ringSize, slotAt,
 } from './boxMenus'
-import { PARTY_CELL, WALL, WALL_PX } from './wallGeometry'
+import { PARTY_BAR_OUTER, PARTY_CELL, WALL, WALL_PX } from './wallGeometry'
 
 const mon = (over: Partial<PokemonInstance> = {}): PokemonInstance => ({
   species: 387, pid: 1, nickname: null, exp: 0, level: 5,
@@ -181,7 +181,7 @@ describe('아이콘은 이름과 같은 종이다 (사용자 지적 ③)', () =>
   it('파티 칸의 세로 구성이 칸 높이 안에 든다 — 아이콘이 이름 · 막대와 겹치지 않는다', () => {
     const c = PARTY_CELL
     expect(c.icon).toBe(32 * PARTY_SCALE)
-    expect(c.top + c.icon + c.gap + c.name + c.gap + c.bar + c.bottom).toBeLessThanOrEqual(c.height)
+    expect(c.top + c.icon + c.gap + c.name + c.gap + PARTY_BAR_OUTER + c.bottom).toBeLessThanOrEqual(c.height)
     // 뛰는 폭(위로 3 × 배율)이 위 여백을 넘지 않는다
     expect(3 * PARTY_SCALE).toBeLessThanOrEqual(c.top)
   })
