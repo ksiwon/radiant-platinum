@@ -11,6 +11,7 @@ import { PIXEL } from '../../theme/scale'
 import * as own from '../pokedexScreen.css'
 import { DEX_LINE, NAME_TEXT_FIRST, nameGroupLabel, searchHelp, sortLabel } from './dexText'
 import type { DexData } from './dexData'
+import { useDexWords } from './dexWords'
 
 /** 검색 창 커서 여섯: 도감 · 순서 · 이름 · 타입 앞 · 타입 뒤 · 형태 (`SEARCH_ROWS`의 차례) */
 export const SEARCH_ROW_COUNT = 6
@@ -48,6 +49,7 @@ export function DexSearch(
   const row = (i: number): 'on' | 'off' => (visualRow(cursor) === i ? 'on' : 'off')
   const arrows = (i: number): boolean => visualRow(cursor) === i
   const help = searchHelp(cursor, ui)
+  const words = useDexWords()
   return (
     <div className={own.sheet} data-dex-search>
       <div className={own.sheetHead}>
@@ -56,10 +58,10 @@ export function DexSearch(
       </div>
 
       <div className={own.searchRow[row(0)]}>
-        <span className={own.searchLabel}>도감</span>
+        <span className={own.searchLabel}>{words.dexRow}</span>
         <span className={own.searchValues}>
           {arrows(0) && <span className={own.searchArrow}>◂</span>}
-          <span>{national && query.national ? '전국' : '신오'}</span>
+          <span>{national && query.national ? words.national : words.sinnoh}</span>
           {arrows(0) && <span className={own.searchArrow}>▸</span>}
         </span>
       </div>
@@ -106,7 +108,7 @@ export function DexSearch(
       {/* 고른 줄의 설명 — 롬 줄의 줄바꿈을 그대로 둔다 */}
       {help !== '' && <p className={own.searchNote}>{help}</p>}
       {/* 무게·키 순은 잡은 것만 남는다 — `keepUncaught`가 가나다순에만 켜진다 (`dexSort`). 롬에 없는 우리 문구다 */}
-      {query.sort !== SortOrder.NUMERICAL && query.sort !== SortOrder.ALPHABETICAL && <p className={own.searchNote}>잡아 본 것만 나온다</p>}
+      {query.sort !== SortOrder.NUMERICAL && query.sort !== SortOrder.ALPHABETICAL && <p className={own.searchNote}>{words.caughtOnly}</p>}
     </div>
   )
 }

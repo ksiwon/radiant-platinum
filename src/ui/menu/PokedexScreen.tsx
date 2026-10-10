@@ -39,6 +39,7 @@ import { DexForms } from './pokedex/DexForms'
 import { DexInfo } from './pokedex/DexInfo'
 import { DexList } from './pokedex/DexList'
 import { DexSearch, SEARCH_ROW_COUNT } from './pokedex/DexSearch'
+import { DEX_WORDS } from './pokedex/dexWords'
 import { DexSize, sizeReady } from './pokedex/DexSize'
 import { areaTimeOf, nextTime, type AreaTime } from './pokedex/areaMath'
 import { loadDexData, type DexData } from './pokedex/dexData'
@@ -217,15 +218,16 @@ export function PokedexScreen() {
   const label = (i: number): string => ui[i] ?? ''
   const hasQuery = !isPlain(effective)
 
+  const words = DEX_WORDS[locale]
   const foot = search !== null
-    ? '↑↓ 줄 · ←→ 값 · Z 닫기 · X 물음을 지운다'
+    ? words.searchFoot
     : tuning
-      ? `←→ 볼 · ↑↓ 높낮이 · Q/E ${label(DEX_LINE.chorus)}·${label(DEX_LINE.pan)} · Z 재생 · Shift X 나가기`
+      ? words.tuneFoot(label(DEX_LINE.chorus), label(DEX_LINE.pan))
       : shown === PAGE_AREA
-        ? '↑↓ 고르기 · ←→ 쪽 · Shift 시간대 · Tab 검색 · Z 울음소리 · X 닫기'
+        ? words.areaFoot
         : shown === PAGE_CRY
-          ? '↑↓ 고르기 · ←→ 쪽 · Z 재생 · Shift 조절 · Tab 검색 · X 닫기'
-          : `↑↓ 고르기 · Q/E 한 쪽씩 · ←→ ${shown === PAGE_FORMS && forms > 1 ? '모습·쪽' : '쪽'} · Tab 검색 · Z 울음소리 · X 닫기`
+          ? words.cryFoot
+          : words.listFoot(shown === PAGE_FORMS && forms > 1 ? words.formsPage : words.page)
 
   const tabVars = Object.fromEntries(
     PAGE_KEYS.map((_, i) => [`--tab-${String(i + 1)}`, open.includes(i) ? 1 : 0.35]),
@@ -233,7 +235,7 @@ export function PokedexScreen() {
 
   return (
     <MenuScreen
-      title={effective.national ? '전국도감' : '도감'}
+      title={effective.national ? words.titleNational : words.title}
       note={`${label(0)} ${String(counts.seen)} · ${label(1)} ${String(counts.caught)}`}
       foot={foot}
       hole
