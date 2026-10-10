@@ -7,7 +7,7 @@ import { readSpa } from '../battle/spl/resource'
 import { bankIndex } from '../../import/platinum/textBanks'
 import {
   EGG_BEATS, EGG_EMITTERS, EGG_HATCH_BANK, EGG_HATCH_TEXT, EGG_MEMBER, HATCH_SOUND,
-  hatchBeats, hatchEggVisible, hatchShake, hatchSoundCues, hatchVeil,
+  hatchBars, hatchBeats, hatchBornVisible, hatchBornWhite, hatchEggVisible, hatchShake, hatchSoundCues, hatchVeil,
 } from './hatchBeat'
 
 const NARC = '/demo/egg/data/particle/egg_demo_particle.narc'
@@ -51,7 +51,41 @@ describe('알 부화 마디 — 자료 없이', () => {
     expect(hatchEggVisible(EGG_BEATS.hide, EGG_BEATS)).toBe(false)
     expect(hatchShake(EGG_BEATS.hide, EGG_BEATS)).toBe(0)
     expect(hatchVeil(EGG_BEATS.hide, EGG_BEATS)).toBe(0)
-    expect(hatchVeil(EGG_BEATS.end, EGG_BEATS)).toBeCloseTo(1)
+  })
+
+  it('알이 사라지고 10프레임 뒤 막이 서고, 새 몸은 그 속에서 25프레임 머문 뒤 걷힌다', () => {
+    const { hide, reveal, end } = EGG_BEATS
+    // `hide + 10 + 16`에 막이 다 서고, 거기서 25프레임 머문 뒤 16걸음에 걷힌다 — 끝은 164(미국 롬 실측 hide 97)
+    expect(reveal).toBe(hide + 10 + 16)
+    expect(end).toBeGreaterThanOrEqual(reveal + 25 + 16)
+    expect(hatchVeil(hide + 10, EGG_BEATS)).toBe(0)
+    expect(hatchVeil(reveal, EGG_BEATS)).toBe(1)
+    expect(hatchVeil(reveal + 24, EGG_BEATS)).toBe(1)
+    expect(hatchVeil(reveal + 25 + 16, EGG_BEATS)).toBe(0)
+    expect(hatchVeil(end, EGG_BEATS)).toBe(0)
+    // 한 걸음마다 6.25% — 16걸음이다
+    expect(hatchVeil(hide + 10 + 8, EGG_BEATS)).toBeCloseTo(0.5)
+  })
+
+  it('새 몸은 막이 다 선 프레임에 나타나고 머무는 동안 새하얗다', () => {
+    const { reveal } = EGG_BEATS
+    expect(hatchBornVisible(reveal - 1, EGG_BEATS)).toBe(false)
+    expect(hatchBornVisible(reveal, EGG_BEATS)).toBe(true)
+    expect(hatchBornWhite(reveal, EGG_BEATS)).toBe(1)
+    expect(hatchBornWhite(reveal + 24, EGG_BEATS)).toBe(1)
+    expect(hatchBornWhite(reveal + 25 + 16, EGG_BEATS)).toBe(0)
+    expect(hatchBornWhite(reveal + 25 + 8, EGG_BEATS)).toBeCloseTo(0.5)
+  })
+
+  it('위 32줄 · 아래 48줄의 띠는 알이 사라지고 10프레임 뒤 프레임당 4줄씩 걷힌다', () => {
+    const { hide } = EGG_BEATS
+    // 192줄 화면 기준이다 — 위 띠 1/6, 아래 띠 1/4
+    expect(hatchBars(0, EGG_BEATS)).toEqual({ top: 32 / 192, bottom: 48 / 192 })
+    expect(hatchBars(hide + 10, EGG_BEATS)).toEqual({ top: 32 / 192, bottom: 48 / 192 })
+    expect(hatchBars(hide + 10 + 2, EGG_BEATS)).toEqual({ top: 24 / 192, bottom: 40 / 192 })
+    // 위는 8프레임, 아래는 12프레임에 다 걷힌다
+    expect(hatchBars(hide + 10 + 8, EGG_BEATS)).toEqual({ top: 0, bottom: 16 / 192 })
+    expect(hatchBars(hide + 10 + 12, EGG_BEATS)).toEqual({ top: 0, bottom: 0 })
   })
 })
 
@@ -111,7 +145,9 @@ withRom('en')('알 부화 마디 — 롬 실측', () => {
     // 첫 둘이 다 죽고 나서야 터진다 (수명 22·26)
     expect(beats.burst).toBe(93)
     expect(beats.hide).toBe(97)
-    expect(beats.end).toBe(123)
+    // 알이 사라지고 흰 막 10 + 16, 새 몸이 머무는 25, 걷힘 16
+    expect(beats.reveal).toBe(123)
+    expect(beats.end).toBe(164)
     expect(beats).toMatchObject({ first: EGG_BEATS.first, end: EGG_BEATS.end })
   })
 })

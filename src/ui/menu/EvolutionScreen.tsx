@@ -2,11 +2,13 @@
 //
 // 원작의 상태 기계를 그대로 따라간다:
 //
-//   ...오잉!? ○○의 모습이...!             ← 여기서 **X로 멈출 수 있다** (레벨 진화만)
+//   ...오잉!? ○○의 모습이...!             ← 여기서 **X로 멈출 수 있다** (레벨 진화만 — 도구 진화는 못 멈춘다)
 //   축하합니다! ○○는 △△로 진화했습니다!
-//   (새 종족이 지금 레벨에 배우는 기술 — 칸이 차 있으면 무엇을 지울지 묻는다)
-//   (아둥지면 껍질몬이 하나 더)
+//   (새 종족이 지금 레벨에 배우는 기술 — 칸이 차 있으면 `EvolutionLearn`이 원작 박자로 묻는다)
+//   (아둥지면 껍질몬이 하나 더 — **글 없이** 이름표 줄과 몸의 페이드인으로만. 원작도 말없이 파티에 넣는다)
 //   얼라리...? ○○의 변화가 멈췄다!         ← 멈췄을 때
+//
+// 장면이 끝날 때는 **검게** 16프레임이다 (`NO_MOVE_TO_LEARN`) — 진화 연출 자체가 흰 막으로 끝나는 것과 다르다.
 //
 // **글은 롬의 배틀 글 뱅크(us 368)에서 온다** — 원작 진화 화면도 그 뱅크를 연다
 // (`Evolution_PrintString`). 뱅크가 안 왔으면 같은 말을 `ui/korean`으로 조사만 골라 짓는다.
@@ -65,13 +67,18 @@ import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { useSessionStore } from '../../state/sessionStore'
 import { worldState } from '../../state/worldState'
-import { withDirection, withObject, withSubject, withTopic } from '../korean'
+import { withDirection, withObject, withTopic } from '../korean'
 import { romLine } from '../battle/romLine'
 import { BATTLE_BANK } from '../battle/romText'
 import { useRomLines } from '../battle/useRomLines'
+import { KeyHints } from '../common/KeyHints'
+import { MessageWindow } from '../common/MessageWindow'
+import { NamePlate } from '../common/MonIdentity'
+import { windowArrow } from '../common/parts.css'
+import { EvolutionLearn } from './EvolutionLearn'
+import { canStopEvolution } from './evolutionRules'
 import { useMenuKeys } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
-import * as css from './menuChrome.css'
 import * as own from './evolutionScreen.css'
 
 interface Tables {
@@ -91,25 +98,43 @@ type DoneLine =
   | { kind: 'evolved'; name: string; grown: string }
   /** 「○○는 ◇◇를 배웠다!」 */
   | { kind: 'learned'; name: string; move: string }
-  /** 아둥지 — 껍질몬이 하나 더 */
-  | { kind: 'shedinja'; name: string }
+
+/**
+ * 어두운 무대 위 이름표의 재료 — **실제 데이터만** 든다. 옛 종 → 새 종 이름, 성별, 레벨, 껍질몬이 들어왔으면 그 줄
+ */
+interface Plate {
+  from: string
+  to: string
+  gender: MonVisual['gender']
+  level: number
+  /** 아둥지 — 껍질몬이 파티에 들어왔다 (이름 · 레벨). 글은 안 짓고 이름표 한 줄로만 보인다 */
+  companion?: { name: string; level: number }
+}
 
 /** 지금 무엇을 보여 주고 있는가 */
 type Stage =
   | { kind: 'idle' }
   /**
    * 연출이 열리기 전 — 옛 종이 울고 「...오잉!?」이 떠 있다. 울음이 끝나면 진화 곡을 틀고
-   * 20프레임 뒤에 `changing`으로 간다 (`WAIT_PRINT_POKEMON_IS_EVOLVING` → `START_FADE`)
+   * 20프레임 뒤에 `changing`으로 간다 (`WAIT_PRINT_POKEMON_IS_EVOLVING` → `START_FADE`).
+   * `byLevel`은 레벨 진화인가 — **레벨 진화만 X로 멈출 수 있다** (`start_menu.c:1738-1742`가 레벨이면 `flags 0x1`,
+   * 돌이면 `NULL`을 넘기고 `evolution.c:283`은 `flags & 0x1`일 때만 B를 받는다)
    */
   | {
     kind: 'announce'; slot: number; mon: PokemonInstance; evo: EvoResult
-    before: MonVisual; after: MonVisual
+    before: MonVisual; after: MonVisual; byLevel: boolean
   }
-  | { kind: 'changing'; slot: number; mon: PokemonInstance; evo: EvoResult }
-  | { kind: 'done'; slot: number; to: number; form: number; lines: DoneLine[]; at: number }
+  | {
+    kind: 'changing'; slot: number; mon: PokemonInstance; evo: EvoResult
+    before: MonVisual; after: MonVisual; byLevel: boolean
+  }
+  | { kind: 'done'; slot: number; to: number; form: number; lines: DoneLine[]; at: number; plate: Plate }
   /** `ready`는 옛 종이 다 울었는가 — 원작은 그 뒤에야 「얼라리...?」를 찍는다 */
   | { kind: 'canceled'; name: string; ready: boolean }
-  | { kind: 'forget'; slot: number; move: number }
+  /** 칸이 없어서 못 배운 기술 하나 — `EvolutionLearn`이 묻는다 */
+  | { kind: 'learn'; slot: number; move: number; plate: Plate }
+  /** 검게 16프레임 — 끝나면 다음 진화나 화면 닫기 */
+  | { kind: 'closing' }
 
 /**
  * 배틀 글 뱅크(us 368) 안의 진화 줄. `import/platinum/battleStrings`의 이름 순서로 셌다.
@@ -168,8 +193,6 @@ function doneText(line: DoneLine, bank: readonly string[]): string {
     case 'learned':
       return romLine(bank, EVO_LINE.learned, line.name, line.move)
         ?? `${withTopic(line.name)}\n${withObject(line.move)} 배웠다!`
-    case 'shedinja':
-      return `${withSubject(line.name)} 나타났다!`
   }
 }
 
@@ -294,7 +317,7 @@ export function EvolutionScreen() {
       // 진화 곡은 이 울음이 끝나야 깔린다
       useCinematicStore.getState().announceEvolution(before, after)
       void music.playCry(mon.species)
-      setStage({ kind: 'announce', slot, mon, evo, before, after })
+      setStage({ kind: 'announce', slot, mon, evo, before, after, byLevel: entry.item === undefined })
       return
     }
   }, [tables, take, closeAll, mapId])
@@ -332,6 +355,8 @@ export function EvolutionScreen() {
       const ballPocket = tables.items.get(ITEM_POKE_BALL).pocket ?? 0
       const hasBall = quantity(store.bag, ballPocket, ITEM_POKE_BALL) > 0
       const shedinja = spawnsShedinja(s.evo.method) && party.length < PARTY_MAX && hasBall
+      // ⚠️ **글은 짓지 않는다.** 원작은 껍질몬을 말없이 파티에 넣고 도감에 올린다 (`Evolution_ProcessEvolutionEffects`).
+      // 파티에 들어온 마리를 알 수 있도록 이름표 줄과 몸의 페이드인으로만 보인다 (`plate.companion`)
       if (shedinja) {
         party.push({
           ...taught.mon,
@@ -344,7 +369,6 @@ export function EvolutionScreen() {
           status: 'ok',
           statusTurns: 0,
         })
-        lines.push({ kind: 'shedinja', name: tables.names[SPECIES_SHEDINJA] ?? '' })
       }
 
       // 진화시킨 수 (PARITY §7.5)
@@ -359,7 +383,21 @@ export function EvolutionScreen() {
 
       pendingMoves.current = [...taught.pending]
       useCinematicStore.getState().finishEvolution()
-      setStage({ kind: 'done', slot: s.slot, to: s.evo.to, form: s.mon.form, lines, at: 0 })
+      const plate: Plate = {
+        from: tables.names[before.species] ?? `#${String(before.species)}`,
+        to: grownName,
+        gender: s.after.gender,
+        level: taught.mon.level,
+        ...(shedinja
+          ? { companion: { name: tables.names[SPECIES_SHEDINJA] ?? '', level: taught.mon.level } }
+          : {}),
+      }
+      if (shedinja) {
+        useCinematicStore.getState().setCompanion({
+          species: SPECIES_SHEDINJA, form: 0, gender: 'genderless', shiny: false,
+        })
+      }
+      setStage({ kind: 'done', slot: s.slot, to: s.evo.to, form: s.mon.form, lines, at: 0, plate })
     },
     [tables, nameOf],
   )
@@ -385,7 +423,10 @@ export function EvolutionScreen() {
       const waited = performance.now() - played.at
       lead = setTimeout(() => {
         useCinematicStore.getState().startEvolution(stage.before, stage.after)
-        setStage({ kind: 'changing', slot: stage.slot, mon: stage.mon, evo: stage.evo })
+        setStage({
+          kind: 'changing', slot: stage.slot, mon: stage.mon, evo: stage.evo,
+          before: stage.before, after: stage.after, byLevel: stage.byLevel,
+        })
       }, Math.max(0, SHINKA_LEAD_FRAMES * FRAME_MS - waited))
     })
     return () => {
@@ -438,13 +479,24 @@ export function EvolutionScreen() {
     if (fanfare !== null) void music.playEffect(fanfare)
   }, [stage])
 
+  /** 검게 16프레임으로 끝낸다 — 끝나면 다음 진화나 화면 닫기로 간다 (`NO_MOVE_TO_LEARN`) */
+  const leave = useCallback((): void => {
+    setStage({ kind: 'closing' })
+  }, [])
+
+  useEffect(() => {
+    if (stage.kind !== 'closing') return undefined
+    const id = setTimeout(() => { setStage({ kind: 'idle' }) }, 16 * FRAME_MS)
+    return () => { clearTimeout(id) }
+  }, [stage])
+
   const cancel = useCallback((): void => {
     if (stage.kind !== 'changing') return
-    // ⚠️ **아무 때나 못 멈춘다.** 원작은 `ANIMATION_ALTERNATE_POKEMON`일 때만 B를
-    // 받는다 — 띠가 닫히는 동안과 교대가 끝난 뒤에는 안 받는다 (PARITY §3.1)
+    // ⚠️ **도구로 하는 진화는 못 멈춘다**, 레벨 진화도 **아무 때나 못 멈춘다** — `canStopEvolution`
+    // (원작은 `ANIMATION_ALTERNATE_POKEMON`일 때만 B를 받는다. PARITY §3.1)
     const at = useCinematicStore.getState().startedAt
     const frame = ((performance.now() - at) * 60) / 1000
-    if (!evolutionCanCancel(frame, EVO_BEATS)) return
+    if (!canStopEvolution(stage.byLevel, frame)) return
     if (timer.current) clearTimeout(timer.current)
     useCinematicStore.getState().cancelEvolution()
     // `CANCEL_EVOLUTION` — 진화 곡을 끊고(`Sound_StopBGM(SEQ_SHINKA)`) 옛 종이 다시 운다.
@@ -455,10 +507,20 @@ export function EvolutionScreen() {
     setStage({ kind: 'canceled', name: nameOf(stage.mon), ready: false })
   }, [stage, nameOf])
 
+  /** 칸이 없어서 못 배운 기술이 남았으면 그 기술의 물음으로, 아니면 장면을 닫는다 */
+  const afterLines = useCallback((slot: number, plate: Plate): void => {
+    const move = pendingMoves.current.shift()
+    if (move !== undefined) {
+      setStage({ kind: 'learn', slot, move, plate })
+      return
+    }
+    leave()
+  }, [leave])
+
   /** 글 한 줄을 넘긴다 */
   const next = useCallback((): void => {
     if (stage.kind === 'canceled') {
-      if (stage.ready) setStage({ kind: 'idle' })
+      if (stage.ready) leave()
       return
     }
     if (stage.kind !== 'done') return
@@ -470,17 +532,11 @@ export function EvolutionScreen() {
       setStage({ ...stage, at: stage.at + 1 })
       return
     }
-    const move = pendingMoves.current.shift()
-    if (move !== undefined) {
-      useCinematicStore.getState().clear()
-      setStage({ kind: 'forget', slot: stage.slot, move })
-      return
-    }
-    setStage({ kind: 'idle' })
-  }, [stage])
+    afterLines(stage.slot, stage.plate)
+  }, [stage, leave, afterLines])
 
   // 연출이 열리기 전(`announce`)에도 키를 쥔다 — 원작은 그때 B를 안 받고, 받는 것은
-  // 교대하는 동안뿐이다 (`cancel`이 마디로 거른다)
+  // 교대하는 동안뿐이다 (`cancel`이 마디로 거른다). 기술을 묻는 동안(`learn`)은 `EvolutionLearn`이 쥔다
   const running = stage.kind === 'announce' || stage.kind === 'changing'
   useMenuKeys(
     { confirm: next, cancel: running ? cancel : next },
@@ -506,62 +562,91 @@ export function EvolutionScreen() {
     return ''
   }, [stage, nameOf, battleLines])
 
-  if (!tables || stage.kind === 'idle') return null
-
-  if (stage.kind === 'forget') {
-    return (
-      <ForgetMove
-        slot={stage.slot}
-        move={stage.move}
-        tables={tables}
-        onDone={() => {
-          const move = pendingMoves.current.shift()
-          setStage(
-            move !== undefined ? { kind: 'forget', slot: stage.slot, move } : { kind: 'idle' },
-          )
-        }}
-      />
-    )
+  /** 기술 묻는 줄에서 이 마리를 부르는 이름 — 진화한 뒤의 마리다 */
+  const learnName = (slot: number): string => {
+    const mon = useSaveStore.getState().party[slot]
+    return mon ? nameOf(mon) : ''
   }
 
+  if (!tables || stage.kind === 'idle') return null
+
+  const plate = stage.kind === 'done' || stage.kind === 'learn' ? stage.plate : null
+  // 「다음」을 기다리는 쪽에만 ▼가 있다 — 연출이 도는 동안은 넘기지 않는 쪽이다
+  const waiting = (stage.kind === 'done' || (stage.kind === 'canceled' && stage.ready)) && line !== ''
+
   return (
-    <MenuScreen title="진화" cinematic foot={running ? 'X 그만둔다' : 'Z 넘기기'}>
+    <MenuScreen title="진화" cinematic bare>
       <div className={own.stage}>
-        <EvolutionFrame running={stage.kind === 'changing'} />
-        {/* 롬 글은 한 쪽 안에서 줄을 바꾼다(`\n`) — 줄마다 끊어 놓는다 */}
-        <div className={own.line}>
-          {line.split('\n').map((row, i) => (
-            <span key={i}>
-              {i > 0 && <br />}
-              {row}
-            </span>
-          ))}
-        </div>
+        <EvolutionFrame
+          running={stage.kind === 'changing'}
+          hint={stage.kind === 'changing' && stage.byLevel}
+          black={stage.kind === 'closing'}
+        />
+        {plate && (
+          <div className={own.plate}>
+            <NamePlate
+              from={plate.from}
+              to={plate.to}
+              gender={plate.gender}
+              level={plate.level}
+              {...(plate.companion
+                ? { extra: `+ ${plate.companion.name} Lv${String(plate.companion.level)}` }
+                : {})}
+            />
+          </div>
+        )}
+        {stage.kind === 'learn'
+          ? (
+            <EvolutionLearn
+              key={stage.move}
+              slot={stage.slot}
+              move={stage.move}
+              tables={tables}
+              bank={battleLines}
+              who={learnName(stage.slot)}
+              onFinish={() => { afterLines(stage.slot, stage.plate) }}
+            />
+          )
+          : stage.kind === 'closing'
+            ? null
+            : (
+              <div className={own.dock}>
+                {/* 롬 글은 한 쪽 안에서 줄을 바꾼다(`\n`) — `MessageWindow`가 줄마다 끊는다 */}
+                <MessageWindow lines={line} />
+                {waiting && <span className={windowArrow} aria-hidden>▼</span>}
+              </div>
+            )}
       </div>
     </MenuScreen>
   )
 }
 
 /**
- * 무대 창 — 뒤의 3D를 그대로 보여 주고 그 위에 **가림 띠와 흰 막**을 얹는다.
+ * 띠 · 흰 막 · 검은 막 · X 안내 — 뒤의 3D를 그대로 보여 주고 그 위에 얹는다.
  *
  * ⚠️ **상태로 그리지 않는다.** 프레임마다 바뀌는 값이라 `setState`로 돌리면
  * 초당 예순 번 다시 그린다. 자리만 잡아 두고 값은 `ref`로 직접 밀어 넣는다.
  *
  * ⚠️ **시작 시각을 가게에서 받는다** — 3D 무대가 보는 것과 **같은 시계**여야
  * 띠가 다 닫힌 뒤에 교대가 시작한다 (`cinematicStore`의 `startedAt`)
+ *
+ * X 안내(`hint`)는 **멈출 수 있는 구간에서만** 뜬다 — 교대하는 40~242프레임이다 (`evolutionCanCancel`).
+ * 한동안 연출이 도는 내내 「X 그만둔다」가 떠 있었는데 대부분의 구간에서 누르면 아무 일도 안 일어났다
  */
-function EvolutionFrame({ running }: { running: boolean }) {
+function EvolutionFrame({ running, hint, black }: { running: boolean; hint: boolean; black: boolean }) {
   const topRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const veilRef = useRef<HTMLDivElement>(null)
+  const hintRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const bars = [topRef.current, bottomRef.current]
     const skin = veilRef.current
+    const note = hintRef.current
     if (!running) {
       for (const bar of bars) if (bar) bar.style.height = '0'
       if (skin) skin.style.opacity = '0'
+      if (note) note.style.opacity = '0'
       return undefined
     }
     let raf = 0
@@ -571,6 +656,7 @@ function EvolutionFrame({ running }: { running: boolean }) {
       const rows = evolutionClamp(frame, EVO_BEATS)
       for (const bar of bars) if (bar) bar.style.height = `${String(rows * 100)}%`
       if (skin) skin.style.opacity = String(evolutionVeil(frame, EVO_BEATS))
+      if (note) note.style.opacity = evolutionCanCancel(frame, EVO_BEATS) ? '1' : '0'
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
@@ -580,95 +666,16 @@ function EvolutionFrame({ running }: { running: boolean }) {
   }, [running])
 
   return (
-    <>
-      {/* 3D 무대가 설 만큼 자리를 비운다 — 그림은 뒤의 영속 Canvas가 그린다 */}
-      <div className={own.cinematicSpace} aria-hidden />
-      <div className={own.screenFrame} aria-hidden>
-        <div ref={topRef} className={`${own.clampBar} ${own.clampTop}`} />
-        <div ref={bottomRef} className={`${own.clampBar} ${own.clampBottom}`} />
-        <div ref={veilRef} className={own.veil} />
-      </div>
-    </>
-  )
-}
-
-/** 진화한 뒤 칸이 없어서 못 배운 기술 — 무엇을 지울지 묻는다 */
-function ForgetMove({
-  slot,
-  move,
-  tables,
-  onDone,
-}: {
-  slot: number
-  move: number
-  tables: Tables
-  onDone: () => void
-}) {
-  const party = useSaveStore((s) => s.party)
-  const mon = party[slot]
-  const [cursor, setCursor] = useState(0)
-  const rows = mon?.moves ?? []
-  const count = rows.length + 1
-  const name = tables.moveNames[move] ?? `#${String(move)}`
-
-  const pick = (i: number): void => {
-    if (i < rows.length && mon) {
-      const moves = [...mon.moves]
-      moves[i] = {
-        move,
-        pp: maxPpOf({ move, pp: 0, ppUps: 0 }, tables.moves.get(move).pp),
-        ppUps: 0,
-      }
-      const next = [...party]
-      next[slot] = { ...mon, moves }
-      useSaveStore.setState({ party: next })
-    }
-    onDone()
-  }
-
-  useMenuKeys({
-    up: () => {
-      setCursor((c) => (c + count - 1) % count)
-    },
-    down: () => {
-      setCursor((c) => (c + 1) % count)
-    },
-    confirm: () => {
-      pick(cursor)
-    },
-    cancel: () => {
-      pick(rows.length)
-    },
-  })
-
-  return (
-    <MenuScreen title="기술" note={name} foot="↑↓ 고르기 · Z 결정 · X 그만둔다">
-      <div className={css.stageWide}>
-        <div className={css.list}>
-          <div className={css.hint}>{`${withObject(name)} 배우려면 잊을 기술을 골라야 한다.`}</div>
-          {rows.map((s, i) => (
-            <button
-              key={`${String(i)}-${String(s.move)}`}
-              className={i === cursor ? css.rowOn : css.row}
-              onClick={() => {
-                pick(i)
-              }}
-            >
-              {i === cursor && <span className={css.caret} aria-hidden />}
-              <span className={css.label}>{tables.moveNames[s.move] ?? `#${String(s.move)}`}</span>
-            </button>
-          ))}
-          <button
-            className={cursor === rows.length ? css.rowOn : css.row}
-            onClick={() => {
-              pick(rows.length)
-            }}
-          >
-            {cursor === rows.length && <span className={css.caret} aria-hidden />}
-            <span className={css.label}>그만둔다</span>
-          </button>
+    <div className={own.screenFrame} aria-hidden>
+      <div ref={topRef} className={`${own.clampBar} ${own.clampTop}`} />
+      <div ref={bottomRef} className={`${own.clampBar} ${own.clampBottom}`} />
+      {hint && (
+        <div ref={hintRef} className={own.hint}>
+          <KeyHints text="X 그만둔다" tone="dark" />
         </div>
-      </div>
-    </MenuScreen>
+      )}
+      <div ref={veilRef} className={own.veil} />
+      <div className={black ? `${own.blackVeil} ${own.blackVeilOn}` : own.blackVeil} />
+    </div>
   )
 }

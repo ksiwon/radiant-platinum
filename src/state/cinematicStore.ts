@@ -42,6 +42,16 @@ interface CinematicStore {
    */
   startedAt: number
   /**
+   * 새 몸 옆에 서는 껍질몬 (진화) — 글 없이 **0.4초 페이드인**한다 (`evolutionScreen` 설계 §4.5).
+   * `companionAt`은 서기 시작한 시각(`performance.now()`)이다
+   */
+  companion: MonVisual | null
+  companionAt: number
+  /**
+   * 몸을 왼쪽으로 비켜 세운다 — 진화의 기술 창이 오른쪽에 열릴 때다 (`TIME.fade`)
+   */
+  bodyShift: boolean
+  /**
    * 진화 장면을 세우되 연출은 아직 안 연다 (`announce`). 옛 몸이 온전히 서 있다
    */
   announceEvolution: (before: MonVisual, after: MonVisual) => void
@@ -59,6 +69,9 @@ interface CinematicStore {
   /** 교환. `before`가 내가 보내는 마리, `after`가 받는 마리다 */
   startTrade: (sending: MonVisual, receiving: MonVisual) => void
   setTradePhase: (phase: TradePhase) => void
+  /** 껍질몬을 새 몸 옆에 세운다 (없으면 치운다) */
+  setCompanion: (mon: MonVisual | null) => void
+  setBodyShift: (shift: boolean) => void
   clear: () => void
 }
 
@@ -68,13 +81,19 @@ const OFF = {
   before: null,
   after: null,
   startedAt: 0,
+  companion: null,
+  companionAt: 0,
+  bodyShift: false,
 }
 
 /** DOM 이벤트 화면과 영속 WebGL Canvas 사이의 작은 상태 다리. */
 export const useCinematicStore = create<CinematicStore>()((set) => ({
   ...OFF,
   announceEvolution: (before, after) => {
-    set({ scene: 'evolution', phase: 'announce', before, after, startedAt: performance.now() })
+    set({
+      scene: 'evolution', phase: 'announce', before, after, startedAt: performance.now(),
+      companion: null, companionAt: 0, bodyShift: false,
+    })
   },
   startEvolution: (before, after) => {
     set({ scene: 'evolution', phase: 'changing', before, after, startedAt: performance.now() })
@@ -86,7 +105,10 @@ export const useCinematicStore = create<CinematicStore>()((set) => ({
     set((s) => (s.scene === 'evolution' ? { phase: 'canceled' } : s))
   },
   startHatch: (mon) => {
-    set({ scene: 'hatch', phase: 'shaking', before: null, after: mon, startedAt: performance.now() })
+    set({
+      scene: 'hatch', phase: 'shaking', before: null, after: mon, startedAt: performance.now(),
+      companion: null, companionAt: 0, bodyShift: false,
+    })
   },
   finishHatch: () => {
     set((s) => (s.scene === 'hatch' ? { phase: 'born' } : s))
@@ -96,6 +118,12 @@ export const useCinematicStore = create<CinematicStore>()((set) => ({
   },
   setTradePhase: (phase) => {
     set((s) => (s.scene === 'trade' ? { phase } : s))
+  },
+  setCompanion: (mon) => {
+    set({ companion: mon, companionAt: mon === null ? 0 : performance.now() })
+  },
+  setBodyShift: (shift) => {
+    set({ bodyShift: shift })
   },
   clear: () => {
     set(OFF)
