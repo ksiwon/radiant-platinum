@@ -10,15 +10,12 @@ import { check, json, readRomFile, type ConvertContext, type Produced } from './
 
 const MEMBERS = 66
 const CARD_PALETTES = 7
-const CASE_PALETTE = 10
 const BADGE_PALETTE = 16
 const CARD_TILES = 27
-const CASE_TILES = 29
 const PLAYER_TILES = 31
 const BADGE_TILES = 33
 const CARD_FRONT = 35
 const CARD_BACK = 36
-const CASE_MAP = 38
 const PLAYERS = [40, 41] as const
 const BADGE_CELLS = 44
 const BADGE_ANIMS = 46
@@ -84,30 +81,6 @@ function drawExtended(rgba: Uint8Array, scr: Screen, tiles: Uint8Array, pal: rea
   return used
 }
 
-/** 4bpp 판. 0번 색 자리에 뒤판색을 깐다 */
-function drawText(
-  rgba: Uint8Array, scr: Screen, tiles: Uint8Array, pals: readonly (readonly Rgb[])[], backdrop: Rgb,
-): void {
-  for (let cy = 0; cy < SCREEN_H / TILE; cy++) {
-    for (let cx = 0; cx < SCREEN_W / TILE; cx++) {
-      const cell = screenCell(scr, cx, cy)
-      const tile = cell & 0x3ff, hflip = (cell & 0x400) !== 0, vflip = (cell & 0x800) !== 0
-      const pal = pals[cell >> 12] ?? []
-      for (let y = 0; y < TILE; y++) {
-        for (let x = 0; x < TILE; x++) {
-          const sx = hflip ? TILE - 1 - x : x, sy = vflip ? TILE - 1 - y : y
-          const byte = tiles[tile * 32 + sy * 4 + (sx >> 1)] ?? 0
-          const idx = sx & 1 ? byte >> 4 : byte & 0xf
-          const c = idx === 0 ? backdrop : pal[idx]
-          if (!c) continue
-          const at = ((cy * TILE + y) * SCREEN_W + cx * TILE + x) * 4
-          rgba[at] = c[0]; rgba[at + 1] = c[1]; rgba[at + 2] = c[2]; rgba[at + 3] = 255
-        }
-      }
-    }
-  }
-}
-
 /** 칠해진 픽셀의 상자를 앞의 상자와 합친다 */
 function unionBox(rgba: Uint8Array, w: number, h: number, box: Box | null): Box {
   let [x0, y0, x1, y1] = box === null ? [w, h, -1, -1] : [box[0], box[1], box[0] + box[2] - 1, box[1] + box[3] - 1]
@@ -153,21 +126,14 @@ export async function convertTrainerCase(ctx: ConvertContext): Promise<Produced>
   if (base.length !== 16) throw new Error(`카드 팔레트가 ${String(base.length)}줄이다 — 16줄이라야 한다`)
   const levels = Array.from({ length: CARD_PALETTES }, (_, i) => palettes(take(i)))
   const cardTiles = chars(take(CARD_TILES)).data
-  const faces = levels.map((level) => {
-    const pal = cardPalette(base, level)
-    return [CARD_FRONT, CARD_BACK].map((m) => {
-      const rgba = new Uint8Array(SCREEN_W * SCREEN_H * 4)
-      drawAffine(rgba, take(m), cardTiles, pal)
-      return rgba
-    })
-  })
+  // 카드 상자 — 노멀 팔레트로 앞뒤 면이 칠한 곳. 그림은 더 안 낸다 (`tools/extract/trainerCase.js` 머리말)
   let card: Box | null = null
-  for (const face of faces[0]!) card = unionBox(face, SCREEN_W, SCREEN_H, card)
+  for (const m of [CARD_FRONT, CARD_BACK]) {
+    const rgba = new Uint8Array(SCREEN_W * SCREEN_H * 4)
+    drawAffine(rgba, take(m), cardTiles, cardPalette(base, levels[0]!))
+    card = unionBox(rgba, SCREEN_W, SCREEN_H, card)
+  }
   const cardBox = card!
-  const cardRgba = new Uint8Array(cardBox[2] * 2 * cardBox[3] * CARD_PALETTES * 4)
-  faces.forEach((pair, row) => pair.forEach((face, col) => {
-    blit(cardRgba, cardBox[2] * 2, col * cardBox[2], row * cardBox[3], face, SCREEN_W, cardBox)
-  }))
   check(ctx)
 
   // ── 주인공 — 광휘 · 빛나 ─────────────────────────────────────────────
@@ -189,12 +155,6 @@ export async function convertTrainerCase(ctx: ConvertContext): Promise<Produced>
   players.forEach((p, i) => {
     blit(trainerRgba, trainerBox[2] * PLAYERS.length, i * trainerBox[2], 0, p, SCREEN_W, trainerBox)
   })
-
-  // ── 케이스 ───────────────────────────────────────────────────────────
-  const casePals = palettes(take(CASE_PALETTE))
-  const caseRgba = new Uint8Array(SCREEN_W * SCREEN_H * 4)
-  drawText(caseRgba, screen(take(CASE_MAP)), chars(take(CASE_TILES)).data, casePals.slice(0, 1), casePals[0]![0]!)
-  check(ctx)
 
   // ── 배지 — 여덟 × 때 넷 ─────────────────────────────────────────────
   const { cells } = cellBank(take(BADGE_CELLS))
@@ -226,9 +186,7 @@ export async function convertTrainerCase(ctx: ConvertContext): Promise<Produced>
   check(ctx)
 
   return new Map([
-    ['data/trainerCase/card.png', await encodePng(cardRgba, cardBox[2] * 2, cardBox[3] * CARD_PALETTES)],
     ['data/trainerCase/trainer.png', await encodePng(trainerRgba, trainerBox[2] * PLAYERS.length, trainerBox[3])],
-    ['data/trainerCase/case.png', await encodePng(caseRgba, SCREEN_W, SCREEN_H)],
     ['data/trainerCase/badges.png', await encodePng(badgeRgba, badgeBox[2] * BADGES, badgeBox[3] * DIRT_LEVELS)],
     ['data/trainerCase/index.json', json({
       card: cardBox, trainer: trainerBox, badge: badgeBox,

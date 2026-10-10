@@ -315,6 +315,12 @@ const EXTRA_BANKS = [
   // ⚠️ **셋 다 브라우저 변환기는 이미 싣고 있었다** (`import/platinum/text.ts`가 뱅크를 통째로 굽는다).
   // 설치본에만 있고 개발 서버에는 없는 뱅크였다
   'TEXT_BANK_POKETCH_LINK_SEARCHER',
+  // 기술 되살리기 (`applications/move_reminder`) — 물음 줄 · 예·아니오 · 「배울 수 있는 기술이 없다」. 스크립트가 안 가리키고
+  // 응용 프로그램이 직접 연다. 번호는 645다 (642 · 643 · 644 · 646만 실리고 이것만 빠져 있었다)
+  //
+  // ⚠️ **브라우저 변환기는 이 뱅크를 이미 싣고 있었다** (`import/platinum/text.ts`가 뱅크를 통째로 굽는다).
+  // 개발 서버에서만 빈 뱅크였다
+  'TEXT_BANK_MOVE_REMINDER',
 ]
 
 function main() {
