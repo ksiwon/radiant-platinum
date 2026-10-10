@@ -10,27 +10,34 @@ import {
   CROP, LABEL_SIDE, SHEET, ZOOM, captionParts, cellBox, flyFoot, labelAnchor, labelledSpots, mapSize, markBox, panFor, stepSpot,
 } from './flyMap'
 import type { Spot } from './flyMap'
+import { readWoff2Metrics, textWidth } from './fontMetrics.testkit'
 
 interface Box { l: number, t: number, r: number, b: number }
 const spotOf = (spawn: number): Spot => FLY_SPOTS.find((s) => s.spawn === spawn)!
 
+const LOCALES = ['ko', 'en', 'ja'] as const
+
 describe('이름표 앉는 쪽 표', () => {
-  it('날 수 있는 스물 자리와 일대일이다', () => {
+  it('언어마다 날 수 있는 스물 자리와 일대일이다', () => {
     expect(FLY_SPOTS).toHaveLength(20)
-    expect(Object.keys(LABEL_SIDE).map(Number).sort((a, b) => a - b))
-      .toEqual(FLY_SPOTS.map((s) => s.spawn).sort((a, b) => a - b))
-    for (const side of Object.values(LABEL_SIDE)) expect(['l', 'r', 't', 'b']).toContain(side)
+    for (const l of LOCALES) {
+      expect(Object.keys(LABEL_SIDE[l]).map(Number).sort((a, b) => a - b))
+        .toEqual(FLY_SPOTS.map((s) => s.spawn).sort((a, b) => a - b))
+      for (const side of Object.values(LABEL_SIDE[l])) expect(['l', 'r', 't', 'b']).toContain(side)
+    }
   })
 
   it('이름표의 기준점이 쪽 방향으로 표식 바깥에 선다', () => {
-    for (const s of FLY_SPOTS) {
-      const m = markBox(s, 3)
-      const a = labelAnchor(s, 3)
-      switch (LABEL_SIDE[s.spawn]) {
-        case 'l': expect(a.left).toBeLessThan(m.left); break
-        case 'r': expect(a.left).toBeGreaterThan(m.left + m.width); break
-        case 't': expect(a.top).toBeLessThan(m.top); break
-        default: expect(a.top).toBeGreaterThan(m.top + m.height)
+    for (const l of LOCALES) {
+      for (const s of FLY_SPOTS) {
+        const m = markBox(s, 3)
+        const a = labelAnchor(s, 3, l)
+        switch (LABEL_SIDE[l][s.spawn]) {
+          case 'l': expect(a.left).toBeLessThan(m.left); break
+          case 'r': expect(a.left).toBeGreaterThan(m.left + m.width); break
+          case 't': expect(a.top).toBeLessThan(m.top); break
+          default: expect(a.top).toBeGreaterThan(m.top + m.height)
+        }
       }
     }
   })
@@ -194,62 +201,73 @@ withData('townMap.png')('지도 영역이 그림의 실제 띠 경계와 맞는�
   })
 })
 
-withData('townMap.json', 'names/locations.ko.json')('스물 자리가 다 열렸을 때 이름표 (townMap.json · locations.ko.json)', () => {
+const FONTS = resolve(__dirname, '../../../public/fonts')
+const names3 = LOCALES.map((l) => `names/locations.${l}.json`)
+
+withData('townMap.json', ...names3)('스물 자리가 다 열렸을 때 이름표 — 세 언어 (실제 글꼴 폭)', () => {
   const file = JSON.parse(readFileSync(resolve(DATA, 'townMap.json'), 'utf8')) as {
     cells: { x: number, z: number, label: number }[]
   }
-  const names = JSON.parse(readFileSync(resolve(DATA, 'names/locations.ko.json'), 'utf8')) as string[]
-  const nameOf = (s: Spot): string => names[file.cells.find((c) => c.x === s.x && c.z === s.z)!.label]!
-
-  it('스물 자리 모두 칸에서 이름이 나온다', () => {
-    for (const s of FLY_SPOTS) expect(nameOf(s), `spawn ${String(s.spawn)}`).not.toBe('')
-  })
-
-  // 글 폭은 어림이다(12px 굵은 한글 ≈ 12.5px/글자 + 바깥 외곽선 3px). 실제 겹침은 사람이 `pnpm shot`으로 본다.
+  const chain = [
+    readWoff2Metrics(resolve(FONTS, 'Pretendard-Bold.subset.woff2')),
+    readWoff2Metrics(resolve(FONTS, 'NotoSansJP-Bold.subset.woff2')),
+  ]
   const hit = (a: Box, b: Box): boolean => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b
-  const rect = (s: Spot, k: number) => {
-    const a = labelAnchor(s, k)
-    const w = nameOf(s).length * 12.5 + 3
-    const h = 14 + 3
-    const [tx, ty] = a.transform.includes('-100%, -50%') ? [-w, -h / 2]
-      : a.transform.includes('-50%, -100%') ? [-w / 2, -h]
-        : a.transform.includes('-50%, 0') ? [-w / 2, 0] : [0, -h / 2]
-    return { l: a.left + tx!, t: a.top + ty!, r: a.left + tx! + w, b: a.top + ty! + h }
-  }
 
-  for (const k of [ZOOM.out, ZOOM.in]) {
-    it(`${String(k)}배: 이름표가 지도 영역 안에 든다`, () => {
-      const map = mapSize(k)
-      for (const s of FLY_SPOTS) {
-        const r = rect(s, k)
-        expect(r.l, `${nameOf(s)} 왼쪽`).toBeGreaterThanOrEqual(0)
-        expect(r.t, `${nameOf(s)} 위`).toBeGreaterThanOrEqual(0)
-        expect(r.r, `${nameOf(s)} 오른쪽`).toBeLessThanOrEqual(map.w)
-        expect(r.b, `${nameOf(s)} 아래`).toBeLessThanOrEqual(map.h)
+  for (const l of LOCALES) {
+    const names = JSON.parse(readFileSync(resolve(DATA, `names/locations.${l}.json`), 'utf8')) as string[]
+    const nameOf = (s: Spot): string => names[file.cells.find((c) => c.x === s.x && c.z === s.z)!.label]!
+    // 글 폭 = 굵은 12px 글꼴의 advance 합 + 바깥 외곽선 3px. 높이는 줄 14 + 외곽선 3
+    const rect = (s: Spot, k: number): Box => {
+      const a = labelAnchor(s, k, l)
+      const w = textWidth(nameOf(s), 12, chain) + 3
+      const h = 14 + 3
+      const [tx, ty] = a.transform.includes('-100%, -50%') ? [-w, -h / 2]
+        : a.transform.includes('-50%, -100%') ? [-w / 2, -h]
+          : a.transform.includes('-50%, 0') ? [-w / 2, 0] : [0, -h / 2]
+      return { l: a.left + tx!, t: a.top + ty!, r: a.left + tx! + w, b: a.top + ty! + h }
+    }
+
+    describe(l, () => {
+      it('스물 자리 모두 칸에서 이름이 나온다', () => {
+        for (const s of FLY_SPOTS) expect(nameOf(s), `spawn ${String(s.spawn)}`).not.toBe('')
+      })
+
+      for (const k of [ZOOM.out, ZOOM.in]) {
+        it(`${String(k)}배: 이름표가 지도 영역 안에 든다`, () => {
+          const map = mapSize(k)
+          for (const s of FLY_SPOTS) {
+            const r = rect(s, k)
+            expect(r.l, `${nameOf(s)} 왼쪽`).toBeGreaterThanOrEqual(0)
+            expect(r.t, `${nameOf(s)} 위`).toBeGreaterThanOrEqual(0)
+            expect(r.r, `${nameOf(s)} 오른쪽`).toBeLessThanOrEqual(map.w)
+            expect(r.b, `${nameOf(s)} 아래`).toBeLessThanOrEqual(map.h)
+          }
+        })
+
+        it(`${String(k)}배: 이름표끼리 안 겹치고 어느 표식도 안 덮는다`, () => {
+          // 같은 이름 둘(포켓몬리그)은 하나만 붙지만, 어느 한 쪽만 열린 판도 있으니 스무 개 전부를 잰다
+          for (let i = 0; i < FLY_SPOTS.length; i++) {
+            const a = FLY_SPOTS[i]!
+            for (let j = i + 1; j < FLY_SPOTS.length; j++) {
+              const b = FLY_SPOTS[j]!
+              expect(hit(rect(a, k), rect(b, k)), `${nameOf(a)}(${String(a.spawn)}) × ${nameOf(b)}(${String(b.spawn)})`).toBe(false)
+            }
+            for (const m of FLY_SPOTS) {
+              const mb = markBox(m, k)
+              const mr = { l: mb.left, t: mb.top, r: mb.left + mb.width, b: mb.top + mb.height }
+              expect(hit(rect(a, k), mr), `${nameOf(a)} 이름표 × ${nameOf(m)} 표식`).toBe(false)
+            }
+          }
+        })
       }
-    })
 
-    it(`${String(k)}배: 이름표끼리 안 겹치고 어느 표식도 안 덮는다 (같은 이름은 하나만 붙는다)`, () => {
-      const shown = labelledSpots(FLY_SPOTS, nameOf)
-      for (let i = 0; i < shown.length; i++) {
-        const a = shown[i]!
-        for (let j = i + 1; j < shown.length; j++) {
-          const b = shown[j]!
-          expect(hit(rect(a, k), rect(b, k)), `${nameOf(a)}(${String(a.spawn)}) × ${nameOf(b)}(${String(b.spawn)})`).toBe(false)
-        }
-        for (const m of FLY_SPOTS) {
-          const mb = markBox(m, k)
-          const mr = { l: mb.left, t: mb.top, r: mb.left + mb.width, b: mb.top + mb.height }
-          expect(hit(rect(a, k), mr), `${nameOf(a)} 이름표 × ${nameOf(m)} 표식`).toBe(false)
-        }
-      }
+      it('같은 이름은 하나만 붙고 이름 없는 자리는 안 붙는다', () => {
+        const shown = labelledSpots(FLY_SPOTS, nameOf)
+        expect(shown).toHaveLength(FLY_SPOTS.length - 1)
+        expect(shown.map((s) => s.spawn)).not.toContain(19)
+        expect(labelledSpots(FLY_SPOTS, () => '')).toHaveLength(0)
+      })
     })
   }
-
-  it('같은 이름은 하나만 붙고 이름 없는 자리는 안 붙는다', () => {
-    const shown = labelledSpots(FLY_SPOTS, nameOf)
-    expect(shown).toHaveLength(FLY_SPOTS.length - 1)
-    expect(shown.map((s) => s.spawn)).not.toContain(19)
-    expect(labelledSpots(FLY_SPOTS, () => '')).toHaveLength(0)
-  })
 })

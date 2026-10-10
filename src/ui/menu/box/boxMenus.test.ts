@@ -12,8 +12,8 @@ import type { PokemonInstance } from '../../../engine/pokemon/instance'
 import { noOrigin } from '../../../engine/pokemon/origin'
 import { PIXEL } from '../../theme/scale'
 import {
-  GRID, PARTY_SCALE, boxFoot, boxNote, compareBar, filled, filmCells, fitGrid, gridOverflow, iconCellIsolated, iconOf,
-  nameOfMon, occupancyDots, partyEntry, ringAt, ringSize, slotAt,
+  GRID, LIFT, PARTY_SCALE, boxFoot, boxNote, compareBar, filled, filmCells, fitGrid, gridOverflow, iconCellIsolated, iconOf,
+  liftOf, nameOfMon, occupancyDots, partyEntry, ringAt, ringSize, slotAt,
 } from './boxMenus'
 import { PARTY_CELL, WALL, WALL_PX } from './wallGeometry'
 
@@ -69,9 +69,14 @@ describe('격자는 벽지 안쪽에 다 든다', () => {
     }
   })
 
-  it('들어 올린 아이콘(14px 위)도 벽지 밖으로는 안 나간다', () => {
-    const top = slotAt(GRID, 0).top - 14
-    expect(top).toBeGreaterThanOrEqual(0)
+  it('들어 올린 아이콘은 어느 칸에서도 벽지 틀(안쪽 위 끝)을 안 넘는다 — 맨 윗줄은 덜 든다', () => {
+    for (let i = 0; i < BOX_SIZE; i++) {
+      const lift = liftOf(GRID, i)
+      expect(lift, `칸 ${String(i)}`).toBeLessThanOrEqual(LIFT)
+      expect(slotAt(GRID, i).top - lift, `칸 ${String(i)} 위`).toBeGreaterThanOrEqual(inner.y)
+    }
+    // 아랫줄은 그대로 14px 든다
+    expect(liftOf(GRID, BOX_SIZE - 1)).toBe(LIFT)
   })
 
   it('칸은 6열 5줄이고 정수 위치다', () => {

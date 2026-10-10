@@ -115,6 +115,14 @@ export function ringAt(fit: GridFit, slot: number): { left: number, top: number 
 export const LIFT = 14
 
 /**
+ * 그 칸에서 들어 올릴 높이 — 맨 윗줄은 벽지 틀(안쪽 위 끝)을 넘지 않게 덜 든다 (그림은 제 틀을 넘지 않는다).
+ * 윗줄은 칸 위 여백이 `LIFT`보다 좁아서 14를 다 들면 틀에 걸친다
+ */
+export function liftOf(fit: GridFit, slot: number, innerTop: number = WALL_PX.inner.y): number {
+  return Math.max(0, Math.min(LIFT, slotAt(fit, slot).top - innerTop))
+}
+
+/**
  * 격자가 **벽지 안쪽 밖으로** 나가는 가장자리의 최악 값 — 시험이 본다. 음수나 0이면 다 안에 든다.
  * 쉬고 있는 아이콘 · 위로 뛴 아이콘 · 아래로 뛴 아이콘 · 맨 가장자리 칸의 커서 원(금 고리 포함)을 모두 센다
  */

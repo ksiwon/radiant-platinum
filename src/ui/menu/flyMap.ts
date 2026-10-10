@@ -4,6 +4,7 @@
 // 파란 띠, 아래 y 168~은 이름이 찍히던 노란 띠라 한 화면인 우리에게는 장식이다. 좌표 체계는 그림 좌표 그대로이고
 // (`gridX` · `gridY`), 화면에 놓을 때만 `(좌표 − 영역 시작) × 배율`이다 — 커서 칸 셈은 이 파일이 안 건드린다.
 import { FLY_SPOTS, GRID, gridX, gridY, SHAPE_SIZE } from '../../engine/map/townMap'
+import type { DataLocale } from '../../data/gameData'
 import type { PixelScale } from '../theme/scale'
 
 /** 원작 위 화면 전체 (`townMap.png`) */
@@ -24,15 +25,26 @@ export type Spot = (typeof FLY_SPOTS)[number]
 type LabelSide = 'l' | 'r' | 't' | 'b'
 
 /**
- * 스물 자리마다 이름표가 앉는 쪽 (`spawn` 번호 → 쪽).
+ * 언어마다 이름표가 앉는 쪽 (`spawn` 번호 → 쪽).
  *
- * 스물 자리가 **다 열린 판에서** 한국어 이름표(굵은 12px)가 ① 지도 영역 안에 들고 ② 다른 이름표와 안 겹치고
- * ③ 어느 표식도 안 덮도록 3배 · 4배에서 함께 찾은 값이다 (`flyMap.test`가 그 조건을 잰다). 시안은 열두 곳만 확인했었다.
- * 영어 · 일본어는 글 폭이 달라 이 표가 다 맞지는 않는다 — 사람이 `pnpm shot`으로 본다
+ * 글 폭이 언어마다 달라서(영어는 길고 한글은 좁다) 표가 셋이다. 스물 자리가 **다 열린 판에서** 굵은 12px 이름표가
+ * ① 지도 영역 안에 들고 ② 서로 안 겹치고 ③ 어느 표식도 안 덮도록 3배 · 4배에서 함께 찾은 값이다.
+ * 글 폭은 실제 글꼴(Pretendard Bold, 가나는 Noto Sans JP Bold)의 advance 폭에 바깥 외곽선 3px을 더해 쟀다 —
+ * `flyMap.test`가 세 언어 모두 같은 조건을 다시 잰다. 글꼴이나 지명이 바뀌면 그 시험이 깨진다
  */
-export const LABEL_SIDE: Readonly<Record<number, LabelSide>> = {
-  0: 'l', 1: 'r', 2: 'l', 3: 'b', 4: 'r', 16: 'r', 17: 'l', 5: 't', 6: 'b', 7: 'r',
-  8: 'r', 9: 'b', 10: 'b', 11: 'l', 12: 'l', 13: 'r', 15: 'r', 18: 'r', 14: 'b', 19: 'l',
+export const LABEL_SIDE: Readonly<Record<DataLocale, Readonly<Record<number, LabelSide>>>> = {
+  ko: {
+    0: 'l', 1: 'r', 2: 'l', 3: 'b', 4: 'r', 16: 'r', 17: 'l', 5: 't', 6: 'b', 7: 'r',
+    8: 'r', 9: 'b', 10: 'b', 11: 'l', 12: 'l', 13: 'r', 15: 'r', 18: 'r', 14: 'b', 19: 'l',
+  },
+  en: {
+    0: 'r', 1: 'r', 2: 'l', 3: 'l', 4: 'r', 16: 'r', 17: 'l', 5: 't', 6: 'b', 7: 'r',
+    8: 'r', 9: 'l', 10: 'b', 11: 'l', 12: 'l', 13: 'r', 15: 'r', 18: 'r', 14: 'b', 19: 'l',
+  },
+  ja: {
+    0: 'r', 1: 'r', 2: 'l', 3: 'b', 4: 'r', 16: 'r', 17: 'l', 5: 't', 6: 'b', 7: 'r',
+    8: 'r', 9: 'l', 10: 'b', 11: 'l', 12: 'l', 13: 'r', 15: 'r', 18: 'r', 14: 'b', 19: 'l',
+  },
 }
 
 /** 이름표와 표식 사이 · 위아래 이름표의 간격 (px) */
@@ -62,9 +74,9 @@ export function cellBox(x: number, z: number, k: number): Box {
 }
 
 /** 이름표의 기준점과 글자 상자를 그 점에 앉히는 변환. 글 폭을 어림하지 않는다 — 앉힘은 CSS 변환이 한다 */
-export function labelAnchor(spot: Spot, k: number): { left: number, top: number, transform: string } {
+export function labelAnchor(spot: Spot, k: number, locale: DataLocale): { left: number, top: number, transform: string } {
   const m = markBox(spot, k)
-  switch (LABEL_SIDE[spot.spawn] ?? 'r') {
+  switch (LABEL_SIDE[locale][spot.spawn] ?? 'r') {
     case 'l': return { left: m.left - LABEL_GAP.side, top: m.top + m.height / 2, transform: 'translate(-100%, -50%)' }
     case 't': return { left: m.left + m.width / 2, top: m.top - LABEL_GAP.vert, transform: 'translate(-50%, -100%)' }
     case 'b': return { left: m.left + m.width / 2, top: m.top + m.height + LABEL_GAP.vert, transform: 'translate(-50%, 0)' }
