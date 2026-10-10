@@ -152,7 +152,13 @@ export function FlyScreen() {
   const isOpen = (spawn: number): boolean => flySpotOpen(spawn, flySpots, (f) => fieldScripts.vars.checkFlag(f))
   const unlocked = spot !== null && isOpen(spot.spawn)
   const caption = flyCaption(spot !== null, unlocked, viewOnly)
-  /** 열린 날기 자리 — 표 차례(이야기 순). 목록 · Q/E · 이름표가 같은 것을 본다 */
+  /**
+   * 열린 날기 자리 — 표 차례(이야기 순). 목록 · Q/E · 이름표가 같은 것을 본다.
+   *
+   * 포켓몬리그(spawn 14 · 19)는 이름이 같아도 **두 자리를 다 세운다.** 원작도 `sFlyLocations` 스무 곳에 챔피언로드 앞
+   * (`FLY_LOCATION_VICTORY_ROAD`)과 리그 정문(`FLY_LOCATION_POKEMON_LEAGUE`)을 따로 두고 열림 깃발도 따로 본다
+   * (`sTownMapFlyLocationUnlockFlags`) — 내리는 자리가 다르다. 이름표만 하나로 줄인다(`labelledSpots`)
+   */
   const openSpots = FLY_SPOTS.filter((s) => isOpen(s.spawn))
   const spotAtBlock = (x: number, z: number): Spot | null => flySpotAt(cellAt(cells, x, z, hidden)?.map ?? -1, x, z)
   const homeSpot = spotAtBlock(home.x, home.z)
