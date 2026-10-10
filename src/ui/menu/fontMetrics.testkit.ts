@@ -15,7 +15,7 @@ const KNOWN = [
   'Gloc', 'Feat', 'Sill',
 ]
 
-export interface FontMetrics {
+interface FontMetrics {
   unitsPerEm: number
   /** 글자 하나의 폭(em 단위의 1/unitsPerEm). 글꼴에 없으면 null */
   advance(ch: string): number | null
