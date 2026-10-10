@@ -20,7 +20,7 @@
 //
 // 요약 넷(주인공·플레이 시간·도감·배지)의 글은 원작 `main_menu_options` 뱅크에서
 // 온다. 우리가 이름을 새로 짓지 않는다.
-import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { Fragment, lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useNavigate } from 'react-router'
 import { loadUiText, MAIN_MENU } from '../../data/uiText'
 import { readReportDetailed } from '../../state/report'
@@ -38,13 +38,18 @@ import {
   integrityFinding, subscribeIntegrity, verifyEverything, watchIntegrity,
 } from '../../app/integrityWatch'
 import { groupLabels } from '../../import/install/groupLabels'
-import { controlRows } from '../../engine/input/controlLegend'
 import { typingInto } from '../../engine/input/keys'
+import { FLAG_HAS_POKEDEX } from '../../engine/script/vars'
+import { BadgeRail } from '../common/BadgeRail'
+import { KeyHints } from '../common/KeyHints'
+import { bandAt } from '../common/pickBand'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
+import { caret, pickBand } from '../theme/window.css'
 import { playSong, warmMenu } from '../../engine/audio/lazy'
 import { TITLE_SONG } from '../../engine/audio/songIds'
 import { unreadPatch } from './patchLog'
 import { ChunkBoundary } from './ChunkBoundary'
+import { PopAbove } from './PopAbove'
 import * as css from './titleScreen.css'
 import { pointerMoved } from '../pointerMoved'
 
@@ -132,6 +137,12 @@ const MoreMenu = lazy(() =>
 
 const DEX_MAX = 493
 
+/** 뜨는 창(확인 · 알림)의 폭 */
+const CALLOUT_W = 470
+
+/** 알림이 저절로 사라지는 때 */
+const NOTICE_MS = 6000
+
 /**
  * 타이틀 — **이 탭에서 이미 세계를 세웠으면 통째로 다시 켠다** (원작의 리셋).
  *
@@ -194,6 +205,9 @@ function TitleMenu() {
   /** 설치 화면을 닫고 다시 재는 중. 끝나야 경고가 서거나 사라진다 */
   const [rechecking, setRechecking] = useState(false)
   const filePicker = useRef<HTMLInputElement>(null)
+  /** 고를 것 칸들 — 금 띠의 자리와 뜨는 창의 꼭지가 이 칸을 잰다 */
+  const buttonEls = useRef(new Map<string, HTMLButtonElement>())
+  const bar = useRef<HTMLDivElement>(null)
   // 설정은 필드 메뉴와 **같은 화면**을 쓴다. 스택에 올려 두면 그쪽의 "돌아가기"가
   // 그대로 동작하고, 스택이 비면 여기서도 닫힌다
   const menuTop = useMenuStore((s) => s.top)
@@ -376,7 +390,12 @@ function TitleMenu() {
   const entries: {
     key: string
     label: string
-    tone: 'main' | 'plain' | 'ghost'
+    /** 묶음 — 사이에 세로 구분선이 선다. 으뜸 둘(`main`)만 크게 그린다 */
+    group: 'main' | 'files' | 'more'
+    /** 눈에 보이는 글. 안 주면 `label`이다 */
+    shown?: string
+    /** 접근 이름. 안 주면 글 그대로다 */
+    name?: string
     go: () => void
     /** 안 본 것이 있다는 점. 글자를 안 건드리고 뒤에 붙는다 */
     dot?: boolean
@@ -394,7 +413,7 @@ function TitleMenu() {
     {
       key: 'new',
       label: '시작',
-      tone: 'main',
+      group: 'main',
       go: () => { if (hasSave) askNew(); else go(true) },
     },
     {
@@ -405,7 +424,7 @@ function TitleMenu() {
       // 요약 넷(주인공·시간·도감·배지)은 그대로 롬 글이다. 그쪽은 게임 안의
       // 말이고 이쪽은 앱 껍데기의 말이다
       label: '이어하기',
-      tone: hasSave ? 'main' : 'plain',
+      group: 'main',
       off: !hasSave,
       go: () => { if (hasSave) go(false) },
     },
@@ -416,8 +435,11 @@ function TitleMenu() {
     // ⚠️ **이름은 「리포트」가 아니라 「세이브 파일」이다.** 게임 안에서는 원작
     // 말대로 리포트지만, 이 둘이 다루는 것은 디스크에 놓이는 `.rpsave` **파일**
     // 이고 여기는 아직 게임 밖이다 — 처음 온 사람에게는 그쪽이 읽힌다
-    { key: 'backup', label: '세이브 파일 내보내기', tone: 'ghost', go: backup },
-    { key: 'load', label: '세이브 파일 불러오기', tone: 'ghost', go: () => { filePicker.current?.click() } },
+    //
+    // ⚠️ **눈에는 짧게, 이름은 옛 것 그대로.** 「세이브 파일」 묶음 이름표가 위에 서므로 칸 글은 「내보내기」 · 「불러오기」다.
+    // 접근 이름(`aria-label`)이 계약이다 (하네스가 옛 이름으로 찾는다)
+    { key: 'backup', label: '세이브 파일 내보내기', shown: '내보내기', name: '세이브 파일 내보내기', group: 'files', go: backup },
+    { key: 'load', label: '세이브 파일 불러오기', shown: '불러오기', name: '세이브 파일 불러오기', group: 'files', go: () => { filePicker.current?.click() } },
     // ⚠️ **급하지 않은 넷은 한 겹 안이다** (`MoreMenu`). 설정·패치노트·버그
     // 제보·다른 게임을 여기 나란히 세우면 차림표가 여덟이 되는데, 하러 온 일은
     // 위의 넷이다. **빼는 것이 아니라 접는 것이다** — 게임을 열기 전에 설정을
@@ -426,7 +448,14 @@ function TitleMenu() {
     // ⚠️ **점을 이 칸이 대신 진다.** 패치노트가 안쪽으로 들어갔으므로, 안 본
     // 판이 있다는 표시는 밖에 있는 이 칸에 떠야 한다 — 안 그러면 창을 열지
     // 않는 사람에게 새 소식이 영영 안 보인다
-    { key: 'more', label: '더보기', tone: 'ghost', dot: newPatch, go: () => { setShowMore(true) } },
+    // 「더보기」를 다시 누르면 닫힌다
+    { key: 'more', label: '더보기', group: 'more', dot: newPatch,
+      go: () => {
+        // ⚠️ **열 때 다른 뜨는 창을 닫는다.** 확인 창이 뜬 채 더보기가 열리면 두 창이 같은 자리에 겹친다
+        if (!showMore) { setConfirmNew(false); setPending(null); setConfirmRestore(false); setNotice(null) }
+        setShowMore(!showMore)
+      },
+    },
   ]
 
   /**
@@ -448,7 +477,7 @@ function TitleMenu() {
     entries.push({
       key: 'import',
       label: '어긋난 에셋 다시 만들기',
-      tone: 'ghost',
+      group: 'more',
       go: () => { setImporting(true) },
     })
   }
@@ -468,7 +497,7 @@ function TitleMenu() {
     entries.push({
       key: 'restore',
       label: '백업에서 되찾기',
-      tone: 'ghost',
+      group: 'more',
       go: askRestore,
     })
   }
@@ -518,20 +547,53 @@ function TitleMenu() {
     confirm: () => { entries[cursor]?.go() },
   }, !overlay && !asking)
 
-  /**
-   * 바닥의 조작 안내. **키를 손으로 적지 않는다** — 조작 쪽지와 같은 줄에서
-   * 뽑는다 (`controlRows`). 한때 여기만 손으로 적어서 「Z 말 걸기」처럼 임자 키
-   * (Space·C)와 다른 말을 했다.
-   *
-   * 고르는 줄은 쪽지 차례의 이동·달리기·결정·메뉴·시점이다
-   * (`engine/input/controlLegend`의 `controlRows`)
-   */
-  const rows = controlRows(locale)
-  const controlLine = [0, 1, 2, 4, 9]
-    .map((i) => rows[i])
-    .filter((row) => row !== undefined)
-    .map((row) => `${row.keys} ${row.what}`)
-    .join(' · ')
+  /** 고른 칸 — 금 띠가 이 칸의 자리와 폭으로 미끄러진다. 칸 폭이 제각각이라 그린 뒤에 잰다 */
+  const cursorKey = entries[cursor]?.key
+  const [band, setBand] = useState<{ x: number, w: number } | null>(null)
+  const [measured, setMeasured] = useState(0)
+  useLayoutEffect(() => {
+    const el = cursorKey === undefined ? undefined : buttonEls.current.get(cursorKey)
+    if (!el) return
+    setBand((b) => (b !== null && b.x === el.offsetLeft && b.w === el.offsetWidth
+      ? b
+      : { x: el.offsetLeft, w: el.offsetWidth }))
+  }, [cursorKey, entries.length, measured])
+  // 글꼴이 늦게 오거나 창 크기가 바뀌어 칸 폭이 변해도 따라간다
+  useEffect(() => {
+    const node = bar.current
+    if (!node || typeof ResizeObserver === 'undefined') return
+    const watch = new ResizeObserver(() => { setMeasured((n) => n + 1) })
+    watch.observe(node)
+    for (const el of buttonEls.current.values()) watch.observe(el)
+    return () => { watch.disconnect() }
+  }, [entries.length])
+
+  // ⚠️ **알림은 그 알림이 난 칸에 고정한다.** 커서를 따라다니면 읽던 말풍선이 옮겨 다닌다. 커서가 움직이거나 몇 초 지나면 지운다
+  const [noticeKey, setNoticeKey] = useState<string | null>(null)
+  useEffect(() => {
+    if (notice === null) { setNoticeKey(null); return }
+    setNoticeKey(cursorKey ?? null)
+    const timer = window.setTimeout(() => { setNotice(null) }, NOTICE_MS)
+    return () => { window.clearTimeout(timer) }
+    // 알림이 새로 날 때만 — 커서가 움직여도 이 효과가 다시 돌면 칸이 따라다닌다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notice])
+  useEffect(() => {
+    if (noticeKey !== null && cursorKey !== noticeKey) setNotice(null)
+  }, [cursorKey, noticeKey])
+
+  /** 뜨는 창이 꼭지로 가리킬 칸 */
+  const anchorOf = (key: string): HTMLElement | null => buttonEls.current.get(key) ?? null
+
+  // ⚠️ **뜨는 창은 사람이 부른 것에 한한다.** 확인 창 셋은 서로 겹치지 않고(`askNew` 등), 알림은 방금 누른 칸에 붙는다.
+  // 못 읽는 리포트와 어긋난 에셋은 **그 일을 고치는 칸에 커서가 있을 때만** 자세한 안내가 선다 — 기본 상태는 그림을 안 가린다
+  const confirmAnchor = askingRestore ? 'restore' : pending ? 'load' : confirmNew ? 'new' : null
+  const showUnreadable = unreadable !== null && cursorKey === 'backup'
+  const showBroken = assetBroken && cursorKey === 'import'
+  const callout = confirmAnchor !== null || notice !== null || showUnreadable || showBroken
+  const calloutAnchor = confirmAnchor ?? (notice !== null ? noticeKey : null) ?? cursorKey ?? null
+
+  const gendered = report?.trainer.gender === 'girl' ? css.female : css.male
 
   return (
     <div className={css.wrap}>
@@ -553,65 +615,9 @@ function TitleMenu() {
           <span>비공식 팬 프로젝트 · 비영리</span>
         </div>
 
-        {report && (
-          <dl className={css.summary}>
-            <dt>{at(MAIN_MENU.player, '주인공')}</dt>
-            <dd>{report.trainer.name || '이름 없음'}</dd>
-            <dt>{at(MAIN_MENU.playtime, '플레이 시간')}</dt>
-            <dd>{clock(report.trainer.playtimeMs)}</dd>
-            <dt>{at(MAIN_MENU.dex, '포켓몬 도감')}</dt>
-            <dd>{countDex(report.pokedex.caught)}마리</dd>
-            <dt>{at(MAIN_MENU.badges, '가지고 있는 배지')}</dt>
-            <dd>{countBadges(report.badges)}개</dd>
-          </dl>
-        )}
-
-        <div className={css.menu}>
-          {entries.map((entry, i) => (
-            <button
-              key={entry.key}
-              className={[
-                css.button,
-                entry.tone === 'main' ? css.buttonMain : '',
-                entry.tone === 'ghost' ? css.buttonGhost : '',
-                i === cursor ? css.buttonOn : '',
-              ].filter(Boolean).join(' ')}
-              disabled={entry.off}
-              onClick={entry.go}
-              onPointerMove={(e) => {
-                if (!pointerMoved(e) || i === cursor) return
-                moved.current = true
-                setCursor(i)
-                if (entry.tone === 'main') prefetchGameChunk()
-              }}
-              // ⚠️ **포커스가 커서를 데려온다.** 브라우저 포커스 링은 걷었으므로
-              // (`titleScreen.css`의 `button`) Tab으로 옮긴 자리도 ▶가 가리킨다
-              onFocus={() => { moved.current = true; setCursor(i) }}
-            >
-              {i === cursor && <span className={css.caret} aria-hidden>▶</span>}
-              {entry.label}
-              {entry.dot === true && <span className={css.dot} aria-label="새 소식" />}
-            </button>
-          ))}
-          <input
-            ref={filePicker}
-            type="file"
-            accept={PORTABLE_EXT}
-            hidden
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              // 같은 파일을 두 번 고를 수 있어야 한다 — 값을 안 비우면 두 번째
-              // change 이벤트가 아예 안 온다
-              e.target.value = ''
-              if (file) pickFile(file)
-            }}
-          />
-        </div>
-
         {/*
-          ⚠️ **눈에 띄는 자리여야 한다** (COPYRIGHT.md §11). `crest`와 `foot`은
-          `display: none`이라 거기 넣으면 문서에만 있고 화면에는 없다 — 그건
-          "표시했다"가 아니다. 메뉴 바로 아래, 리포트 단추와 같은 층에 둔다
+          ⚠️ **눈에 띄는 자리여야 한다** (COPYRIGHT.md §11). `crest`는 화면에서 걷어냈으므로 거기 넣으면 문서에만 있고
+          화면에는 없다 — 그건 "표시했다"가 아니다. 그림 위쪽 창에 둔다.
         */}
         {/*
           ⚠️ **줄여도 다섯 가지는 다 남는다** (COPYRIGHT.md §11): 비공식·비제휴 ·
@@ -627,195 +633,298 @@ function TitleMenu() {
           받거나 저장하지 않습니다.
         </p>
 
-        {/* 파일을 열어 보고 확인받는 자리, 그리고 실패 이유. 단추 줄 위로 쌓인다 */}
-        <div className={css.filesArea}>
-          {unreadable !== null && (
-            <div className={css.notice}>
-              {`저장된 리포트를 이 버전이 못 읽습니다 — ${unreadable}\n`}
-              {'「세이브 파일 내보내기」로 원본을 파일에 담아 두세요. 지우지 않습니다.'}
-              {/* 못 읽는 리포트를 가진 사람이 바로 그 한 벌을 찾는 사람이다 */}
-              {kept !== null && kept.kind !== 'none'
-                ? '\n지우기 직전에 남겨 둔 백업이 있습니다 — 「백업에서 되찾기」로 열어 볼 수 있습니다.'
-                : ''}
-            </div>
-          )}
-
-          {/*
-            ⚠️ **덮기 전에 무엇이 덮이는지를 보인다.** 되찾기는 되돌릴 수 없는
-            일이고, 사람이 알아볼 수 있는 것은 이름·시간·배지·도감 넷이다 —
-            타이틀 요약이 쓰는 것과 같은 넷이라 나란히 놓고 견줄 수 있다.
-
-            ⚠️ **여기서는 아직 아무것도 안 바뀌었다.** 「그만두기」를 누르면
-            저장된 것도 백업도 손대지 않은 채로 창만 닫힌다
-          */}
-          {askingRestore && (
-            <div className={css.notice}>
-              {kept.kind === 'unreadable' ? (
-                <>
-                  {`남겨 둔 백업을 이 버전이 못 읽습니다 — ${kept.why}\n`}
-                  {'지금 리포트에는 쓰지 않습니다. 원본을 파일로 받아 두세요.'}
-                  <TitleConfirm
-                    key="unreadable"
-                    enabled={!overlay}
-                    initial="cancel"
-                    onCancel={() => { setConfirmRestore(false) }}
-                    choices={[
-                      { key: 'file', label: '백업을 파일로 받기', go: saveBackupFile },
-                      { key: 'cancel', label: '그만두기', go: () => { setConfirmRestore(false) } },
-                    ]}
-                  />
-                </>
-              ) : (
-                <>
-                  {`되찾을 백업 — ${kept.save.trainer.name || '이름 없음'} · `}
-                  {`${clock(kept.save.trainer.playtimeMs)} · `}
-                  {`배지 ${countBadges(kept.save.badges)}개 · `}
-                  {`도감 ${countDex(kept.save.pokedex.caught)}마리\n`}
-                  {kept.migrated ? '옛 버전에서 만든 백업이라 지금 버전으로 옮겨서 되찾습니다\n' : ''}
-                  {hasSave
-                    ? `지금 리포트(${report?.trainer.name || '이름 없음'} · `
-                      + `${clock(report?.trainer.playtimeMs ?? 0)})가 덮입니다. `
-                      + '덮기 전에 세이브 파일로 받습니다.\n'
-                    : '지금은 이어할 리포트가 없어 덮을 것이 없습니다.\n'}
-                  {/* ⚠️ **이것을 「외부 백업」이라고 말하지 않는다.** 같은
-                      브라우저 안의 한 벌이라 사이트 데이터를 지우면 같이 사라진다
-                      (`state/report.ts`의 `backupReport`) */}
-                  <span className={css.warn}>
-                    이 백업은 이 브라우저 안에 있습니다 — 사이트 데이터를 지우면 같이 사라집니다.
-                  </span>
-                  {/* ⚠️ **커서는 「그만두기」에서 시작한다.** 되찾기는 지금 리포트를
-                      덮는다 — 창을 연 Enter를 길게 누르면 그 반복이 곧바로 덮는다 */}
-                  <TitleConfirm
-                    key="ok"
-                    enabled={!overlay}
-                    initial="cancel"
-                    onCancel={() => { setConfirmRestore(false) }}
-                    choices={[
-                      { key: 'restore', label: '이 백업으로 되찾기', go: bringBack },
-                      { key: 'file', label: '백업을 파일로 받기', go: saveBackupFile },
-                      { key: 'cancel', label: '그만두기', go: () => { setConfirmRestore(false) } },
-                    ]}
-                  />
-                </>
-              )}
-            </div>
-          )}
-
-          {pending && (
-            <div className={css.notice}>
-              {`${pending.envelope.summary.trainer || '이름 없음'} · `}
-              {`${clock(pending.envelope.summary.playtimeMs)} · `}
-              {`저장 ${stamp(pending.envelope.createdAt)}\n`}
-              {pending.migrated ? '옛 버전에서 만든 리포트라 지금 버전으로 옮겨서 불러옵니다\n' : ''}
-              {/* ⚠️ **막지 않고 알린다** (`compareContract`). 무엇이 다른지에 따라
-                  플레이어가 보게 될 것이 다르다 — 내부 말(「콘텐츠 계약」)로 뭉치지 않는다 */}
-              {pending.contract !== 'same' && (
-                <span className={css.warn}>
-                  {pending.contract === 'other-locale'
-                    ? '다른 지역판 롬으로 설치한 곳에서 만든 리포트입니다 — 이름과 글은 이 설치본의 언어로 보입니다'
-                    : '지금 설치된 것과 다른 버전의 게임 파일로 만든 리포트입니다'}
-                </span>
-              )}
-              {pending.contract !== 'same' ? '\n' : ''}
-              {'지금 리포트는 불러오기 전에 세이브 파일로 먼저 받습니다.'}
-              <TitleConfirm
-                enabled={!overlay}
-                initial="cancel"
-                onCancel={() => { setPending(null) }}
-                choices={[
-                  { key: 'bring', label: '이 리포트로 이어하기', go: bringIn },
-                  { key: 'cancel', label: '그만두기', go: () => { setPending(null) } },
-                ]}
+        <div className={confirmAnchor !== null ? `${css.dock} ${css.dimmed}` : css.dock}>
+          <div className={css.row1}>
+            {/* ⚠️ **`radiogroup`을 쓰지 않는다** — 하네스의 「첫 radiogroup」은 시작 메뉴다 (SYSTEM §2.3). 줄은 `toolbar`다 */}
+            <div ref={bar} className={css.bar} role="toolbar" aria-label="타이틀">
+              <span
+                className={pickBand.x}
+                aria-hidden
+                style={band === null ? { display: 'none' } : { transform: `translateX(${String(band.x)}px)`, width: band.w }}
+              />
+              {entries.map((entry, i) => {
+                const prev = entries[i - 1]
+                const grouped = prev !== undefined && prev.group !== entry.group
+                return (
+                  <Fragment key={entry.key}>
+                    {grouped && <span className={css.sep} aria-hidden />}
+                    {entry.key === 'backup' && <span className={css.groupLabel} aria-hidden>세이브 파일</span>}
+                    <button
+                      ref={(node) => {
+                        if (node) buttonEls.current.set(entry.key, node)
+                        else buttonEls.current.delete(entry.key)
+                      }}
+                      type="button"
+                      className={[
+                        css.item,
+                        entry.group === 'main' ? css.itemMain : '',
+                        i === cursor ? css.itemOn : '',
+                      ].filter(Boolean).join(' ')}
+                      disabled={entry.off}
+                      // ⚠️ **접근 이름이 계약이다** — 「시작」 · 「이어하기」는 `exact`로 찾고, 파일 둘은 옛 이름을 지킨다
+                      {...(entry.name !== undefined ? { 'aria-label': entry.name } : {})}
+                      onClick={entry.go}
+                      onPointerMove={(e) => {
+                        if (!pointerMoved(e) || i === cursor) return
+                        moved.current = true
+                        setCursor(i)
+                        if (entry.key === 'new') prefetchGameChunk()
+                      }}
+                      // ⚠️ **포커스가 커서를 데려온다.** 브라우저 포커스 링은 걷었으므로(`item`) Tab으로 옮긴 자리도
+                      // 금 띠가 가리킨다
+                      onFocus={() => { moved.current = true; setCursor(i) }}
+                    >
+                      {entry.shown ?? entry.label}
+                      {entry.dot === true && <span className={css.dot} aria-label="새 소식" />}
+                    </button>
+                  </Fragment>
+                )
+              })}
+              <input
+                ref={filePicker}
+                type="file"
+                accept={PORTABLE_EXT}
+                hidden
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  // 같은 파일을 두 번 고를 수 있어야 한다 — 값을 안 비우면 두 번째
+                  // change 이벤트가 아예 안 온다
+                  e.target.value = ''
+                  if (file) pickFile(file)
+                }}
               />
             </div>
-          )}
 
-          {/* ⚠️ **되돌릴 수 없는 일 앞에 걸음을 하나 둔다.** 지우기 전에 파일로
-              받아 두긴 하지만(`resetSave`), 그건 되돌리는 길이지 안 겪는 것이
-              아니다 — 브라우저가 그 받기를 막을 수도 있다 */}
-          {confirmNew && (
-            <div className={css.notice}>
-              {'하던 모험이 있습니다 — '}
-              {`${report?.trainer.name || '이름 없음'} · ${clock(report?.trainer.playtimeMs ?? 0)}\n`}
-              {'처음부터 시작하면 지금 리포트가 지워집니다. 지우기 전에 세이브 파일로 받아 둡니다.'}
-              {/* ⚠️ **커서는 「그만두기」에서 시작한다.** 이 창은 「시작」에서 Enter로
-                  열린다 — 그 Enter를 길게 누르고 있으면 반복 키가 곧바로 리포트를 지운다 */}
-              <TitleConfirm
-                enabled={!overlay}
-                initial="cancel"
-                onCancel={() => { setConfirmNew(false) }}
-                choices={[
-                  { key: 'new', label: '처음부터 시작하기', go: () => { setConfirmNew(false); go(true) } },
-                  { key: 'cancel', label: '그만두기', go: () => { setConfirmNew(false) } },
-                ]}
-              />
-            </div>
-          )}
+            {/*
+              판 표시 — 줄 1 오른쪽 끝에 작게. **값은 `package.json` 하나에서 온다**
+              (`vite.config`의 `__APP_VERSION__` → `APP_VERSION`). 손으로 또 적지 않는다.
 
-          {notice !== null && <div className={css.notice}>{notice}</div>}
-          {/* 뒤에서 훑다(또는 설정의 「에셋 확인」이) 어긋난 것을 만났을 때. 화면을
-              막지 않는다 — 멀쩡한 그룹은 그대로 열리고, 깨진 그룹을 실제로 읽을 때
-              그 자리에서 선다 */}
-          {assetBroken && (
-            <div className={css.notice}>
-              {rechecking ? '설치본을 다시 확인하고 있습니다 — 다 온전하면 이 알림이 사라집니다' : (
-                <>
-                  <span className={css.warn}>
-                    {`설치본에서 파일 ${String(integrity.broken.length)}개가 어긋납니다`}
-                  </span>
-                  {integrity.groups.length > 0
-                    ? ` — ${groupLabels(integrity.groups, 'ko')}`
-                    : ''}
-                  {'\n아래 「어긋난 에셋 다시 만들기」로 그 부분만 다시 만듭니다 — 리포트는 그대로입니다'}
-                </>
-              )}
-            </div>
-          )}
+              ⚠️ **누르면 패치노트가 열린다.** 키로 가는 길은 따로 안 낸다 — 커서가 이 칸까지 돌면 「무엇부터 하나」가
+              흐려진다. 키로는 「더보기」 → 「패치노트」가 같은 창을 연다. 그래서 Tab도 안 받는다(`tabIndex`)
+            */}
+            <button
+              type="button"
+              className={css.version}
+              tabIndex={-1}
+              title="패치노트"
+              aria-label={`v${APP_VERSION} 패치노트 열기`}
+              onClick={() => { setShowPatch(true); setNewPatch(false) }}
+            >
+              {`v${APP_VERSION}`}
+            </button>
+          </div>
 
-          {/* ⚠️ **왜 못 누르는지를 적는다.** 흐리게만 두면 눌러 보고 나서야 없다는
-              걸 알게 된다. `undefined`는 아직 읽는 중이라 아무 말도 하지 않는다.
-              맨 끝 자식이라 단추 줄 바로 위에 선다 (`titleScreen.css`의 `absent`) */}
-          {/* ⚠️ **남겨 둔 한 벌이 있으면 그 말을 여기서 한다.** 리포트가 없는
-              사람이 바로 그 한 벌을 찾는 사람이다 — 단추가 줄 끝에 서 있어도
-              「없습니다」만 읽고 돌아서면 못 만난다 */}
-          {/* ⚠️ **못 읽는 리포트가 있으면 「없습니다」라고 안 한다.** 위의 알림이
-              「있는데 못 읽는다」를 말하는데 여기서 「없다 — 「시작」으로…」를
-              같이 띄우면 남은 리포트를 덮는 길로 이끈다 */}
-          {report === null && unreadable === null && (
-            <p className={css.absent}>
-              {kept !== null && kept.kind !== 'none'
-                ? '이어할 리포트가 없습니다 — 「백업에서 되찾기」로 지우기 직전에 남겨 둔 한 벌을 '
-                  + '열어 보거나, 「세이브 파일 불러오기」로 갖고 있는 세이브 파일을 불러오세요'
-                : '이어할 리포트가 없습니다 — 「시작」으로 새 모험을 열거나, '
-                  + '「세이브 파일 불러오기」로 갖고 있는 세이브 파일을 불러오세요'}
-            </p>
-          )}
+          {/* 줄 2 — 이어하기 칸의 사정. 읽는 중(`undefined`)이면 비워 두되 높이는 유지한다 */}
+          <div className={css.row2}>
+            {report ? (
+              <dl className={css.summary}>
+                <div className={css.pair}>
+                  <dt>{at(MAIN_MENU.player, '주인공')}</dt>
+                  <dd className={gendered}>{report.trainer.name || '이름 없음'}</dd>
+                </div>
+                <div className={css.pair}>
+                  <dt>{at(MAIN_MENU.playtime, '플레이 시간')}</dt>
+                  <dd>{clock(report.trainer.playtimeMs)}</dd>
+                </div>
+                {/* ⚠️ **도감을 받기 전에는 이 쌍이 없다** (원작 `main_menu.c:733`). 수는 **본 수**다 (`Pokedex_CountSeen`) */}
+                {hasPokedex(report.flags) && (
+                  <div className={css.pair}>
+                    <dt>{at(MAIN_MENU.dex, '포켓몬 도감')}</dt>
+                    <dd>{countDex(report.pokedex.seen)}마리</dd>
+                  </div>
+                )}
+                <div className={css.pair}>
+                  <dt>{at(MAIN_MENU.badges, '가지고 있는 배지')}</dt>
+                  <dd>
+                    <BadgeRail badges={report.badges} size={40} />
+                    {countBadges(report.badges)}개
+                  </dd>
+                </div>
+              </dl>
+            ) : (
+              /*
+                ⚠️ **왜 못 누르는지를 적는다.** 흐리게만 두면 눌러 보고 나서야 없다는 걸 알게 된다. `undefined`는 아직 읽는
+                중이라 아무 말도 하지 않는다.
+
+                ⚠️ **남겨 둔 한 벌이 있으면 그 말을 여기서 한다.** 리포트가 없는 사람이 바로 그 한 벌을 찾는 사람이다.
+                ⚠️ **못 읽는 리포트가 있으면 「없습니다」라고 안 한다.** 「있는데 못 읽는다」를 말하는데 「없다 — 「시작」으로…」를
+                같이 띄우면 남은 리포트를 덮는 길로 이끈다
+              */
+              report === null && (
+                <p className={css.status}>
+                  {unreadable !== null
+                    ? '저장된 리포트를 이 버전이 못 읽습니다'
+                    : kept !== null && kept.kind !== 'none'
+                      ? '이어할 리포트가 없습니다 — 「백업에서 되찾기」로 지우기 직전에 남겨 둔 한 벌을 '
+                        + '열어 보거나, 「세이브 파일 불러오기」로 갖고 있는 세이브 파일을 불러오세요'
+                      : '이어할 리포트가 없습니다 — 「시작」으로 새 모험을 열거나, '
+                        + '「세이브 파일 불러오기」로 갖고 있는 세이브 파일을 불러오세요'}
+                </p>
+              )
+            )}
+            {/* 조작 안내 — 조작 쪽지(`controlRows`)는 창 폭을 넘어 여기서는 안 쓴다 */}
+            <span className={css.keys}><KeyHints text="←→ 고르기 · Z 결정" /></span>
+          </div>
         </div>
 
-      </div>
+        {callout && calloutAnchor !== null && (
+          <PopAbove anchor={anchorOf(calloutAnchor)} width={CALLOUT_W} className={css.callout}>
+            {showUnreadable && (
+              <div className={css.block}>
+                <p className={css.blockText}>
+                  {`저장된 리포트를 이 버전이 못 읽습니다 — ${unreadable}\n`}
+                  {'「세이브 파일 내보내기」로 원본을 파일에 담아 두세요. 지우지 않습니다.'}
+                  {/* 못 읽는 리포트를 가진 사람이 바로 그 한 벌을 찾는 사람이다 */}
+                  {kept !== null && kept.kind !== 'none'
+                    ? '\n지우기 직전에 남겨 둔 백업이 있습니다 — 「백업에서 되찾기」로 열어 볼 수 있습니다.'
+                    : ''}
+                </p>
+              </div>
+            )}
 
-      {/*
-        판 표시 — 오른쪽 아래 구석에 작게. **값은 `package.json` 하나에서 온다**
-        (`vite.config`의 `__APP_VERSION__` → `APP_VERSION`). 손으로 또 적지 않는다.
+            {/*
+              ⚠️ **덮기 전에 무엇이 덮이는지를 보인다.** 되찾기는 되돌릴 수 없는 일이고, 사람이 알아볼 수 있는 것은
+              이름·시간·배지·도감 넷이다.
 
-        ⚠️ **누르면 패치노트가 열린다.** 키로 가는 길은 따로 안 낸다 — 차림표
-        커서가 이 칸까지 돌면 「무엇부터 하나」가 흐려진다. 키로는 「더보기」 →
-        「패치노트」가 같은 창을 연다. 그래서 Tab도 안 받는다(`tabIndex`)
-      */}
-      <button
-        type="button"
-        className={css.version}
-        tabIndex={-1}
-        title="패치노트"
-        aria-label={`v${APP_VERSION} 패치노트 열기`}
-        onClick={() => { setShowPatch(true); setNewPatch(false) }}
-      >
-        {`v${APP_VERSION}`}
-      </button>
+              ⚠️ **여기서는 아직 아무것도 안 바뀌었다.** 「그만두기」를 누르면 저장된 것도 백업도 손대지 않은 채로 창만 닫힌다
+            */}
+            {askingRestore && (
+              <div className={css.block}>
+                {kept.kind === 'unreadable' ? (
+                  <>
+                    <p className={css.blockText}>
+                      {`남겨 둔 백업을 이 버전이 못 읽습니다 — ${kept.why}\n`}
+                      {'지금 리포트에는 쓰지 않습니다. 원본을 파일로 받아 두세요.'}
+                    </p>
+                    <TitleConfirm
+                      key="unreadable"
+                      enabled={!overlay}
+                      initial="cancel"
+                      onCancel={() => { setConfirmRestore(false) }}
+                      choices={[
+                        { key: 'file', label: '백업을 파일로 받기', go: saveBackupFile },
+                        { key: 'cancel', label: '그만두기', go: () => { setConfirmRestore(false) } },
+                      ]}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <p className={css.blockText}>
+                      {`되찾을 백업 — ${kept.save.trainer.name || '이름 없음'} · `}
+                      {`${clock(kept.save.trainer.playtimeMs)} · `}
+                      {`배지 ${countBadges(kept.save.badges)}개 · `}
+                      {`도감 ${countDex(kept.save.pokedex.seen)}마리\n`}
+                      {kept.migrated ? '옛 버전에서 만든 백업이라 지금 버전으로 옮겨서 되찾습니다\n' : ''}
+                      {hasSave
+                        ? `지금 리포트(${report?.trainer.name || '이름 없음'} · `
+                          + `${clock(report?.trainer.playtimeMs ?? 0)})가 덮입니다. `
+                          + '덮기 전에 세이브 파일로 받습니다.\n'
+                        : '지금은 이어할 리포트가 없어 덮을 것이 없습니다.\n'}
+                      {/* ⚠️ **이것을 「외부 백업」이라고 말하지 않는다.** 같은 브라우저 안의 한 벌이라 사이트 데이터를
+                          지우면 같이 사라진다 (`state/report.ts`의 `backupReport`) */}
+                      <span className={css.warn}>
+                        이 백업은 이 브라우저 안에 있습니다 — 사이트 데이터를 지우면 같이 사라집니다.
+                      </span>
+                    </p>
+                    {/* ⚠️ **커서는 「그만두기」에서 시작한다.** 되찾기는 지금 리포트를 덮는다 — 창을 연 Enter를 길게 누르면
+                        그 반복이 곧바로 덮는다 */}
+                    <TitleConfirm
+                      key="ok"
+                      enabled={!overlay}
+                      initial="cancel"
+                      onCancel={() => { setConfirmRestore(false) }}
+                      choices={[
+                        { key: 'restore', label: '이 백업으로 되찾기', go: bringBack },
+                        { key: 'file', label: '백업을 파일로 받기', go: saveBackupFile },
+                        { key: 'cancel', label: '그만두기', go: () => { setConfirmRestore(false) } },
+                      ]}
+                    />
+                  </>
+                )}
+              </div>
+            )}
 
-      <div className={css.foot}>
-        <p className={css.hint}>←→ 고르기 · Z·Enter 결정</p>
-        <p className={css.hint}>{controlLine}</p>
+            {pending && (
+              <div className={css.block}>
+                <p className={css.blockText}>
+                  {`${pending.envelope.summary.trainer || '이름 없음'} · `}
+                  {`${clock(pending.envelope.summary.playtimeMs)} · `}
+                  {`저장 ${stamp(pending.envelope.createdAt)}\n`}
+                  {pending.migrated ? '옛 버전에서 만든 리포트라 지금 버전으로 옮겨서 불러옵니다\n' : ''}
+                  {/* ⚠️ **막지 않고 알린다** (`compareContract`). 무엇이 다른지에 따라 플레이어가 보게 될 것이 다르다 —
+                      내부 말(「콘텐츠 계약」)로 뭉치지 않는다 */}
+                  {pending.contract !== 'same' && (
+                    <span className={css.warn}>
+                      {pending.contract === 'other-locale'
+                        ? '다른 지역판 롬으로 설치한 곳에서 만든 리포트입니다 — 이름과 글은 이 설치본의 언어로 보입니다'
+                        : '지금 설치된 것과 다른 버전의 게임 파일로 만든 리포트입니다'}
+                    </span>
+                  )}
+                  {pending.contract !== 'same' ? '\n' : ''}
+                  {'지금 리포트는 불러오기 전에 세이브 파일로 먼저 받습니다.'}
+                </p>
+                <TitleConfirm
+                  enabled={!overlay}
+                  initial="cancel"
+                  onCancel={() => { setPending(null) }}
+                  choices={[
+                    { key: 'bring', label: '이 리포트로 이어하기', go: bringIn },
+                    { key: 'cancel', label: '그만두기', go: () => { setPending(null) } },
+                  ]}
+                />
+              </div>
+            )}
+
+            {/* ⚠️ **되돌릴 수 없는 일 앞에 걸음을 하나 둔다.** 지우기 전에 파일로 받아 두긴 하지만(`resetSave`), 그건
+                되돌리는 길이지 안 겪는 것이 아니다 — 브라우저가 그 받기를 막을 수도 있다 */}
+            {confirmNew && (
+              <div className={css.block}>
+                <p className={css.blockText}>
+                  {'하던 모험이 있습니다 — '}
+                  {`${report?.trainer.name || '이름 없음'} · ${clock(report?.trainer.playtimeMs ?? 0)}\n`}
+                  {'처음부터 시작하면 지금 리포트가 지워집니다. 지우기 전에 세이브 파일로 받아 둡니다.'}
+                </p>
+                {/* ⚠️ **커서는 「그만두기」에서 시작한다.** 이 창은 「시작」에서 Enter로 열린다 — 그 Enter를 길게 누르고
+                    있으면 반복 키가 곧바로 리포트를 지운다 */}
+                <TitleConfirm
+                  enabled={!overlay}
+                  initial="cancel"
+                  onCancel={() => { setConfirmNew(false) }}
+                  choices={[
+                    { key: 'new', label: '처음부터 시작하기', go: () => { setConfirmNew(false); go(true) } },
+                    { key: 'cancel', label: '그만두기', go: () => { setConfirmNew(false) } },
+                  ]}
+                />
+              </div>
+            )}
+
+            {notice !== null && (
+              <div className={css.block}>
+                <p className={css.blockText}>{notice}</p>
+              </div>
+            )}
+
+            {/* 뒤에서 훑다(또는 설정의 「에셋 확인」이) 어긋난 것을 만났을 때. 화면을 막지 않는다 — 멀쩡한 그룹은 그대로
+                열리고, 깨진 그룹을 실제로 읽을 때 그 자리에서 선다 */}
+            {showBroken && (
+              <div className={css.block}>
+                <p className={css.blockText}>
+                  {rechecking ? '설치본을 다시 확인하고 있습니다 — 다 온전하면 이 알림이 사라집니다' : (
+                    <>
+                      <span className={css.warn}>
+                        {`설치본에서 파일 ${String(integrity.broken.length)}개가 어긋납니다`}
+                      </span>
+                      {integrity.groups.length > 0
+                        ? ` — ${groupLabels(integrity.groups, 'ko')}`
+                        : ''}
+                      {'\n「어긋난 에셋 다시 만들기」로 그 부분만 다시 만듭니다 — 리포트는 그대로입니다'}
+                    </>
+                  )}
+                </p>
+              </div>
+            )}
+          </PopAbove>
+        )}
       </div>
 
       {/*
@@ -871,12 +980,13 @@ function TitleMenu() {
       )}
 
       {/* ⚠️ **여는 창마다 「더보기」를 닫는다.** 겹쳐 두면 X를 두 번 눌러야
-          타이틀로 돌아오고, 뒤에 깔린 창이 스크림을 한 겹 더 얹어 어두워진다 */}
+          타이틀로 돌아오고, 뒤에 깔린 창이 어두워진다 */}
       {showMore && (
         <ChunkBoundary where="더보기">
           <Suspense fallback={null}>
             <MoreMenu
               newPatch={newPatch}
+              anchor={anchorOf('more')}
               onOptions={() => { setShowMore(false); useMenuStore.getState().open('options') }}
               onPatchNotes={() => { setShowMore(false); setShowPatch(true); setNewPatch(false) }}
               onBugReport={() => { setShowMore(false); setShowBug(true) }}
@@ -906,13 +1016,14 @@ interface ConfirmChoice {
 }
 
 /**
- * 타이틀의 확인 창 단추 줄 — **키로도 답한다.**
+ * 타이틀의 확인 창 고를 것 — **키로도 답한다.**
  *
  * ⚠️ **한때 마우스로만 답할 수 있었다.** 단추가 맨 `<button>`뿐이었는데 메뉴 키
  * (`useMenuKeys`)가 Enter·Space·Z를 캡처 단계에서 가져가므로 Tab으로 포커스를
  * 옮겨도 단추에 안 닿았다. 그래서 「더보기」(`MoreMenu`)처럼 창이 제 커서를
  * 든다: ←↑·→↓로 고르고 Z·Enter로 누르고 X·Esc로 그만둔다.
  *
+ * 줄이 세로로 서고 금 띠 하나가 미끄러진다. 글자 `▶`는 없다 — 단추의 이름은 글자 그대로다.
  * `initial`은 커서가 처음 놓일 칸의 `key`다
  */
 function TitleConfirm({ choices, initial, onCancel, enabled }: {
@@ -934,17 +1045,20 @@ function TitleConfirm({ choices, initial, onCancel, enabled }: {
   }, enabled)
 
   return (
-    <div className={css.files}>
+    <div className={css.choices}>
+      <span className={pickBand.y} aria-hidden style={bandAt('y', cursor)}>
+        <span className={caret} />
+      </span>
       {choices.map((choice, i) => (
         <button
           key={choice.key}
-          className={[css.fileButton, i === cursor ? css.fileButtonOn : ''].filter(Boolean).join(' ')}
+          type="button"
+          className={i === cursor ? `${css.choice} ${css.choiceOn}` : css.choice}
           onClick={choice.go}
           // 마우스와 키 커서를 **같은 표시**로 둔다 — 차림표와 같은 잣대다
           onPointerMove={(e) => { if (pointerMoved(e)) setCursor(i) }}
           onFocus={() => { setCursor(i) }}
         >
-          {i === cursor && <span className={css.fileCaret} aria-hidden>▶</span>}
           {choice.label}
         </button>
       ))}
@@ -964,14 +1078,21 @@ function clock(ms: number): string {
   return `${String(Math.floor(minutes / 60))}:${String(minutes % 60).padStart(2, '0')}`
 }
 
-function countDex(field: Uint8Array): number {
+/** 도감에서 센 수 (`field`는 본 것이든 잡은 것이든 비트필드다). 원작 요약은 **본 수**를 센다 */
+export function countDex(field: Uint8Array): number {
   let n = 0
   for (let i = 1; i <= DEX_MAX; i++) if (dexHas(field, i)) n++
   return n
 }
 
-function countBadges(mask: number): number {
+export function countBadges(mask: number): number {
   let n = 0
   for (let i = 0; i < 8; i++) if (mask & (1 << i)) n++
   return n
+}
+
+/** 포켓몬 도감을 받았는가 (`FLAG_HAS_POKEDEX`). 받기 전에는 요약에 도감 쌍이 없다 (원작 `main_menu.c:733`) */
+export function hasPokedex(flags: Uint8Array): boolean {
+  const byte = flags[FLAG_HAS_POKEDEX >> 3]
+  return byte !== undefined && (byte & (1 << (FLAG_HAS_POKEDEX & 7))) !== 0
 }

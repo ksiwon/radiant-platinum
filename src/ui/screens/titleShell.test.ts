@@ -162,7 +162,6 @@ function focusRule(name: string): Record<string, unknown> | undefined {
 describe('타이틀 위의 창도 포커스 링을 안 돌린다', () => {
   it.each([
     ['더보기 · 고를 것', moreMenu.item],
-    ['더보기 · 돌아가기', moreMenu.close],
     ['이런 게임은 어떠세요? · 고를 것', otherGames.card],
     ['이런 게임은 어떠세요? · 돌아가기', otherGames.close],
   ])('%s', (_where, name) => {
@@ -177,5 +176,88 @@ describe('세이브 확인 도구가 찾는 글', () => {
     const sought = [...tool.matchAll(/getByText\('([^']+)'\)/g)].map((m) => m[1]!)
     expect(sought.length).toBeGreaterThanOrEqual(2)
     for (const said of sought) expect(title, said).toContain(said)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────
+// 타이틀 한 창 · 줄 2 · 뜨는 창 (app-screens)
+// ─────────────────────────────────────────────────────────────────
+
+const titleSource = readFileSync(resolve('src/ui/screens/TitleScreen.tsx'), 'utf8')
+
+describe('타이틀 접근 이름 — 하네스가 이름으로 찾는다', () => {
+  it('「시작」 · 「이어하기」는 글 그대로가 이름이다 (aria-label로 덮지 않는다)', () => {
+    // `getByRole('button', { name: '시작', exact: true })` — 요약 · 점 · 커서 글이 이름에 섞이면 깨진다
+    expect(titleSource).toMatch(/label: '시작',\r?\n\s+group: 'main',/)
+    expect(titleSource).toMatch(/label: '이어하기',\r?\n\s+group: 'main',/)
+    expect(titleSource).not.toMatch(/label: '(시작|이어하기)',[^}]*name:/)
+  })
+
+  it('세이브 파일 둘은 눈에는 짧고 접근 이름은 옛 이름 그대로다', () => {
+    expect(titleSource).toContain("shown: '내보내기', name: '세이브 파일 내보내기'")
+    expect(titleSource).toContain("shown: '불러오기', name: '세이브 파일 불러오기'")
+    // 묶음 이름표는 읽지 않는다
+    expect(titleSource).toMatch(/<span className=\{css\.groupLabel\} aria-hidden>세이브 파일<\/span>/)
+  })
+
+  it('줄 묶음은 toolbar이고 radiogroup이 아니다 — 첫 radiogroup은 시작 메뉴다', () => {
+    expect(titleSource).toContain('role="toolbar"')
+    expect(titleSource).not.toMatch(/role=["{]['"]?radiogroup/)
+  })
+
+  it('커서 글자 ▶가 칸 이름에 안 섞인다', () => {
+    expect(titleSource).not.toMatch(/>▶</)
+    expect(titleSource).not.toMatch(/\{'▶'\}/)
+  })
+
+  it('확인 창 단추 이름 셋이 그대로 있다', () => {
+    for (const label of ['이 리포트로 이어하기', '처음부터 시작하기', '그만두기']) {
+      expect(titleSource).toContain(`label: '${label}'`)
+    }
+  })
+
+  it('고지 문단은 화면 안(고지 창)에 있고 5가지를 담는다', () => {
+    expect(titleSource).toContain('비공식·비제휴 팬 프로젝트입니다.')
+    expect(titleSource).toContain('<p className={css.disclaimer}>')
+  })
+})
+
+describe('줄 2 요약', () => {
+  it('도감 수는 본 수이고, 도감을 받기 전에는 쌍이 없다', async () => {
+    const { countDex, countBadges, hasPokedex } = await import('./TitleScreen')
+    const seen = new Uint8Array(62)
+    seen[0] = 0b101 // 1번 · 3번
+    expect(countDex(seen)).toBe(2)
+    expect(countBadges(0b1010_0001)).toBe(3)
+    const flags = new Uint8Array(512)
+    expect(hasPokedex(flags)).toBe(false)
+    flags[144 >> 3] = 1 << (144 & 7)
+    expect(hasPokedex(flags)).toBe(true)
+  })
+
+  it('요약은 본 수를 읽는다 — 잡은 수가 아니다', () => {
+    expect(titleSource).toContain('countDex(report.pokedex.seen)')
+    expect(titleSource).not.toContain('countDex(report.pokedex.caught)')
+  })
+
+  it('요약 이름표는 롬 뱅크 550이고 지어낸 이름은 폴백뿐이다', () => {
+    for (const key of ['player', 'playtime', 'dex', 'badges']) expect(titleSource).toContain(`MAIN_MENU.${key}`)
+  })
+})
+
+describe('뜨는 창 자리', () => {
+  it('원인 칸의 가운데에 앉고 화면 가장자리를 안 넘는다', async () => {
+    const { placeAbove } = await import('./PopAbove')
+    const mid = placeAbove({ left: 400, width: 100 }, 300, 1000)
+    expect(mid.left).toBe(300)
+    expect(mid.nibAt).toBeCloseTo(150)
+    // 왼쪽 끝 칸 — 창이 화면 안으로 당겨지고 꼭지는 그래도 칸을 가리킨다
+    const edge = placeAbove({ left: 20, width: 60 }, 470, 960)
+    expect(edge.left).toBe(16)
+    expect(edge.nibAt).toBe(34)
+    // 오른쪽 끝
+    const right = placeAbove({ left: 880, width: 60 }, 470, 960)
+    expect(right.left).toBe(960 - 16 - 470)
+    expect(right.nibAt).toBeGreaterThan(400)
   })
 })

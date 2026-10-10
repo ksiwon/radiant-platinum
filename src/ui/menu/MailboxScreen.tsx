@@ -16,8 +16,9 @@
 //
 // ⚠️ **「메일을 읽는다」는 메일 앱의 읽기 화면을 연다** (`FieldSystem_LaunchMailApp_Read`의
 // `MAIL_CONTEXT_MAILBOX`) — 파티의 마리가 지닌 편지를 읽는 것과 같은 화면이다. 닫으면 이 목록으로 돌아온다.
-import { useEffect, useMemo, useState } from 'react'
-import { loadItemNames, loadSpeciesNames } from '../../data/gameData'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { loadItemIcons, loadItemNames, loadPokeIcons, loadSpeciesNames } from '../../data/gameData'
+import type { ItemIcons, PokeIcons } from '../../data/schema'
 import { fillMenuText, loadUiText, MAILBOX_TEXT, PARTY_GIVE, YES_NO } from '../../data/uiText'
 import { EASY_CHAT_WORD_NONE } from '../../engine/world/easyChat'
 import {
@@ -31,11 +32,16 @@ import { loadWordLookup, type WordLookup } from './easyChatWords'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
 import { POCKET_MAIL } from './BagScreen'
 import { MenuScreen } from './MenuScreen'
+import { ChoiceMenu, type ChoiceItem } from '../common/ChoiceMenu'
+import { MessageDock } from '../common/MessageDock'
+import { ScrollKnob } from '../common/ScrollKnob'
+import { YesNo } from '../common/YesNo'
+import { LINE, PIXEL } from '../theme/scale'
 import * as css from './menuChrome.css'
-import * as bagCss from './bagScreen.css'
-// 갈래 창은 파티 화면 것을 그대로 쓴다 — 오른쪽 아래 구석의 창 하나다
-import * as menu from './partyScreen.css'
-import { pointerMoved } from '../pointerMoved'
+import { MailSheet } from './MailSheet'
+import { itemIconAt } from './itemIcon'
+import { monIconAt } from './pokeIcon'
+import * as own from './mailboxScreen.css'
 
 /** 갈래 넷 — 원작 목록의 반환값 차례다 (0 읽는다 · 1 지운다 · 2 지니게 한다 · 3 그만둔다) */
 export const MAILBOX_ACTIONS = ['read', 'erase', 'give', 'cancel'] as const
@@ -95,7 +101,13 @@ export function MailboxScreen() {
   const [itemNames, setItemNames] = useState<readonly string[]>([])
   const [speciesNames, setSpeciesNames] = useState<readonly string[]>([])
   const [lookup, setLookup] = useState<WordLookup | null>(null)
+  const [itemIcons, setItemIcons] = useState<ItemIcons>()
+  const [pokeIcons, setPokeIcons] = useState<PokeIcons>()
   const [at, setAt] = useState(0)
+  // 갈래 창이 옆에 앉을 고른 줄
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null)
+  const scroller = useRef<HTMLDivElement>(null)
+  const [view, setView] = useState({ top: 0, visible: 0 })
   const [open, setOpen] = useState<Open | null>(null)
   const [menuAt, setMenuAt] = useState(0)
   /** 한 줄 알림. 원작이 이어 띄우는 말이 둘일 때가 있어 줄 목록이다 */
@@ -125,6 +137,9 @@ export function MailboxScreen() {
         setSpeciesNames(species)
       })
       .catch(() => { /* 글이 없어도 목록은 뜬다 */ })
+    // 아이콘은 따로 받는다 — 못 받으면 그 자리만 빈다
+    void loadItemIcons().then((got) => { if (live) setItemIcons(got) }).catch(() => { /* 아이콘 칸만 빈다 */ })
+    void loadPokeIcons().then((got) => { if (live) setPokeIcons(got) }).catch(() => { /* 아이콘 칸만 빈다 */ })
     return () => { live = false }
   }, [])
 
@@ -137,11 +152,6 @@ export function MailboxScreen() {
   const monName = (mon: PokemonInstance): string => mon.nickname ?? speciesNames[mon.species] ?? ''
   /** 편지지 이름 — 도구 이름표에서 읽는다. 「편지지 N」으로 지어 붙이지 않는다 */
   const paperName = (type: number): string => itemNames[mailItemOfType(type)] ?? ''
-
-  const wordsOf = (words: readonly number[]): string =>
-    lookup ? words.filter((w) => w !== EASY_CHAT_WORD_NONE).map((w) => lookup(w)).join(' ') : ''
-
-  const preview = (lines: readonly number[][]): string => wordsOf(lines.flat())
 
   /** 목록이 하나 줄었다 — 커서를 끝 칸으로 당긴다 */
   const shrink = (): void => { setAt((n) => Math.max(0, Math.min(n, filled.length - 2))) }
@@ -298,7 +308,23 @@ export function MailboxScreen() {
     down: () => { settle(); return move(1) },
     confirm: () => { settle(); confirm() },
     cancel: () => { settle(); cancel() },
-  })
+    // 뜨는 창이 떠 있으면 키는 그 창이 쥔다
+  }, open === null)
+
+  // 고른 줄이 보이게 — 스크롤 목록이라 줄이 즉시 옮겨 가고, 가까운 쪽으로만 민다
+  useEffect(() => {
+    const el = scroller.current
+    if (!el) return
+    const rowTop = at * LINE.rowTall
+    if (rowTop < el.scrollTop) el.scrollTop = rowTop
+    else if (rowTop + LINE.rowTall > el.scrollTop + el.clientHeight) el.scrollTop = rowTop + LINE.rowTall - el.clientHeight
+  }, [at, filled.length])
+  const measure = (): void => {
+    const el = scroller.current
+    if (!el) return
+    setView({ top: Math.round(el.scrollTop / LINE.rowTall), visible: Math.floor(el.clientHeight / LINE.rowTall) })
+  }
+  useEffect(measure, [filled.length, at])
 
   /** 메일 화면에서 돌아오며 받은 말을 글로 채운다 */
   const returnedLines = (): string[] => {
@@ -322,46 +348,95 @@ export function MailboxScreen() {
     }
   }
 
+  // 지금 떠 있는 창에 쓸 줄 — 갈래 · 지닐 포켓몬은 `ChoiceMenu`, 예/아니오는 `YesNo`가 그린다
+  const monItems: ChoiceItem[] = party.map((m, i) => ({
+    key: String(i),
+    // 알은 못 고른다 — 흐리게 둔다 (소리도 안 난다)
+    disabled: m.isEgg,
+    label: (
+      <span className={own.monRow}>
+        <span style={monIconAt(pokeIcons, m, PIXEL.x1)} aria-hidden="true" />
+        <span className={own.monName}>{monName(m)}</span>
+        {m.heldItem !== 0 && <span className={own.held} style={itemIconAt(itemIcons, m.heldItem, PIXEL.x1)} aria-hidden="true" />}
+      </span>
+    ),
+  }))
+  const actionItems: ChoiceItem[] = MAILBOX_ACTIONS.map((a) => ({ key: a, label: say[ACTION_LINE[a]] ?? '' }))
+
+  const empty = filled.length === 0 && shownNotice.length === 0
+  // 물음과 알림은 창 안 아래 글 띠 하나가 맡는다 (원작 대사창). 물음이 떠 있으면 그것이, 아니면 알림이다
+  const dockLines = open !== null ? [ask()] : shownNotice
+
   return (
     <MenuScreen
       title={say[MAILBOX_TEXT.title] ?? '메일박스'}
       note={`${String(filled.length)} / ${String(mailbox.length)}`}
-      foot={mailboxFoot(open?.kind ?? null, filled.length === 0 && shownNotice.length === 0)}
+      foot={mailboxFoot(open?.kind ?? null, empty)}
+      message={<MessageDock lines={dockLines} when={dockLines.some((l) => l !== '')} />}
     >
-      {/* 비었으면 본문 전체가 그 한 줄이다. 갈래 창은 칸의 오른쪽 아래 구석에 붙는다 */}
-      {filled.length === 0 && shownNotice.length === 0 ? <div className={css.emptyFill}>메일이 없다</div> : (
-      <div className={bagCss.anchorStage}>
-        <ul className={css.list}>
-          {filled.map((e, i) => (
-            <li key={e.slot} className={i === at ? css.rowOn : css.row}>
-              <span className={css.label}>{e.mail.trainerName}</span>
-              <span className={css.count}>{paperName(e.mail.type)}</span>
-            </li>
-          ))}
-        </ul>
-        <div className={css.detail}>
-          {here && <div className={css.detailText}>{preview(here.mail.lines)}</div>}
-          {shownNotice.map((text, i) => <div key={i} className={css.detailText}>{text}</div>)}
-        </div>
-
-        {open !== null && (
-          <div className={menu.choices}>
-            <div className={menu.choiceAsk}>{ask()}</div>
-            {choices.map((label, i) => (
-              <div
-                key={`${label}-${String(i)}`}
-                className={i === Math.min(menuAt, choices.length - 1) ? menu.choiceOn : menu.choice}
-                // 알은 못 고른다 — 흐리게 둔다
-                style={open.kind === 'pick' && party[i]?.isEgg === true ? { opacity: 0.45 } : undefined}
-                onPointerMove={(e) => { if (pointerMoved(e)) setMenuAt(i) }}
-                onClick={() => { setMenuAt(i); confirm(i) }}
-              >
-                {label}
-              </div>
-            ))}
+      {/* 비었으면 본문 전체가 그 한 줄이다 */}
+      {empty ? <div className={css.emptyFill}>메일이 없다</div> : (
+        <div className={own.body}>
+          <div className={own.listBox}>
+            <div ref={scroller} className={own.scroller} onScroll={measure}>
+              {filled.map((e, i) => (
+                <div
+                  key={e.slot}
+                  ref={i === at ? setAnchor : undefined}
+                  className={i === at ? own.rowPicked : own.row}
+                >
+                  <span style={itemIconAt(itemIcons, mailItemOfType(e.mail.type), PIXEL.x1)} aria-hidden="true" />
+                  <span className={own.label}>{e.mail.trainerName}</span>
+                  <span className={own.paper}>{paperName(e.mail.type)}</span>
+                </div>
+              ))}
+            </div>
+            <ScrollKnob at={view.top} visible={view.visible} total={filled.length} />
           </div>
-        )}
-      </div>
+          <div className={own.detail}>
+            {here && (
+              <MailSheet
+                lines={here.mail.lines}
+                lookup={lookup}
+                type={here.mail.type}
+                icons={here.mail.icons}
+                signer={here.mail.trainerName}
+              />
+            )}
+          </div>
+
+          {open?.kind === 'menu' && (
+            <ChoiceMenu
+              items={actionItems}
+              at={Math.min(menuAt, actionItems.length - 1)}
+              anchor={anchor}
+              onAt={setMenuAt}
+              onPick={(i) => { confirm(i) }}
+              onCancel={cancel}
+            />
+          )}
+          {open?.kind === 'pick' && (
+            <ChoiceMenu
+              items={monItems}
+              at={Math.min(menuAt, Math.max(0, monItems.length - 1))}
+              anchor={anchor}
+              onAt={setMenuAt}
+              onPick={(i) => { confirm(i) }}
+              onCancel={cancel}
+            />
+          )}
+          {(open?.kind === 'eraseAsk' || open?.kind === 'erasedGive') && (
+            <YesNo
+              key={open.kind}
+              // 예·아니오의 커서는 **예**에서 시작한다 (`Menu_MakeYesNoChoice`)
+              labels={[menuText[YES_NO.yes] ?? '', menuText[YES_NO.no] ?? '']}
+              initial={0}
+              anchor={anchor}
+              onPick={(yes) => { confirm(yes ? 0 : 1) }}
+              onCancel={cancel}
+            />
+          )}
+        </div>
       )}
     </MenuScreen>
   )

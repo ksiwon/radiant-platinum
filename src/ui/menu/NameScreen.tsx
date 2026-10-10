@@ -10,14 +10,22 @@
 // ⚠️ **길이는 원작 값이다.** `constants/string.h`의 `MON_NAME_LEN`이 10이다 —
 // 우리가 정한 상한이 아니다.
 import { useEffect, useState } from 'react'
+import {
+  loadBoxWallpapers, loadPokeIcons, loadSpecies, type SpeciesTable,
+} from '../../data/gameData'
+import type { BoxWallpapers, PokeIcons } from '../../data/schema'
 import { loadUiText, NAMING_TEXT } from '../../data/uiText'
+import { genderOf } from '../../engine/pokemon/instance'
 import { useMenuStore } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { formatMessage, MessageSlots } from '../../engine/script/text'
+import { GenderMark } from '../common/MonIdentity'
+import { KeyHints } from '../common/KeyHints'
 import * as chrome from './menuChrome.css'
-import * as css from './dialog.css'
+import { MenuScreen } from './MenuScreen'
 import { naming } from './namingAnswer'
+import { boxWallpaper, monIconAt } from './pokeIcon'
 import * as own from './nameScreen.css'
 
 /** 이름 짓기 화면의 글 뱅크 (`TEXT_BANK_NAMING_SCREEN`) */
@@ -33,9 +41,14 @@ export function NameScreen() {
   const what = useMenuStore((s) => s.naming)
   const closeAll = useMenuStore((s) => s.closeAll)
   const back = useMenuStore((s) => s.back)
+  const party = useSaveStore((s) => s.party)
+  const wallpapers = useSaveStore((s) => s.wallpapers)
   const locale = useGameLocale()
   const [prompt, setPrompt] = useState('')
   const [draft, setDraft] = useState(what?.initial ?? '')
+  const [icons, setIcons] = useState<PokeIcons>()
+  const [walls, setWalls] = useState<BoxWallpapers>()
+  const [species, setSpecies] = useState<SpeciesTable>()
 
   useEffect(() => {
     let alive = true
@@ -51,9 +64,22 @@ export function NameScreen() {
           : what?.kind === 'box' ? NAMING_TEXT.box : NAMING_TEXT.pokemon
         setPrompt(formatMessage(bank[line] ?? '', slots).trim())
       })
+      // 글이 안 오면 물음 줄을 비운다 — 롬 글이 아닌 말을 지어 채우지 않는다
       .catch(() => { setPrompt('') })
     return () => { alive = false }
   }, [locale, what])
+
+  // 개체 아이콘과 「비워 두면」 줄에 쓰는 자료. 못 받으면 그 자리만 빈다
+  useEffect(() => {
+    let alive = true
+    void Promise.all([
+      loadPokeIcons(), loadBoxWallpapers(), loadSpecies(),
+    ]).then(([i, w, sp]) => {
+      if (!alive) return
+      setIcons(i); setWalls(w); setSpecies(sp)
+    }).catch(() => { /* 아이콘 없이도 입력은 선다 */ })
+    return () => { alive = false }
+  }, [locale])
 
   /**
    * 결정한다. **빈 이름은 안 바꾼 것으로 친다** — 원작도 이름을 비우면 종족
@@ -79,11 +105,13 @@ export function NameScreen() {
    * `preventDefault`까지 하는데, 여기는 글자를 치는 자리라 그러면 이름에 x를
    * 못 넣고 지우지도 못한다. 그래서 Esc 하나만 따로 듣는다.
    *
+   * ⚠️ **한글 조합 중의 Esc는 조합을 취소하는 키다.** `isComposing`이면 넘겨서 별명 짓기를 건너뛰지 않는다
+   *
    * 마우스 없이도 이 화면을 빠져나갈 수 있어야 한다 — Enter로 결정, Esc로 통과
    */
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.code !== 'Escape' || what === null) return
+      if (e.code !== 'Escape' || what === null || e.isComposing) return
       e.preventDefault()
       done('')
     }
@@ -93,29 +121,39 @@ export function NameScreen() {
 
   if (!what) return null
 
+  const mon = what.kind === 'pokemon' ? party[what.slot] : undefined
+  const ratio = mon && species ? species.of(mon).genderRatio : undefined
+  const gender = mon && ratio !== undefined ? genderOf(mon.pid, ratio) : undefined
+  const length = [...draft].length
+
   return (
     /*
-      ⚠️ **`overlay`가 없으면 화면이 3D 밑에 깔린다.** `dialog.css`의 `center`는
-      자리를 안 잡은(static) 상자라 층이 없는데, 무대(`scene/Stage`의
-      `#stage-wrap`)는 `position: fixed`다 — 자리를 잡은 것은 DOM 차례와 무관하게
-      안 잡은 것 위에 그려진다. 그래서 이 창은 **그려지긴 하는데 캔버스 뒤에**
-      있었다: 실측으로 「그대로 두기」 단추의 한가운데를 `elementFromPoint`로
-      되물으면 `CANVAS`가 나왔고, 화면에는 창이 한 조각도 안 보였다.
+      ⚠️ **`MenuScreen`의 덮개(`overlay`)가 층을 잡는다.** 덮개가 없으면 화면이 3D 밑에 깔린다 — 무대
+      (`scene/Stage`의 `#stage-wrap`)는 `position: fixed`라 자리를 안 잡은 상자는 캔버스 뒤에 그려진다.
+      그러면 그려지긴 하는데 한 조각도 안 보이고, 스크립트는 답이 나올 때까지 서므로 마우스로 노는 사람에게는
+      연구소에서 게임이 멎은 것으로 보인다 (e2e ㉖이 여기서 60초를 서다 떨어졌다).
 
-      스크립트는 답이 나올 때까지 선다(`naming.answer`). 그러니 마우스로 노는
-      사람에게는 **연구소에서 게임이 멎은 것**으로 보인다 — 키보드(Enter·Esc)로만
-      빠져나갈 수 있었다. e2e ㉖이 여기서 60초를 서다 떨어졌다.
-
-      묻고 답하는 다른 화면(리포트·설정)과 같은 것을 쓴다.
+      머리와 바닥은 `bare`로 끄고 바닥 줄만 아래에 직접 둔다 — 이 창은 제목 대신 개체 아이콘이 선다.
     */
-    <div className={chrome.overlay}>
-      <div className={css.center}>
-        <div className={own.card}>
-          <p className={own.prompt}>{prompt || '별명을 지어 주세요'}</p>
-          <form
-            className={own.row}
-            onSubmit={(e) => { e.preventDefault(); done(draft) }}
-          >
+    <MenuScreen title="이름 짓기" variant="center" width={own.WIDTH} bare>
+      <div className={own.body}>
+        {what.kind !== 'tablet' && (
+          <div className={own.hero}>
+            {mon !== undefined && <div style={monIconAt(icons, mon, 2)} aria-hidden="true" />}
+            {what.kind === 'box' && walls !== undefined && (
+              <div className={own.piece} aria-hidden="true">
+                <div className={own.pieceArt} style={boxWallpaper(walls, wallpapers[what.slot] ?? 0, 1)} />
+              </div>
+            )}
+            {gender !== undefined && <GenderMark gender={gender} />}
+          </div>
+        )}
+        <form
+          className={own.form}
+          onSubmit={(e) => { e.preventDefault(); done(draft) }}
+        >
+          <p className={own.prompt}>{prompt}</p>
+          <div className={own.row}>
             <input
               className={own.input}
               value={draft}
@@ -125,17 +163,30 @@ export function NameScreen() {
               aria-label="별명"
             />
             <button className={own.ok} type="submit">결정</button>
-          </form>
-          {/*
-            안 짓고 넘어갈 수 있어야 한다. 원작도 여기서 B를 누르면 별명 없이
-            지나가고, 스크립트가 그 답(1)으로 갈라진다
-          */}
-          <button className={own.skip} type="button" onClick={() => { done('') }}>
-            그대로 두기
-          </button>
-          <div className={chrome.hint}>{NAME_HINT}</div>
-        </div>
+          </div>
+          {/* 길이 계기 — 원작의 열 칸 밑줄을 계기로 옮겼다. 한글 조합 입력은 칸에 못 맞춘다 */}
+          <div className={own.meter} aria-hidden="true">
+            <div className={own.cells}>
+              {Array.from({ length: what.max }, (_, i) => (
+                <i key={i} className={i < length ? `${own.cell} ${own.cellOn}` : own.cell} />
+              ))}
+            </div>
+            <span className={own.count}>{length} / {what.max}</span>
+          </div>
+          <div className={own.skipRow}>
+            {/*
+              안 짓고 넘어갈 수 있어야 한다. 원작도 여기서 B를 누르면 별명 없이
+              지나가고, 스크립트가 그 답(1)으로 갈라진다
+            */}
+            <button className={own.skip} type="button" onClick={() => { done('') }}>
+              그대로 두기
+            </button>
+          </div>
+        </form>
       </div>
-    </div>
+      <div className={chrome.foot}>
+        <KeyHints text={NAME_HINT} />
+      </div>
+    </MenuScreen>
   )
 }

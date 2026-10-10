@@ -13,8 +13,8 @@ import {
   LocationEvent, MonResult, emptyEntry, packLocationEvent, saveMon, saveTitle, saveTrainer,
 } from '../../engine/world/journal'
 import {
-  J, TRAINER_CLASS_RIVAL, journalPage, locationEventLine, monLine, trainerLine,
-  type JournalNames,
+  J, TRAINER_CLASS_RIVAL, bookmarkLabels, journalPage, locationEventLine, monLine, nextPage, trainerLine,
+  type JournalNames, type JournalPage,
 } from './journalLines'
 
 /** 실제 롬 글이 있으면 그것을, 없으면 자리만 세는 가짜를 쓴다 */
@@ -230,9 +230,11 @@ describe('쪽 한 장', () => {
     e = saveTrainer(e, { standard: 1, trainerId: 1, mapId: 8 })
     const page = journalPage(e, names())
     expect(page?.lines).toHaveLength(3)
-    expect(page?.lines[0]).toBe('무쇠시티에 도착!')
-    expect(page?.lines[1]).toContain('피카츄')
-    expect(page?.lines[2]).toContain('무쇠시티')
+    expect(page?.lines[0]).toEqual({ kind: 'place', text: '무쇠시티에 도착!' })
+    expect(page?.lines[1]?.kind).toBe('mon')
+    expect(page?.lines[1]?.text).toContain('피카츄')
+    expect(page?.lines[2]?.kind).toBe('trainer')
+    expect(page?.lines[2]?.text).toContain('무쇠시티')
   })
 
   it('빈 칸을 만나면 뒤는 안 본다 — 원작 인쇄기가 거기서 멈춘다', () => {
@@ -243,5 +245,19 @@ describe('쪽 한 장', () => {
         packLocationEvent(0, 0, LocationEvent.GAME_CORNER), 0],
     }
     expect(journalPage(e, names())?.lines).toHaveLength(1)
+  })
+})
+
+describe('책갈피와 다음 쪽', () => {
+  const page = (date: string): JournalPage => ({ date, weekday: '', from: '', lines: [] })
+
+  it('책갈피 글자는 쪽의 롬 날짜 그대로다', () => {
+    expect(bookmarkLabels([page('8월 13일'), page('8월 14일')])).toEqual(['8월 13일', '8월 14일'])
+  })
+
+  it('A는 다음 쪽이고 마지막 쪽에서는 아무 일도 없다', () => {
+    expect(nextPage(0, 3)).toBe(1)
+    expect(nextPage(2, 3)).toBe(2)
+    expect(nextPage(0, 0)).toBe(0)
   })
 })

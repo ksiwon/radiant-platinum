@@ -6,45 +6,16 @@
 import { style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 import { GAP, RADIUS, TEXT } from '../theme/scale'
-import { PICKED, WINDOW, WINDOW_SMALL, scrim } from '../theme/window.css'
+import { PICKED, WINDOW_SMALL } from '../theme/window.css'
 
-/** 타이틀 위를 덮는다. 창 한 벌의 것을 그대로 쓴다 */
-export const over = style([scrim, { zIndex: 20 }])
-
-export const panel = style({
-  ...WINDOW,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: GAP.base,
-  width: 'min(560px, calc(100vw - 32px))',
-  // ⚠️ **테두리와 여백을 폭 안에 넣는다.** 안 넣으면 `100vw - 32px`에 좌우 여백
-  // 32px과 테두리 6px이 더 붙어 좁은 화면에서 창이 화면 밖으로 22px 나간다
-  // (실측 375px). `titleScreen.css`의 고지가 같은 이유로 이 줄을 들고 있다
-  boxSizing: 'border-box',
-  maxHeight: 'calc(100vh - 48px)',
-  overflowY: 'auto',
-  padding: `${GAP.wide}px ${GAP.wide}px ${GAP.base}px`,
-  fontFamily: vars.font.ui,
-})
-
-export const title = style({
-  margin: 0,
-  fontSize: TEXT.title,
-  fontWeight: 700,
-  color: vars.ink.strong,
-})
-
-export const intro = style({
-  margin: 0,
-  fontSize: TEXT.small,
-  lineHeight: 1.6,
-  color: vars.ink.dim,
-})
+/** 창 폭. 틀(머리 · 바닥)은 `appWindow.css`다 */
+export const WIDTH = 560
 
 export const list = style({
   display: 'flex',
   flexDirection: 'column',
   gap: GAP.small,
+  padding: GAP.wide,
 })
 
 /**
@@ -90,19 +61,6 @@ export const go = style({
   marginTop: GAP.tight,
   fontSize: TEXT.tiny,
   opacity: 0.7,
-})
-
-export const foot = style({
-  display: 'flex',
-  alignItems: 'center',
-  gap: GAP.base,
-  flexWrap: 'wrap',
-})
-
-export const hint = style({
-  flex: '1 1 auto',
-  fontSize: TEXT.tiny,
-  color: vars.ink.faint,
 })
 
 export const close = style({

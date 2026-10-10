@@ -10,8 +10,10 @@
 // 한다는 자리를 이미 한 번 고쳤다(`TitleScreen`의 차림표 다섯). 여기도 마우스로만
 // 눌리는 칸을 두지 않는다 — ↑↓로 고르고 Z·Enter로 열고 X·Esc로 닫는다.
 import { useRef, useState } from 'react'
+import { KeyHints } from '../common/KeyHints'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import { OTHER_GAMES } from './gameLinks'
+import * as win from './appWindow.css'
 import * as css from './otherGames.css'
 import { pointerMoved } from '../pointerMoved'
 
@@ -39,12 +41,14 @@ export function OtherGames({ onClose }: Props) {
 
   return (
     // 창 바깥을 누르면 닫힌다. 창 안에서 시작한 클릭은 여기까지 안 온다
-    <div className={css.over} onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className={css.panel}>
-        <h2 className={css.title}>이런 게임은 어떠세요?</h2>
-        <p className={css.intro}>
-          같은 사람이 만든 포켓몬 웹 게임입니다. 설치 없이 브라우저에서 바로 열립니다.
-        </p>
+    <div className={win.over} onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div className={win.window_} style={{ ['--w' as string]: `${String(css.WIDTH)}px` }}>
+        <div className={win.head}>
+          <h2 className={win.title}>이런 게임은 어떠세요?</h2>
+          <span className={win.note}>
+            같은 사람이 만든 포켓몬 웹 게임입니다. 설치 없이 브라우저에서 바로 열립니다.
+          </span>
+        </div>
 
         <div className={css.list}>
           {OTHER_GAMES.map((game, i) => (
@@ -64,9 +68,9 @@ export function OtherGames({ onClose }: Props) {
           ))}
         </div>
 
-        <div className={css.foot}>
-          <span className={css.hint}>↑↓ 고르기 · Z·Enter 열기 · X 닫기</span>
-          <button className={css.close} onClick={onClose}>돌아가기</button>
+        <div className={win.foot}>
+          <span className={win.hint}><KeyHints text="↑↓ 고르기 · Z 열기 · X 닫기" /></span>
+          <button type="button" className={css.close} onClick={onClose}>돌아가기</button>
         </div>
       </div>
     </div>

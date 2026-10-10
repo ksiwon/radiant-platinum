@@ -18,8 +18,12 @@ import { gameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { loadWordLookup, type WordLookup } from './easyChatWords'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
+import { YesNo } from '../common/YesNo'
+import { EasyChatFrame } from './EasyChatFrame'
 import { MenuScreen } from './MenuScreen'
-import * as css from './menuChrome.css'
+import * as own from './easyChatFrame.css'
+import * as sheetCss from './mailSheet.css'
+import { PaperSheet } from './PaperSheet'
 
 /** 낱말 고르기 뱅크의 줄 */
 const SAY = { choose: 0, done: 6, fill: 7, quit: 8, yes: 9, no: 10 } as const
@@ -28,7 +32,8 @@ const SAY = { choose: 0, done: 6, fill: 7, quit: 8, yes: 9, no: 10 } as const
  * 자리가 없다 — 같은 뜻의 롬 줄을 쓴다
  */
 const ROW = { done: 39, quit: 43 } as const
-const UL_RESET = { margin: 0, padding: 0, listStyle: 'none' } as const
+/** 묻는 종이의 폭 — 편지가 아니라 낱말 칸 한두 개짜리 작은 종이다 */
+const SHEET_W_ASK = 360
 
 /** 지금 어디에 서 있나 */
 type Place =
@@ -53,6 +58,8 @@ export function EasyChatAskScreen() {
   const [place, setPlace] = useState<Place>({ at: 'slots' })
   const [group, setGroup] = useState(0)
   const [at, setAt] = useState(0)
+  // 예/아니오 창이 옆에 앉을 단추 칸
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null)
 
   useEffect(() => {
     let live = true
@@ -123,65 +130,94 @@ export function EasyChatAskScreen() {
       },
       cancel: () => { setPlace({ at: 'groups' }) },
     } : place.at === 'ask' ? {
-      up: () => { setPlace({ ...place, yes: true }) },
-      down: () => { setPlace({ ...place, yes: false }) },
-      confirm: () => {
-        if (!place.yes) { setPlace({ at: 'slots' }); return }
-        if (place.what === 'done') finish({ ok: true, words })
-        else finish({ ok: false, words: ask?.words ?? words })
-      },
-      cancel: () => { setPlace({ at: 'slots' }) },
+      // 예/아니오 창(`YesNo`)이 키를 쥔다
     } : {
       confirm: () => { setPlace({ at: 'slots' }) },
       cancel: () => { setPlace({ at: 'slots' }) },
     },
+    place.at !== 'ask',
   )
 
   if (ask === null) return null
   const line = place.at === 'ask' ? say[place.what === 'done' ? SAY.done : SAY.quit]
     : place.at === 'note' ? say[SAY.fill] : say[SAY.choose]
+  const picking = place.at === 'groups' || place.at === 'words'
+  // 종이에서 고른 칸 — 칸을 고르는 중과 낱말을 고르는 중에 보인다
+  const marked = place.at === 'slots' || picking ? slot : -1
+  const preview = place.at === 'words' ? list[at]?.text : undefined
+  const nameOf = (i: number): string => {
+    const g = groups[i]
+    return g ? groupNames[g.index] ?? g.group.name : ''
+  }
+  const doTarget = place.at === 'ask' ? (place.what === 'done' ? 0 : 1) : -1
+
   return (
     <MenuScreen
       title={line ?? ''}
+      note={picking ? nameOf(group) || undefined : undefined}
       foot={place.at === 'words' ? '↑↓ 단어 · Q/E 한 쪽씩 · Z 넣는다 · X 무리로'
         : place.at === 'groups' ? '↑↓ 무리 · Z 연다 · X 칸으로'
           : place.at === 'ask' ? '↑↓ · Z 결정'
             : '←→ 칸 · ↓ 결정/그만둔다 · Z 단어 · X 그만둔다'}
     >
-      <div className={css.stage}>
-        <ul className={css.list} style={UL_RESET}>
-          {words.slice(0, count).map((w, i) => (
-            <li key={i} className={place.at === 'slots' && i === slot ? css.rowOn : css.row}>
-              <span className={css.label}>{wordText(w) || '　'}</span>
-            </li>
-          ))}
-          <li className={place.at === 'row' && place.button === 0 ? css.rowOn : css.row}>
-            <span className={css.label}>{entries[ROW.done] ?? ''}</span>
-          </li>
-          <li className={place.at === 'row' && place.button === 1 ? css.rowOn : css.row}>
-            <span className={css.label}>{entries[ROW.quit] ?? ''}</span>
-          </li>
-          {place.at === 'ask' && (
-            <>
-              <li className={place.yes ? css.rowOn : css.row}><span className={css.label}>{say[SAY.yes] ?? ''}</span></li>
-              <li className={!place.yes ? css.rowOn : css.row}><span className={css.label}>{say[SAY.no] ?? ''}</span></li>
-            </>
-          )}
-        </ul>
-        {(place.at === 'groups' || place.at === 'words') && (
-          <ul className={css.list} style={UL_RESET}>
-            {place.at === 'groups'
-              ? groups.map((g, i) => (
-                <li key={g.index} className={i === group ? css.rowOn : css.row}>
-                  <span className={css.label}>{groupNames[g.index] ?? g.group.name}</span>
-                </li>
-              ))
-              : list.slice(Math.max(0, at - 7), Math.max(0, at - 7) + 15).map((w, i) => (
-                <li key={w.word} className={Math.max(0, at - 7) + i === at ? css.rowOn : css.row}>{w.text}</li>
-              ))}
-          </ul>
+      <EasyChatFrame
+        sheetWidth={SHEET_W_ASK}
+        sheet={(
+          <PaperSheet rings={3} marginAt={52} ruleTop={20} className={own.sheet}>
+            <div className={sheetCss.words}>
+              {words.slice(0, count).map((w, i) => {
+                const text = i === marked && preview !== undefined ? preview : wordText(w)
+                return (
+                  <span
+                    key={i}
+                    className={[sheetCss.slot, text === '' ? sheetCss.slotEmpty : '', i === marked ? sheetCss.slotOn : '']
+                      .filter(Boolean).join(' ')}
+                  >
+                    {text === '' ? '…' : text}
+                  </span>
+                )
+              })}
+            </div>
+          </PaperSheet>
         )}
-      </div>
+        below={(
+          <div className={own.doGrid}>
+            {[entries[ROW.done] ?? '', entries[ROW.quit] ?? ''].map((label, i) => (
+              <div
+                key={i}
+                ref={doTarget === i ? setAnchor : undefined}
+                className={place.at === 'row' && place.button === i ? `${own.doCell} ${own.doCellOn}` : own.doCell}
+              >
+                {label}
+              </div>
+            ))}
+          </div>
+        )}
+        groups={{
+          labels: groups.map((_, i) => nameOf(i)),
+          at: group,
+          focus: place.at === 'groups' ? 'on' : place.at === 'words' ? 'kept' : 'none',
+        }}
+        words={{ texts: list.map((w) => w.text), at, focus: place.at === 'words' }}
+        dim={!picking}
+        popover={place.at === 'ask'
+          ? (
+            <YesNo
+              // 결정 확인은 예가, 종료 확인은 아니오가 먼저다 (`Place`의 `yes`)
+              key={place.what}
+              labels={[say[SAY.yes] ?? '', say[SAY.no] ?? '']}
+              initial={place.yes ? 0 : 1}
+              anchor={anchor}
+              onPick={(yes) => {
+                if (!yes) { setPlace({ at: 'slots' }); return }
+                if (place.what === 'done') finish({ ok: true, words })
+                else finish({ ok: false, words: ask.words })
+              }}
+              onCancel={() => { setPlace({ at: 'slots' }) }}
+            />
+          )
+          : undefined}
+      />
     </MenuScreen>
   )
 }

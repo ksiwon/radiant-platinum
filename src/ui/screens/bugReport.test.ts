@@ -3,8 +3,8 @@
 // 창이 뜨면 첫 칸에 포커스가 가는데, `useMenuKeys`가 글자 칸으로 간 키를 통째로
 // 비켜 주어서 안내의 「X·Esc 닫기」가 둘 다 안 먹었다. 폼이 Esc만 따로 받고, 안내는
 // 칸 안에서도 맞는 말만 적는다
-import { describe, expect, it } from 'vitest'
-import { BUG_HINT, escClosesForm } from './BugReport'
+import { describe, expect, it, vi } from 'vitest'
+import { BUG_HINT, describeMachine, escClosesForm } from './BugReport'
 
 describe('폼 안의 Esc', () => {
   it('입력칸에 포커스가 있어도 Esc는 닫는다', () => {
@@ -35,5 +35,25 @@ describe('안내', () => {
   it('칸 안에서 안 듣는 X를 적지 않고, 적은 글이 사라진다고 말한다', () => {
     expect(BUG_HINT).toBe('Esc 닫기 (적은 글은 사라집니다)')
     expect(BUG_HINT).not.toMatch(/X/)
+  })
+})
+
+describe('함께 가는 것', () => {
+  it('화면 표와 보내는 값이 같은 소스다 — 판 · 창 크기 · 브라우저 셋뿐이다', () => {
+    vi.stubGlobal('window', { innerWidth: 960, innerHeight: 640 })
+    vi.stubGlobal('navigator', { userAgent: 'UA/1.0' })
+    const rows = describeMachine()
+    expect(rows.map((r) => r.label)).toEqual(['게임 판', '창 크기', '브라우저'])
+    expect(rows[1]?.value).toBe('960×640')
+    expect(rows[2]?.value).toBe('UA/1.0')
+    vi.unstubAllGlobals()
+  })
+
+  it('롬에서 나온 값을 담지 않는다', () => {
+    vi.stubGlobal('window', { innerWidth: 1, innerHeight: 1 })
+    vi.stubGlobal('navigator', { userAgent: '' })
+    const text = describeMachine().map((r) => `${r.label} ${r.value}`).join(' ')
+    expect(text).not.toMatch(/롬|rom|해시|hash|리포트|rpsave/i)
+    vi.unstubAllGlobals()
   })
 })

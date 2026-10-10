@@ -6,6 +6,8 @@
 // 연다 — 그 화면이 파티 자리만 받아서 메일박스 칸을 못 열었다.
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it } from 'vitest'
 import { MAILBOX_TEXT, UI_BANK } from '../../data/uiText'
 import { withData } from '../../data/romData.testkit'
@@ -14,6 +16,7 @@ import { useMenuStore } from '../../state/menuStore'
 
 const { MAILBOX_ACTIONS, mailGiveVerdict, mailboxFoot } = await import('./MailboxScreen')
 const { readingMail } = await import('./MailScreen')
+const { MailSheet, mailSheetIcons, slotText } = await import('./MailSheet')
 const { POCKET_MAIL } = await import('./BagScreen')
 
 describe('지니게 할 마리 (`PartyMenu_GiveMail`)', () => {
@@ -92,5 +95,45 @@ withData(`dialogue/ko/${String(UI_BANK.mailbox)}.json`)('메일박스 뱅크의 
     expect(text[MAILBOX_TEXT.eraseAsk]).toContain('괜찮겠습니까?')
     expect(text[MAILBOX_TEXT.erasedGive]).toContain('지니게 하겠습니까?')
     expect(text[MAILBOX_TEXT.notGiven]).toBe('메일을 지니게 하지 않았습니다')
+  })
+})
+
+describe('편지지 (`MailSheet`)', () => {
+  const words = (w: number): string => `낱말${String(w)}`
+
+  it('칸 글은 낱말 번호를 글자로 바꾸고 비면 빈 글이다', () => {
+    const lines = [[3, 0xffff], [], [7, 8]]
+    expect(slotText(lines, 0, 0, words)).toBe('낱말3')
+    expect(slotText(lines, 0, 1, words)).toBe('')
+    expect(slotText(lines, 1, 0, words)).toBe('')
+    expect(slotText(lines, 2, 1, words)).toBe('낱말8')
+    expect(slotText(lines, 0, 0, null)).toBe('')
+  })
+
+  it('새겨질 아이콘은 고른 자리부터 최대 셋이다 — 0부터 세지 않는다', () => {
+    const party = Array.from({ length: 6 }, (_, i) => ({ species: i + 1, form: 0, isEgg: false, nickname: 'x' }))
+    expect(mailSheetIcons(party, 0).map((m) => m.species)).toEqual([1, 2, 3])
+    expect(mailSheetIcons(party, 4).map((m) => m.species)).toEqual([5, 6])
+    expect(mailSheetIcons(party, 5)[0]).toEqual({ species: 6, form: 0, isEgg: false })
+  })
+
+  it('그림이 없어도 낱말 여섯 칸과 서명이 선다 · 빈 칸은 「…」', () => {
+    const out = renderToStaticMarkup(createElement(MailSheet, {
+      lines: [[3, 4], [5, 0xffff], []], lookup: words, type: 2, signer: '빛나', at: 3,
+    }))
+    const text = out.replace(/<[^>]+>/g, '|')
+    expect(text).toContain('낱말3')
+    expect(text).toContain('낱말5')
+    expect(text.match(/…/g)).toHaveLength(3)
+    expect(text).toContain('빛나')
+  })
+})
+
+describe('낱말 위치 글 (`positionText`)', () => {
+  it('세 언어로 쓴다 — 한국어 문장이 en · ja에 새지 않는다', async () => {
+    const { positionText } = await import('./EasyChatFrame')
+    expect(positionText(47, 17, 'ko')).toBe('47개 중 17번째')
+    expect(positionText(47, 17, 'en')).toBe('17 of 47')
+    expect(positionText(47, 17, 'ja')).toBe('47件中 17番目')
   })
 })

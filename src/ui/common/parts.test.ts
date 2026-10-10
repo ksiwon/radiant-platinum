@@ -193,16 +193,15 @@ describe('배지 줄 (사용자 지적 ①)', () => {
     expect(hasBadge(flags, 1)).toBe(false)
   })
 
-  it('칸 안의 배율: 63 이상이면 정수배(도트)이고 작으면 줄인다', () => {
+  it('칸 안의 배율: 창(40) 이상이면 정수배(도트)이고 작으면 줄인다', () => {
+    expect(badgeScale(40)).toBe(1)
     expect(badgeScale(63)).toBe(1)
-    expect(badgeScale(64)).toBe(1)
-    expect(badgeScale(130)).toBe(2)
-    expect(badgeScale(32)).toBeCloseTo(32 / 63, 10)
-    // 어떤 크기에서도 그림이 정사각 칸 안에 든다
-    for (const size of [16, 24, 32, 48, 63, 64, 100, 128]) {
+    expect(badgeScale(80)).toBe(2)
+    expect(badgeScale(32)).toBeCloseTo(32 / 40, 10)
+    // 어떤 크기에서도 창(40×40)이 정사각 칸 안에 든다
+    for (const size of [16, 24, 32, 40, 48, 64, 80, 128]) {
       const k = badgeScale(size)
-      expect(BADGE_ART.cellW * k).toBeLessThanOrEqual(size)
-      expect(BADGE_ART.cellH * k).toBeLessThanOrEqual(size)
+      expect(40 * k).toBeLessThanOrEqual(size)
     }
   })
 

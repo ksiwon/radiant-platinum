@@ -11,14 +11,17 @@
 import { style } from '@vanilla-extract/css'
 import { vars } from '../../ui/theme/contract.css'
 import { EDGE, GAP, RADIUS, TEXT } from '../../ui/theme/scale'
-import { BAR_FILL, BAR_TRACK, PICKED, RULE, WINDOW } from '../../ui/theme/window.css'
+import { BAR_FILL, BAR_TRACK, RULE, WINDOW } from '../../ui/theme/window.css'
 
 export const wrap = style({
   position: 'fixed',
   inset: 0,
   zIndex: 60,
-  overflowY: 'auto',
-  padding: 'clamp(20px, 4vh, 48px) clamp(16px, 4vw, 56px)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  boxSizing: 'border-box',
+  padding: `${String(GAP.loose)}px ${String(GAP.loose + 8)}px`,
   color: vars.ink.normal,
   fontFamily: vars.font.ui,
 })
@@ -51,16 +54,20 @@ export const sky = style({
   ].join(', '),
 })
 
-/** 화면에 보이는 제목. 비공식 고지가 바로 아래 붙는다 (COPYRIGHT.md §11) */
+/** 화면에 보이는 제목 — 머리 줄. 이름은 왼쪽, 「비공식 팬 프로젝트」는 오른쪽이다 (COPYRIGHT.md §11) */
 export const crest = style({
+  flex: '0 0 auto',
   display: 'flex',
-  flexDirection: 'column',
-  gap: GAP.tight,
+  alignItems: 'baseline',
+  justifyContent: 'space-between',
+  gap: GAP.base,
+  paddingBottom: GAP.base,
+  borderBottom: RULE,
 })
 
 export const crestName = style({
   margin: 0,
-  fontSize: TEXT.big,
+  fontSize: TEXT.title,
   fontWeight: 700,
   color: vars.ink.strong,
 })
@@ -78,9 +85,6 @@ export const crestNote = style({
  * 아무리 읽어도 할 수 있는 것이 없다
  */
 export const lead = style({
-  padding: `${GAP.base + 2}px ${GAP.wide}px`,
-  borderRadius: RADIUS.cell,
-  boxShadow: `inset 0 0 0 ${EDGE.bar}px ${vars.window.edge}`,
   display: 'flex',
   flexDirection: 'column',
   gap: GAP.small,
@@ -109,6 +113,20 @@ export const needMark = style({
   fontSize: TEXT.tiny,
 })
 
+/** 준비물 표시 원 — 속이 빈 원(아직) → 속이 찬 `state.good` 원(됨) */
+export const needDot = style({
+  display: 'inline-block',
+  width: 10,
+  height: 10,
+  marginRight: GAP.small,
+  boxSizing: 'border-box',
+  borderRadius: RADIUS.round,
+  border: `${String(EDGE.bar)}px solid ${vars.ink.dim}`,
+  verticalAlign: 'baseline',
+})
+
+export const needDotOn = style({ background: vars.state.good, borderColor: vars.state.good })
+
 /**
  * 비공식 고지 — 설치 전 사용자는 타이틀을 못 보므로 **여기가 유일한 자리다**.
  *
@@ -116,7 +134,10 @@ export const needMark = style({
  * 문서에 있는 것과 눈에 띄는 것은 다르다 (COPYRIGHT.md §11)
  */
 export const disclaimer = style({
+  flex: '0 0 auto',
   margin: 0,
+  paddingTop: GAP.base,
+  borderTop: RULE,
   fontSize: TEXT.tiny,
   lineHeight: 1.7,
   // 흐리게 두지 않는다 — 이건 **보여야 하는** 고지다 (COPYRIGHT.md §11)
@@ -135,28 +156,80 @@ export const disclaimer = style({
 export const sheet = style({
   ...WINDOW,
   position: 'relative',
-  maxWidth: 760,
-  margin: '0 auto',
+  boxSizing: 'border-box',
+  width: 'min(896px, 100%)',
+  height: 'min(592px, 100%)',
   display: 'flex',
   flexDirection: 'column',
-  gap: GAP.wide + 2,
-  padding: 'clamp(18px, 3vh, 30px) clamp(16px, 3vw, 30px)',
+  gap: GAP.base,
+  padding: `${String(GAP.wide)}px ${String(GAP.loose)}px`,
+})
+
+/** 가운데 — 왼쪽 사실 · 오른쪽 준비물과 설치 */
+export const split = style({
+  flex: '1 1 auto',
+  minHeight: 0,
+  display: 'grid',
+  gridTemplateColumns: '296px minmax(0, 1fr)',
+  columnGap: GAP.loose,
+})
+
+/** 왼쪽 — 「이 기기 안에서만」의 사실 넷. 접지 않는다 (IMPORT.md §4). 모자라면 이 칸만 스크롤한다 */
+export const facts = style({
+  minHeight: 0,
+  overflowY: 'auto',
+  paddingRight: GAP.base,
+  borderRight: RULE,
+  scrollbarWidth: 'thin',
+})
+
+/** 오른쪽 — 위는 스크롤하는 준비물, 아래는 늘 보이는 설치 줄 */
+export const main = style({
+  minHeight: 0,
+  minWidth: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: GAP.base,
+})
+
+export const scroll = style({
+  flex: '1 1 auto',
+  minHeight: 0,
+  overflowY: 'auto',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: GAP.wide,
+  scrollbarWidth: 'thin',
+})
+
+/** 설치 줄 — 준비물과 같은 구획 안이라 눈이 안 움직인다. 길어지면 이 줄만 스크롤한다 */
+export const actions = style({
+  flex: '0 0 auto',
+  maxHeight: '55%',
+  overflowY: 'auto',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: GAP.small + 2,
+  paddingTop: GAP.base,
+  borderTop: RULE,
+  scrollbarWidth: 'thin',
 })
 
 export const title = style({
   margin: 0,
-  fontSize: TEXT.big - 4,
+  fontSize: TEXT.title,
   color: vars.ink.strong,
 })
 
 /** 지금 판이 어디까지인지. **첫 화면에서 감추지 않는다** */
 export const banner = style({
-  padding: `${GAP.base}px ${GAP.base + 2}px`,
-  borderRadius: RADIUS.cell,
+  padding: `${String(GAP.small)}px 0`,
   fontSize: TEXT.small,
   lineHeight: 1.7,
   whiteSpace: 'pre-line',
-  ...PICKED,
+  color: vars.ink.normal,
+  borderTop: RULE,
+  borderBottom: RULE,
 })
 
 /**
@@ -166,7 +239,7 @@ export const banner = style({
  * 된다 — 단계마다 카드를 깔면 그 순간 「번호 매긴 단계 카드」가 된다.
  */
 export const step = style({
-  paddingTop: GAP.base + 2,
+  paddingTop: GAP.base,
   borderTop: RULE,
   display: 'flex',
   flexDirection: 'column',

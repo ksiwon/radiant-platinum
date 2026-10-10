@@ -1,75 +1,69 @@
-// 「더보기」 — 타이틀 위에 서는 창 하나.
+// 「더보기」 — 「더보기」 칸 위로 뜨는 창 하나 (`PopAbove`). 가운데 모달과 덮개가 없다.
 //
-// ⚠️ **새 창 문법을 들이지 않는다.** 이 창이 여는 셋(패치노트·버그 제보·이런
-// 게임은 어떠세요?)과 같은 몸이어야 한다 — 여기만 다르면 한 걸음 들어갈 때마다
-// 다른 게임이 된다 (DESIGN.md §3).
+// 큰 줄(52 = 이름 17/700 + 부연 12)이고 고른 줄은 금 띠 하나가 세로로 미끄러진다. 안 고른 줄은 아무것도 아니다.
+// 창 바깥을 누르면 닫히는 것은 투명한 막(`backdrop`)이 받는다.
 import { style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 import { GAP, RADIUS, TEXT } from '../theme/scale'
-import { PICKED, WINDOW, WINDOW_SMALL, scrim } from '../theme/window.css'
+import { RULE } from '../theme/window.css'
 
-export const over = style([scrim, { zIndex: 20 }])
+/** 큰 줄 높이 — 이름 한 줄 + 부연 한 줄 */
+export const ROW = 52
+export const WIDTH = 330
 
-export const panel = style({
-  ...WINDOW,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: GAP.base,
-  // 고를 것 넷뿐이라 다른 창보다 좁다. 넓히면 글자 넷이 허공에 뜬다
-  width: 'min(420px, calc(100vw - 32px))',
-  boxSizing: 'border-box',
-  maxHeight: 'calc(100vh - 48px)',
-  overflowY: 'auto',
-  padding: `${GAP.wide}px ${GAP.wide}px ${GAP.base}px`,
-  fontFamily: vars.font.ui,
-})
-
-export const title = style({
-  margin: 0,
-  fontSize: TEXT.title,
-  fontWeight: 700,
-  color: vars.ink.strong,
-})
+/** 창 바깥을 받는 투명한 막. 타이틀 위, 뜨는 창 아래다 */
+export const backdrop = style({ position: 'fixed', inset: 0, zIndex: 20 })
 
 export const list = style({
+  position: 'relative',
   display: 'flex',
   flexDirection: 'column',
-  gap: GAP.small,
 })
 
-/** 고를 것 하나 — 타이틀 단추와 같은 몸이다 */
+/** 고를 것 하나 */
 export const item = style({
-  ...WINDOW_SMALL,
   position: 'relative',
+  zIndex: 1,
   appearance: 'none',
+  boxSizing: 'border-box',
   display: 'flex',
-  alignItems: 'center',
-  gap: GAP.small,
-  padding: `${GAP.small + 2}px ${GAP.base}px ${GAP.small + 2}px ${GAP.loose}px`,
+  flexDirection: 'column',
+  justifyContent: 'center',
+  gap: 2,
+  height: ROW,
+  padding: `0 ${String(GAP.base)}px 0 ${String(GAP.loose)}px`,
+  border: 'none',
+  background: 'none',
+  color: vars.ink.normal,
   fontFamily: vars.font.ui,
-  fontSize: TEXT.list,
   textAlign: 'left',
-  borderRadius: RADIUS.cell,
   cursor: 'pointer',
   selectors: {
-    // ⚠️ **브라우저 포커스 링을 따로 안 돌린다** — 타이틀 단추(`titleScreen.css`의
-    // `button`)와 같다. 표시는 ▶ 커서(`caret`)와 `itemOn`이 한다. 링을 남기면 게임
-    // 커서와 브라우저 커서 둘이 한 창에 선다
+    // ⚠️ **브라우저 포커스 링을 따로 안 돌린다** — 표시는 금 띠(`pickBand`)가 한다. 링을 남기면 게임 커서와
+    // 브라우저 커서 둘이 한 창에 선다
     '&:focus-visible': { outline: 'none' },
   },
 })
 
-/** 커서가 올라간 칸. 마우스 hover와 키보드 커서를 **같은 표시**로 둔다 */
-export const itemOn = style({ ...PICKED })
+export const itemOn = style({ color: vars.pick.text })
 
-export const caret = style({
-  position: 'absolute',
-  left: GAP.small + 2,
-  color: vars.pick.edge,
-  fontSize: TEXT.small,
+export const name = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: GAP.small - 2,
+  fontSize: TEXT.list,
+  fontWeight: 700,
 })
 
-/** 안 본 것이 있다는 점 — 「패치노트」 칸에만 붙는다 */
+export const sub = style({
+  fontSize: TEXT.tiny,
+  color: vars.ink.dim,
+  fontVariantNumeric: 'tabular-nums',
+})
+
+export const subOn = style({ color: vars.pick.text })
+
+/** 안 본 것이 있다는 점 — 「패치노트」 줄에만 붙는다 */
 export const dot = style({
   width: 6,
   height: 6,
@@ -78,29 +72,9 @@ export const dot = style({
 })
 
 export const foot = style({
-  display: 'flex',
-  alignItems: 'center',
-  gap: GAP.base,
-  flexWrap: 'wrap',
-})
-
-export const hint = style({
-  flex: '1 1 auto',
+  marginTop: GAP.small,
+  padding: `${String(GAP.small)}px ${String(GAP.small)}px 0`,
+  borderTop: RULE,
   fontSize: TEXT.tiny,
   color: vars.ink.faint,
-})
-
-export const close = style({
-  ...WINDOW_SMALL,
-  appearance: 'none',
-  padding: `7px ${GAP.base}px`,
-  fontFamily: vars.font.ui,
-  fontSize: TEXT.tiny,
-  borderRadius: RADIUS.cell,
-  cursor: 'pointer',
-  selectors: {
-    '&:hover': { borderColor: vars.pick.edge },
-    // 고를 것과 같다 — 링 대신 테두리가 표시다
-    '&:focus-visible': { outline: 'none', borderColor: vars.pick.edge },
-  },
 })
