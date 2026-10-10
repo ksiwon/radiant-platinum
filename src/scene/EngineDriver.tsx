@@ -36,6 +36,7 @@ import { showPlayerSkin } from './playerVisibility'
 import { sceneRefs, perfSnapshot } from './sceneRefs'
 import { battleStage, cinematicStage, starterStage } from './battle/stageRefs'
 import { createPostChain, type PostChain } from './fx/post'
+import { renderMonViewport } from './monViewportPass'
 import { tickRetiredTextures } from './retireTexture'
 import { distortionBridge } from '../engine/world/distortion'
 import { surfaceHeading, surfaceQuaternion, turnQuaternion } from '../engine/actor/distortionSurface'
@@ -387,6 +388,8 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
     if (crashed.current) return
     try {
       if (postRef.current?.render() !== true) state.gl.render(state.scene, state.camera)
+      // 메뉴 창 구멍 안의 3D 포켓몬 — 구멍이 없으면 바로 돌아온다. 터져도 이 안에서 삼킨다 (`monViewportPass`)
+      renderMonViewport(state.gl as unknown as WebGPURenderer)
     } catch (e) {
       crashed.current = true
       console.error('[scene] 프레임을 그리다 터졌다', e)
