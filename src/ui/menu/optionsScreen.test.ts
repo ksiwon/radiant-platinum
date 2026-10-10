@@ -103,3 +103,92 @@ describe('바닥 안내', () => {
     for (const lang of LANGS) expect(optionsFoot(lang)).not.toMatch(/Back|もどる/)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────
+// 줄의 묶음 · 값 감기 · 바꾼 줄 세기 (`optionsRows.ts`)
+// ─────────────────────────────────────────────────────────────────
+const rows = await import('./optionsRows')
+const { readFileSync } = await import('node:fs')
+const { resolve } = await import('node:path')
+
+describe('줄의 묶음', () => {
+  it('배틀 → 화면과 소리 → 데이터 차례고 「닫는다」가 맨 끝이다', () => {
+    expect(rows.ROW_GROUPS.map((g) => g.id)).toEqual(['battle', 'display', 'data'])
+    expect(rows.ROW_ORDER).toEqual([
+      'battleScene', 'battleRule', 'battlePace', 'view', 'language', 'sound', 'verify', 'reset', 'close',
+    ])
+    expect(rows.ROW_ORDER.at(-1)).toBe('close')
+  })
+
+  it('위험한 「처음부터」는 맨 아래 묶음에 있다', () => {
+    expect(rows.ROW_GROUPS.at(-1)?.keys).toContain('reset')
+  })
+
+  it('값이 있는 줄만 ←→로 바뀐다 — 행동 줄 셋은 아니다', () => {
+    const actions = rows.ROW_ORDER.filter((k) => !rows.isValueRow(k))
+    expect(actions).toEqual(['verify', 'reset', 'close'])
+  })
+
+  it('묶음 이름은 세 언어가 다 있다', () => {
+    for (const g of rows.ROW_GROUPS) {
+      for (const lang of LANGS) expect(rows.groupTitle(g.id, lang)).not.toBe('')
+    }
+  })
+})
+
+describe('값 감기', () => {
+  it('끝에서 감긴다', () => {
+    expect(rows.stepValue(0, 1, 3)).toBe(1)
+    expect(rows.stepValue(2, 1, 3)).toBe(0)
+    expect(rows.stepValue(0, -1, 3)).toBe(2)
+  })
+
+  it('값이 하나뿐이면 null — 안 움직인 키는 소리를 안 낸다', () => {
+    expect(rows.stepValue(0, 1, 1)).toBeNull()
+    expect(rows.stepValue(0, -1, 1)).toBeNull()
+    expect(rows.stepValue(0, 1, 0)).toBeNull()
+  })
+})
+
+describe('바꾼 줄 세기', () => {
+  const base = { battleScene: 0, battleRule: 0, sound: 0, view: 0, battlePace: 1, language: 0 } as const
+
+  it('안 바꿨으면 비었다', () => {
+    expect(rows.changedRows(base, { ...base })).toEqual([])
+  })
+
+  it('바뀐 줄만 줄 차례대로 돌려준다', () => {
+    const now = { ...base, sound: 1, battlePace: 2, language: 1 } as const
+    expect(rows.changedRows(base, now)).toEqual(['battlePace', 'language', 'sound'])
+  })
+
+  it('같은 값으로 되돌리면 다시 안 바뀐 것이다', () => {
+    const there = { ...base, view: 1 } as const
+    expect(rows.changedRows(base, there)).toEqual(['view'])
+    expect(rows.changedRows(base, { ...there, view: 0 })).toEqual([])
+  })
+
+  it('스냅숏은 설정 여섯만 뽑는다', () => {
+    const noisy = { ...base, set: () => undefined, reset: () => undefined }
+    expect(Object.keys(rows.snapshotOf(noisy)).sort()).toEqual(Object.keys(base).sort())
+  })
+})
+
+describe('닫을 때 묻는다 (결정)', () => {
+  const src = readFileSync(resolve(import.meta.dirname, 'OptionsScreen.tsx'), 'utf8')
+  const code = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n')
+
+  it('바꾼 것이 있으면 49번 글로 묻고, 없으면 바로 닫는다', () => {
+    expect(code).toContain('OPTIONS_TEXT.confirmChanges')
+    expect(code).toMatch(/changed\.length > 0\) \{ setAsking\(true\); return \}\s*back\(\)/)
+  })
+
+  it('「아니오」는 연 순간의 값으로 되돌린다', () => {
+    expect(code).toMatch(/if \(!yes\) \{\s*for \(const key of changed\) \{\s*options\.set\(key, opened\.current\[key\]/)
+  })
+
+  it('「처음부터」의 처음 칸은 아니오다 (하네스 계약)', () => {
+    const reset = code.slice(code.indexOf('function ResetConfirm'))
+    expect(reset).toMatch(/initial=\{1\}/)
+  })
+})
