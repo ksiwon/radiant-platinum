@@ -346,7 +346,6 @@ export const chips = style({ display: 'flex', alignItems: 'center', gap: 4, marg
 
 /** B열 맨 위의 탭 줄 */
 export const tabsRow = style({ height: 26, display: 'flex', alignItems: 'flex-start' })
-export const tabHint = style({ marginLeft: 'auto', fontSize: 11, color: vars.ink.faint, whiteSpace: 'nowrap' })
 
 // ── 기술 쪽 ──
 
