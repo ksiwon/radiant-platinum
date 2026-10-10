@@ -1154,6 +1154,8 @@ export function PartyScreen() {
                   setCursor(i)
                 }}
                 onGrab={() => {
+                  // 갈래 창이 떠 있는 동안은 판을 집지도 놓지도 않는다 (`onPick`과 같다)
+                  if (menu !== null) return
                   // 스크립트가 고르라고 연 화면에서는 자리를 못 바꾼다 — 집는
                   // 순간 Z가 「놓기」가 되어 고를 길이 사라진다
                   if (choosingMon && chooseDaycare) { setCursor(i); setMenu('daycare'); setMenuAt(0); return }

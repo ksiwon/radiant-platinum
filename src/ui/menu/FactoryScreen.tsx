@@ -256,7 +256,9 @@ export function FactoryScreen() {
           : ask.kind === 'receive' ? text(APP.chooseReceive)
             : phase === 'rental' ? text(APP.choosePokemon, String(Math.min(picks.length + 1, want)))
               : text(APP.chooseExchange)
-  const shown = rows[Math.min(cursor, rows.length - 1)]
+  /** 꼬리 줄(「중지」 · 「돌아간다」)에 서 있다 — 상세는 비운다. 마지막 포켓몬을 계속 보이면 그 줄이 고른 것으로 읽힌다 */
+  const onTail = cursor >= rows.length
+  const shown = onTail ? undefined : rows[cursor]
 
   /** 고른 순서 판의 세 줄 — 빌리기는 고른 차례대로, 바꾸기는 내 셋이다 */
   const trayMons: (PokemonInstance | undefined)[] = phase === 'rental'
@@ -274,7 +276,7 @@ export function FactoryScreen() {
     <MenuScreen
       title={names.title}
       note={factoryNote(round, names.records)}
-      foot={factoryFoot(phase, ask.kind)}
+      foot={factoryFoot(phase, ask.kind, locale)}
     >
       <div className={own.board} ref={setWithin}>
         <div className={own.left}>
@@ -335,7 +337,7 @@ export function FactoryScreen() {
         <div className={own.detail}>
           {shown && species && moveTable
             ? <Detail mon={shown} table={species} moveTable={moveTable} names={names} itemIcons={itemIcons} />
-            : <div className={own.waiting}>{text(APP.wait)}</div>}
+            : onTail ? null : <div className={own.waiting}>{text(APP.wait)}</div>}
         </div>
       </div>
 

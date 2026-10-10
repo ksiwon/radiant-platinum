@@ -8,7 +8,7 @@
 import { style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 import { EDGE, GAP, TEXT } from '../theme/scale'
-import { RULE, WINDOW } from '../theme/window.css'
+import { WINDOW } from '../theme/window.css'
 
 /** 본문 — 두 열을 가운데에 세운다. 크기는 창이 정하고 기계의 배수는 이 칸에서 거꾸로 정한다 (`slotScale`) */
 export const body = style({
@@ -57,26 +57,6 @@ export const message = style({
   ...WINDOW,
 })
 
-/** 기계 아래 키 안내 줄 — 릴 셋 아래 Y · B · A 단추 칸(원작) 자리에 이 게임의 키를 붙인다 */
-export const reelKeys = style({
-  position: 'relative',
-  flex: '0 0 auto',
-  height: 32,
-  marginTop: GAP.small,
-  fontSize: TEXT.tiny,
-  color: vars.ink.dim,
-})
-
-export const reelKey = style({
-  position: 'absolute',
-  top: 0,
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: GAP.tight,
-  whiteSpace: 'nowrap',
-  transform: 'translateX(-50%)',
-})
-
 export const sideCol = style({
   flex: '0 0 auto',
   width: 256,
@@ -85,57 +65,5 @@ export const sideCol = style({
   gap: GAP.base,
 })
 
-/**
- * 판독부 — 큰 글자 동전과 이번 지불. **보너스 중에만** 보너스 연속 · 남은 회전 · 보너스 동전이 붙는다.
- * 기계의 숫자판과 겹치지만 도트를 읽기 힘든 해상도에서의 보험이다.
- *
- * ⚠️ **값은 React 상태가 아니라 `ref`로 직접 쓴다** — 엔진이 60Hz로 돌리는 값이라 `setState`면 프레임이 떨어진다
- */
-export const readout = style({
-  display: 'grid',
-  gap: GAP.tight,
-  paddingTop: GAP.small,
-  borderTop: RULE,
-})
-
-export const readRow = style({
-  display: 'flex',
-  alignItems: 'baseline',
-  justifyContent: 'space-between',
-  gap: GAP.small,
-  fontSize: TEXT.small,
-  color: vars.ink.dim,
-})
-
-export const readValue = style({
-  fontSize: TEXT.base,
-  fontWeight: 700,
-  fontVariantNumeric: 'tabular-nums',
-  color: vars.ink.strong,
-})
-
-/** 동전 — 판독부에서 가장 크다 */
-export const readCoins = style({
-  fontSize: TEXT.big,
-  fontWeight: 700,
-  fontVariantNumeric: 'tabular-nums',
-  color: vars.ink.strong,
-})
-
-export const bonus = style({
-  display: 'grid',
-  gap: GAP.tight,
-  selectors: { '&[hidden]': { display: 'none' } },
-})
-
-/** 오른쪽 아래 — 동전 넣기 · 레버 */
-export const sideKeys = style({
-  display: 'flex',
-  flexWrap: 'wrap',
-  columnGap: GAP.wide,
-  rowGap: GAP.tight,
-  fontSize: TEXT.small,
-  color: vars.ink.dim,
-})
 
 export const failed = style({ color: vars.state.bad, fontSize: TEXT.small })

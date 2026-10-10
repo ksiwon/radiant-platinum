@@ -33,7 +33,8 @@ export const MAP_AMITY_SQUARE = 253
 
 /**
  * 「포기한다」가 거는 스크립트 — `SCRIPT_ID(SAFARI_GAME, 21)` (`start_menu.c:1455`).
- * `SCRIPT_ID_OFFSET_SAFARI_GAME`가 8800이다(`engine/world/safari`의 `SCRIPT_SAFARI_BASE`)
+ * `SCRIPT_ID_OFFSET_SAFARI_GAME`가 8800이다(`engine/world/safari`의 `SCRIPT_SAFARI_BASE`).
+ * 실측: `scripts.json`의 `ranges`에서 8800은 `scripts_safari_game`(entries 23)이고, 21번은 그 안에 있다
  */
 export const SAFARI_RETIRE_SCRIPT = 8800 + 21
 

@@ -19,16 +19,6 @@ export const stage = style({
   userSelect: 'none',
 })
 
-export const panel = style({
-  ...WINDOW_SMALL,
-  position: 'absolute',
-  left: '3%',
-  top: '4%',
-  minWidth: '38%',
-  padding: '0.7em 1em',
-  fontSize: 'clamp(11px, 2.1vh, 17px)',
-})
-
 /** 「저장 중」 — 원작은 오른쪽 아래에서 도는 작은 아이콘이다 */
 export const icon = style({
   ...WINDOW_SMALL,

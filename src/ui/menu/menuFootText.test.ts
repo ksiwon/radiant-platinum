@@ -58,6 +58,11 @@ describe('기술 떠올리기 머리', () => {
     expect(reminderFoot(true)).toBe('↑↓ 잊을 기술 · Z 결정 · X 닫기')
     expect(reminderFoot(false)).toBe('↑↓ 고르기 · Z 가르친다 · X 그만둔다')
   })
+
+  it('en · ja도 같은 자리에 있다', () => {
+    expect(reminderFoot(false, 'en')).toBe('↑↓ Select · Z Teach · X Cancel')
+    expect(reminderFoot(true, 'ja')).toMatch(/X 閉じる$/)
+  })
 })
 
 describe('메일 화면', () => {

@@ -25,7 +25,7 @@ import {
   loadItemIcons, loadItemNames, loadLabels, loadMoveNames, loadMoves, loadPokeIcons, loadSpecies,
   loadSpeciesNames, type MoveTable, type SpeciesTable,
 } from '../../data/gameData'
-import { loadUiText } from '../../data/uiText'
+import { loadUiText, SUMMARY_PAGE_MOVES } from '../../data/uiText'
 import { assets, readJson } from '../../data/providers/assetProvider'
 import type { ItemIcons, Labels, PokeIcons } from '../../data/schema'
 import { expToNextLevel, levelProgress, MAX_LEVEL } from '../../engine/pokemon/exp'
@@ -81,7 +81,7 @@ const T = {
   pageSkills: 109,
   labelHp: 110, labelAttack: 111, labelDefense: 112,
   labelSpAttack: 113, labelSpDefense: 114, labelSpeed: 115, labelAbility: 116,
-  pageMoves: 128, labelPower: 147, labelAccuracy: 148,
+  pageMoves: SUMMARY_PAGE_MOVES, labelPower: 147, labelAccuracy: 148,
   /** 바꾸기 출발 줄의 작은 표 — 「교체」 */ swap: 152,
   /** 위력 ≤ 1 · 명중 0 — 「---」 */ noValue: 154,
 } as const
@@ -344,8 +344,11 @@ export function SummaryScreen({ source }: { source?: SummarySource } = {}) {
     <MenuScreen
       title={text(PAGE_TITLE[shown])}
       tabs={{
-        pages: pages.map((p) => ({ key: p, label: text(PAGE_TITLE[p]), mark: mark(p) })),
-        at: pageAt,
+        // 알은 메모 쪽만 볼 수 있다 — 나머지 탭 셋은 지우지 않고 흐리게 잠가 둔다 (`summary.md`)
+        pages: (isEgg && picking === null ? PAGES : pages).map((p) => ({
+          key: p, label: text(PAGE_TITLE[p]), mark: mark(p), ...(isEgg && picking === null && p !== 'memo' ? { disabled: true } : {}),
+        })),
+        at: isEgg && picking === null ? PAGES.indexOf('memo') : pageAt,
         onPick: (i) => { goPage(pages[i] ?? shown) },
       }}
       note={present > 1 ? `${String(order)} / ${String(present)}` : undefined}

@@ -18,7 +18,7 @@ import { buildBeats, type Beat } from '../../engine/battle/playback'
 import type { BattleView } from '../../engine/battle/view'
 import {
   loadDialogueBank, loadItemNames, loadItems, loadLabels, loadMoveNames, loadMoves,
-  loadSpecies, loadSpeciesNames, type DataLocale,
+  loadSpecies, loadSpeciesNames,
 } from '../../data/gameData'
 import { fillMenuText, START_MENU, UI_BANK } from '../../data/uiText'
 import { isHmMove } from '../../engine/bag/fieldUse'
@@ -52,9 +52,10 @@ import { MonCard, PartyGauge, SafariPlate } from './HudPlates'
 import { FieldStrip } from './FieldStrip'
 import { CommandButton } from './CommandButton'
 import { KeyHints } from '../common/KeyHints'
+import { useBattleWords } from './battleWords'
 import {
   MoveMenu, RootMenu, SafariMenu, YesNo,
-  type Extras, type MenuPage, type MovePreview, type Words,
+  type Extras, type MenuPage, type MovePreview,
 } from './CommandArea'
 import * as css from './battleScreen.css'
 import * as cmd from './command.css'
@@ -65,35 +66,6 @@ const BattleSound = lazy(() => import('./BattleSound').then((m) => ({ default: m
 import { maxPpOf } from '../../engine/pokemon/instance'
 import { dexHas, useSaveStore } from '../../state/saveStore'
 
-
-const WORDS: Record<DataLocale, Words> = {
-  ko: {
-    bagBlocked: '지금은 쓸 수 없다', partyBlocked: '교체할 포켓몬이 없다',
-    run: '배틀을 끝낸다', runNever: '도망칠 수 없다', runBlocked: '지금은 도망칠 수 없다',
-    bait: '잡기 쉬워지고 잘 달아난다', mud: '안 달아나지만 잡기 어려워진다',
-    stay: '그대로 싸운다', swap: '포켓몬을 고른다',
-    skip: 'Z 넘기기', next: 'Z 계속', pick: '↑↓ 고르기 · Z 결정', back: ' · X 닫기',
-    continue: '계속', preparing: '배틀 준비 중…', leave: '필드로 돌아가기',
-  },
-  en: {
-    bagBlocked: 'Can\'t use items now',
-    partyBlocked: 'No Pokémon to switch in',
-    run: 'End the battle', runNever: 'No escape here', runBlocked: 'Can\'t run right now',
-    bait: 'Easier to catch, but flees more', mud: 'Flees less, but harder to catch',
-    stay: 'Keep battling', swap: 'Choose a Pokémon',
-    skip: 'Z Skip', next: 'Z Continue', pick: '↑↓ Select · Z Confirm', back: ' · X Close',
-    continue: 'Continue', preparing: 'Preparing the battle…', leave: 'Return to the field',
-  },
-  ja: {
-    bagBlocked: '今は使えない',
-    partyBlocked: '入れ替えるポケモンがいない',
-    run: 'バトルを終える', runNever: '逃げられない', runBlocked: '今は逃げられない',
-    bait: '捕まえやすいが逃げやすくなる', mud: '逃げにくいが捕まえにくくなる',
-    stay: 'そのまま戦う', swap: 'ポケモンを選ぶ',
-    skip: 'Z 送る', next: 'Z 続ける', pick: '↑↓ 選ぶ · Z 決定', back: ' · X 閉じる',
-    continue: '続ける', preparing: 'バトルの準備中…', leave: 'フィールドに戻る',
-  },
-}
 
 /** 원작 한 프레임(ms). 닫히는 막의 시간이 이것으로 센다 */
 const FRAME_MS = 1000 / 60
@@ -273,7 +245,7 @@ export function BattleScreen() {
   // 배운 기술은 세이브에 먼저 들어가고 sim은 그 판이 끝날 때까지 모른다
   const savedParty = useSaveStore((s) => s.party)
   const { names, extras, lines, moveLines } = useNames()
-  const words = WORDS[useGameLocale()]
+  const words = useBattleWords()
   // 사파리 남은 볼은 시작 메뉴 뱅크의 롬 줄이다 (`START_MENU.ballStock`)
   const startMenuLines = useRomLines(UI_BANK.startMenu)
   const [page, setPage] = useState<MenuPage>('root')
@@ -547,7 +519,7 @@ export function BattleScreen() {
    */
   const commanding = phase === 'running' && !reading && script.ask === null && shiftAsk === null
   const askingNow = view?.active[atSlot === 0 ? 'p1a' : 'p1b'] ?? null
-  const commandLine = !commanding ? null : aimTarget !== null ? '누구에게?' : askLine({
+  const commandLine = !commanding ? null : aimTarget !== null ? words.aim : askLine({
     lines, kind, playerName,
     who: askingNow !== null && actions.length > 0 && !forced && (page === 'root' || page === 'fight')
       ? bare(askingNow.key) : null,

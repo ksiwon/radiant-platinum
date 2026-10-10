@@ -31,16 +31,18 @@ import {
   loadPokeIcons,
   loadSpecies,
   loadSpeciesNames,
+  type DataLocale,
   type SpeciesTable,
 } from '../../data/gameData'
 import type { PokeIcons } from '../../data/schema'
-import { fillMenuText, loadUiText, PC_HALL_OF_FAME_TEXT } from '../../data/uiText'
+import { fillMenuText, loadUiText, PC_HALL_OF_FAME_TEXT, SUMMARY_PAGE_MOVES } from '../../data/uiText'
 import { useGameLocale } from '../../state/optionsStore'
 import { useMenuStore } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
 import { KeyHints } from '../common/KeyHints'
 import { GenderMark } from '../common/MonIdentity'
 import { HOF_ARCHIVE_PX } from '../../scene/hallOfFameArchive'
+import { footWords } from './footWords'
 import { useMenuKeys } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
 import { monIconAt } from './pokeIcon'
@@ -48,8 +50,15 @@ import { pcMeterAt, pcMeterCount } from './recordsLayout'
 import { useHallOfFameStageStore } from '../../state/hallOfFameStageStore'
 import * as css from './pcHallOfFame.css'
 
-/** 바닥 키 안내 — 「Z 기술 보기」는 쪽이 바뀌어도 그대로다(어느 쪽인지는 쪽 표시가 말한다) */
-const PC_FOOT = '←→ 기록 · ↑↓ 포켓몬 · Z 기술 보기 · X 닫기'
+/**
+ * 롬에 없는 우리 글 셋 — 제목 · 바닥 안내 · 빈 기록. 영어와 일본어의 닫기 동사는 다른 화면(`FOOT_WORDS`)과 같은 말이다.
+ * 바닥의 「Z 기술 보기」는 쪽이 바뀌어도 그대로다(어느 쪽인지는 쪽 표시가 말한다)
+ */
+export const PC_HALL_WORDS: Record<DataLocale, { title: string, foot: string, empty: string }> = {
+  ko: { title: '명예의 전당', foot: '←→ 기록 · ↑↓ 포켓몬 · Z 기술 보기 · X 닫기', empty: '아직 전당에 든 기록이 없다.' },
+  en: { title: 'Hall of Fame', foot: '←→ Record · ↑↓ Pokémon · Z View moves · X Close', empty: 'No Hall of Fame records yet.' },
+  ja: { title: '殿堂入り', foot: '←→ 記録 · ↑↓ ポケモン · Z わざを見る · X 閉じる', empty: 'まだ殿堂入りの記録がない。' },
+}
 
 interface Tables {
   species: SpeciesTable
@@ -57,6 +66,8 @@ interface Tables {
   moveNames: readonly string[]
   text: readonly string[]
   month: readonly string[]
+  /** 기술 쪽 표시 — 요약 뱅크의 「기술」 */
+  moveTag: string
 }
 
 export function PCHallOfFameScreen() {
@@ -71,6 +82,7 @@ export function PCHallOfFameScreen() {
   const [page, setPage] = useState(0)
 
   const count = storedEntries(record)
+  const words = PC_HALL_WORDS[locale]
 
   useEffect(() => {
     let alive = true
@@ -81,10 +93,11 @@ export function PCHallOfFameScreen() {
       loadUiText('pcHallOfFame', locale),
       loadUiText('monthNames', locale).catch(() => [] as string[]),
       loadPokeIcons(),
+      loadUiText('summary', locale).catch(() => [] as string[]),
     ])
-      .then(([species, names, moveNames, text, month, pokeIcons]) => {
+      .then(([species, names, moveNames, text, month, pokeIcons, summary]) => {
         if (!alive) return
-        setTables({ species, names, moveNames, text, month })
+        setTables({ species, names, moveNames, text, month, moveTag: summary[SUMMARY_PAGE_MOVES] ?? '' })
         setIcons(pokeIcons)
       })
       .catch(() => {
@@ -173,7 +186,7 @@ export function PCHallOfFameScreen() {
   if (count === 0 || !shown) {
     return (
       // 기록이 없으면 무대가 비어 있다 — 뒤로 비칠 것이 없으니 창을 그린다
-      <MenuScreen title="명예의 전당" foot="X 닫기" cinematic framed>
+      <MenuScreen title={words.title} foot={footWords(locale).close} cinematic framed>
         <div className={css.empty}>
           {/* 여섯 단의 윤곽 — 「여기에 파티 여섯이 선다」. 원작 어긋난 배치 그대로다 */}
           <div className={css.emptyStage} aria-hidden>
@@ -181,7 +194,7 @@ export function PCHallOfFameScreen() {
               <span key={i} className={css.emptySpot} style={{ left: px * 2, top: (py - 20) * 2 }} />
             ))}
           </div>
-          <div>아직 전당에 든 기록이 없다.</div>
+          <div>{words.empty}</div>
         </div>
       </MenuScreen>
     )
@@ -192,7 +205,7 @@ export function PCHallOfFameScreen() {
   const now = pcMeterAt(count, entry)
 
   return (
-    <MenuScreen title="명예의 전당" cinematic bare>
+    <MenuScreen title={words.title} cinematic bare>
       <div className={css.root}>
         <div className={css.shadeBand} aria-hidden />
 
@@ -203,13 +216,11 @@ export function PCHallOfFameScreen() {
             <span>/ {String(count)}</span>
           </span>
           <span className={css.meter}>
-            <span>← 옛 기록</span>
             <span className={css.meterBars} aria-hidden>
               {Array.from({ length: bars }, (_, i) => (
                 <span key={i} className={i === now ? css.barNow : css.bar} />
               ))}
             </span>
-            <span>새 기록 →</span>
           </span>
         </div>
 
@@ -235,7 +246,7 @@ export function PCHallOfFameScreen() {
         </div>
 
         <div className={css.keys}>
-          <KeyHints text={PC_FOOT} tone="dark" />
+          <KeyHints text={words.foot} tone="dark" />
         </div>
       </div>
     </MenuScreen>
@@ -276,7 +287,7 @@ function Moves({ mon, tables }: { mon: HallOfFameMon | undefined, tables: Tables
     <>
       <div className={css.plateName}>
         <span>{mon.nickname || tables.names[mon.species] || ''}</span>
-        <span className={css.plateTag}>기술</span>
+        <span className={css.plateTag}>{tables.moveTag}</span>
       </div>
       <div className={css.moves}>
         {shown.map((name, i) => (

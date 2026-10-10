@@ -124,3 +124,17 @@ describe('viewportMode — 떨어지기 넷', () => {
     expect(viewportMode(base({ crashed: useMonViewportStore.getState().broken }))).toBe('sprite')
   })
 })
+
+describe('무대가 내려가면', () => {
+  it('보고가 거둬져 모드가 model이 아니다', () => {
+    const want = spec(417)
+    const input = (): ViewportModeInput => (
+      { spec: want, rendererLive: true, crashed: false, shown: useMonViewportStore.getState().shown }
+    )
+    useMonViewportStore.getState().report(specKey(want))
+    expect(viewportMode(input())).toBe('model')
+    // `MonViewportStage`의 몸 효과 cleanup · 언마운트가 부르는 것
+    useMonViewportStore.getState().report(null)
+    expect(viewportMode(input())).toBe('sprite')
+  })
+})

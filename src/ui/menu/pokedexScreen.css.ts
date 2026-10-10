@@ -9,6 +9,7 @@ import { keyframes, style, styleVariants } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 import { EDGE, GAP, LINE, RADIUS, TEXT, TIME } from '../theme/scale'
 import { RULE, WINDOW, pickHalo } from '../theme/window.css'
+import { TAG_H } from './pokedex/sizeMath'
 
 /**
  * 이름표 한 쌍의 폭. 두 실루엣의 가로 가운데는 493종 · 두 성별에서 가장 가까울 때도 140.98px 떨어져 있어서(실측
@@ -451,6 +452,7 @@ export const silhouette = style({
 export const tag = style({
   position: 'absolute',
   width: TAG_W,
+  height: TAG_H,
   marginLeft: -TAG_W / 2,
   display: 'flex',
   flexDirection: 'column',

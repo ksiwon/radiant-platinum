@@ -194,6 +194,8 @@ export function MonViewportStage() {
   const rig = useMemo(makeRig, [])
   const gl = useThree((s) => s.gl)
   useEffect(() => () => { rig.dispose() }, [rig])
+  // 무대가 통째로 내려갈 때(장치 손실로 `<Canvas key>`가 다시 설 때) 보고를 거둔다 — 아래 몸 효과의 cleanup과 같은 까닭
+  useEffect(() => () => { useMonViewportStore.getState().report(null) }, [])
 
   const body = useMonBody(settled?.species ?? null, {
     ...(settled ? { form: settled.form, gender: toGender(settled.gender), shiny: settled.shiny } : {}),
@@ -224,6 +226,10 @@ export function MonViewportStage() {
     return () => {
       rig.pivot.remove(body.root)
       measure.current = null
+      // ⚠️ **몸이 내려가면 보고도 거둔다.** 안 거두면 스토어가 `model`로 남은 채 프레임만 사라져
+      // (`setViewportFrame(null)`) 창에는 구멍만 뚫리고 3D는 안 그려진다 — 월드가 비친다.
+      // 거두면 `viewportMode`가 2D 앞모습으로 내려간다. 다른 몸의 보고는 건드리지 않는다
+      if (useMonViewportStore.getState().shown?.key === key) useMonViewportStore.getState().report(null)
     }
   }, [body, key, rig])
 

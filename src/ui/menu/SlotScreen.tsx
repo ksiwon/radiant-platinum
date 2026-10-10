@@ -6,11 +6,11 @@
 //
 // 창은 `MenuScreen`이 그린다(머리 · 바닥 안내). 기계 그림은 엔진이 그리는 원작 도트라 건드리지 않는다.
 //
-// ⚠️ **판독부(동전 · 지불 · 보너스)는 `ref`로 직접 쓴다.** 값은 엔진이 60Hz로 바꾸는데 React 상태에 올리면 프레임이
-// 떨어진다 — 값이 **바뀔 때만** 글자를 갈아 끼운다 (`markSlot`이 문서 표식을 다는 것과 같은 방식).
+// 동전 · 지불 · 보너스 숫자는 기계 그림이 스스로 그린다(CREDIT · PAYOUT · 보너스 칸). 글로 또 적지 않는다 — 머리의 동전 수만
+// `ref`로 직접 쓴다. 값은 엔진이 60Hz로 바꾸는데 React 상태에 올리면 프레임이 떨어진다 (`markSlot`이 문서 표식을 다는 것과 같은 방식).
 //
 // 자판은 우리 약속을 따른다 (`engine/input/keys`) — A Space·Z · B X · Y F · DS의 X는 C · 아래 S·↓ · START Esc.
-// 원작 기계 앞면의 「Ⓧ INSERT COINS · ✚ SPIN · START EXIT」과 릴 아래 Y · B · A가 그 단추다.
+// 원작 기계 앞면의 「Ⓧ INSERT COINS · ✚ SPIN · START EXIT」과 릴 아래 Y · B · A가 그 단추다. 키 안내는 바닥 줄 하나다.
 //
 // 한 프레임 = 원작 한 프레임(60Hz). 엔진 → 무대 → 그리기 차례로 돈다
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
@@ -27,8 +27,7 @@ import {
 import { markSlot } from '../../app/sceneMark'
 import { gameLocale, useGameLocale } from '../../state/optionsStore'
 import { useSlotStore } from '../../state/slotStore'
-import { KeyHints } from '../common/KeyHints'
-import { SLOT_FOOT, SLOT_KEY_X, SLOT_REEL_KEYS, slotScale } from './facilitiesText'
+import { slotFoot, slotScale } from './facilitiesText'
 import { MenuScreen } from './MenuScreen'
 import { SCREEN_H, SCREEN_W, SlotStage } from './slot/slotStage'
 import * as css from './slotScreen.css'
@@ -85,12 +84,6 @@ export function SlotScreen() {
   const bodyRef = useRef<HTMLDivElement>(null)
   /** 판독부 — 값이 바뀔 때만 글자를 갈아 끼운다 (60Hz `setState` 금지) */
   const coinsNote = useRef<HTMLSpanElement>(null)
-  const coinsBig = useRef<HTMLSpanElement>(null)
-  const payoutEl = useRef<HTMLSpanElement>(null)
-  const bonusBlock = useRef<HTMLDivElement>(null)
-  const streakEl = useRef<HTMLSpanElement>(null)
-  const spinsEl = useRef<HTMLSpanElement>(null)
-  const bonusCoinsEl = useRef<HTMLSpanElement>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [scale, setScale] = useState(2)
   const [failed, setFailed] = useState<string | null>(null)
@@ -145,21 +138,15 @@ export function SlotScreen() {
     window.addEventListener('blur', release)
     document.addEventListener('visibilitychange', onHide)
 
-    // 판독부 — 마지막으로 쓴 값과 다를 때만 글자를 갈아 끼운다
-    const shown = { coins: NaN, payout: NaN, spins: NaN, bonusCoins: NaN, streak: NaN, inBonus: null as boolean | null }
-    const put = (el: HTMLElement | null, n: number): void => { if (el) el.textContent = String(n) }
-    const paint = (
-      coins: number, payout: number, bonus: { on: boolean, streak: number, spins: number, coins: number },
-    ): void => {
-      if (coins !== shown.coins) { shown.coins = coins; put(coinsNote.current, coins); put(coinsBig.current, coins) }
-      if (payout !== shown.payout) { shown.payout = payout; put(payoutEl.current, payout) }
-      if (bonus.on !== shown.inBonus) { shown.inBonus = bonus.on; if (bonusBlock.current) bonusBlock.current.hidden = !bonus.on }
-      if (!bonus.on) return
-      if (bonus.streak !== shown.streak) { shown.streak = bonus.streak; put(streakEl.current, bonus.streak) }
-      if (bonus.spins !== shown.spins) { shown.spins = bonus.spins; put(spinsEl.current, bonus.spins) }
-      if (bonus.coins !== shown.bonusCoins) { shown.bonusCoins = bonus.coins; put(bonusCoinsEl.current, bonus.coins) }
+    // 머리의 동전 수 — 마지막으로 쓴 값과 다를 때만 글자를 갈아 끼운다. 기계의 CREDIT · PAYOUT · 보너스 숫자는
+    // 기계 그림이 스스로 그린다(`slotStage`) — 같은 값을 글로 또 적지 않는다
+    let shownCoins = NaN
+    const paint = (coins: number): void => {
+      if (coins === shownCoins) return
+      shownCoins = coins
+      if (coinsNote.current) coinsNote.current.textContent = String(coins)
     }
-    paint(session.coins, 0, { on: false, streak: 0, spins: 0, coins: 0 })
+    paint(session.coins)
 
     void Promise.all([loadAssets(), loadDialogueBank(gameLocale(), BANK_SLOT)]).then(([assets, lines]) => {
       if (!alive) return
@@ -202,9 +189,7 @@ export function SlotScreen() {
           stage.spinsLeft = machine.spinsLeft
           stage.bonusCoins = machine.bonusCoins
           stage.tick(machine.streak)
-          paint(machine.coins, machine.payout, {
-            on: machine.inBonus, streak: machine.streak, spins: machine.spinsLeft, coins: machine.bonusCoins,
-          })
+          paint(machine.coins)
           markSlot({ state: machine.state, coins: machine.coins, streak: machine.inBonus ? machine.streak : 0 })
           if (machine.finished) {
             markSlot(null)
@@ -238,7 +223,7 @@ export function SlotScreen() {
     <MenuScreen
       title={title}
       note={<><span ref={coinsNote} />{'\u00a0'}</>}
-      foot={SLOT_FOOT}
+      foot={slotFoot(locale)}
     >
       <div className={css.body} ref={bodyRef}>
         <div className={css.machineCol}>
@@ -246,42 +231,12 @@ export function SlotScreen() {
             <canvas ref={mainRef} width={SCREEN_W} height={SCREEN_H} className={css.canvas} style={{ width: w, height: h }} />
             {message !== null && <div className={css.message}>{message}</div>}
           </div>
-          <div className={css.reelKeys} style={{ width: w }}>
-            {SLOT_REEL_KEYS.map((key, i) => (
-              <span key={key} className={css.reelKey} style={{ left: (SLOT_KEY_X[i] ?? 0) * scale }}>
-                <KeyHints text={key} />
-                {REEL_NAMES[i]}
-              </span>
-            ))}
-          </div>
         </div>
         <div className={css.sideCol}>
           <canvas ref={subRef} width={SCREEN_W} height={SCREEN_H} className={css.canvas} style={{ width: SCREEN_W, height: SCREEN_H }} />
-          <div className={css.readout}>
-            <div className={css.readRow}>
-              <span>동전</span>
-              <span className={css.readCoins} ref={coinsBig} />
-            </div>
-            <div className={css.readRow}>
-              <span>이번 지불</span>
-              <span className={css.readValue} ref={payoutEl} />
-            </div>
-            <div className={css.bonus} ref={bonusBlock} hidden>
-              <div className={css.readRow}><span>보너스 연속</span><span className={css.readValue} ref={streakEl} /></div>
-              <div className={css.readRow}><span>남은 회전</span><span className={css.readValue} ref={spinsEl} /></div>
-              <div className={css.readRow}><span>보너스 동전</span><span className={css.readValue} ref={bonusCoinsEl} /></div>
-            </div>
-          </div>
-          <div className={css.sideKeys}>
-            <span><KeyHints text="C 동전 넣기" /></span>
-            <span><KeyHints text="S 레버" /></span>
-          </div>
           {failed !== null && <div className={css.failed}>{failed}</div>}
         </div>
       </div>
     </MenuScreen>
   )
 }
-
-/** 릴 아래 키 안내의 이름 — 왼쪽 · 가운데 · 오른쪽 */
-const REEL_NAMES = ['왼쪽 릴', '가운데 릴', '오른쪽 릴'] as const

@@ -92,3 +92,15 @@ export function windowTop(top: number, cursor: number, visible: number, total: n
   if (cursor >= top + visible) return Math.min(cursor - visible + 1, last)
   return Math.min(top, last)
 }
+
+/**
+ * 기술의 최대 PP. 기술표가 아직 안 왔거나 그 기술이 없으면 **null**이다.
+ *
+ * ⚠️ **0으로 접지 않는다.** 표가 오기 전에 결정하면 PP 0짜리 기술이 저장에 들어가 못 쓰는 기술이 된다 —
+ * 부르는 쪽은 null이면 결정을 막는다
+ */
+export function maxPpIn(
+  table: { byId: ReadonlyMap<number, { pp: number }> } | null, id: number,
+): number | null {
+  return table?.byId.get(id)?.pp ?? null
+}

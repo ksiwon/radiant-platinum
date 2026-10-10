@@ -98,12 +98,13 @@ export const DIPLOMA_H = 192
 const DIPLOMA_BELOW = 72
 
 /**
- * 종이의 정수 배율 — 화면에 들어가는 가장 큰 정수(2~4)다. 도트라 소수 배율은 안 쓴다.
- * 960×640에서 2배(512×384)이고, 높이가 576+72를 넘는 화면에서야 3배다
+ * 종이의 정수 배율 — 화면에 들어가는 가장 큰 정수(1~4)다. 도트라 소수 배율은 안 쓴다.
+ * 960×640에서 2배(512×384)이고, 높이가 576+72를 넘는 화면에서야 3배다.
+ * 2배도 안 들어가는 낮은 창에서는 1배로 내린다 — 종이가 창을 넘으면 아래쪽 글과 안내가 잘린다
  */
-export function diplomaScale(width: number, height: number): 2 | 3 | 4 {
+export function diplomaScale(width: number, height: number): 1 | 2 | 3 | 4 {
   const k = Math.floor(Math.min((width - 48) / DIPLOMA_W, (height - DIPLOMA_BELOW) / DIPLOMA_H))
-  return Math.min(4, Math.max(2, k)) as 2 | 3 | 4
+  return Math.min(4, Math.max(1, k)) as 1 | 2 | 3 | 4
 }
 
 // ─────────────────────────────────────────────────────────────────

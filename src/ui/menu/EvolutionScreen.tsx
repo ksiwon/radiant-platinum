@@ -72,6 +72,7 @@ import { romLine } from '../battle/romLine'
 import { BATTLE_BANK } from '../battle/romText'
 import { useRomLines } from '../battle/useRomLines'
 import { KeyHints } from '../common/KeyHints'
+import { useFootWords } from './footWords'
 import { MessageWindow } from '../common/MessageWindow'
 import { NamePlate } from '../common/MonIdentity'
 import { windowArrow } from '../common/parts.css'
@@ -638,6 +639,7 @@ function EvolutionFrame({ running, hint, black }: { running: boolean; hint: bool
   const bottomRef = useRef<HTMLDivElement>(null)
   const veilRef = useRef<HTMLDivElement>(null)
   const hintRef = useRef<HTMLDivElement>(null)
+  const foot = useFootWords()
 
   useEffect(() => {
     const bars = [topRef.current, bottomRef.current]
@@ -671,7 +673,7 @@ function EvolutionFrame({ running, hint, black }: { running: boolean; hint: bool
       <div ref={bottomRef} className={`${own.clampBar} ${own.clampBottom}`} />
       {hint && (
         <div ref={hintRef} className={own.hint}>
-          <KeyHints text="X 그만둔다" tone="dark" />
+          <KeyHints text={foot.cancel} tone="dark" />
         </div>
       )}
       <div ref={veilRef} className={own.veil} />

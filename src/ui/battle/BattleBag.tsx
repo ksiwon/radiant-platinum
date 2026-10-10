@@ -41,6 +41,7 @@ import { romLine } from './romLine'
 import {
   BAG, BAG_BANK, BATTLE_BANK, MSG, PARTY, PARTY_BANK, STAT_SLOT,
 } from './romText'
+import { useBattleWords } from './battleWords'
 import { useRomLines } from './useRomLines'
 import * as css from './battleBag.css'
 import { pointerMoved } from '../pointerMoved'
@@ -233,6 +234,7 @@ export function BattleBag({
   // 배틀 화면이 이미 받아 둔 배틀 글 뱅크는 요청이 다시 안 나간다
   const bagLines = useRomLines(BAG_BANK)
   const partyLines = useRomLines(PARTY_BANK)
+  const words = useBattleWords()
   const battleLines = useRomLines(BATTLE_BANK)
   /** 「금제」의 이름. 롬의 두 줄이 기술 이름을 빈칸으로 받는다 */
   const embargoName = data?.moves[EMBARGO_MOVE] ?? null
@@ -472,7 +474,7 @@ export function BattleBag({
             )}
           </div>
           <div className={css.foot}>
-            <KeyHints text={step === 'move' ? '↑↓ 기술 · Z 결정 · X 닫기' : '↑↓ 고르기 · Z 결정 · X 닫기'} />
+            <KeyHints text={(step === 'move' ? words.pickMove : words.pick) + words.back} />
           </div>
         </div>
       </div>
@@ -597,16 +599,17 @@ export function BattleBag({
                 </span>
                 <span className={css.state}>
                   <span className={why ? css.stateDot.none : css.stateDot.ok} aria-hidden />
-                  {why ?? (isBall ? '던져서 잡는다'
-                    : escapes ? '반드시 도망칠 수 있다'
-                      : item && !needsTarget(item) ? '나와 있는 포켓몬에게 쓴다' : '누구에게 쓸지 고른다')}
+                  {why ?? (isBall ? words.throwBall
+                    : escapes ? words.escapes
+                      : item && !needsTarget(item) ? words.useActive
+                        : romLine(partyLines, PARTY.chooseAPokemon) ?? '')}
                 </span>
               </span>
             </div>
             <div className={css.text}>{data?.descriptions[chosen.item] ?? ''}</div>
           </div>
         )}
-        <div className={css.foot}><KeyHints text="←→ 주머니 · ↑↓ 고르기 · Z 결정 · X 닫기" /></div>
+        <div className={css.foot}><KeyHints text={words.pocketKeys + words.pick + words.back} /></div>
       </div>
     </div>
   )

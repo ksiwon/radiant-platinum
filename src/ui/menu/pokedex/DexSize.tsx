@@ -16,16 +16,9 @@ import * as own from '../pokedexScreen.css'
 import { DEX_LINE } from './dexText'
 import type { DexData } from './dexData'
 import {
-  BOX, K, TRAINER_WEIGHT, alphaBox, comparisonFor, heightLayout, seesawDegrees, silhouetteCenterX,
+  BAND, BOX, K, STAGE_W, TAG_GAP, TRAINER_WEIGHT, alphaBox, comparisonFor, foldTagX, heightLayout, seesawDegrees, silhouetteCenterX,
   type ContentBox, type Gender, type Placed,
 } from './sizeMath'
-
-/** 키 비교 무대의 폭 — 원작 위 화면 256 DS를 정수 2배로 */
-const STAGE_W = 256 * K
-/** 풀밭 띠 높이 */
-const BAND = 72
-/** 땅선 아래로 이름표를 내리는 양 — 가장 깊은 발(3 DS × K)보다 크다 */
-const TAG_GAP = 16
 
 /** 그림 한 장의 알파 둘레. 못 재면 null (이름표는 그림 칸 가운데에 선다) */
 function useContentBox(url: string | null): ContentBox | null {
@@ -66,7 +59,7 @@ function Silhouette({ art, at, size }: { art: string | null, at: Placed, size?: 
 
 function Tag({ x, top, name, value }: { x: number, top: number, name: string, value: string }) {
   // 이름표가 무대 밖으로 안 나가게 가운데를 접는다 (폭의 절반)
-  const cx = Math.max(own.TAG_W / 2, Math.min(STAGE_W - own.TAG_W / 2, x))
+  const cx = foldTagX(x, own.TAG_W)
   return (
     <div className={own.tag} style={{ left: cx, top }}>
       <span className={own.tagName}>{name}</span>

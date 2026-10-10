@@ -85,6 +85,8 @@ export function useCryBench(species: number, active: boolean): CryBench {
         if (ticket.current !== mine) return
         voice.current = null
         setPlaying(false)
+        // 분석기도 놓는다 — 안 놓으면 `Wave`의 rAF가 울음이 끝난 뒤에도 계속 돈다
+        setAnalyser(null)
         // 반복 — 끝나고 잠깐 쉬었다가 다시 운다 (`LoopCry`)
         if (loopRef.current) timer.current = setTimeout(() => { if (ticket.current === mine) start() }, LOOP_COOLDOWN_MS)
       })

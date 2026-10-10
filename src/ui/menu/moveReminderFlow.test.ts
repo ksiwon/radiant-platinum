@@ -1,6 +1,6 @@
 // 기술 되살리기의 글 쪽 · 칸 넣기 · 목록 창 (뱅크 645의 줄 번호는 굽는 대로다)
 import { describe, expect, it } from 'vitest'
-import { MOVES_MAX, REMINDER_LABEL, pagesOf, placeMove, reminderLines, windowTop } from './moveReminderFlow'
+import { MOVES_MAX, maxPpIn, REMINDER_LABEL, pagesOf, placeMove, reminderLines, windowTop } from './moveReminderFlow'
 
 describe('줄 번호', () => {
   it('가르침은 0~10, 되살리기는 11~21에서 같은 차례로 선다', () => {
@@ -69,5 +69,19 @@ describe('목록 창', () => {
 
   it('전체가 창보다 작으면 늘 0이다', () => {
     expect(windowTop(0, 3, 7, 4)).toBe(0)
+  })
+})
+
+describe('최대 PP', () => {
+  it('기술표가 오기 전에는 0이 아니라 null이다', () => {
+    expect(maxPpIn(null, 33)).toBeNull()
+  })
+
+  it('표에 없는 기술도 null이다', () => {
+    expect(maxPpIn({ byId: new Map([[33, { pp: 35 }]]) }, 34)).toBeNull()
+  })
+
+  it('있으면 그 값이다', () => {
+    expect(maxPpIn({ byId: new Map([[33, { pp: 35 }]]) }, 33)).toBe(35)
   })
 })

@@ -302,6 +302,8 @@ export function CinematicStage() {
   const shiftRef = useRef<Group>(null)
   const companionRef = useRef<Group>(null)
   const shiftX = useRef(0)
+  /** 지난 프레임에 기술 창 때문에 몸이 비켜 있었나 — 풀리는 순간 껍질몬의 페이드인을 다시 건다 */
+  const wasAside = useRef(false)
   /** 껍질몬이 얼마나 보이나. 프레임마다 바뀌므로 상태가 아니라 ref다 */
   const companionAlpha = useRef(0)
   const eggRef = useRef<Group>(null)
@@ -361,8 +363,13 @@ export function CinematicStage() {
       const target = aside ? -BODY_SHIFT_TALL * VIEW_TALL : pair ? -COMPANION_X : 0
       shiftX.current = shiftToward(shiftX.current, target, Math.min(delta, 0.1), reducedMotion())
       if (shiftRef.current) shiftRef.current.position.x = shiftX.current
-      // 껍질몬은 몸을 비켜 세운 뒤에 선다 — 기술 창이 열려 있는 동안은 안 보인다
-      const since = (performance.now() - now.companionAt) / 1000
+      // 껍질몬은 몸을 비켜 세운 뒤에 선다 — 기술 창이 열려 있는 동안은 안 보인다.
+      // 창이 닫혀 다시 서는 순간 서기 시각을 새로 잡아 0.4초 페이드인을 처음부터 한다 (안 그러면 팝인한다)
+      if (wasAside.current && !aside && now.companion !== null) {
+        useCinematicStore.setState({ companionAt: performance.now() })
+      }
+      wasAside.current = aside
+      const since = (performance.now() - useCinematicStore.getState().companionAt) / 1000
       companionAlpha.current = pair ? Math.min(1, Math.max(0, since / COMPANION_FADE_S)) : 0
       if (companionRef.current) companionRef.current.visible = companionAlpha.current > 0
     }

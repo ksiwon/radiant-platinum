@@ -11,13 +11,13 @@
 // ⚠️ **뱅크가 아직 안 왔으면 글띠가 빈다.** 손 글로 떨어지지 않는다 — 설치본에서 이 뱅크를 싣는 굽는 쪽 둘이
 // 갖춰지기 전에는 물음이 비는 것이 맞는 모양이다. 그래도 Z · X는 돈다.
 import { useEffect, useState, type CSSProperties } from 'react'
-import { loadMoveNames, loadMoves, loadSpeciesNames, type MoveTable } from '../../data/gameData'
+import { loadMoveNames, loadMoves, loadSpeciesNames, type DataLocale, type MoveTable } from '../../data/gameData'
 import { loadUiText, YES_NO } from '../../data/uiText'
 import { useAssetImage } from '../../data/providers/useAssetUrl'
 import { typeColor } from '../../engine/battle/typeColor'
 import { spriteKey } from '../../engine/pokemon/form'
 import { useMenuStore } from '../../state/menuStore'
-import { gameLocale } from '../../state/optionsStore'
+import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { romLine } from '../battle/romLine'
 import { BATTLE_BANK, MSG } from '../battle/romText'
@@ -31,7 +31,7 @@ import { WaitDial } from '../common/WaitDial'
 import { YesNo } from '../common/YesNo'
 import { PIXEL } from '../theme/scale'
 import { MenuScreen } from './MenuScreen'
-import { MOVES_MAX, REMINDER_LABEL, pagesOf, placeMove, reminderLines, windowTop } from './moveReminderFlow'
+import { MOVES_MAX, REMINDER_LABEL, maxPpIn, pagesOf, placeMove, reminderLines, windowTop } from './moveReminderFlow'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
 import * as own from './moveReminder.css'
 
@@ -52,10 +52,18 @@ export function reminderNote(
  * 바닥 안내. 잊을 기술을 고를 때 X는 한 단 물러난다 — 「X 닫기」 하나로 모은다(L6).
  * 고르는 단의 X는 일을 버리는 것이라 「그만둔다」로 남긴다
  */
-export function reminderFoot(forgetting: boolean): string {
-  return forgetting
-    ? '↑↓ 잊을 기술 · Z 결정 · X 닫기'
-    : '↑↓ 고르기 · Z 가르친다 · X 그만둔다'
+export function reminderFoot(forgetting: boolean, locale: DataLocale = 'ko'): string {
+  return REMINDER_FOOT[locale][forgetting ? 1 : 0]
+}
+
+/**
+ * 바닥 안내의 세 언어. 「그만둔다」는 롬 파티 뱅크 59(CANCEL · やめる) 그대로, 나머지 동사는 위 화면들의
+ * 안내(`BATTLE_WORDS`)와 같은 말이다
+ */
+const REMINDER_FOOT: Record<DataLocale, readonly [string, string]> = {
+  ko: ['↑↓ 고르기 · Z 가르친다 · X 그만둔다', '↑↓ 잊을 기술 · Z 결정 · X 닫기'],
+  en: ['↑↓ Select · Z Teach · X Cancel', '↑↓ Move to forget · Z Confirm · X Close'],
+  ja: ['↑↓ 選ぶ · Z おしえる · X やめる', '↑↓ 忘れるわざ · Z 決定 · X 閉じる'],
 }
 
 /** 지금 어느 물음인가 (차례는 `moveReminderFlow` 머리글) */
@@ -71,6 +79,7 @@ type Stage =
 
 export function MoveReminderScreen() {
   const back = useMenuStore((s) => s.back)
+  const locale = useGameLocale()
   const ask = useMenuStore((s) => s.reminder)
   const finish = useMenuStore((s) => s.finishReminder)
   const party = useSaveStore((s) => s.party)
@@ -89,7 +98,6 @@ export function MoveReminderScreen() {
 
   useEffect(() => {
     let alive = true
-    const locale = gameLocale()
     void Promise.all([
       loadMoveNames(locale), loadMoves(), loadSpeciesNames(locale),
       // 뱅크가 없는 설치본이어도 화면은 선다 — 물음이 빌 뿐이다
@@ -102,7 +110,7 @@ export function MoveReminderScreen() {
       })
       .catch(() => { /* 이름 없이도 자리는 선다 */ })
     return () => { alive = false }
-  }, [])
+  }, [locale])
 
   const mon = ask ? party[ask.slot] : undefined
   const tutor = ask?.tutor === true
@@ -117,7 +125,8 @@ export function MoveReminderScreen() {
   )
 
   const nameOf = (id: number): string => names[id] ?? ''
-  const maxPp = (id: number): number => table?.byId.get(id)?.pp ?? 0
+  /** 화면에 적는 최대 PP. 표가 오기 전에는 줄표다 (이때는 결정도 막혀 있다) */
+  const maxPpText = (id: number): string => String(maxPpIn(table, id) ?? '―')
   const typeOf = (id: number | undefined): number | null =>
     id === undefined ? null : table?.byId.get(id)?.type ?? null
   /** 새로 배울 기술 — 목록에서 고른 것 */
@@ -136,9 +145,11 @@ export function MoveReminderScreen() {
   /** 새 기술을 그 자리에 넣고 저장 상태를 고친다 */
   const commit = (slot: number): void => {
     if (!ask || !mon || fresh === undefined) return
+    const pp = maxPpIn(table, fresh)
+    if (pp === null) return // 표가 없으면 저장하지 않는다 (키 쪽에서 이미 막는다)
     useSaveStore.setState({
       party: party.map((m, i) => (i === ask.slot
-        ? { ...m, moves: placeMove(m.moves, slot, fresh, maxPp(fresh)) }
+        ? { ...m, moves: placeMove(m.moves, slot, fresh, pp) }
         : m)),
     })
   }
@@ -187,6 +198,8 @@ export function MoveReminderScreen() {
     return n !== forget
   }
   const keys = ((): Parameters<typeof useMenuKeys>[0] => {
+    // ⚠️ 기술표가 오기 전에는 결정을 못 한다 — PP를 모르는 채 배우면 PP 0으로 저장된다. 물러나는 것만 된다
+    if (table === null) return { cancel: () => { close(false) } }
     if (waiting || lastResult) {
       // 쪽을 넘긴다. 마지막 쪽에서 한 번 더 누르면 끝난다
       const advance = (): void => {
@@ -273,7 +286,7 @@ export function MoveReminderScreen() {
     <MenuScreen
       title={tutor ? '기술가르침' : '기술 되살리기'}
       note={mon ? reminderNote(mon, speciesNames) : undefined}
-      foot={reminderFoot(forgetting)}
+      foot={reminderFoot(forgetting, locale)}
       message={(
         <MessageDock
           lines={shownText}
@@ -326,7 +339,7 @@ export function MoveReminderScreen() {
                   {known.map((slot, i) => (
                     <Line
                       key={i} on={i === forget} name={nameOf(slot.move)} type={typeOf(slot.move)}
-                      tail={`${String(slot.pp)}/${String(maxPp(slot.move))}`}
+                      tail={`${String(slot.pp)}/${maxPpText(slot.move)}`}
                       onClick={() => { setForget(i) }}
                     />
                   ))}
@@ -342,7 +355,7 @@ export function MoveReminderScreen() {
                   {moves.slice(top, top + own.VISIBLE_ROWS).map((move, i) => (
                     <Line
                       key={move} on={top + i === cursor} name={nameOf(move)} type={typeOf(move)}
-                      tail={`${ppLabel} ${String(maxPp(move))}`}
+                      tail={`${ppLabel} ${maxPpText(move)}`}
                       onClick={() => { setCursor(top + i) }}
                     />
                   ))}
@@ -383,7 +396,7 @@ function Line(
   },
 ) {
   return (
-    <div className={on ? own.lineOn : own.line} role="listitem" aria-selected={on} onClick={onClick}>
+    <div className={on ? own.lineOn : own.line} role="listitem" aria-current={on ? 'true' : undefined} onClick={onClick}>
       <span className={own.lineFace}>
         {type !== null && <TypeBadge type={type} scale={PIXEL.x2} />}
         <span className={own.lineName}>{name}</span>

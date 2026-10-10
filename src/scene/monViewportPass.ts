@@ -81,12 +81,18 @@ export function renderMonViewport(gl: WebGPURenderer): void {
       console.error('[monViewport] 구멍 패스가 터졌다 — 2D 앞모습으로 떨어진다', e)
     }
   } finally {
-    gl.setScissorTest(scissorTest)
-    gl.setViewport(savedViewport)
-    gl.setScissor(savedScissor)
-    gl.autoClear = autoClear
-    gl.autoClearColor = autoClearColor
-    gl.autoClearDepth = autoClearDepth
-    gl.autoClearStencil = autoClearStencil
+    // ⚠️ 복구가 던져도 밖으로 안 샌다 — 새면 `markSceneCrashed`가 게임을 세운다 (머리말의 약속)
+    try {
+      gl.setScissorTest(scissorTest)
+      gl.setViewport(savedViewport)
+      gl.setScissor(savedScissor)
+      gl.autoClear = autoClear
+      gl.autoClearColor = autoClearColor
+      gl.autoClearDepth = autoClearDepth
+      gl.autoClearStencil = autoClearStencil
+    } catch (e) {
+      state.markBroken()
+      console.error('[monViewport] 렌더러 상태를 못 되돌렸다', e)
+    }
   }
 }
