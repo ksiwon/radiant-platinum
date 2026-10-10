@@ -71,7 +71,7 @@ describe('원작 방과 생김이 다른 BDSP 방 (`MISFIT_ROOMS`)', () => {
 
   it('목록 — 실측으로 생김이 다른 방들', () => {
     expect([...MISFIT_ROOMS].sort()).toEqual([
-      'c01r0601', 'c02gym0101', 'c04gym0101', 'c05gym0101', 'c05gym0104', 'c07gym0101', 'c07r0101', 'd31r0201',
+      'c01r0601', 'c02gym0101', 'c04gym0101', 'c05gym0101', 'c05gym0104', 'c07gym0101', 'c07r0101', 'c10r0101', 'd31r0201',
     ])
   })
 

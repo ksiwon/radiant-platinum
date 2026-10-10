@@ -66,9 +66,13 @@ function roomIndex(): Promise<ReadonlySet<string>> {
  * · `d31r0201` 배틀타워 로비(맵 326 · 던전이지만 짝짓기가 같다) — BDSP 바닥이 x 1~22 · z 0~18인데 원작 입구는 (14~16, 19)이고
  *   사람이 (25, 13) · (24, 7)까지 선다. 원작 방이 더 넓고 깊어서 어떻게 옮겨도 입구와 오른쪽 사람이 바닥 밖 허공이다
  *   (`.audit/shots/review-after/places/battletower-3p-b.png`)
+ * · `c10r0101` 포켓몬리그 로비(맵 175) — 원작은 뒷벽에 파인 알코브 둘에 간호순 (4, 1) · 점원 (16, 1) · (17, 1)이 서고 PC가
+ *   그 사이 (8, 0)이다(카운터 타일은 z 2 줄). BDSP는 알코브 없는 홀로 다시 지어 뒷벽이 z 2.5 통벽이고 카운터를 그 앞
+ *   z 5~6에 놓았다 — 원작 사람과 PC가 통벽 **뒤**에 서서 안 보이고, 원작 충돌로는 카운터에 못 닿고 BDSP 기계 속을 걷는다
+ *   (`.audit/probe/rfCheck.mjs` — 사람 칸이 바닥 밖 · 벽 뒤인지 방마다 잰다)
  */
 export const MISFIT_ROOMS: ReadonlySet<string> = new Set([
-  'c02gym0101', 'c04gym0101', 'c07gym0101', 'c05gym0101', 'c05gym0104', 'c01r0601', 'c07r0101', 'd31r0201',
+  'c02gym0101', 'c04gym0101', 'c07gym0101', 'c05gym0101', 'c05gym0104', 'c01r0601', 'c07r0101', 'd31r0201', 'c10r0101',
 ])
 
 /**
