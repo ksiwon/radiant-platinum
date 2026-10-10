@@ -19,20 +19,15 @@ import {
 } from './hallOfFameChoreo'
 import { cinematicStage, CINEMATIC_ORIGIN } from './battle/stageRefs'
 import { hallFitScale } from './cinematicMotion'
+import { HOF_ARCHIVE_POSITIONS } from './hallOfFameArchive'
 import { playerModelPath } from './playerModelPath'
 import { usePersonModel } from './personModel'
 
 
 // ─── PC 다시보기 (`PCHallOfFameScreen`) — 원작은 2D 그림 판이라 우리 3D 단상으로 선다 ──────────────────
 
-const PARTY_POSITIONS = [
-  [0, 0, -1.45],
-  [-1.75, 0, -0.35],
-  [1.75, 0, -0.35],
-  [-2.65, 0, 1.25],
-  [0, 0, 1.25],
-  [2.65, 0, 1.25],
-] as const
+/** 여섯 자리 — 원작 `spriteCoordinates` 그대로다 (`hallOfFameArchive`). 대칭 삼각형이 아니라 어긋난 벽돌 배열이다 */
+const PARTY_POSITIONS = HOF_ARCHIVE_POSITIONS
 
 function FallbackMon({ species }: { species: number }) {
   const hue = (species * 47) % 360

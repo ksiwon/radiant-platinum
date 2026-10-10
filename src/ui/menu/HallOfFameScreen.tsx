@@ -19,6 +19,11 @@
 // ⚠️ **끝나면 크레딧으로 넘어간다** (PARITY §8.12). 원작도 리포트를 쓴 뒤
 // 오버레이 99를 띄우고 그것이 끝나야 타이틀로 간다 — 타이틀로 가는 것은
 // `CreditsScreen`이 맡는다
+//
+// 이 화면은 **창이 아니라 장면**이다 (`MenuScreen cinematic bare`). 걸음 · 키 · 음악 · 회복 · 리포트 · 크레딧 연결은
+// 원작 차례 그대로이고, 바뀐 것은 화면 둘레(양옆 띠 · 창 가장자리 선)와 글의 위계(세 묶음)와 몇째 마리 표시뿐이다.
+// 글 묶음은 걸음에 맞춰 선다: 인사(`monText1`) → 별명과 종족(`monText2`) → 어버이와 만난 곳(`monText3`) —
+// 원작 `HallOfFame_PrintPokemonText`의 상태 0 · 1 · 2다
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { music } from '../../engine/audio/music'
 import { SFX } from '../../engine/audio/sfx'
@@ -42,6 +47,9 @@ import { useHallOfFameStageStore } from '../../state/hallOfFameStageStore'
 import { START_LOCATION, useSaveStore } from '../../state/saveStore'
 import { healParty } from '../../scene/pokecenter'
 import { HOF_FRAME_MS, hofTextLift, hofWindow, type HofBeat as Beat } from '../../scene/hallOfFameChoreo'
+import { KeyHints } from '../common/KeyHints'
+import { MenuScreen } from './MenuScreen'
+import { hofGroups, hofGroupShown } from './recordsLayout'
 import * as css from './hallOfFame.css'
 
 /**
@@ -65,6 +73,8 @@ const y = (px: number): string => `${String((px / H) * 100)}%`
 const TEXT_X = [120, 0] as const
 /** 줄 높이 (`ROW_HEIGHT`) */
 const ROW = 16
+/** 칸의 폭 (`136`) — 묶음 · 헤어라인 · 몇째 칸이 이 칸의 가운데에 선다 */
+const TEXT_W = 136
 
 /**
  * 장면의 걸음 (`hallOfFameChoreo`의 `HofBeat`). 밀리초는 원작의 프레임 수를 60fps로 옮긴 것이다 —
@@ -154,6 +164,8 @@ export function HallOfFameScreen() {
   // 창(`G2_SetWnd0Position`)과 글 판(BG1)의 자리를 프레임마다 원작 식으로 다시 쓴다
   const shade = useRef<HTMLDivElement>(null)
   const text = useRef<HTMLDivElement>(null)
+  /** 창 가장자리 선 — `shade`와 같은 값으로 따라간다 */
+  const frameLine = useRef<HTMLDivElement>(null)
   useEffect(() => {
     let raf = 0
     const tick = (): void => {
@@ -165,6 +177,16 @@ export function HallOfFameScreen() {
         const px = (v: number): string => x(v), py = (v: number): string => y(v)
         const right = r <= l ? l : r, bottom = b <= t ? t : b
         shade.current.style.clipPath = `polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${px(l)} ${py(t)}, ${px(right)} ${py(t)}, ${px(right)} ${py(bottom)}, ${px(l)} ${py(bottom)}, ${px(l)} ${py(t)})`
+        // 같은 창에 선을 긋는다. 창이 닫혀 구멍이 0이면 선도 숨긴다
+        const line = frameLine.current
+        if (line) {
+          const open = r > l && b > t
+          line.style.opacity = open ? '1' : '0'
+          line.style.left = px(l)
+          line.style.top = py(t)
+          line.style.width = px(right - l)
+          line.style.height = py(bottom - t)
+        }
       }
       if (text.current) text.current.style.transform = `translateY(-${y(hofTextLift(now, frame))})`
       raf = requestAnimationFrame(tick)
@@ -350,67 +372,111 @@ export function HallOfFameScreen() {
     beat === 'wipe' || beat === 'fadeOut'
   const common = tables?.common ?? []
 
-  return (
-    <div className={css.backdrop}>
-      <div className={css.stage}>
-        {/* BG2 — 창 밖을 덮는 검정 한 장. 창 자리만 뚫려 3D(배경 · 몸 · 조명 · 색종이)가 비친다 */}
-        <div ref={shade} className={css.shade} />
+  const groups = useMemo(() => hofGroups(lines), [lines])
+  const column = x(TEXT_X[side]!)
+  const columnMid = x(TEXT_X[side]! + TEXT_W / 2)
 
-        {/* BG1 — 한 마리분의 글. 그 마리가 나갈 때 판째 위로 걷힌다 */}
-        <div ref={text} className={css.textPlane}>
-          {monPhase && beat !== 'monGap' && mon && lines.map((line, i) => (
-            <div
-              key={i}
-              className={css.line}
-              style={{
-                left: x(TEXT_X[side]!),
-                top: y(LINE_ROW[i]! * ROW),
-                opacity: LINE_STEP[i]! <= textAt ? 1 : 0,
-              }}
-            >
-              {line}
+  return (
+    <MenuScreen title="명예의 전당" cinematic bare>
+      <div className={css.root}>
+        {/* 4:3 밖 양옆 — 같은 방의 어둠 */}
+        <div className={`${css.pillar} ${css.pillarLeft}`} aria-hidden />
+        <div className={`${css.pillar} ${css.pillarRight}`} aria-hidden />
+        <div className={css.stage}>
+          {/* BG2 — 창 밖을 덮는 검정 한 장. 창 자리만 뚫려 3D(배경 · 몸 · 조명 · 색종이)가 비친다 */}
+          <div ref={shade} className={css.shade} />
+          {/* 창 가장자리 선 — 3D(안)와 검정(밖)의 경계 */}
+          <div ref={frameLine} className={css.frameLine} aria-hidden>
+            <div className={css.frameInner} />
+          </div>
+
+          {/* BG1 — 한 마리분의 글. 그 마리가 나갈 때 판째 위로 걷힌다 */}
+          <div ref={text} className={css.textPlane}>
+            {monPhase && beat !== 'monGap' && mon && (
+              <>
+                {/* ① 인사 — 의식 머리글. 빈 줄은 렌더하지 않는다 */}
+                <div
+                  className={hofGroupShown('greeting', textAt) ? `${css.group} ${css.groupOn}` : css.group}
+                  style={{ left: column, top: y(ROW) }}
+                >
+                  {groups.greeting.map((line, i) => <div key={i} className={css.greeting}>{line}</div>)}
+                </div>
+                <div
+                  className={hofGroupShown('hero', textAt) ? `${css.hair} ${css.hairOn}` : css.hair}
+                  style={{ left: columnMid, top: y(ROW * 2.5) }}
+                />
+                {/* ② 주인공 — 별명이 이 순간의 주인공이다 */}
+                <div
+                  className={hofGroupShown('hero', textAt) ? `${css.group} ${css.groupOn}` : css.group}
+                  style={{ left: column, top: y(ROW * 3) }}
+                >
+                  <div className={css.heroName}>{groups.name}</div>
+                  <div className={css.heroInfo}>{groups.info}</div>
+                </div>
+                <div
+                  className={hofGroupShown('source', textAt) ? `${css.hair} ${css.hairOn}` : css.hair}
+                  style={{ left: columnMid, top: y(ROW * 5.5) }}
+                />
+                {/* ③ 출처 — 어버이 · 만난 곳 */}
+                <div
+                  className={hofGroupShown('source', textAt) ? `${css.group} ${css.groupOn}` : css.group}
+                  style={{ left: column, top: y(ROW * 6) }}
+                >
+                  {groups.source.map((line, i) => <div key={i} className={css.sourceLine}>{line}</div>)}
+                </div>
+              </>
+            )}
+            {/* 파티와 주인공 — 축하 인사와 주인공 정보는 창 밖 검정 위에 뜬다 */}
+            {playerText && (
+              <>
+                <div className={css.headline}>
+                  {tables?.text[HALL_OF_FAME_TEXT.congratulations] ?? ''}
+                </div>
+                <div className={css.footLine}>
+                  {playerLine(tables, trainer)}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* 몇째 마리 — 글 칸 아래 여섯 칸. 글자는 없다 */}
+          {monPhase && beat !== 'monGap' && party.length > 0 && (
+            <div className={css.pips} style={{ left: column }} aria-hidden>
+              {party.map((_, i) => (
+                <span key={i} className={i < at ? css.pipSeen : i === at ? css.pipNow : css.pip} />
+              ))}
             </div>
-          ))}
-          {/* 파티와 주인공 — 축하 인사와 주인공 정보는 창 밖 검정 위에 뜬다 */}
-          {playerText && (
-            <>
-              <div className={css.centerLine} style={{ top: y(4) }}>
-                {tables?.text[HALL_OF_FAME_TEXT.congratulations] ?? ''}
-              </div>
-              <div className={css.centerLine} style={{ top: y(172) }}>
-                {playerLine(tables, trainer)}
-              </div>
-            </>
+          )}
+
+          {beat === 'confetti' && (
+            <div className={css.hint}>
+              <KeyHints text="Z 계속" tone="dark" />
+            </div>
+          )}
+
+          <div
+            className={css.fade}
+            style={{
+              opacity: beat === 'fadeIn' || beat === 'fadeOut' || beat === 'saving' || beat === 'saved' ? 1 : 0,
+              transitionDuration: beat === 'fadeOut' ? '33ms' : '267ms',
+            }}
+          />
+
+          {/* 리포트 (`clear_game.c` — `CommonStrings_Text_SavingDontTurnOffThePower` · `_PlayerSavedTheGame`) */}
+          {(beat === 'saving' || beat === 'saved') && (
+            <div className={css.dialog} style={{ opacity: closing ? 0 : 1, transition: 'opacity 133ms linear' }}>
+              {beat === 'saving'
+                ? common[SAVE_TEXT.writing] ?? ''
+                : saveFailed
+                  ? common[SAVE_TEXT.failed] ?? ''
+                  : fillMenuText(common[SAVE_TEXT.done] ?? '', [trainer.name])}
+            </div>
           )}
         </div>
-
-        <div
-          className={css.fade}
-          style={{
-            opacity: beat === 'fadeIn' || beat === 'fadeOut' || beat === 'saving' || beat === 'saved' ? 1 : 0,
-            transitionDuration: beat === 'fadeOut' ? '33ms' : '267ms',
-          }}
-        />
-
-        {/* 리포트 (`clear_game.c` — `CommonStrings_Text_SavingDontTurnOffThePower` · `_PlayerSavedTheGame`) */}
-        {(beat === 'saving' || beat === 'saved') && (
-          <div className={css.dialog} style={{ opacity: closing ? 0 : 1, transition: 'opacity 133ms linear' }}>
-            {beat === 'saving'
-              ? common[SAVE_TEXT.writing] ?? ''
-              : saveFailed
-                ? common[SAVE_TEXT.failed] ?? ''
-                : fillMenuText(common[SAVE_TEXT.done] ?? '', [trainer.name])}
-          </div>
-        )}
       </div>
-    </div>
+    </MenuScreen>
   )
 }
-
-/** 다섯 줄이 놓이는 줄 번호 (`ROW_HEIGHT * n`) */
-const LINE_ROW = [1, 2, 3, 4, 6, 7, 8] as const
-/** 그 줄이 몇 번째 걸음에 뜨는가 */
-const LINE_STEP = [1, 1, 2, 2, 3, 3, 3] as const
 
 /**
  * 한 마리분의 일곱 줄.

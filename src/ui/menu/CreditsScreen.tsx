@@ -23,12 +23,18 @@
 // ⚠️ **끝에 우리 몫이 붙는다** — 두루마리가 아니라 **따로 서는 한 화면**이다(`MakerScreen`). 롬 목록과 섞어 흘리면
 // 남의 이름 옆에 우리 이름을 얹은 것처럼 읽힌다. 롬 목록이 다 흐르거나 넘기면 그 화면이 서고, 한 번 더 누르면
 // 타이틀로 간다(원작 FIN의 자리다).
+//
+// 두루마리의 롬 글 · 자리 · 정렬 · 배경 장면 · 색은 **하나도 안 바꾼다.** 바뀐 것은 둘레(양옆 가장자리 · 진행 선 · 넘기기 안내의
+// 키캡)와 만든 사람 화면의 위계(로고 · 세 칸 맞춤 · 묶음 페이드)다 (`records` §4.5).
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { music } from '../../engine/audio/music'
 import { creditsImage, loadCreditRows, loadCreditsAtlas } from '../../data/gameData'
 import type { CreditRows, CreditsAtlas } from '../../data/schema'
 import { atlasUrl } from '../../data/providers/atlas'
 import { loadUiText } from '../../data/uiText'
+import { KeyHints } from '../common/KeyHints'
+import { vars } from '../theme/contract.css'
+import { creditsProgress } from './recordsLayout'
 import { parseMessage } from '../../engine/script/text'
 import {
   creditsAt, creditsFrames, creditsRows, creditsScene, creditsSceneStart, CREDIT_SCENE_PAN, CREDIT_SCENE_RUN,
@@ -74,7 +80,12 @@ export const MAKER = {
   ],
 } as const
 
-/** 만든 사람 화면 — 두루마리가 끝나거나 넘기면 서서, 누를 때까지 머문다 */
+/**
+ * 만든 사람 화면 — 두루마리가 끝나거나 넘기면 서서, 누를 때까지 머문다.
+ *
+ * 세 묶음이 0 · 160 · 320ms 간격으로 400ms 페이드한다(오르는 이동 없음): ① 로고 · 이름 · 소개 ② 만든 사람 ③ 다른 게임과 감사 · 고지.
+ * 다른 게임은 `제목 | 소개 | 주소` 세 칸 맞춤이다 — 두 줄이 같은 칸에 서므로 가운데 맞춤 때의 들쭉날쭉이 없다
+ */
 function MakerScreen() {
   const plain = runStyle(0)
   const accent = runStyle(1)
@@ -84,26 +95,36 @@ function MakerScreen() {
   )
   return (
     <div className={css.maker}>
-      <div className={css.makerTitle} style={accent}>{MAKER.title}</div>
-      <div className={css.makerSmall} style={plain}>{MAKER.tagline}</div>
+      <div className={css.makerGroup}>
+        {/* 앱 아이콘 — 장식이다 */}
+        <img className={css.makerLogo} src={`${APP_ROOT}assets/radiant-platinum-icon.png`} alt="" />
+        <div className={css.makerTitle} style={accent}>{MAKER.title}</div>
+        <div className={css.makerSmall} style={plain}>{MAKER.tagline}</div>
+      </div>
+      <div className={css.makerHair} aria-hidden />
 
-      <div className={css.makerLabel} style={label}>만든 사람</div>
-      <div className={css.makerName} style={plain}>{MAKER.name}</div>
-      <div className={css.makerSmall} style={plain}>{MAKER.about}</div>
-      <div className={css.makerRow}>{MAKER.links.map(link)}</div>
+      <div className={css.makerGroup} style={{ animationDelay: '160ms' }}>
+        <div className={css.makerLabel} style={label}>만든 사람</div>
+        <div className={css.makerName} style={plain}>{MAKER.name}</div>
+        <div className={css.makerSmall} style={plain}>{MAKER.about}</div>
+        <div className={css.makerRow}>{MAKER.links.map(link)}</div>
+      </div>
 
-      <div className={css.makerLabel} style={label}>다른 게임</div>
-      {MAKER.games.map((g) => (
-        <div key={g.href} className={css.makerGame}>
-          <span style={accent}>{g.title}</span>
-          <span className={css.makerSmall} style={plain}>{g.about}</span>
-          {link(g)}
+      <div className={css.makerGroup} style={{ animationDelay: '320ms' }}>
+        <div className={css.makerLabel} style={label}>다른 게임</div>
+        <div className={css.makerGames}>
+          {MAKER.games.map((g) => (
+            <div key={g.href} className={css.makerGame}>
+              <span className={css.makerGameTitle} style={accent}>{g.title}</span>
+              <span className={css.makerGameAbout} style={plain}>{g.about}</span>
+              {link(g)}
+            </div>
+          ))}
         </div>
-      ))}
-
-      <div className={css.makerFoot}>
-        <div><span style={label}>원작 해석</span> <span style={plain}>{MAKER.thanks}</span></div>
-        {MAKER.notice.map((n) => <div key={n}>{n}</div>)}
+        <div className={css.makerFoot}>
+          <div><span style={label}>원작 해석</span> <span style={plain}>{MAKER.thanks}</span></div>
+          {MAKER.notice.map((n) => <div key={n}>{n}</div>)}
+        </div>
       </div>
     </div>
   )
@@ -304,7 +325,21 @@ export function CreditsScreen() {
             </div>
           ))}
         </div>
-        <div className={css.hint}>{maker ? 'Z 타이틀로' : 'Z 넘기기'}</div>
+        {/* 양옆 가장자리 — 그림이 칼로 자른 듯 끝나지 않게 */}
+        <div className={`${css.edge} ${css.edgeLeft}`} aria-hidden />
+        <div className={`${css.edge} ${css.edgeRight}`} aria-hidden />
+        {/* 진행 — 두루마리가 흐른 몫. 글자는 없다 */}
+        {!maker && (
+          <div
+            className={css.progress}
+            style={{ width: `${String(creditsProgress(frame, romFrames) * 100)}%` }}
+            aria-hidden
+          />
+        )}
+        {/* 하늘 위에서 읽히도록 글 뒤에 1px 그림자 */}
+        <div className={css.hint} style={{ textShadow: `1px 1px 0 ${vars.scrim.deep}` }}>
+          <KeyHints text={maker ? 'Z 타이틀로' : 'Z 넘기기'} tone="dark" />
+        </div>
       </div>
     </div>
   )

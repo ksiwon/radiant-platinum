@@ -77,18 +77,47 @@ export const align = styleVariants({
   center: { textAlign: 'center' },
 })
 
+/**
+ * 두루마리 둘레 (`records` §4.5) — 원작 글과 배경은 그대로 두고 둘레만 다듬는다.
+ *
+ * 양옆 띠: 그림은 가로로 이어지지 않아(`CreditsScreen` 주석, 실측 16.0) 띠를 그림으로 못 채운다 — 4:3 무대 안쪽 가장자리
+ * 36px에 검정 0.38 → 투명 그러데이션 한 겹을 얹어 그림이 칼로 자른 듯 끝나는 것을 푼다
+ */
+const EDGE = 36
+const edgeShade = (to: 'left' | 'right'): string =>
+  `linear-gradient(to ${to}, color-mix(in srgb, ${vars.scrim.black} 38%, transparent), transparent)`
+export const edge = style({ position: 'absolute', top: 0, bottom: 0, width: EDGE, pointerEvents: 'none' })
+export const edgeLeft = style({ left: 0, background: edgeShade('right') })
+export const edgeRight = style({ right: 0, background: edgeShade('left') })
+
+/** 진행 — 무대 맨 아래 2px 선. 너비는 흐른 몫이고 글자는 없다 */
+export const progress = style({
+  position: 'absolute',
+  left: 0,
+  bottom: 0,
+  height: 2,
+  background: `color-mix(in srgb, ${vars.emphasis.oneOnDark} 55%, transparent)`,
+  pointerEvents: 'none',
+})
+
+/**
+ * 넘기기 안내 — 오른쪽 아래. 키캡은 어두운 바탕(`scrim.deep`)이고 글은 `ink.onDark`다. 하늘 위에서 읽히도록 글 뒤에
+ * 1px 그림자를 깐다(화면 쪽 인라인 — 이 파일은 `textShadow`를 못 쓴다)
+ */
 export const hint = style({
   position: 'absolute',
-  right: pctX(8),
-  bottom: pctY(6),
-  fontSize: '0.7em',
-  color: vars.ink.onDarkDim,
+  right: 22,
+  bottom: 16,
+  fontSize: '0.6em',
+  color: vars.ink.onDark,
 })
 
 /**
  * 만든 사람 화면 (`MakerScreen`) — 두루마리 자리에 서는 한 장. 글자 크기는 무대의 글꼴(화면 높이의 1/24)을 자로 쓴다.
  *
- * 판을 늘어놓지 않는다 — 가운데 한 줄기로 제목 · 사람 · 다른 게임 · 고지가 내려오고, 뒤의 배경을 아래로 갈수록 어둡게 눌러 글을 읽힌다
+ * 판을 늘어놓지 않는다 — 가운데 한 줄기로 로고 · 만든 사람 · 다른 게임과 고지가 내려오고, 뒤의 배경을 아래로 갈수록 어둡게 눌러
+ * 글을 읽힌다 (위 0.40 → 아래 0.84). 세 묶음이 0 · 160 · 320ms 간격으로 400ms 페이드한다(오르는 이동 없음).
+ * 줄 단위 엇갈림이 아니라 장면 전환이다. 움직임을 줄이는 설정이면 한 번에 뜬다
  */
 export const maker = style({
   position: 'absolute',
@@ -97,43 +126,75 @@ export const maker = style({
   flexDirection: 'column',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: '0.35em',
-  padding: `0 ${pctX(16)}`,
+  rowGap: '0.55em',
+  padding: '0 4%',
   textAlign: 'center',
-  background: 'linear-gradient(to bottom, rgba(0,0,0,0.35), rgba(0,0,0,0.8))',
-  animation: `${keyframes({ from: { opacity: 0 }, to: { opacity: 1 } })} 500ms ease-out`,
+  background: [
+    'linear-gradient(to bottom,',
+    `color-mix(in srgb, ${vars.scrim.black} 40%, transparent),`,
+    `color-mix(in srgb, ${vars.scrim.black} 84%, transparent))`,
+  ].join(' '),
 })
 
-export const makerTitle = style({ fontSize: '1.9em', marginBottom: '0.1em' })
+const groupIn = keyframes({ from: { opacity: 0 }, to: { opacity: 1 } })
 
-export const makerSmall = style({ fontSize: '0.72em', lineHeight: 1.5 })
+export const makerGroup = style({
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  rowGap: '0.3em',
+  animation: `${groupIn} 400ms ease-out both`,
+  '@media': { '(prefers-reduced-motion: reduce)': { animation: 'none' } },
+})
 
-export const makerLabel = style({ fontSize: '0.8em', marginTop: '1.1em' })
+/** 앱 아이콘 72×72 — 장식이다(`alt=""`) */
+export const makerLogo = style({ width: 72, height: 72, display: 'block', marginBottom: '0.15em' })
 
-export const makerName = style({ fontSize: '1.3em' })
+export const makerTitle = style({ fontSize: '1.95em', lineHeight: 1.1 })
+
+export const makerSmall = style({ fontSize: '0.58em', lineHeight: 1.5 })
+
+export const makerLabel = style({ fontSize: '0.53em', marginTop: '0.4em' })
+
+export const makerName = style({ fontSize: '1.28em' })
+
+/** 금 헤어라인 — 56px 한 줄 */
+export const makerHair = style({ width: 56, height: 1, background: vars.paper.gilt, margin: '0.2em 0' })
 
 export const makerRow = style({ display: 'flex', gap: '1.4em', justifyContent: 'center', marginTop: '0.2em' })
 
+/**
+ * 다른 게임 — 세 칸 맞춤 `제목 | 소개 | 주소`. 두 줄이 같은 칸에 서므로 가운데 맞춤 때의 들쭉날쭉이 사라진다.
+ * 제목은 오른쪽 맞춤 22px, 소개 · 주소는 왼쪽 맞춤. 상자나 선은 없다
+ */
+const GAMES_COLS = '6.4em 10.1em 7.1em'
+export const makerGames = style({ display: 'grid', rowGap: '0.35em' })
 export const makerGame = style({
-  display: 'flex',
+  display: 'grid',
+  gridTemplateColumns: GAMES_COLS,
+  columnGap: '0.5em',
   alignItems: 'baseline',
-  justifyContent: 'center',
-  flexWrap: 'wrap',
-  columnGap: '0.8em',
 })
+export const makerGameTitle = style({ fontSize: '0.83em', textAlign: 'right' })
+export const makerGameAbout = style({ fontSize: '0.56em', lineHeight: 1.4, textAlign: 'left' })
 
 export const makerLink = style({
-  fontSize: '0.72em',
+  fontSize: '0.56em',
   textDecoration: 'underline',
   textUnderlineOffset: '0.2em',
   pointerEvents: 'auto',
   cursor: 'pointer',
+  textAlign: 'left',
   selectors: { '&:hover': { opacity: 0.8 } },
 })
 
+/** 감사 줄과 고지 — 폭 640 가운데. 안내(오른쪽 아래)와 안 겹친다 */
 export const makerFoot = style({
-  marginTop: '1.4em',
-  fontSize: '0.6em',
-  lineHeight: 1.6,
+  marginTop: '0.8em',
+  // 글자(12px)의 em이라 640px ≈ 53em이다 — 무대 기준 24em이 아니다
+  width: '53em',
+  maxWidth: '100%',
+  fontSize: '0.45em',
+  lineHeight: 1.65,
   color: vars.ink.onDarkDim,
 })
