@@ -806,6 +806,8 @@ export function BoxScreen() {
         </>
       )
     }
+    // 마리가 선 칸인데 종족 자료가 아직 안 왔다 — 현황이 깜빡 뜨지 않게 빈 상세 틀을 세운다
+    if (shown) return <div className={own.detail} data-box-detail />
     // 빈 칸이나 머리 — 이 박스의 현황
     return (
       <BoxCensus
