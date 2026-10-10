@@ -85,7 +85,7 @@ export const MAKER = {
  * 만든 사람 화면의 글 세 언어. 이름 · 제목 · 주소는 언어와 무관해 `MAKER`에 한 번만 두고, 풀어 쓴 글만 갈린다.
  * 한국어는 `MAKER`의 글 그대로다
  */
-export interface MakerText {
+interface MakerText {
   tagline: string
   about: string
   labelMaker: string

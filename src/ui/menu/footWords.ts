@@ -6,7 +6,7 @@
 import type { DataLocale } from '../../data/gameData'
 import { useGameLocale } from '../../state/optionsStore'
 
-export interface FootWords {
+interface FootWords {
   /** ↑↓ 고르기 · Z 결정 */
   pick: string
   close: string
