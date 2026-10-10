@@ -30,6 +30,14 @@ import { convertSlots } from './slots'
 import { convertHallOfFameBg } from './hallOfFameBg'
 import { convertPointerHand } from './pointerHand'
 import { convertTrainerCase } from './trainerCase'
+import { convertDiplomaArt } from './diplomaArt'
+import { convertBerryArt } from './berryArt'
+import { convertMailArt } from './mailArt'
+import { convertTownMapPlayer } from './townMapPlayer'
+import { convertDexHeightWeight } from './dexHeightWeight'
+import { convertDexShapes } from './dexShapes'
+import { convertStartMenuIcons } from './startMenuIcons'
+import { convertTypeIcons } from './typeIcons'
 import { convertLibraryTv } from './libraryTv'
 import { convertDemoModels } from './demoModels'
 import { convertFrontierBg } from './frontierBg'
@@ -295,14 +303,68 @@ export const GROUPS: readonly GroupSpec[] = [
     convert: convertPointerHand,
   },
   {
-    // 트레이너 카드 앞뒤 · 배지 케이스 · 배지 여덟 · 주인공 그림 (`applications/trainer_case`)
+    // 배지 여덟 · 주인공 그림 · 잘라 낸 상자와 글자 색 (`applications/trainer_case`).
+    // 2 — `card.png` · `case.png`를 더 안 굽는다. 판은 CSS 토큰이다 (메뉴 개편)
     name: 'trainerCase',
-    outputs: [
-      'data/trainerCase/card.png', 'data/trainerCase/trainer.png', 'data/trainerCase/case.png',
-      'data/trainerCase/badges.png', 'data/trainerCase/index.json',
-    ],
-    converter: 1,
+    outputs: ['data/trainerCase/trainer.png', 'data/trainerCase/badges.png', 'data/trainerCase/index.json'],
+    converter: 2,
     convert: convertTrainerCase,
+  },
+  {
+    // 도감 완성 상장의 바탕과 종이 (`applications/diploma.c` · `syoujyou.narc`)
+    name: 'diplomaArt',
+    outputs: ['data/diplomaArt.png'],
+    converter: 1,
+    convert: convertDiplomaArt,
+  },
+  {
+    // 나무열매 그림 예순넷 (`applications/berry_tag.c` · `ntag_gra.narc`)
+    name: 'berryArt',
+    outputs: ['data/berryArt.png'],
+    converter: 1,
+    convert: convertBerryArt,
+  },
+  {
+    // 편지지 그림 열둘 (`applications/mail_viewer.c` · `mail_gra.narc`)
+    name: 'mailArt',
+    outputs: ['data/mailArt.png'],
+    converter: 1,
+    convert: convertMailArt,
+  },
+  {
+    // 타운맵의 주인공 머리 표식 남 · 여 (`applications/town_map/graphics.c` · `tmap_gra.narc`)
+    name: 'townMapPlayer',
+    outputs: ['data/townMapPlayer.png'],
+    converter: 1,
+    convert: convertTownMapPlayer,
+  },
+  {
+    // 도감 키·몸무게 표와 키 비교의 자리·배율 (`pokedex_heightweight.c` · `zukan_data.narc`)
+    name: 'dexHeightWeight',
+    outputs: ['data/dexHeightWeight.json'],
+    converter: 1,
+    convert: convertDexHeightWeight,
+  },
+  {
+    // 도감 검색의 몸 모양 실루엣 열넷 (`pokedex_search.c` · `zukan.narc`)
+    name: 'dexShapes',
+    outputs: ['data/dexShapes.png'],
+    converter: 1,
+    convert: convertDexShapes,
+  },
+  {
+    // 시작 메뉴 아이콘 열 칸 × 컬러·회색과 고른 줄의 움직임 (`start_menu.c` · `menu_gra.narc`)
+    name: 'startMenuIcons',
+    outputs: ['data/startMenuIcons.*.png', 'data/startMenuIcons.json'],
+    converter: 1,
+    convert: convertStartMenuIcons,
+  },
+  {
+    // 기술 타입 그림(지역판마다 글자가 다르다)과 분류 그림 셋 (`type_icon.c` · `pl_batt_obj.narc`)
+    name: 'typeIcons',
+    outputs: ['data/typeIcons.*.png', 'data/moveClass.png'],
+    converter: 1,
+    convert: convertTypeIcons,
   },
   {
     // 창기둥과 깨어진 세계로 가는 문 — 필드 밖 연출의 모델 (`demoModels.ts`)

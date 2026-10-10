@@ -22,6 +22,7 @@ import {
   type BdspSource, type ConvertContext, type Produced,
 } from '../platinum/convertTypes'
 import { openEnvironment, type Environment } from './environment'
+import { exportArena } from './arena'
 import { meshFrom, CHANNEL, type MeshData } from './mesh'
 import { readTexture, resize, resource } from './texture'
 import { crc32, exportModel } from './model'
@@ -34,6 +35,16 @@ type Json = null | boolean | number | string | Json[] | { [k: string]: Json }
 /** 뿌리 아래 자리 (실측 덤프 구조) */
 const PREFABS = 'Effects/effect/prefab/battle'
 const SEQUENCES = 'Battle/btlv/waza/sequence'
+/**
+ * 진화 · 부화 이펙트 — `배틀`이 아니라 **필드** 프리팹이다 (같은 Shuriken 꼴이라 같은 굽는 쪽을 쓴다).
+ * `ef_f_evolution_*` 아홉(번쩍임 · 땅 · 충격 · 고리 · 연기 · 별 넷)이 진화, `sd9120_*` 열일곱(알 조각 넷 · 금 · 빛 · 배경 · 바닥…)이 부화다.
+ * 이름의 `sd9120`은 부화 연출 시퀀스 번호다. 메모리 「BDSP 원본부터 찾는다」 — 필드 glb에 없어도 이펙트 폴더에 따로 있다
+ */
+const FIELD_PREFABS = 'Effects/effect/prefab/field'
+const EVOLUTION_PREFAB = /^ef_f_evolution_/
+const HATCH_PREFAB = /^sd9120_/
+/** 알 모델 — `MeshFilter` 하나 · 정점 689 · 재질 하나. 정적 메시라 무대 변환기(`exportArena`)로 굽는다 */
+const EGG_MODEL = 'Effects/effmodel/ew121_egg00'
 const MASTERDATAS = 'Battle/battle_masterdatas'
 /** 프리팹 2,030벌이 셰이더를 · 1,932벌이 그림을 이 둘에서 끌어 온다 (스크래치 `census.pkl`의 바깥 참조 집계) */
 const SHARED_BUNDLES = ['Effects/fxparticle', 'Effects/effect_common']
@@ -1138,6 +1149,24 @@ export async function convertBattleFx(ctx: ConvertContext): Promise<Produced> {
   for (const [lower, real] of prefabPath) if (lower.startsWith('cmn_')) wantPrefab.add(real.slice(prefabDir.length))
   if (prefabPath.size === 0) throw new Error('BDSP 배틀 이펙트를 하나도 못 찾았습니다 — 폴더에 없습니다')
 
+  // 진화 · 부화 — 필드 프리팹 (이름 앞머리로 고른다). 하나도 없으면 폴더가 다른 것이라 선다
+  const fieldDir = `${FIELD_PREFABS.toLowerCase()}/`
+  const fieldPath = new Map<string, string>()
+  const evolutionNames: string[] = []
+  const hatchNames: string[] = []
+  for (const [lower, real] of at) {
+    if (!lower.startsWith(fieldDir) || lower.indexOf('/', fieldDir.length) >= 0) continue
+    const name = real.slice(fieldDir.length)
+    if (EVOLUTION_PREFAB.test(lower.slice(fieldDir.length))) evolutionNames.push(name)
+    else if (HATCH_PREFAB.test(lower.slice(fieldDir.length))) hatchNames.push(name)
+    else continue
+    fieldPath.set(lower.slice(fieldDir.length), real)
+    wantPrefab.add(name)
+  }
+  if (evolutionNames.length === 0 || hatchNames.length === 0) {
+    throw new Error(`BDSP 진화 · 부화 이펙트를 못 찾았습니다 (진화 ${String(evolutionNames.length)} · 부화 ${String(hatchNames.length)}) — ${FIELD_PREFABS}에 없습니다`)
+  }
+
   const shared: Uint8Array[] = []
   for (const p of SHARED_BUNDLES) {
     const b = await read(p)
@@ -1163,11 +1192,11 @@ export async function convertBattleFx(ctx: ConvertContext): Promise<Produced> {
   let done = 0
   for (const want of order) {
     check(ctx)
-    const real = prefabPath.get(want.toLowerCase())
+    const real = prefabPath.get(want.toLowerCase()) ?? fieldPath.get(want.toLowerCase())
     const bytes = real ? await src.read(real) : null
     if (!real || !bytes) absent.push(want)
     else {
-      const name = real.slice(prefabDir.length)
+      const name = real.slice(real.lastIndexOf('/') + 1)
       try {
         const got = await bakeFxPrefab(name, bytes, sharedEnv, textures)
         emit(`prefab/${name}.json`, textOf(got.prefab))
@@ -1187,6 +1216,13 @@ export async function convertBattleFx(ctx: ConvertContext): Promise<Produced> {
     throw new Error(`BDSP 배틀 이펙트 ${String(order.length - absent.length)}벌 중 ${String(failed.length)}벌을 못 구웠습니다 (${failed.slice(0, 3).join(' · ')})`)
   }
 
+  // 알 모델 — 부화가 보이는 알. 정적 메시라 `exportArena`로 한 벌 (그림이 없는 재질 하나라 번들 하나만 연다)
+  const eggBytes = await read(EGG_MODEL)
+  if (!eggBytes) throw new Error(`BDSP ${EGG_MODEL}이 없습니다`)
+  const egg = await exportArena(openEnvironment([eggBytes]), encodePng, { name: 'ew121_egg00', maxSize: FX_TEXTURE })
+  if (egg.stat.problems.length > 0) throw new Error(`알 모델을 못 이었습니다 (${egg.stat.problems.slice(0, 3).join(' · ')})`)
+  emit('model/ew121_egg00.glb', egg.glb)
+
   emit('tex/index.json', textOf(Object.fromEntries([...textures.info].sort(([a], [b]) => a.localeCompare(b)))))
   emit('index.json', textOf({
     balls,
@@ -1195,6 +1231,10 @@ export async function convertBattleFx(ctx: ConvertContext): Promise<Produced> {
     capture: bakedSequences.filter((n) => CAPTURE_SEQ.test(n)),
     status: bakedSequences.filter((n) => STATUS_SEQ.test(n)),
     weather,
+    // 진화 · 부화 (필드 프리팹)와 알 모델 — 부화 · 진화 화면이 부른다
+    evolution: evolutionNames.sort(),
+    hatch: hatchNames.sort(),
+    eggModel: 'model/ew121_egg00.glb',
     ballModel: { ...ballTable, files: ballFiles },
     moveType,
     sequences: bakedSequences,

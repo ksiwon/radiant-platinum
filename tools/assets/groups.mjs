@@ -143,10 +143,58 @@ export const GROUPS = [
     match: oneOf('data/pointerHand.png'),
   },
   {
-    // 트레이너 카드 앞뒤 · 배지 케이스 · 배지 여덟 · 주인공 그림 (`applications/trainer_case`). 카드를 열 때 받는다
+    // 배지 여덟 · 주인공 그림 · 잘라 낸 상자 (`applications/trainer_case`). 카드를 열 때 받는다
     name: 'trainerCase',
     make: 'pnpm extract:trainerCase',
     match: under('data/trainerCase/'),
+  },
+  {
+    // 기술 타입 그림(지역판마다 글자가 다르다)과 분류 그림 셋 (`type_icon.c` · `pl_batt_obj.narc`)
+    name: 'typeIcons',
+    make: 'pnpm extract:typeIcons',
+    match: (p) => nameIn('data', 'typeIcons.')(p) || p === 'data/moveClass.png',
+  },
+  {
+    // 시작 메뉴 아이콘 열 칸 × 컬러·회색과 고른 줄의 움직임 (`start_menu.c` · `menu_gra.narc`)
+    name: 'startMenuIcons',
+    make: 'pnpm extract:startMenuIcons',
+    match: nameIn('data', 'startMenuIcons.'),
+  },
+  {
+    // 도감 검색의 몸 모양 실루엣 열넷 (`pokedex_search.c` · `zukan.narc`)
+    name: 'dexShapes',
+    make: 'pnpm extract:dexShapes',
+    match: oneOf('data/dexShapes.png'),
+  },
+  {
+    // 도감 키·몸무게 표와 키 비교의 자리·배율 (`pokedex_heightweight.c` · `zukan_data.narc`)
+    name: 'dexHeightWeight',
+    make: 'pnpm extract:dexHeightWeight',
+    match: oneOf('data/dexHeightWeight.json'),
+  },
+  {
+    // 타운맵의 주인공 머리 표식 남 · 여 (`applications/town_map/graphics.c` · `tmap_gra.narc`)
+    name: 'townMapPlayer',
+    make: 'pnpm extract:townMapPlayer',
+    match: oneOf('data/townMapPlayer.png'),
+  },
+  {
+    // 편지지 그림 열둘 (`applications/mail_viewer.c` · `mail_gra.narc`)
+    name: 'mailArt',
+    make: 'pnpm extract:mailArt',
+    match: oneOf('data/mailArt.png'),
+  },
+  {
+    // 나무열매 그림 예순넷 (`applications/berry_tag.c` · `ntag_gra.narc`)
+    name: 'berryArt',
+    make: 'pnpm extract:berryArt',
+    match: oneOf('data/berryArt.png'),
+  },
+  {
+    // 도감 완성 상장의 바탕과 종이 (`applications/diploma.c` · `syoujyou.narc`)
+    name: 'diplomaArt',
+    make: 'pnpm extract:diplomaArt',
+    match: oneOf('data/diplomaArt.png'),
   },
   {
     // 도서관 텔레비전 뉴스 (`StartLibraryTV`). 운하시티 도서관 3층에서 한 번 받는다

@@ -33,9 +33,9 @@ const index = (out: Map<string, Uint8Array>): Index =>
 withRom('en')('트레이너 카드 — 미국 롬', () => {
   it('노드 산출물과 픽셀 · 바이트가 같다', async () => {
     const out = await convert('en', 'CPUE')
+    // ⚠️ card.png · case.png는 더 안 굽는다 — 판은 CSS 토큰이다 (메뉴 개편)
     expect([...out.keys()].sort()).toEqual([
-      'data/trainerCase/badges.png', 'data/trainerCase/card.png', 'data/trainerCase/case.png',
-      'data/trainerCase/index.json', 'data/trainerCase/trainer.png',
+      'data/trainerCase/badges.png', 'data/trainerCase/index.json', 'data/trainerCase/trainer.png',
     ])
     for (const [path, bytes] of out) {
       const dev = new Uint8Array(readFileSync(resolve(DATA, path.replace(/^data\//, ''))))
@@ -51,11 +51,9 @@ withRom('en')('트레이너 카드 — 미국 롬', () => {
     }
   }, 60_000)
 
-  it('카드 일곱 장 · 배지 여덟 × 때 넷 · 주인공 둘로 자른다', async () => {
+  it('배지 여덟 × 때 넷 · 주인공 둘로 자른다', async () => {
     const out = await convert('en', 'CPUE')
     const meta = index(out)
-    const card = decodePngBytes(out.get('data/trainerCase/card.png')!)
-    expect([card.width, card.height]).toEqual([meta.card[2]! * 2, meta.card[3]! * 7])
     const badges = decodePngBytes(out.get('data/trainerCase/badges.png')!)
     expect([badges.width, badges.height]).toEqual([meta.badge[2]! * 8, meta.badge[3]! * 4])
     const trainer = decodePngBytes(out.get('data/trainerCase/trainer.png')!)
@@ -75,37 +73,12 @@ withRom('en')('트레이너 카드 — 미국 롬', () => {
     expect(meta.text[0]).toEqual([[74, 74, 74], [165, 165, 165]])
     expect(meta.text[5]).toEqual([[255, 255, 115], [57, 57, 57]])
   }, 60_000)
-
-  it('등급마다 별이 하나씩 켜진다 — 앞면 오른쪽 위 노란 픽셀이 등급과 함께 는다', async () => {
-    const out = await convert('en', 'CPUE')
-    const meta = index(out)
-    const card = decodePngBytes(out.get('data/trainerCase/card.png')!)
-    const [, , cw, ch] = meta.card as [number, number, number, number]
-    // 별 색 (255, 255, 115)이 앞면에 몇 픽셀인가 — 노멀은 0이다
-    const stars = (level: number): number => {
-      let n = 0
-      for (let y = 0; y < ch; y++) {
-        for (let x = 0; x < cw; x++) {
-          const at = ((level * ch + y) * card.width + x) * 4
-          if (card.pixels[at] === 255 && card.pixels[at + 1] === 255 && card.pixels[at + 2] === 115) n++
-        }
-      }
-      return n
-    }
-    const counts = [0, 1, 2, 3, 4].map(stars)
-    expect(counts[0]).toBe(0)
-    for (let i = 1; i < counts.length; i++) expect(counts[i]!, `등급 ${String(i)}`).toBeGreaterThan(counts[i - 1]!)
-  }, 60_000)
 })
 
 withRom('en', 'ko')('트레이너 카드 — 한국 롬', () => {
-  it('옮겨진 자리에서 읽고, 자른 상자는 미국판과 같고 카드 글자 타일만 다르다', async () => {
+  it('옮겨진 자리에서 읽고, 자른 상자는 미국판과 같다', async () => {
     const [en, ko] = await Promise.all([convert('en', 'CPUE'), convert('ko', 'CPUK')])
     expect(index(ko)).toEqual(index(en))
-    const a = decodePngBytes(en.get('data/trainerCase/card.png')!)
-    const b = decodePngBytes(ko.get('data/trainerCase/card.png')!)
-    expect([b.width, b.height]).toEqual([a.width, a.height])
-    expect(Buffer.from(b.pixels).equals(Buffer.from(a.pixels))).toBe(false)
   }, 60_000)
 })
 
