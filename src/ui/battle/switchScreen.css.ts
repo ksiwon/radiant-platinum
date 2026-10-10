@@ -132,7 +132,7 @@ export const card = style({
   display: 'flex',
   flexDirection: 'column',
   gap: 3,
-  padding: '8px 10px 6px',
+  padding: '8px 8px 6px',
   border: 'none',
   background: 'none',
   font: 'inherit',
@@ -255,7 +255,13 @@ export const numbers = style({
   color: vars.ink.dim,
   fontVariantNumeric: 'tabular-nums',
   minHeight: 16,
+  // 한 줄에 든다 — 접히면 옆 딱지와 겹친다. 넘치는 글은 칸 안에서 자른다
+  whiteSpace: 'nowrap',
+  minWidth: 0,
+  overflow: 'hidden',
 })
+/** 알 칸의 막대 + 숫자 자리 (막대 8 + 간격 3 + 숫자 줄 16) */
+export const eggGap = style({ display: 'block', height: 8 + 3 + 16 })
 export const numbersOn = style({ color: vars.pick.text })
 export const push = style({ marginLeft: 'auto', display: 'inline-flex' })
 
@@ -274,7 +280,16 @@ export const hint = styleVariants({
 })
 
 /** 띠 칸 모서리의 상성 표시 자리 — 없어도 높이를 지켜 칸끼리 글줄이 안 어긋난다 */
-export const cornerHint = style({ minHeight: 14, lineHeight: '14px' })
+export const cornerHint = style({
+  minHeight: 14,
+  lineHeight: '14px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 4,
+})
+/** 모서리 줄의 왼쪽 — 상태 딱지 */
+export const cornerTag = style({ display: 'inline-flex', minWidth: 0 })
 
 // ── 신상 창 ───────────────────────────────────────────────────────────────
 

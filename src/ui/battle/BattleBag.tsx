@@ -45,6 +45,7 @@ import { useBattleWords } from './battleWords'
 import { useRomLines } from './useRomLines'
 import * as css from './battleBag.css'
 import { pointerMoved } from '../pointerMoved'
+import { SPECIES_EGG } from '../../engine/pokemon/form'
 
 /** 목록의 아이콘. 칸(32)의 1배 — 정수배다 */
 const LIST_ICON = 32
@@ -389,16 +390,14 @@ export function BattleBag({
       // `SwitchScreen`의 `savedOf`와 같은 규칙이다
       const n = Number(one.key.slice(3))
       const saved = Number.isInteger(n) ? saveParty[n] : undefined
+      const egg = it !== undefined && saved !== undefined && saved.species === it.species ? saved.isEgg : false
       return {
         slot: one,
-        label: it?.nickname ?? (it ? names?.species[it.species] : null) ?? one.key,
+        // 알의 이름은 「알」이다 — 종족 이름은 안에 든 것을 알려 준다
+        label: egg ? names?.species[SPECIES_EGG] ?? '' : it?.nickname ?? (it ? names?.species[it.species] : null) ?? one.key,
         level: it?.level ?? '?',
-        mon: it ? {
-          species: it.species,
-          form: it.form,
-          isEgg: saved !== undefined && saved.species === it.species ? saved.isEgg : false,
-        } : null,
-        can: made !== null,
+        mon: it ? { species: it.species, form: it.form, isEgg: egg } : null,
+        can: !egg && made !== null,
         note: made === null ? null : planSummary(made, names?.stats ?? []),
       }
     })

@@ -23,6 +23,7 @@ import { useBattleStore } from '../../state/battleStore'
 import { dexHas, useSaveStore } from '../../state/saveStore'
 import type { MoveSlot, PokemonInstance } from '../../engine/pokemon/instance'
 import { maxPpOf } from '../../engine/pokemon/instance'
+import { SPECIES_EGG } from '../../engine/pokemon/form'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import { KeyHints } from '../common/KeyHints'
 import type { BattleNames } from './messages'
@@ -174,12 +175,14 @@ export function SwitchScreen(
   const cards = party.map((slot, i): PartyCard => {
     const it = roster[slot.key]
     const own = savedOf(saveParty, slot.key, it)
+    const egg = own?.isEgg ?? false
     return {
       slot,
-      label: it?.nickname ?? (it ? names?.species[it.species] : null) ?? slot.key,
+      // 알의 이름은 「알」이다 — 종족 이름은 안에 든 것을 알려 준다 (SummaryScreen과 같은 규칙)
+      label: egg ? names?.species[SPECIES_EGG] ?? '' : it?.nickname ?? (it ? names?.species[it.species] : null) ?? slot.key,
       level: it?.level ?? '?',
       mon: it ? { species: it.species, form: it.form, isEgg: own?.isEgg ?? false } : null,
-      can: actionAt(i) !== null,
+      can: !egg && actionAt(i) !== null,
       best: bestMatch(slot.moves.map((m) => (m.move === null ? undefined : names?.move(m.move))), foes, own?.ivs ?? null),
     }
   })

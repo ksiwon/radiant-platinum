@@ -85,6 +85,9 @@ export function PartyCards(
         const ratio = slot.maxHp > 0 ? slot.hp / slot.maxHp : 0
         const hop = on ? iconHop(slot.hp, slot.maxHp, slot.status, PIXEL.x2) : null
         const art = mon ? monIconAt(icons, mon, PIXEL.x2) : { width: 64, height: 64 }
+        // ⚠️ 알은 이름 · 성별 · Lv · 체력을 안 보인다 — 원작 파티 칸도 알이면 이름만 「알」이고 숫자가 없다.
+        // 종족 이름이나 성별이 새어 나가면 안에 무엇이 들었는지 드러난다
+        const egg = mon?.isEgg === true
         return (
           <button
             key={slot.key}
@@ -103,27 +106,35 @@ export function PartyCards(
             />
             <span className={css.nameRow}>
               <span className={on ? `${css.name} ${css.nameOn}` : css.name}>{label}</span>
-              <GenderMark gender={slot.gender} />
+              {!egg && <GenderMark gender={slot.gender} />}
               {/* 배틀 체력판과 같은 꼴이다 (BattleScreen의 `Lv{mon.level}`) */}
-              <span className={css.level}>Lv{level}</span>
+              {!egg && <span className={css.level}>Lv{level}</span>}
             </span>
-            <span className={css.bar}>
-              <span
-                className={css.fill}
-                style={{
-                  width: `${String(Math.round(ratio * 100))}%`,
-                  ...HP_VARS[hpColor(slot.hp, slot.maxHp)],
-                }}
-              />
-            </span>
-            <span className={on ? `${css.numbers} ${css.numbersOn}` : css.numbers}>
-              <span>{slot.hp} / {slot.maxHp}</span>
-              {note != null && <span>· {note}</span>}
-              <span className={css.push}>
-                <StatusTag status={slot.status} fainted={slot.fainted} />
-              </span>
-            </span>
+            {egg ? (
+              // 막대와 숫자 자리를 비워 두어 칸끼리 글줄이 안 어긋난다
+              <span className={css.eggGap} aria-hidden />
+            ) : (
+              <>
+                <span className={css.bar}>
+                  <span
+                    className={css.fill}
+                    style={{
+                      width: `${String(Math.round(ratio * 100))}%`,
+                      ...HP_VARS[hpColor(slot.hp, slot.maxHp)],
+                    }}
+                  />
+                </span>
+                <span className={on ? `${css.numbers} ${css.numbersOn}` : css.numbers}>
+                  <span>{slot.hp} / {slot.maxHp}</span>
+                  {note != null && <span>· {note}</span>}
+                </span>
+              </>
+            )}
+            {/* 상태 딱지는 숫자 줄이 아니라 모서리 줄에 선다 — 도구 대상의 「체력 33 회복」이 한 줄을 다 쓴다 */}
             <span className={css.cornerHint}>
+              <span className={css.cornerTag}>
+                {!egg && <StatusTag status={slot.status} fainted={slot.fainted} />}
+              </span>
               {best != null && <span className={css.hint[best]}>{MATCH_LABEL[best]}</span>}
             </span>
           </button>
