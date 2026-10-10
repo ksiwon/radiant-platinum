@@ -130,7 +130,9 @@ describe('연출 화면이 속성을 단다 (제목 비교를 걷은 뒤에도 3
     expect(read('TradeScreen.tsx')).toMatch(/<MenuScreen title="교환" cinematic/)
     expect(read('HallOfFameScreen.tsx')).toMatch(/<MenuScreen title="명예의 전당" cinematic bare>/)
     const pc = read('PCHallOfFameScreen.tsx')
-    expect(pc).toMatch(/<MenuScreen title="명예의 전당" foot="X 닫기" cinematic framed>/)
-    expect(pc).toMatch(/<MenuScreen title="명예의 전당" cinematic bare>/)
+    // 제목은 세 언어 표(`PC_HALL_WORDS`)에서 온다 — 한국어 글은 표에 있다
+    expect(pc).toMatch(/<MenuScreen title=\{words\.title\} foot=\{footWords\(locale\)\.close\} cinematic framed>/)
+    expect(pc).toMatch(/<MenuScreen title=\{words\.title\} cinematic bare>/)
+    expect(pc).toContain("title: '명예의 전당'")
   })
 })
