@@ -447,7 +447,8 @@ function Stage(
   const ratio = info?.genderRatio ?? 255
   const gender = mon.isEgg ? 'genderless' : genderOf(mon.pid, ratio)
   const shiny = !mon.isEgg && isShiny(mon.pid, mon.otId, mon.otSecretId)
-  const types = [...new Set(info?.types ?? [])]
+  // 알은 타입을 안 보인다 — 속 종족이 샌다
+  const types = mon.isEgg ? [] : [...new Set(info?.types ?? [])]
   const fainted = mon.hp <= 0 && !mon.isEgg
 
   return (
@@ -505,7 +506,8 @@ function InfoPage(
   const info = t.species.of(mon)
   const dex = t.species.sinnohOf[mon.species] ?? 0
   const shiny = isShiny(mon.pid, mon.otId, mon.otSecretId)
-  const types = [...new Set(info?.types ?? [])]
+  // 알은 타입을 안 보인다 — 속 종족이 샌다
+  const types = mon.isEgg ? [] : [...new Set(info?.types ?? [])]
   const next = info ? expToNextLevel(info.growthRate, mon.exp) : 0
   const progress = info ? levelProgress(info.growthRate, mon.exp) : 0
   // 원트레이너 이름의 색은 **성별**로 갈린다 — 남자 파랑, 여자 빨강

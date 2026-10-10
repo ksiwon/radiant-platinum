@@ -49,7 +49,7 @@ import { useSessionStore } from '../../state/sessionStore'
 import { worldState } from '../../state/worldState'
 import type { Stats } from '../../data/schema'
 import {
-  canShayminSky, changeForm, heldItemKeepsGiratinaForm, ITEM_GRACIDEA, SHAYMIN_SKY,
+  canShayminSky, changeForm, heldItemKeepsGiratinaForm, ITEM_GRACIDEA, SHAYMIN_SKY, SPECIES_EGG,
 } from '../../engine/pokemon/form'
 import { formTables, withHeldItem } from './formChange'
 import { giveVerdict } from './BagScreen'
@@ -998,7 +998,9 @@ export function PartyScreen() {
   })
 
 
-  const nameOf = (mon: PokemonInstance): string => mon.nickname ?? names[mon.species] ?? ''
+  // 알은 종족 이름 대신 알 이름이다 — 속 종족이 새면 안 된다 (요약 화면과 같은 자리 `SPECIES_EGG`)
+  const nameOf = (mon: PokemonInstance): string =>
+    mon.isEgg ? names[SPECIES_EGG] ?? '' : mon.nickname ?? names[mon.species] ?? ''
   const alive = party.filter((m) => m.hp > 0).length
 
   // ── 아래 글 띠 · 바닥 키 안내 ──────────────────────────────────────────
