@@ -4,13 +4,16 @@
 // 몬스터볼 열 개에 붙는 프레미어볼 덤이 없었다. 결제 전 확인(롬 줄 5·35) 없이 개수를 정하자마자
 // 돈이 나갔고, 거절 줄 셋이 롬 글이 아니었다. 백화점 계산대의 단골 셈은 상점 화면이 안 불러서 늘 0이었다.
 import { describe, expect, it, vi } from 'vitest'
-import { MART_TEXT } from '../../data/uiText'
+import { MART_TEXT, SELL_TEXT } from '../../data/uiText'
 import { ITEM_TABLE } from '../../import/platinum/itemTable'
 import { useMenuStore } from '../../state/menuStore'
 
 const {
-  confirmLine, finishPurchase, pickLine, premierBonus, purchaseMax, soldLine, stepCount,
+  confirmLine, finishPurchase, pickLine, premierBonus, purchaseMax, stepCount,
 } = await import('./ShopScreen')
+const {
+  buyRows, canSell, entriesOf, receipt, sellPrice, sellRows, soldLine,
+} = await import('./shopRows')
 
 const id = (constant: string): number => ITEM_TABLE.findIndex(([name]) => name === constant)
 
@@ -132,8 +135,72 @@ describe('상점을 여는 인자 (`menuStore.openShop`)', () => {
   })
 })
 
-describe('판 뒤의 줄', () => {
-  it('합쇼체다', () => {
-    expect(soldLine('1,200원')).toBe('1,200원을 받았습니다')
+describe('판다 — 롬 7번 뱅크의 74~77 (`applications/bag/main.c`)', () => {
+  it('판 뒤의 줄은 롬 77이다 — 칸 0 도구 · 칸 1 값', () => {
+    const bank: string[] = []
+    bank[SELL_TEXT.done] = '{STRVAR_1 8, 0, 2} 건네고\n{STRVAR_1 55, 1, 0}원을 받았다'
+    expect(soldLine(bank, SELL_TEXT.done, '상처약', '150')).toBe('상처약을 건네고\n150원을 받았다')
+  })
+
+  it('값은 사는 값의 절반이고 0이면 못 판다', () => {
+    expect(sellPrice(300)).toBe(150)
+    expect(sellPrice(1)).toBe(0)
+    expect(canSell(sellPrice(1))).toBe(false)
+    expect(canSell(sellPrice(200))).toBe(true)
+  })
+
+  it('줄 번호가 롬과 같다', () => {
+    expect(SELL_TEXT).toEqual({ cannot: 74, howMany: 75, ask: 76, done: 77 })
+  })
+})
+
+describe('줄 모델', () => {
+  const potion = id('ITEM_POTION')
+  const ball = id('ITEM_POKE_BALL')
+  const price = (item: number): number => (item === ball ? 200 : 300)
+
+  it('사는 목록은 재고 차례 그대로이고 「그만둔다」 줄이 맨 끝이다 (하네스 buyAt의 줄 차례)', () => {
+    const rows = buyRows([ball, potion], price, () => 0, () => 0)
+    expect(rows.map((r) => (r.kind === 'item' ? r.item : 'end'))).toEqual([ball, potion, 'end'])
+  })
+
+  it('재고가 비어도 「그만둔다」 한 줄은 남는다', () => {
+    expect(buyRows([], price, () => 0, () => 0)).toEqual([{ kind: 'end' }])
+  })
+
+  it('판다 목록은 주머니 차례 · 가방 줄 차례이고 중요한 물건은 빠진다', () => {
+    const bag = [[{ item: potion, count: 3 }], [{ item: ball, count: 5 }, { item: 99, count: 1 }]]
+    const rows = sellRows(bag, (item) => item !== 99, price)
+    expect(rows).toEqual([
+      { kind: 'item', item: potion, price: 150, have: 3, pocket: 0 },
+      { kind: 'item', item: ball, price: 100, have: 5, pocket: 1 },
+      { kind: 'end' },
+    ])
+  })
+
+  it('값이 0인 도구는 목록에 남는다 — 고르면 「파실 수 없습니다!」', () => {
+    const rows = sellRows([[{ item: potion, count: 1 }]], () => true, () => 1)
+    expect(rows[0]).toMatchObject({ kind: 'item', price: 0 })
+  })
+
+  it('빈 가방은 「그만둔다」 한 줄뿐이다', () => {
+    expect(sellRows([[], []], () => true, price)).toEqual([{ kind: 'end' }])
+  })
+
+  it('그리는 줄은 판다에서만 주머니 머리가 끼고, 머리는 고를 수 없다', () => {
+    const rows = sellRows(
+      [[{ item: potion, count: 3 }, { item: ball, count: 1 }], [{ item: 99, count: 1 }]], () => true, price,
+    )
+    const grouped = entriesOf(rows, true)
+    expect(grouped.map((e) => e.kind)).toEqual(['head', 'row', 'row', 'head', 'row', 'row'])
+    expect(grouped.filter((e) => e.kind === 'row').map((e) => (e.kind === 'row' ? e.index : -1))).toEqual([0, 1, 2, 3])
+    expect(entriesOf(rows, false).every((e) => e.kind === 'row')).toBe(true)
+  })
+})
+
+describe('계산서 — 지갑 · ±합계 · 결과', () => {
+  it('사면 빼고 팔면 더한다', () => {
+    expect(receipt(1280, 200, 3, false)).toEqual({ delta: -600, after: 680 })
+    expect(receipt(1280, 150, 2, true)).toEqual({ delta: 300, after: 1580 })
   })
 })

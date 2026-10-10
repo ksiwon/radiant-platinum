@@ -14,43 +14,65 @@
 //   예 → 계산대 소리 · 「네 여기 있습니다 … 포켓에 넣었다」(6)
 // 끝 줄(거절이든 산 것이든)을 넘기면 다시 목록이다. BP 가게는 줄이 따로다(33·35·37).
 //
+// 파는 길도 원작이다 (`applications/bag/main.c`의 팔기 모드 · 가방 뱅크 7의 74~77):
+//   고른다 → 값이 0이면 「파실 수 없습니다!」(74)
+//          → 가진 것이 하나뿐이면 **개수를 안 묻고** 하나 넘으면 「몇 개 파시겠습니까?」(75)와 개수 창
+//   → 「그 물건은 …원으로 쳐 드리겠습니다」(76)에 예·아니오 → 「… 건네고 …원을 받았다」(77)
+//
+// 목록 끝에 「그만둔다」 줄(롬 8)이 있고 나갈 때 「또 오세요!」(1)를 말한다. 그 말은 **아무 키에 바로 닫히고** 0.9초 뒤에는
+// 저절로 닫힌다 — 하네스(`clearTalk`)가 X를 되풀이하므로 키를 막는 단계가 아니다.
+//
 // 몬스터볼을 한 번에 열 개 이상 사면 프레미어볼 하나가 덤으로 온다 (`Shop_FinishPurchase`).
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import {
-  loadItemDescriptions, loadItemIcons, loadItemNames, loadItems, loadMoveNames, type ItemTable,
+  loadBagSprite, loadDialogueBankOrNull, loadItemDescriptions, loadItemIcons, loadItemNames, loadItems,
+  loadMoveNames, loadMoves, type ItemTable, type MoveTable,
 } from '../../data/gameData'
-import { fillMenuText, loadUiText, MART_TEXT, YES_NO } from '../../data/uiText'
+import { fillMenuText, loadUiText, MART_TEXT, MONEY_WINDOW_TEXT, SELL_TEXT, YES_NO } from '../../data/uiText'
 import { ITEM_TABLE } from '../../import/platinum/itemTable'
 import {
   addRecord, RECORD_BATTLE_POINTS_SPENT, RECORD_MONEY_SPENT, RECORD_PREMIER_BALLS_RECEIVED,
 } from '../../engine/world/gameRecords'
 import { SFX } from '../../engine/audio/sfx'
-import { canFit } from '../../engine/bag/bag'
+import { canFit, POCKET_BERRIES } from '../../engine/bag/bag'
 import { tmMove } from '../../engine/bag/fieldUse'
+import { typeColor } from '../../engine/battle/typeColor'
 import { fieldScripts } from '../../engine/script/field'
-import type { ItemIcons } from '../../data/schema'
+import type { BagSprite, ItemIcons } from '../../data/schema'
 import { useMenuStore } from '../../state/menuStore'
 import { addBattlePoints, bpPriceOf, spendBattlePoints } from '../../engine/bag/frontierMart'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { world } from '../../engine/map/world'
 import { journalShopped } from '../../scene/journal'
+import { CountPicker } from '../common/CountPicker'
+import { GroundShadow } from '../common/GroundShadow'
+import { MoveFacts } from '../common/MoveFacts'
+import { bandAt } from '../common/pickBand'
+import { ScrollKnob, scrollList } from '../common/ScrollKnob'
+import { TypeBadge } from '../common/TypeBadge'
+import { pointerMoved } from '../pointerMoved'
+import { pickBand } from '../theme/window.css'
 import { clampCursor, scrollIntoView, useMenuKeys } from './useMenuKeys'
 import { itemIcon } from './itemIcon'
+import { pocketIcon } from './bagArt'
+import { berryNumber, pad2, tmNumber } from './bagRows'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
-import * as own from './dialog.css'
-import * as stage from './bagScreen.css'
-// 예·아니오 창은 파티 화면 것을 그대로 쓴다 — 오른쪽 아래 구석의 창 하나다
-import * as menu from './partyScreen.css'
-import { pointerMoved } from '../pointerMoved'
+import * as own from './shopScreen.css'
+import {
+  buyRows, canSell, entriesOf, receipt, sellRows, soldLine, type ShopRow,
+} from './shopRows'
 
-/** 가방과 같은 크기를 쓴다 — 같은 물건이 화면마다 다른 크기면 안 된다 */
-const LIST_ICON = 28
-const BIG_ICON = 96
-
-/** `Item_SellPrice` — 사는 값의 절반으로 쳐 준다 */
-const sellPrice = (price: number): number => Math.floor(price / 2)
+/** 목록 아이콘은 칸(32)의 1배, 영웅은 3배, 계산서의 영웅은 2배다 — 정수배만 쓴다 */
+const LIST_ICON = 32
+const HERO_ICON = 96
+const RECEIPT_ICON = 64
+const EMPTY_ICON = 64
+/** 목록이 한 번에 보이는 줄 수 (스크롤 눈금이 센다) */
+const VISIBLE_ROWS = 9
+/** 작별 말이 아무 키가 없어도 저절로 닫히는 시간 (ms) */
+const FAREWELL_MS = 900
 
 /** 열거형 이름으로 번호를 찾는다. 번호를 손으로 적으면 표와 어긋날 자리가 생긴다 */
 const itemId = (constant: string): number => ITEM_TABLE.findIndex(([name]) => name === constant)
@@ -92,9 +114,6 @@ export function stepCount(count: number, max: number, key: CountKey): number {
     case 'right': return Math.min(max, count + 10)
   }
 }
-
-/** 판 뒤의 한 줄. 파는 길은 가방 앱의 일이라(`ResolveSale`) 이 뱅크에 줄이 없다 */
-export const soldLine = (paid: string): string => `${paid}을 받았습니다`
 
 /**
  * 고른 물건에 처음 하는 말 (`Shop_SelectBuyMenu`).
@@ -145,7 +164,7 @@ interface Loaded {
   names: string[]
   descriptions: string[]
   icons: ItemIcons
-  /** 가방 뱅크(7). 소지금 이름표가 여기 있다 */
+  /** 가방 뱅크(7). 판다의 줄(74~77)과 BP 소지금 이름표(97)가 여기 있다 */
   bag: string[]
   /** 상점 뱅크(543) — 사는 흐름의 줄 전부 (`MART_TEXT`) */
   shop: string[]
@@ -153,8 +172,14 @@ interface Loaded {
   menu: string[]
   /** 주머니 이름 — 「…포켓에 넣었다」의 1번 칸 (`StringTemplate_SetBagPocketName`) */
   pockets: string[]
-  /** 기술 이름 — 기술머신 확인 줄의 3번 칸 */
-  moves: string[]
+  /** 기술 이름 — 기술머신 줄과 확인 줄의 3번 칸 */
+  moveNames: string[]
+  /** 기술 표 — 기술머신 정보 칸의 타입 · 분류 · 위력 · 명중 · PP. 못 받으면 정보 칸이 없다 */
+  moves: MoveTable | undefined
+  /** 주머니 아이콘 — 판다의 주머니 머리와 빈 목록. 못 받으면 아이콘 없이 선다 */
+  bagSprite: BagSprite | undefined
+  /** 「포인트 교환 코너」(롬 195의 21) — BP 가게의 머리. 못 받으면 소지금 이름표로 떨어진다 */
+  frontierTitle: string | undefined
 }
 
 type Tab = 'buy' | 'sell'
@@ -163,9 +188,11 @@ type Tab = 'buy' | 'sell'
  * 사고파는 단계 (`SHOP_STATE_*`).
  *
  * - `count` — 개수 창. 파는 쪽도 같은 창이다
- * - `confirm` — 결제 전 확인과 예·아니오. 커서는 **예**에서 시작한다
+ * - `confirm` — 결제 전 확인과 예·아니오. 커서는 **예**에서 시작한다. 파는 쪽도 같다(`sell`)
  * - `finish` — 끝 줄(거절 또는 산 것). A·B로 넘긴다. `count`는 산 개수고 거절이면 원작처럼 1 또는 0이다
  * - `premier` — 덤 줄
+ * - `sold` — 판 뒤의 줄 · 못 판다는 줄
+ * - `bye` — 작별. 아무 키에 바로 닫히고 0.9초 뒤에 저절로 닫힌다
  */
 type Step =
   | { kind: 'list' }
@@ -174,6 +201,7 @@ type Step =
   | { kind: 'finish'; line: string; item: number; count: number }
   | { kind: 'premier'; line: string }
   | { kind: 'sold'; line: string }
+  | { kind: 'bye'; line: string }
 
 export function ShopScreen() {
   const [data, setData] = useState<Loaded | null>(null)
@@ -184,6 +212,7 @@ export function ShopScreen() {
   const bought = useRef(0)
   const sold = useRef(0)
   const [cursor, setCursor] = useState(0)
+  const [scrolled, setScrolled] = useState(0)
   const [step, setStep] = useState<Step>({ kind: 'list' })
   const closeAll = useMenuStore((s) => s.closeAll)
   const stock = useMenuStore((s) => s.shopStock)
@@ -201,8 +230,7 @@ export function ShopScreen() {
   const purse = isBP ? battlePoints : money
   const priceOf = (item: number): number =>
     isBP ? bpPriceOf(item) : data?.items.get(item).price ?? 0
-  const amount = (value: number): string =>
-    isBP ? `${String(value)} BP` : `${value.toLocaleString('ko-KR')}원`
+  const pocketOf = (item: number): number => data?.items.get(item).pocket ?? 0
 
   useEffect(() => {
     let alive = true
@@ -210,11 +238,16 @@ export function ShopScreen() {
       loadItems(), loadItemNames(locale), loadItemDescriptions(locale),
       loadItemIcons(), loadUiText('bag', locale), loadUiText('shop', locale),
       loadUiText('menuEntries', locale), loadUiText('bagPockets', locale), loadMoveNames(locale),
+      // 아래 셋은 없어도 화면이 선다 — 그림 한 장 때문에 상점이 통째로 안 뜨면 안 된다
+      loadMoves().catch(() => undefined),
+      loadBagSprite().catch(() => undefined),
+      loadDialogueBankOrNull(locale, 195),
     ])
-      .then(([items, names, descriptions, icons, bagText, shopText, menuText, pockets, moves]) => {
+      .then(([items, names, descriptions, icons, bagText, shopText, menuText, pockets, moveNames, moves, bagSprite, frontier]) => {
         if (alive) {
           setData({
-            items, names, descriptions, icons, bag: bagText, shop: shopText, menu: menuText, pockets, moves,
+            items, names, descriptions, icons, bag: bagText, shop: shopText, menu: menuText, pockets, moveNames,
+            moves, bagSprite, frontierTitle: frontier?.[21] || undefined,
           })
         }
       })
@@ -222,40 +255,64 @@ export function ShopScreen() {
     return () => { alive = false }
   }, [locale])
 
-  /** 팔 수 있는 것 — 주머니를 통째로 편다. 중요한 물건은 못 판다 */
-  const sellable = bag.flatMap((slots, pocket) =>
-    slots.map((slot) => ({ ...slot, pocket })),
-  ).filter((slot) => data?.items.get(slot.item).preventToss !== 1)
-
-  const rows: { item: number; price: number; have: number }[] = tab === 'buy'
-    ? stock.map((item) => ({
-      item,
-      price: priceOf(item),
-      have: bag.flat().find((s) => s.item === item)?.count ?? 0,
-    }))
-    : sellable.map((slot) => ({
-      item: slot.item,
-      price: sellPrice(data?.items.get(slot.item).price ?? 0),
-      have: slot.count,
-    }))
+  /** 줄 모델 — 고를 수 있는 줄. 끝 「그만둔다」 줄이 맨 끝이다 (`shopStock` 차례 = 줄 차례) */
+  const rows: ShopRow[] = tab === 'buy'
+    ? buyRows(stock, priceOf, (item) => bag.flat().find((s) => s.item === item)?.count ?? 0, pocketOf)
+    // 중요한 물건은 못 판다 (`preventToss`) — 값이 0인 도구는 남기고 고르면 「파실 수 없습니다!」가 뜬다
+    : sellRows(bag, (item) => data?.items.get(item).preventToss !== 1, (item) => data?.items.get(item).price ?? 0)
 
   const at = Math.min(cursor, Math.max(0, rows.length - 1))
   const row = rows[at]
-  const unit = row?.price ?? 0
+  const itemRow = row?.kind === 'item' ? row : undefined
+  const onEnd = row?.kind === 'end'
+  const unit = itemRow?.price ?? 0
   const name = (item: number): string => data?.names[item] ?? ''
   /** 고를 수 있는 최대 개수 — 사는 쪽은 돈이, 파는 쪽은 가진 수가 막는다 */
-  const max = row === undefined ? 0 : tab === 'sell' ? row.have : purchaseMax(purse, unit)
+  const max = itemRow === undefined ? 0 : tab === 'sell' ? itemRow.have : purchaseMax(purse, unit)
+  const amount = (value: number): string => {
+    const text = value.toLocaleString('ko-KR')
+    return fillMenuText(data?.shop[isBP ? MART_TEXT.bpMoney : MONEY_WINDOW_TEXT.amount] ?? '', [text]) || text
+  }
   /** 상점 뱅크 한 줄을 채워 편다 */
   const say = (line: number, values: readonly string[]): string => flat(fillMenuText(data?.shop[line] ?? '', values))
+  /** 가방 뱅크 한 줄 (판다의 74~77) */
+  const sayBag = (line: number, values: readonly string[]): string => flat(fillMenuText(data?.bag[line] ?? '', values))
   const sound = (seq: number): void => { fieldScripts.services.sound?.playEffect(seq) }
-  const pocketOf = (item: number): number => data?.items.get(item).pocket ?? 0
+
+  /** 상점을 나간다 — 노트에 한 줄 (PARITY §7.4). ⚠️ **횟수로 가른다**: 두 번 이상 샀으면 「많이 샀다」다 */
+  const closeShop = (): void => {
+    journalShopped(world.mapId, bought.current, sold.current)
+    closeAll()
+  }
+  // 작별은 아무 키가 없어도 저절로 닫힌다 — 최신 `closeShop`을 ref로 부른다
+  const closeRef = useRef(closeShop)
+  closeRef.current = closeShop
+  const leaving = step.kind === 'bye'
+  useEffect(() => {
+    if (!leaving) return
+    const timer = setTimeout(() => { closeRef.current() }, FAREWELL_MS)
+    return () => { clearTimeout(timer) }
+  }, [leaving])
+
+  /** 「그만둔다」 줄 · X — 작별 말을 하고 닫는다 (`Shop_Exit`). 말이 없으면 바로 닫는다 */
+  const leave = (): void => {
+    const line = say(isBP ? MART_TEXT.byeBP : MART_TEXT.bye, [])
+    if (line === '') { closeShop(); return }
+    setStep({ kind: 'bye', line })
+  }
 
   /** Z — 목록에서 고른다 (`Shop_SelectBuyMenu`의 `default`) */
   const pick = (): boolean => {
     if (!row) return false
+    if (row.kind === 'end') { leave(); return true }
     if (tab === 'sell') {
-      if (max <= 0) return false
-      setStep({ kind: 'count', n: 1 })
+      // 값이 0이면 원작이 거절한다 (`ResolveSale`)
+      if (!canSell(row.price) || max <= 0) {
+        setStep({ kind: 'sold', line: sayBag(SELL_TEXT.cannot, [name(row.item)]) })
+        return false
+      }
+      // 가진 것이 하나뿐이면 개수를 안 묻는다
+      setStep(max === 1 ? { kind: 'confirm', n: 1, yes: true } : { kind: 'count', n: 1 })
       return true
     }
     const line = pickLine(purse, unit, isBP)
@@ -270,10 +327,10 @@ export function ShopScreen() {
 
   /** 개수를 정했다 (`Shop_SelectPurchaseMenu`의 A → `Shop_ShowPurchaseMessage`) */
   const decideCount = (n: number): void => {
-    if (!row) return
-    if (tab === 'sell') { sell(n); return }
-    if (!canFit(useSaveStore.getState().bag, pocketOf(row.item), row.item, n)) {
-      setStep({ kind: 'finish', line: say(MART_TEXT.noRoom, []), item: row.item, count: 0 })
+    if (!itemRow) return
+    if (tab === 'sell') { setStep({ kind: 'confirm', n, yes: true }); return }
+    if (!canFit(useSaveStore.getState().bag, pocketOf(itemRow.item), itemRow.item, n)) {
+      setStep({ kind: 'finish', line: say(MART_TEXT.noRoom, []), item: itemRow.item, count: 0 })
       return
     }
     setStep({ kind: 'confirm', n, yes: true })
@@ -285,23 +342,23 @@ export function ShopScreen() {
    * 계산대 소리가 이 순간 한 번 운다. 돈과 BP는 기록 칸이 따로다
    */
   const buy = (n: number): void => {
-    if (!row || !data) return
+    if (!itemRow || !data) return
     const save = useSaveStore.getState()
-    const pocket = pocketOf(row.item)
+    const pocket = pocketOf(itemRow.item)
     const cost = unit * n
     if (isBP) {
-      if (battlePoints < cost) { setStep({ kind: 'finish', line: say(MART_TEXT.noBP, []), item: row.item, count: 1 }); return }
+      if (battlePoints < cost) { setStep({ kind: 'finish', line: say(MART_TEXT.noBP, []), item: itemRow.item, count: 1 }); return }
       useSaveStore.setState((st) => ({ battlePoints: spendBattlePoints(st.battlePoints, cost) }))
     } else if (!save.spendMoney(cost)) {
-      setStep({ kind: 'finish', line: say(MART_TEXT.noMoney, []), item: row.item, count: 1 })
+      setStep({ kind: 'finish', line: say(MART_TEXT.noMoney, []), item: itemRow.item, count: 1 })
       return
     }
-    if (!save.addItem(pocket, row.item, n)) {
+    if (!save.addItem(pocket, itemRow.item, n)) {
       // 칸은 개수를 정할 때 봤다. 그새 바뀌었으면 값을 되돌린다 — 안 그러면 낸 것만 사라진다
       if (isBP) {
         useSaveStore.setState((st) => ({ battlePoints: addBattlePoints(st.battlePoints, cost) }))
       } else save.addMoney(cost)
-      setStep({ kind: 'finish', line: say(MART_TEXT.noRoom, []), item: row.item, count: 0 })
+      setStep({ kind: 'finish', line: say(MART_TEXT.noRoom, []), item: itemRow.item, count: 0 })
       return
     }
     bought.current++
@@ -311,21 +368,24 @@ export function ShopScreen() {
     }))
     setStep({
       kind: 'finish',
-      line: say(MART_TEXT.thanks, [name(row.item), data.pockets[pocket] ?? '']),
-      item: row.item,
+      line: say(MART_TEXT.thanks, [name(itemRow.item), data.pockets[pocket] ?? '']),
+      item: itemRow.item,
       count: n,
     })
   }
 
-  /** 판다. 파는 길은 원작 가방 앱의 것이라(`ResolveSale`) 확인 없이 바로 판다 — 이 화면이 그 앱을 대신한다 */
+  /** 판다. 확인(롬 76)에 예라고 했을 때만 온다 — 파는 길은 원작 가방 앱의 것이라(`ResolveSale`) 이 화면이 그 앱을 대신한다 */
   const sell = (n: number): void => {
-    if (!row) return
+    if (!itemRow) return
     const save = useSaveStore.getState()
-    if (!save.removeItem(pocketOf(row.item), row.item, n)) { setStep({ kind: 'sold', line: '팔 수 없습니다' }); return }
+    if (!save.removeItem(pocketOf(itemRow.item), itemRow.item, n)) {
+      setStep({ kind: 'sold', line: sayBag(SELL_TEXT.cannot, [name(itemRow.item)]) })
+      return
+    }
     save.addMoney(unit * n)
     sold.current++
     sound(SFX.CASH_REGISTER)
-    setStep({ kind: 'sold', line: soldLine(amount(unit * n)) })
+    setStep({ kind: 'sold', line: soldLine(data?.bag ?? [], SELL_TEXT.done, name(itemRow.item), (unit * n).toLocaleString('ko-KR')) })
   }
 
   /**
@@ -409,137 +469,290 @@ export function ShopScreen() {
         case 'list': return pick()
         case 'count': decideCount(step.n); return true
         case 'confirm':
-          if (step.yes) buy(step.n)
-          else { setCursor(at); setStep({ kind: 'list' }) }
+          if (!step.yes) { setCursor(at); setStep({ kind: 'list' }); return true }
+          if (tab === 'sell') sell(step.n)
+          else buy(step.n)
           return true
+        // 작별은 아무 키에 바로 닫힌다 — 하네스가 두 번째 X를 소비하는 자리가 어긋나지 않게
+        case 'bye': closeShop(); return false
         // 끝 줄은 A·B로 넘기고 소리가 없다 (`JOY_NEW(PAD_BUTTON_A | PAD_BUTTON_B)`)
         default: dismiss(); return false
       }
     },
     cancel: () => {
       switch (step.kind) {
-        case 'list':
-          // 상점을 나갈 때 노트에 한 줄 (PARITY §7.4). ⚠️ **횟수로 가른다** —
-          // 두 번 이상 샀으면 「많이 샀다」다
-          journalShopped(world.mapId, bought.current, sold.current)
-          closeAll()
-          return true
+        case 'list': leave(); return true
         // 개수 창과 예·아니오의 B는 목록으로 물러난다 (`MENU_CANCEL`)
         case 'count': case 'confirm': setStep({ kind: 'list' }); return true
+        case 'bye': closeShop(); return false
         default: dismiss(); return false
       }
     },
   })
 
-  /** 아래 글상자 — 지금 단계의 말 */
-  const message = (): string | null => {
-    if (!row) return null
-    switch (step.kind) {
-      case 'list': return null
-      case 'count':
-        return tab === 'buy' ? say(isBP ? MART_TEXT.bpHowMany : MART_TEXT.howMany, [name(row.item)]) : null
-      case 'confirm': return null
-      default: return step.line
-    }
-  }
-
-  /** 결제 전 확인 줄 — 예·아니오 창 위에 선다. 칸은 0 도구 · 1 개수 · 2 값 · 3 기술이다 */
+  // ── 아래 띠 — 지금 단계의 말 ─────────────────────────────────────────────
+  /** 결제 전 확인 줄 — 칸은 0 도구 · 1 개수 · 2 값 · 3 기술이다 */
   const confirmAsk = (n: number): string => {
-    if (!row || !data) return ''
-    const move = tmMove(data.items.get(row.item), data.items.tmMoves)
-    return say(confirmLine(row.item, isBP), [
-      name(row.item), String(n), (unit * n).toLocaleString('ko-KR'), move === null ? '' : data.moves[move] ?? '',
+    if (!itemRow || !data) return ''
+    if (tab === 'sell') return sayBag(SELL_TEXT.ask, [(unit * n).toLocaleString('ko-KR')])
+    const move = tmMove(data.items.get(itemRow.item), data.items.tmMoves)
+    return say(confirmLine(itemRow.item, isBP), [
+      name(itemRow.item), String(n), (unit * n).toLocaleString('ko-KR'), move === null ? '' : data.moveNames[move] ?? '',
     ])
   }
+  const clerk = ((): { text: string, tone: 'clerk' | 'refuse', next: boolean } | null => {
+    switch (step.kind) {
+      case 'list':
+        // 끝 줄에 서면 점원이 묻는다 (롬 2)
+        return onEnd ? { text: say(MART_TEXT.more, []), tone: 'clerk', next: false } : null
+      case 'count':
+        if (!itemRow) return null
+        return {
+          text: tab === 'buy'
+            ? say(isBP ? MART_TEXT.bpHowMany : MART_TEXT.howMany, [name(itemRow.item)])
+            : sayBag(SELL_TEXT.howMany, [name(itemRow.item)]),
+          tone: 'clerk',
+          next: false,
+        }
+      case 'confirm': return { text: confirmAsk(step.n), tone: 'clerk', next: false }
+      case 'finish': {
+        const refused = step.line === say(MART_TEXT.noMoney, []) || step.line === say(MART_TEXT.noBP, [])
+        return { text: step.line, tone: refused ? 'refuse' : 'clerk', next: true }
+      }
+      case 'premier': case 'sold': return { text: step.line, tone: 'clerk', next: true }
+      case 'bye': return { text: step.line, tone: 'clerk', next: false }
+    }
+  })()
 
-  const counting = step.kind === 'count'
-  const note = message()
+  // ── 계산대 ───────────────────────────────────────────────────────────────
+  const walletLabel = isBP ? (data?.bag[97] ?? '').split('\n')[0] ?? '' : data?.shop[MONEY_WINDOW_TEXT.label] ?? ''
+  const wallet = amount(purse)
+  const tmMoveId = itemRow && data ? tmMove(data.items.get(itemRow.item), data.items.tmMoves) : null
+  const moveRow = tmMoveId !== null ? data?.moves?.byId.get(tmMoveId) : undefined
+  const heroName = tmMoveId !== null && data?.moveNames[tmMoveId] ? data.moveNames[tmMoveId] : itemRow ? name(itemRow.item) : ''
+  const poolName = itemRow ? data?.pockets[itemRow.pocket] ?? '' : ''
+  const buying = step.kind === 'count' || step.kind === 'confirm'
+  const canAfford = tab === 'sell' || purse >= unit
+
+  const renderCounter = () => {
+    // 끝 줄 · 빈 판다 — 지갑만 크게 선다
+    if (!itemRow) {
+      return (
+        <div className={own.walletBig}>
+          <span>{walletLabel}</span>
+          <span key={purse} className={own.walletBigValue}>{wallet}</span>
+        </div>
+      )
+    }
+    if (buying) {
+      const n = step.kind === 'count' || step.kind === 'confirm' ? step.n : 1
+      const sum = receipt(purse, unit, n, tab === 'sell')
+      const sign = sum.delta < 0 ? '−' : '+'
+      const bonus = tab === 'buy' ? premierBonus(itemRow.item, n) : null
+      const have = tab === 'sell' ? `${String(itemRow.have)} → ${String(itemRow.have - n)}` : `${String(itemRow.have)} → ${String(itemRow.have + n)}`
+      return (
+        <div className={own.receipt}>
+          <div className={own.receiptHead}>
+            <span className={own.heroIcon} style={itemIcon(data?.icons, itemRow.item, RECEIPT_ICON)} aria-hidden />
+            <span>
+              <div className={own.heroName} style={{ textAlign: 'left' }}>{heroName}</div>
+              {/* 롬 20의 숫자 칸에 「5 → 8」을 넣는다 — 우리 말을 안 붙인다 */}
+              <div className={own.heroSub} style={{ textAlign: 'left' }}>
+                {poolName} · {fillMenuText(data?.shop[MART_TEXT.inBag] ?? '', [have])}
+              </div>
+            </span>
+          </div>
+          <div className={own.receiptRow}>
+            <span className={own.receiptPurse}>{walletLabel}</span>
+            <span className={own.receiptPurse}>{wallet}</span>
+          </div>
+          <div className={own.receiptRow}>
+            {step.kind === 'count'
+              ? <CountPicker value={n} min={1} max={Math.max(1, max)} />
+              : <span className={own.receiptDelta}>{`×${String(n).padStart(3, '0')}`}</span>}
+            <span className={own.receiptDelta}>{sign}{amount(Math.abs(sum.delta))}</span>
+          </div>
+          <div className={`${own.receiptRow} ${own.receiptAfter}`}>{amount(sum.after)}</div>
+          {bonus !== null && (
+            <div className={own.bonus}>
+              <span className={css.icon} style={itemIcon(data?.icons, bonus, LIST_ICON)} aria-hidden />
+              {name(bonus)} +1
+            </div>
+          )}
+          {step.kind === 'confirm' && (
+            <div className={own.yesNo}>
+              <span className={pickBand.y} aria-hidden style={bandAt('y', step.yes ? 0 : 1)}>
+                <span className={css.caret} />
+              </span>
+              {[true, false].map((yes) => (
+                <div
+                  key={String(yes)}
+                  className={step.yes === yes ? `${own.yesNoItem} ${own.yesNoOn}` : own.yesNoItem}
+                  onPointerMove={(e) => { if (pointerMoved(e) && step.yes !== yes) setStep({ ...step, yes }) }}
+                  onClick={() => {
+                    setStep({ ...step, yes })
+                    if (yes) { if (tab === 'sell') sell(step.n); else buy(step.n) } else { setCursor(at); setStep({ kind: 'list' }) }
+                  }}
+                >
+                  {data?.menu[yes ? YES_NO.yes : YES_NO.no] ?? ''}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )
+    }
+    // 목록 단계 — 지갑 · 영웅 · 값
+    return (
+      <>
+        <div className={own.wallet}>
+          <span>{walletLabel}</span>
+          <span key={purse} className={own.walletValue}>{wallet}</span>
+        </div>
+        <div className={own.hero}>
+          <span className={own.heroIcon} style={itemIcon(data?.icons, itemRow.item, HERO_ICON)} aria-hidden />
+          <GroundShadow w={112} h={14} />
+          <div className={own.heroName}>{heroName}</div>
+          {/* 기술머신은 이름이 기술이라 도구 이름이 한 줄 밑으로 내려간다 */}
+          {tmMoveId !== null && <div className={own.heroSub}>{name(itemRow.item)}</div>}
+          {tab === 'buy' && (
+            <div className={own.heroSub}>
+              {poolName} · {fillMenuText(data?.shop[MART_TEXT.inBag] ?? '', [String(itemRow.have)])}
+            </div>
+          )}
+        </div>
+        <div className={canAfford ? own.bigPrice : `${own.bigPrice} ${own.bigPriceBad}`}>
+          {amount(unit)}
+        </div>
+        {moveRow && (
+          <div className={own.moveInfo}>
+            <TypeBadge type={moveRow.type} />
+            <MoveFacts move={moveRow} layout="column" description={false} />
+          </div>
+        )}
+      </>
+    )
+  }
+
+  const entries = entriesOf(rows, tab === 'sell')
+  const kind = isBP ? 'bp' : tab
+  const foot = step.kind === 'count'
+    ? '↑↓ 개수 · ←→ ±10 · Z 결정 · X 그만둔다'
+    : step.kind === 'confirm'
+      ? '↑↓ 고르기 · Z 결정 · X 그만둔다'
+      : step.kind !== 'list'
+        ? 'Z 다음'
+        : isBP
+          ? '↑↓ 고르기 · Z 결정 · X 닫기'
+          : '←→ 산다/판다 · ↑↓ 고르기 · Z 결정 · X 닫기'
 
   return (
     <MenuScreen
-      title={tab === 'buy' ? '산다' : '판다'}
-      note={isBP ? amount(battlePoints) : `${data?.bag[78] ?? '용돈'} ${amount(money)}`}
-      foot={counting
-        ? `↑↓ 개수 (최대 ${String(max)}) · ←→ ±10 · Z 결정 · X 그만둔다`
-        : step.kind === 'confirm'
-          ? '↑↓ 고르기 · Z 결정 · X 그만둔다'
-          : step.kind !== 'list'
-            ? 'Z 다음'
-            : isBP
-              ? `↑↓ 고르기 · Z 결정 · X 닫기 · ${String(rows.length)}종`
-              : `←→ 산다/판다 · ↑↓ 고르기 · Z 결정 · X 닫기 · ${String(rows.length)}종`}
+      title={kind === 'sell' ? '판다' : kind === 'bp' ? (data?.frontierTitle ?? walletLabel) : '산다'}
+      {...(isBP ? {} : {
+        tabs: {
+          pages: [{ key: 'buy', label: '산다' }, { key: 'sell', label: '판다' }],
+          at: tab === 'buy' ? 0 : 1,
+          onPick: (i: number) => { if (step.kind === 'list' && (i === 0) !== (tab === 'buy')) switchTab() },
+        },
+      })}
+      note={`${String(rows.length - 1)}종`}
+      foot={foot}
     >
-      {!isBP && (
-        <div className={css.tabs}>
-          <span className={tab === 'buy' ? css.tab.on : css.tab.off}>산다</span>
-          <span className={tab === 'sell' ? css.tab.on : css.tab.off}>판다</span>
-        </div>
-      )}
-
-      {/* 예·아니오 창이 이 칸의 오른쪽 아래 구석에 붙는다 */}
-      <div className={stage.anchorStage}>
-        <div className={css.list}>
-          {rows.length === 0 && <div className={css.empty}>아무것도 없다</div>}
-          {rows.map((r, i) => (
-            <div
-              key={`${r.item}-${String(i)}`}
-              className={i === at ? css.rowOn : css.row}
-              ref={i === at ? scrollIntoView : undefined}
-            >
-              {i === at && <span className={css.caret} aria-hidden />}
-              <span className={css.face}>
-                <span className={css.icon} style={itemIcon(data?.icons, r.item, LIST_ICON)} aria-hidden />
-                <span className={css.label}>{name(r.item)}</span>
-                <span className={css.count}>
-                  {r.have > 0 && <span style={{ opacity: 0.6, marginRight: 10 }}>×{r.have}</span>}
-                  {amount(r.price)}
-                </span>
-              </span>
-            </div>
-          ))}
-        </div>
-
-        <div className={css.detail}>
-          {row && (
-            <>
-              <div className={css.hero}>
-                <span className={css.heroIcon} style={itemIcon(data?.icons, row.item, BIG_ICON)} aria-hidden />
-                <span className={css.heroText}>
-                  <span className={css.heroName}>{name(row.item)}</span>
-                  <span className={css.heroSub}>{amount(unit)}</span>
-                </span>
+      <div className={own.stage}>
+        <div className={own.ledgerBox}>
+          <div
+            key={kind}
+            className={`${own.ledger} ${scrollList}`}
+            onScroll={(e) => { setScrolled(Math.round(e.currentTarget.scrollTop / own.ROW)) }}
+          >
+            {entries.map((entry) => {
+              if (entry.kind === 'head') {
+                // 판다 목록은 주머니별로 가른다 — 머리는 판이 아니라 `[아이콘 16] 이름 ───`이다
+                return (
+                  <div key={`head-${String(entry.pocket)}`} className={css.sectionHead}>
+                    <span style={pocketIcon(data?.bagSprite, entry.pocket, false, 16)} aria-hidden />
+                    {data?.pockets[entry.pocket] ?? ''}
+                  </div>
+                )
+              }
+              const r = entry.row
+              const on = entry.index === at
+              if (r.kind === 'end') {
+                return (
+                  <div
+                    key="end"
+                    className={on ? css.rowOn : css.row}
+                    ref={on ? scrollIntoView : undefined}
+                    {...(on ? { 'data-on': '' } : {})}
+                  >
+                    {on && <span className={css.caret} aria-hidden />}
+                    <span className={own.line}>
+                      <span className={own.iconSlot} aria-hidden />
+                      <span className={css.label}>{data?.shop[MART_TEXT.closeRow] ?? ''}</span>
+                    </span>
+                  </div>
+                )
+              }
+              const item = data?.items.get(r.item)
+              const rowMove = item && data ? tmMove(item, data.items.tmMoves) : null
+              const tm = rowMove !== null && item !== undefined
+              const rowName = tm && data?.moveNames[rowMove] ? data.moveNames[rowMove] : name(r.item)
+              const number = tm && item ? `${item.constant.startsWith('ITEM_HM') ? 'HM' : 'No'}${pad2(tmNumber(item) ?? 0)}` : null
+              const berry = r.pocket === POCKET_BERRIES && !tm
+              const tint = tm && data?.moves
+                ? { '--tint': typeColor(data.moves.byId.get(rowMove)?.type ?? 0) } as CSSProperties
+                : undefined
+              const bad = tab === 'buy' && purse < r.price
+              return (
+                <div
+                  key={`${String(r.item)}-${String(entry.index)}`}
+                  className={on ? css.rowOn : css.row}
+                  ref={on ? scrollIntoView : undefined}
+                  {...(on ? { 'data-on': '' } : {})}
+                >
+                  {on && <span className={css.caret} aria-hidden />}
+                  <span className={own.line}>
+                    {number !== null && <span className={own.number}>{number}</span>}
+                    {tm
+                      ? <span className={own.typeTick} style={tint} aria-hidden />
+                      : (
+                        <>
+                          {berry && <span className={own.number}>No{pad2(berryNumber(r.item))}</span>}
+                          <span className={css.icon} style={itemIcon(data?.icons, r.item, LIST_ICON)} aria-hidden />
+                        </>
+                      )}
+                    {rowName === '' ? <span className={own.nameSkeleton} aria-hidden /> : <span className={css.label}>{rowName}</span>}
+                    <span className={own.lead} aria-hidden />
+                    <span className={own.have}>{r.have > 0 ? `×${String(r.have)}` : ''}</span>
+                    <span className={bad ? `${own.price} ${own.priceBad}` : own.price}>{amount(r.price)}</span>
+                  </span>
+                </div>
+              )
+            })}
+            {/* 팔 것이 없다 — 「그만둔다」 한 줄 밑에 흐린 도구 주머니 아이콘 */}
+            {rows.length === 1 && (
+              <div className={own.emptyArt} aria-hidden>
+                <span style={pocketIcon(data?.bagSprite, 0, false, EMPTY_ICON)} />
               </div>
-              <div className={css.detailText}>{data?.descriptions[row.item] ?? ''}</div>
-            </>
-          )}
-          {counting && row && (
-            // 개수 창 셋 (`Shop_ShowQtyWithinInventory` · `…TotalItemPurchase`) — 가진 수 · x개수 · 합계.
-            // 개수는 원작처럼 두 자리를 0으로 채운다
-            <div className={own.prompt}>
-              {tab === 'buy' && <>{fillMenuText(data?.shop[MART_TEXT.inBag] ?? '', [String(row.have)])}<br /></>}
-              {fillMenuText(data?.shop[MART_TEXT.quantity] ?? '', [String(step.n).padStart(2, '0')])}
-              {'  '}
-              {fillMenuText(data?.shop[isBP ? MART_TEXT.bpTotal : MART_TEXT.total] ?? '',
-                [(unit * step.n).toLocaleString('ko-KR')])}
-            </div>
-          )}
-          {note !== null && <div className={own.help}>{note}</div>}
-        </div>
-
-        {step.kind === 'confirm' && (
-          <div className={menu.choices}>
-            <div className={menu.choiceAsk}>{confirmAsk(step.n)}</div>
-            {[true, false].map((yes) => (
-              <div
-                key={String(yes)}
-                className={step.yes === yes ? menu.choiceOn : menu.choice}
-                onPointerMove={(e) => { if (pointerMoved(e) && step.yes !== yes) setStep({ ...step, yes }) }}
-              >
-                {data?.menu[yes ? YES_NO.yes : YES_NO.no] ?? ''}
-              </div>
-            ))}
+            )}
           </div>
-        )}
+          <ScrollKnob at={scrolled} visible={VISIBLE_ROWS} total={entries.length} />
+        </div>
+
+        <div className={own.counter}>{renderCounter()}</div>
+
+        {/* 아래 띠 — 글 한 덩이. 점원의 말은 Galmuri, 도구 설명은 Pretendard로 말하는 이가 갈린다 */}
+        <div className={own.band}>
+          {clerk !== null
+            ? (
+              <>
+                <div className={own.bandText[clerk.tone]}>{clerk.text}</div>
+                {clerk.next && <span className={own.nextMark} aria-hidden />}
+              </>
+            )
+            : itemRow ? <div className={own.bandText.desc}>{data?.descriptions[itemRow.item] ?? ''}</div> : null}
+        </div>
       </div>
     </MenuScreen>
   )
