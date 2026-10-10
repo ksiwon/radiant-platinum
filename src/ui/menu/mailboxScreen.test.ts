@@ -128,3 +128,12 @@ describe('편지지 (`MailSheet`)', () => {
     expect(text).toContain('빛나')
   })
 })
+
+describe('낱말 위치 글 (`positionText`)', () => {
+  it('세 언어로 쓴다 — 한국어 문장이 en · ja에 새지 않는다', async () => {
+    const { positionText } = await import('./EasyChatFrame')
+    expect(positionText(47, 17, 'ko')).toBe('47개 중 17번째')
+    expect(positionText(47, 17, 'en')).toBe('17 of 47')
+    expect(positionText(47, 17, 'ja')).toBe('47件中 17番目')
+  })
+})

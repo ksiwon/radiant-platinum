@@ -11,10 +11,10 @@
 // 우리가 정한 상한이 아니다.
 import { useEffect, useState } from 'react'
 import {
-  loadBoxWallpapers, loadPokeIcons, loadSpecies, loadSpeciesNames, type SpeciesTable,
+  loadBoxWallpapers, loadPokeIcons, loadSpecies, type SpeciesTable,
 } from '../../data/gameData'
 import type { BoxWallpapers, PokeIcons } from '../../data/schema'
-import { BOX_TEXT, loadUiText, NAMING_TEXT } from '../../data/uiText'
+import { loadUiText, NAMING_TEXT } from '../../data/uiText'
 import { genderOf } from '../../engine/pokemon/instance'
 import { useMenuStore } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
@@ -49,8 +49,6 @@ export function NameScreen() {
   const [icons, setIcons] = useState<PokeIcons>()
   const [walls, setWalls] = useState<BoxWallpapers>()
   const [species, setSpecies] = useState<SpeciesTable>()
-  const [speciesNames, setSpeciesNames] = useState<readonly string[]>([])
-  const [boxText, setBoxText] = useState<readonly string[]>([])
 
   useEffect(() => {
     let alive = true
@@ -75,11 +73,10 @@ export function NameScreen() {
   useEffect(() => {
     let alive = true
     void Promise.all([
-      loadPokeIcons(), loadBoxWallpapers(), loadSpecies(), loadSpeciesNames(locale),
-      loadUiText('storageSystem', locale),
-    ]).then(([i, w, sp, names, box]) => {
+      loadPokeIcons(), loadBoxWallpapers(), loadSpecies(),
+    ]).then(([i, w, sp]) => {
       if (!alive) return
-      setIcons(i); setWalls(w); setSpecies(sp); setSpeciesNames(names); setBoxText(box)
+      setIcons(i); setWalls(w); setSpecies(sp)
     }).catch(() => { /* 아이콘 없이도 입력은 선다 */ })
     return () => { alive = false }
   }, [locale])
@@ -127,10 +124,6 @@ export function NameScreen() {
   const mon = what.kind === 'pokemon' ? party[what.slot] : undefined
   const ratio = mon && species ? species.of(mon).genderRatio : undefined
   const gender = mon && ratio !== undefined ? genderOf(mon.pid, ratio) : undefined
-  // 비우면 무엇이 되는가 — 규칙 한 줄. 석판은 지금 이름이 그대로라 적을 것이 없다
-  const fallback = mon
-    ? speciesNames[mon.species] ?? ''
-    : what.kind === 'box' ? boxText[BOX_TEXT.boxName + what.slot] ?? '' : ''
   const length = [...draft].length
 
   return (
@@ -181,7 +174,6 @@ export function NameScreen() {
             <span className={own.count}>{length} / {what.max}</span>
           </div>
           <div className={own.skipRow}>
-            <span>{fallback !== '' ? `비워 두면 ${fallback}` : ''}</span>
             {/*
               안 짓고 넘어갈 수 있어야 한다. 원작도 여기서 B를 누르면 별명 없이
               지나가고, 스크립트가 그 답(1)으로 갈라진다

@@ -128,7 +128,7 @@ export const count = style({
 
 export const skipRow = style({
   display: 'flex',
-  justifyContent: 'space-between',
+  justifyContent: 'flex-end',
   alignItems: 'center',
   fontSize: TEXT.tiny,
   color: vars.ink.faint,

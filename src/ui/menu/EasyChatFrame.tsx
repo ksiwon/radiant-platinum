@@ -7,6 +7,7 @@
 // - 낱말 목록은 스크롤 목록이다. 고른 줄은 `scrollIntoView`로 보이게 하고 위치는 `ScrollKnob`과 머리의 「n개 중 m번째」가 보인다.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ScrollKnob } from '../common/ScrollKnob'
+import { gameLocale } from '../../state/optionsStore'
 import * as css from './easyChatFrame.css'
 
 export interface FrameGroups {
@@ -25,8 +26,15 @@ export interface FrameWords {
   focus: boolean
 }
 
-/** 목록 칸의 이름표 — 롬 글이 아니라 칸의 뜻을 말하는 말이다 */
-const HEAD = { groups: '무리', words: '단어' } as const
+/**
+ * 「n개 중 m번째」 — 롬에 없는 말이라 세 언어를 여기서 적는다. 칸 머리의 「무리」 · 「단어」 이름표는 롬에도 없고
+ * 뜻이 칸 자체로 읽히므로 두지 않는다
+ */
+export function positionText(total: number, at: number, locale: string): string {
+  const n = String(total)
+  const m = String(at)
+  return locale === 'en' ? `${m} of ${n}` : locale === 'ja' ? `${n}件中 ${m}番目` : `${n}개 중 ${m}번째`
+}
 
 export function EasyChatFrame(
   { sheet, sheetWidth, below, groups, words, dim = false, popover }: {
@@ -67,7 +75,7 @@ export function EasyChatFrame(
       </div>
 
       <div className={css.col}>
-        <div className={css.colHead}>{HEAD.groups}</div>
+        <div className={css.colHead} aria-hidden />
         <ul className={css.list}>
           {groups.labels.map((label, i) => {
             const here = i === groups.at
@@ -87,8 +95,8 @@ export function EasyChatFrame(
 
       <div className={`${css.col} ${css.wordsCol}`}>
         <div className={css.colHead}>
-          <span>{HEAD.words}</span>
-          {total > 0 && words.focus && <span>{`${String(total)}개 중 ${String(words.at + 1)}번째`}</span>}
+          <span />
+          {total > 0 && words.focus && <span>{positionText(total, words.at + 1, gameLocale())}</span>}
         </div>
         <div className={css.list}>
           <div ref={scroller} className={css.scroller} onScroll={measure}>
