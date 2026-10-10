@@ -86,7 +86,7 @@ export const MISFIT_ROOMS: ReadonlySet<string> = new Set([
  * · `c05r0601`(맵 110) — `r218r0101`(218번 도로 게이트)을 빌렸는데 원작은 북쪽 벽에 알코브(x 8~10 · z 3~4)가 있고 사람이
  *   (9, 4)에 선다. 빌린 방은 북쪽 벽이 z 4.5 통벽이라 그 사람이 벽 속에 묻힌다
  */
-export const NO_BORROW_MAPS: ReadonlySet<string> = new Set(['c05r0601'])
+const NO_BORROW_MAPS: ReadonlySet<string> = new Set(['c05r0601'])
 
 /**
  * **칸 단위로 통째 밀려 지어진 방** — 그만큼 옮겨 놓는다 (칸, [x, z]). 잰 법: 바깥으로 나가는 문 워프 칸 한가운데 ↔ 같은 x의
