@@ -2962,8 +2962,11 @@ export async function driveStory(page, {
     let menu = null
     // ⚠️ **안 열렸으면 한 번 더 누른다.** 맵에 막 들어선 자리(나무를 베고 빌딩에 든 직후 등)에서
     // 첫 C가 씹혀 「시작 메뉴가 안 열렸다 ([])」로 사탕 셋이 다 빠진 판이 있었다 (`journey-3cdded9-full`)
-    for (let attempt = 0; attempt < 2 && (menu === null || menu.n === 0); attempt++) {
-      if (attempt > 0) { await settle(); await page.waitForTimeout(800); await tap('KeyC') }
+    // ⚠️ **네 번까지, 사이에 글을 걷고 메뉴를 닫는다.** 실측(2026-10-10 연쇄 P5 · b536ac7): 기술삭제사 집에서 운하시티로
+    // 막 걸어 나온 자리에서 두 번 다 안 열려(「시작 메뉴에 공중날기가 없다 ([])」) 물가시티까지 걸어가다 207번도로 비탈에서
+    // 30분을 맴돌았다. 시작 메뉴는 글이 오기 전에는 판을 안 그리므로(`StartMenu`) 바쁜 맵에서는 줄이 늦게 선다
+    for (let attempt = 0; attempt < 4 && (menu === null || menu.n === 0); attempt++) {
+      if (attempt > 0) { await closeMenus(); await clearTalk(); await settle(); await page.waitForTimeout(800); await tap('KeyC') }
       for (let i = 0; i < 20 && Date.now() < till; i++) {
         menu = await rowAt().catch(() => null)
         if (menu !== null && menu.n > 0) break
@@ -3131,8 +3134,11 @@ export async function driveStory(page, {
     let menu = null
     // ⚠️ **안 열렸으면 한 번 더 누른다.** 맵에 막 들어선 자리(나무를 베고 빌딩에 든 직후 등)에서
     // 첫 C가 씹혀 「시작 메뉴가 안 열렸다 ([])」로 사탕 셋이 다 빠진 판이 있었다 (`journey-3cdded9-full`)
-    for (let attempt = 0; attempt < 2 && (menu === null || menu.n === 0); attempt++) {
-      if (attempt > 0) { await settle(); await page.waitForTimeout(800); await tap('KeyC') }
+    // ⚠️ **네 번까지, 사이에 글을 걷고 메뉴를 닫는다.** 실측(2026-10-10 연쇄 P5 · b536ac7): 기술삭제사 집에서 운하시티로
+    // 막 걸어 나온 자리에서 두 번 다 안 열려(「시작 메뉴에 공중날기가 없다 ([])」) 물가시티까지 걸어가다 207번도로 비탈에서
+    // 30분을 맴돌았다. 시작 메뉴는 글이 오기 전에는 판을 안 그리므로(`StartMenu`) 바쁜 맵에서는 줄이 늦게 선다
+    for (let attempt = 0; attempt < 4 && (menu === null || menu.n === 0); attempt++) {
+      if (attempt > 0) { await closeMenus(); await clearTalk(); await settle(); await page.waitForTimeout(800); await tap('KeyC') }
       for (let i = 0; i < 20 && Date.now() < till; i++) {
         menu = await rowAt().catch(() => null)
         if (menu !== null && menu.n > 0) break
