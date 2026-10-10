@@ -28,7 +28,7 @@
 // 키캡)와 만든 사람 화면의 위계(로고 · 세 칸 맞춤 · 묶음 페이드)다 (`records` §4.5).
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { music } from '../../engine/audio/music'
-import { creditsImage, loadCreditRows, loadCreditsAtlas } from '../../data/gameData'
+import { creditsImage, loadCreditRows, loadCreditsAtlas, type DataLocale } from '../../data/gameData'
 import type { CreditRows, CreditsAtlas } from '../../data/schema'
 import { atlasUrl } from '../../data/providers/atlas'
 import { loadUiText } from '../../data/uiText'
@@ -82,12 +82,60 @@ export const MAKER = {
 } as const
 
 /**
+ * 만든 사람 화면의 글 세 언어. 이름 · 제목 · 주소는 언어와 무관해 `MAKER`에 한 번만 두고, 풀어 쓴 글만 갈린다.
+ * 한국어는 `MAKER`의 글 그대로다
+ */
+export interface MakerText {
+  tagline: string
+  about: string
+  labelMaker: string
+  labelGames: string
+  labelThanks: string
+  /** `MAKER.games`와 같은 차례 */
+  gameAbouts: readonly [string, string]
+  thanks: string
+  notice: readonly [string, string, string]
+}
+
+export const MAKER_TEXT: Record<DataLocale, MakerText> = {
+  ko: {
+    tagline: MAKER.tagline, about: MAKER.about, labelMaker: '만든 사람', labelGames: '다른 게임', labelThanks: '원작 해석',
+    gameAbouts: [MAKER.games[0].about, MAKER.games[1].about], thanks: MAKER.thanks, notice: MAKER.notice,
+  },
+  en: {
+    tagline: 'An unofficial fan project that rebuilds Pokémon Platinum as browser 3D',
+    about: 'KAIST Industrial Design and Computer Science — designing and building AI services for education and healthcare',
+    labelMaker: 'Made by', labelGames: 'More games', labelThanks: 'Original analysis',
+    gameAbouts: ['A Pokémon tower defense x TFT game', 'A Pokémon BGM rhythm game'],
+    thanks: 'The pokeplatinum decompilation project by the pret team',
+    notice: [
+      'This is an unofficial, unaffiliated fan project.',
+      'All related trademarks and works belong to their respective owners,',
+      'and using game files you own, free and non-profit, does not imply the owners’ permission.',
+    ],
+  },
+  ja: {
+    tagline: 'ポケットモンスター プラチナをブラウザの3Dで作り直した非公式ファンプロジェクト',
+    about: 'KAIST 産業デザイン・計算機学部 — 教育と医療のためのAIサービスを設計し、作っています',
+    labelMaker: '制作', labelGames: '他のゲーム', labelThanks: '原作の解析',
+    gameAbouts: ['ポケモンのタワーディフェンス x TFT ゲーム', 'ポケモンBGMのリズムゲーム'],
+    thanks: 'pretチームの pokeplatinum デコンパイルプロジェクト',
+    notice: [
+      '非公式・非提携のファンプロジェクトです。',
+      '関連する商標と著作物は各権利者のものであり、',
+      'ご自身が持つゲームファイルを使う無料・非営利の方式でも、権利者の許可を意味するものではありません。',
+    ],
+  },
+}
+
+/**
  * 만든 사람 화면 — 두루마리가 끝나거나 넘기면 서서, 누를 때까지 머문다.
  *
  * 세 묶음이 0 · 160 · 320ms 간격으로 400ms 페이드한다(오르는 이동 없음): ① 로고 · 이름 · 소개 ② 만든 사람 ③ 다른 게임과 감사 · 고지.
  * 다른 게임은 `제목 | 소개 | 주소` 세 칸 맞춤이다 — 두 줄이 같은 칸에 서므로 가운데 맞춤 때의 들쭉날쭉이 없다
  */
 function MakerScreen() {
+  const t = MAKER_TEXT[useGameLocale()]
   const plain = runStyle(0)
   const accent = runStyle(1)
   const label = runStyle(2)
@@ -100,31 +148,31 @@ function MakerScreen() {
         {/* 앱 아이콘 — 장식이다 */}
         <img className={css.makerLogo} src={`${APP_ROOT}assets/radiant-platinum-icon.png`} alt="" />
         <div className={css.makerTitle} style={accent}>{MAKER.title}</div>
-        <div className={css.makerSmall} style={plain}>{MAKER.tagline}</div>
+        <div className={css.makerSmall} style={plain}>{t.tagline}</div>
       </div>
       <div className={css.makerHair} aria-hidden />
 
       <div className={css.makerGroup} style={{ animationDelay: '160ms' }}>
-        <div className={css.makerLabel} style={label}>만든 사람</div>
+        <div className={css.makerLabel} style={label}>{t.labelMaker}</div>
         <div className={css.makerName} style={plain}>{MAKER.name}</div>
-        <div className={css.makerSmall} style={plain}>{MAKER.about}</div>
+        <div className={css.makerSmall} style={plain}>{t.about}</div>
         <div className={css.makerRow}>{MAKER.links.map(link)}</div>
       </div>
 
       <div className={css.makerGroup} style={{ animationDelay: '320ms' }}>
-        <div className={css.makerLabel} style={label}>다른 게임</div>
+        <div className={css.makerLabel} style={label}>{t.labelGames}</div>
         <div className={css.makerGames}>
-          {MAKER.games.map((g) => (
+          {MAKER.games.map((g, gi) => (
             <div key={g.href} className={css.makerGame}>
               <span className={css.makerGameTitle} style={accent}>{g.title}</span>
-              <span className={css.makerGameAbout} style={plain}>{g.about}</span>
+              <span className={css.makerGameAbout} style={plain}>{t.gameAbouts[gi]}</span>
               {link(g)}
             </div>
           ))}
         </div>
         <div className={css.makerFoot}>
-          <div><span style={label}>원작 해석</span> <span style={plain}>{MAKER.thanks}</span></div>
-          {MAKER.notice.map((n) => <div key={n}>{n}</div>)}
+          <div><span style={label}>{t.labelThanks}</span> <span style={plain}>{t.thanks}</span></div>
+          {t.notice.map((n) => <div key={n}>{n}</div>)}
         </div>
       </div>
     </div>
