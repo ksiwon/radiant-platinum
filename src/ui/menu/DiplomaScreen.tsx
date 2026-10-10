@@ -128,7 +128,7 @@ export function DiplomaScreen() {
             </div>
           )}
       <div className={own.hint}>
-        <KeyHints text={FOOT} tone="dark" />
+        <KeyHints text={FOOT} />
       </div>
     </div>
   )

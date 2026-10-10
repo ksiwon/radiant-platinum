@@ -63,7 +63,8 @@ export const hint = style({
   position: 'relative',
   fontFamily: vars.font.ui,
   fontSize: 12,
-  color: vars.ink.onDarkDim,
+  // 바탕이 어두운 판이 아니라 그림의 연보라다 — 어두운 판용 글색은 바탕에 묻는다. 종이 글색(어두운 잉크)으로 읽힌다
+  color: vars.paper.text,
 })
 
 // ─────────────────────────────────────────────────────────────────
