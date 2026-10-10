@@ -304,7 +304,7 @@ export function FlyScreen() {
 
             {/* 열린 곳에만 이름이 붙는다 — 닫힌 곳은 원작처럼 이름 없이 회색 표식만이다 */}
             {labelledSpots(openSpots, spotName).map((s) => (
-              <span key={s.spawn} className={own.label} style={labelAnchor(s, k)}>{spotName(s)}</span>
+              <span key={s.spawn} className={own.label} style={labelAnchor(s, k, locale)}>{spotName(s)}</span>
             ))}
 
             {/* 주인공이 있는 블록 — 머리 그림과 파문. 그림을 못 받았으면 금 점 */}
