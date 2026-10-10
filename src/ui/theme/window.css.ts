@@ -8,9 +8,9 @@
 // 베낀 자리가 있었고, 그 사이 테두리 한 줄이 알파 넷으로 갈라졌다. 여기 것을
 // `import`해서 펼쳐 쓴다.
 import type { CSSProperties } from 'react'
-import { keyframes, style } from '@vanilla-extract/css'
+import { keyframes, style, styleVariants } from '@vanilla-extract/css'
 import { vars } from './contract.css'
-import { EDGE, GAP, LINE, RADIUS, TEXT, TIME } from './scale'
+import { EDGE, GAP, LINE, NIB, RADIUS, RAIL, SKEW_DEG, TEXT, TIME } from './scale'
 
 /**
  * 창 하나의 살갗. 자리와 여백은 쓰는 쪽이 정한다.
@@ -251,3 +251,246 @@ export const scrim = style({
 
 /** 뒤를 거의 안 가리는 것 — 고르는 장면처럼 3D가 주인공인 화면 */
 export const scrimLight = style([scrim, { background: 'transparent' }])
+
+// ─────────────────────────────────────────────────────────────────
+// 메뉴 개편 처방 (SYSTEM §2.1)
+//
+// ⚠️ 여기 있는 것은 **처방**이다 — 값(색·치수)은 위의 `vars`와 `scale`에서 온다. 화면은 이 조각을
+// 펼치거나 클래스를 붙여 쓰고, 같은 모양을 손으로 다시 적지 않는다.
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * 고른 것을 가리키는 띠 하나 (§0 L5). 고정 목록(스크롤 없는 10줄 이하)과 교체 띠 · 타이틀 줄이 쓴다.
+ *
+ * 목록 칸 안의 `aria-hidden` 요소이고, **줄이 아니라 띠 하나**가 `transform`으로 미끄러진다
+ * (`TIME.slide`). 어느 줄에 앉을지는 `common/pickBand.ts`의 `bandAt`이 인라인 `transform`으로 준다.
+ * 높이(y)나 폭(x)이 줄과 다르면 인라인으로 덮는다. 안에 `caret`을 둔다.
+ *
+ * `prefers-reduced-motion`이면 미끄러지지 않고 곧바로 앉는다 (§3 공통 규칙)
+ */
+const bandBase = {
+  position: 'absolute',
+  boxSizing: 'border-box',
+  pointerEvents: 'none',
+  borderRadius: RADIUS.cell,
+  background: vars.pick.face,
+  boxShadow: `inset 0 0 0 ${EDGE.bar}px ${vars.pick.edge}`,
+  color: vars.pick.text,
+  transition: `transform ${TIME.slide} ease-out`,
+  '@media': { '(prefers-reduced-motion: reduce)': { transition: 'none' } },
+} as const
+
+export const pickBand = styleVariants({
+  y: { ...bandBase, left: 0, right: 0, top: 0, height: LINE.row },
+  x: { ...bandBase, top: 0, bottom: 0, left: 0 },
+})
+
+/**
+ * 고른 **물건**의 금 고리 + 옅은 금빛 (배지 · 박스 격자 원 · 필름 테두리 · 지도 커서 · 도감 모습 아이콘).
+ *
+ * 목록 줄이 아닌 것을 고를 때다. 그림자(`boxShadow`) 대신 `outline`이다 — 고리는 모서리를 따라가고
+ * 안쪽을 가리지 않는다. 모서리는 쓰는 쪽이 정한다(물건이 둥글면 `RADIUS.round`)
+ */
+export const pickHalo = style({
+  outline: `${EDGE.bar}px solid ${vars.pick.edge}`,
+  outlineOffset: 0,
+  background: `color-mix(in srgb, ${vars.pick.edge} 18%, transparent)`,
+})
+
+/**
+ * 몸통은 그대로 두고 **테두리만** 금으로 (배틀 타입 판 · 요약 바꾸기 출발 줄 · HUD 묻는 판과 겨눈 판).
+ *
+ * 모양이 있는 판(사다리꼴)은 테두리도 그 모양을 따라 돌아야 하므로 색을 `--rim`으로도 내보낸다 —
+ * 두 겹 `clip-path`나 SVG 테두리가 그 변수를 읽는다 (DECISIONS 사용자 지적 ⑤)
+ */
+export const pickEdgeOnly = style({
+  borderColor: vars.pick.edge,
+  boxShadow: `inset 0 0 0 ${EDGE.bar}px ${vars.pick.edge}`,
+  vars: { '--rim': vars.pick.edge },
+})
+
+/**
+ * 9° 판 (§2.1). **배틀 명령 구역만** 쓴다 — 메뉴는 기울이지 않는다 (§0).
+ *
+ * `bar.edge` 3px 테두리, 몸통은 `--type` 50%를 `bar.trackTop`에 섞은 색, 아래 한 줄. `--type`은 쓰는 쪽이
+ * 타입 색으로 준다. 글자는 기울기를 되돌려 반듯이 세운다(안쪽 `face`에서 `skewX(+9deg)`)
+ */
+export const TYPE_PLATE = {
+  position: 'relative',
+  boxSizing: 'border-box',
+  border: `3px solid ${vars.bar.edge}`,
+  borderRadius: RADIUS.cell,
+  background: `color-mix(in srgb, var(--type) 50%, ${vars.bar.trackTop})`,
+  // 아래 줄: 몸통보다 짙은 같은 계열의 선 한 줄
+  boxShadow: `inset 0 -${EDGE.bar}px 0 color-mix(in srgb, var(--type) 70%, ${vars.bar.edge})`,
+  color: vars.ink.strong,
+  transform: `skewX(-${String(SKEW_DEG)}deg)`,
+} as const
+
+/**
+ * 뜨는 창의 살갗 — `WINDOW_SMALL`에 자리만 더한 것. 꼭지(`NIB`)는 `popover` 클래스가 단다.
+ * 갈래 창 · 예/아니오 · 시작 엿보기 · 더보기 · 타이틀 확인 창이 한 벌을 쓴다
+ */
+export const POPOVER = {
+  ...WINDOW_SMALL,
+  position: 'absolute',
+  boxSizing: 'border-box',
+} as const
+
+/** 꼭지는 45° 돌린 정사각형 — 한 변이 `NIB × √2`라 튀어나온 길이가 `NIB`다 */
+const NIB_BOX = Math.round(NIB * Math.SQRT2)
+const nibBase = {
+  content: '""',
+  position: 'absolute',
+  width: NIB_BOX,
+  height: NIB_BOX,
+  boxSizing: 'border-box',
+  background: vars.window.faceMid,
+  borderStyle: 'solid',
+  borderColor: vars.window.edge,
+  borderWidth: 0,
+  transform: 'rotate(45deg)',
+} as const
+
+/**
+ * 꼭지가 **어느 변**에 서는가 — 원인이 그쪽에 있다는 뜻이다. 변을 따라 어디에 서는지는
+ * `--nib-at`(기본 50%)이 정한다. `popoverSide.left`이면 원인이 왼쪽에 있고 꼭지가 왼쪽을 가리킨다
+ */
+export const popoverSide = styleVariants({
+  left: {
+    '::before': {
+      ...nibBase,
+      left: -(EDGE.window + NIB_BOX / 2),
+      top: 'var(--nib-at, 50%)',
+      marginTop: -NIB_BOX / 2,
+      borderLeftWidth: EDGE.window,
+      borderBottomWidth: EDGE.window,
+    },
+  },
+  right: {
+    '::before': {
+      ...nibBase,
+      right: -(EDGE.window + NIB_BOX / 2),
+      top: 'var(--nib-at, 50%)',
+      marginTop: -NIB_BOX / 2,
+      borderTopWidth: EDGE.window,
+      borderRightWidth: EDGE.window,
+    },
+  },
+  top: {
+    '::before': {
+      ...nibBase,
+      top: -(EDGE.window + NIB_BOX / 2),
+      left: 'var(--nib-at, 50%)',
+      marginLeft: -NIB_BOX / 2,
+      borderTopWidth: EDGE.window,
+      borderLeftWidth: EDGE.window,
+    },
+  },
+  bottom: {
+    '::before': {
+      ...nibBase,
+      bottom: -(EDGE.window + NIB_BOX / 2),
+      left: 'var(--nib-at, 50%)',
+      marginLeft: -NIB_BOX / 2,
+      borderBottomWidth: EDGE.window,
+      borderRightWidth: EDGE.window,
+    },
+  },
+})
+
+/** 뜨는 창 한 장 (꼭지는 `popoverSide`를 같이 붙인다) */
+export const popover = style({ ...POPOVER })
+
+/** 경험치 막대의 색 둘 — HP의 `HP_VARS`에 대응한다 (요약 · 교체 · HUD) */
+export const EXP_VARS = { '--lit': vars.bar.expLit, '--body': vars.bar.exp } as const
+
+/**
+ * 키캡 (§2.1 `KEYCAP`). 최소 폭 18, 높이 18, `RADIUS.bar`, 1px `edgeDim`, `faceTop`, `TEXT.tiny` 700.
+ * 어두운 판 위(3D 무대 · 덮개)는 `KEYCAP_DARK`를 위에 덮는다
+ */
+export const KEYCAP = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  boxSizing: 'border-box',
+  minWidth: 18,
+  height: 18,
+  padding: '0 5px',
+  border: `${EDGE.rule}px solid ${vars.window.edgeDim}`,
+  borderRadius: RADIUS.bar,
+  background: vars.window.faceTop,
+  color: vars.ink.dim,
+  fontSize: TEXT.tiny,
+  fontWeight: 700,
+  lineHeight: 1,
+  fontVariantNumeric: 'tabular-nums',
+} as const
+
+export const KEYCAP_DARK = {
+  background: vars.scrim.deep,
+  borderColor: vars.ink.onDarkDim,
+  color: vars.ink.onDark,
+} as const
+
+/**
+ * 덮개와 창 얼굴에 **직사각 구멍**을 낸다 (`MonViewport`). `mask-image` 두 겹을 `exclude`로 겹쳐서
+ * 전체에서 구멍 사각형을 뺀다. 구멍의 자리는 `--hole-x/y/w/h`(창 기준 px)로 준다.
+ *
+ * 구멍을 낼 면은 `::before` 층 하나로 옮겨 그리고 그 층에만 건다 — 자식 글자는 가려지지 않는다
+ */
+export const HOLE_MASK = {
+  maskImage: 'linear-gradient(black 0 0), linear-gradient(black 0 0)',
+  maskSize: '100% 100%, var(--hole-w, 0px) var(--hole-h, 0px)',
+  maskPosition: '0 0, var(--hole-x, 0px) var(--hole-y, 0px)',
+  maskRepeat: 'no-repeat',
+  maskComposite: 'exclude',
+  WebkitMaskComposite: 'xor',
+} as const
+
+// 옆 덮개 · 붙는 창 · 닫힘 (§3 움직임)
+const dockFrames = keyframes({
+  from: { opacity: 0, transform: 'translateX(var(--dock-from, -12px))' },
+  to: { opacity: 1, transform: 'translateX(0)' },
+})
+
+const fadeOutFrames = keyframes({ from: { opacity: 1 }, to: { opacity: 0 } })
+
+/**
+ * 옆 덮개 — 붙는 창(시작 메뉴)이 선 쪽만 옅게 덮는다. 화면 전체를 덮지 않으므로 필드가 그대로 보인다.
+ * 레일 폭(`RAIL.width`)에 맞춰 그러데이션이 끝난다
+ */
+export const scrimSide = style({
+  position: 'fixed',
+  inset: 0,
+  display: 'flex',
+  alignItems: 'stretch',
+  padding: GAP.wide,
+  background: `linear-gradient(90deg, ${vars.scrim.over} 0,`
+    + ` ${vars.scrim.over} ${String(RAIL.width + GAP.loose)}px, transparent ${String(RAIL.width + 160)}px)`,
+  color: vars.ink.normal,
+  fontFamily: vars.font.ui,
+  userSelect: 'none',
+})
+
+/** 붙는 창이 열린다 — 12px 밀려 들어오며 페이드 (`--dock-from`으로 방향을 바꾼다) */
+export const dockIn = style({
+  animation: `${dockFrames} ${TIME.open} ease-out`,
+  '@media': { '(prefers-reduced-motion: reduce)': { animation: `${fadeIn} ${TIME.open} ease-out` } },
+})
+
+/** 닫힘 — 페이드만. `TIME.close` ease-in */
+export const fadeOut = style({
+  animation: `${fadeOutFrames} ${TIME.close} ease-in forwards`,
+})
+
+const riseFrames = keyframes({
+  from: { opacity: 0, transform: 'translateY(6px)' },
+  to: { opacity: 1, transform: 'translateY(0)' },
+})
+
+/** 덮는 창 · 가운데 창이 열린다 — 덮개는 페이드(`scrim`)이고 창은 6px 위로 올라온다 */
+export const riseIn = style({
+  animation: `${riseFrames} ${TIME.open} ease-out`,
+  '@media': { '(prefers-reduced-motion: reduce)': { animation: `${fadeIn} ${TIME.open} ease-out` } },
+})

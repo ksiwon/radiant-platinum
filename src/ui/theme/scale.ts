@@ -53,6 +53,51 @@ export const TEXT = {
 export const LINE = {
   row: 32,
   message: 30,
+  /** 아이콘 32를 세우는 줄 — 시작 · 팩토리 · 메일박스 · 진화 기술 창 */
+  rowTall: 44,
+  /** `MessageDock` 한 줄 (Galmuri11 17 / 26 — 롬 글 띠) */
+  dock: 26,
+} as const
+
+/** 도트 그림 한 칸 (아틀라스 한 칸의 원본 크기). `pixelSprite`가 이 값에 정수배만 곱한다 */
+export const ICON = {
+  cell: 32,
+} as const
+
+/**
+ * 도트 배율. **정수만 쓴다** — 1.5배(교환 아이콘 48)와 2.2배(가이드맵)는 없다.
+ * 줄이는 것은 박스 필름 썸네일(`wallThumb`) 한 곳만 허용하고 부드럽게 줄인다
+ */
+export const PIXEL = { x1: 1, x2: 2, x3: 3, x4: 4 } as const
+export type PixelScale = (typeof PIXEL)[keyof typeof PIXEL]
+
+/**
+ * 배틀 명령 판의 기울기(도). 메뉴는 기울이지 않는다 — 이 각은 배틀 명령 구역의 판
+ * (`TYPE_PLATE` · `command.css`의 `button`)에만 쓴다 (SYSTEM §0)
+ */
+export const SKEW_DEG = 9
+
+/** 붙는 창(시작 메뉴)의 폭 */
+export const RAIL = { width: 264 } as const
+
+/** 뜨는 창의 꼭지(`POPOVER`) */
+export const NIB = 8
+
+/**
+ * 배틀 구획 (SYSTEM 4.15 · 4.16). `cmdHeight`는 `--battle-cmd-h`로 내보낸다
+ * (battlehud ↔ moves 계약) — 명령 구역의 단은 모두 이 높이 안에 든다.
+ *
+ * 값은 설계서가 정했고 아직 화면에서 재지 않았다. 쓰는 꾸러미(P5 · P11)가 잰 뒤에 고친다
+ */
+export const HUD = {
+  edge: 32,
+  bottom: 24,
+  cmdHeight: 264,
+  plateFoe: 280,
+  plateMine: 312,
+  plateDouble: 288,
+  tray: 28,
+  inward: 12,
 } as const
 
 /**
@@ -65,7 +110,21 @@ export const TIME = {
   open: '0.10s',
   fade: '0.18s',
   blink: '0.7s',
+  /** 닫힘 */
+  close: '0.08s',
+  /** 띠 · 밑줄 · 커서(지도 · 박스 격자 포함) */
+  slide: '0.10s',
+  /** 쪽 · 주머니 · 탭이 바뀔 때 본문이 8px 밀리는 것, 지도 이동, 이름표 · 글 묶음 페이드 */
+  page: '0.14s',
 } as const
+
+/**
+ * 원작 프레임(60fps)으로 잰 움직임의 시간. `steps(1)`과 같이 쓴다.
+ * `frames(8)`은 `'0.1333s'`처럼 초 단위 문자열이라 CSS `animation`에 그대로 들어간다
+ */
+export function frames(n: number): string {
+  return `${String(Math.round((n / 60) * 1e4) / 1e4)}s`
+}
 
 /**
  * 창 하나의 최대 크기.

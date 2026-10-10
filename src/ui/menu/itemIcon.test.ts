@@ -36,8 +36,8 @@ describe('아틀라스 한 칸', () => {
    * 크기를 바꾸면 **위치와 시트가 같은 배율로** 움직여야 한다. 한쪽만 움직이면
    * 시트 안에서 칸이 가리키는 자리가 어긋난다 — 그 어긋남은 비율로 드러난다
    */
-  it('어떤 크기로 그려도 시트 안의 같은 칸을 가리킨다', () => {
-    for (const px of [16, 28, 32, 96]) {
+  it('어떤 정수배로 그려도 시트 안의 같은 칸을 가리킨다', () => {
+    for (const px of [32, 64, 96, 128]) {
       const at = itemIcon(ATLAS, 300, px)
       const [x, y] = offset(at.backgroundPosition as string)
       const [w, h] = String(at.backgroundSize).split(' ').map(parseFloat)
@@ -49,8 +49,15 @@ describe('아틀라스 한 칸', () => {
   })
 
   it('자료를 아직 못 받았으면 자리만 잡는다', () => {
-    const at = itemIcon(undefined, 5, 28)
-    expect(at.width).toBe(28)
+    const at = itemIcon(undefined, 5, 64)
+    expect(at.width).toBe(64)
     expect(at.backgroundImage).toBeUndefined()
+  })
+
+  it('정수배가 아닌 크기는 가장 가까운 정수배로 맞춘다 (도트는 소수배로 안 늘린다)', () => {
+    // 28은 0.875배다 — 1배(32)로 맞춘다. 1.5배(48)는 2배로, 4배를 넘으면 4배(128)로 막는다
+    expect(itemIcon(ATLAS, 3, 28).width).toBe(32)
+    expect(itemIcon(ATLAS, 3, 48).width).toBe(64)
+    expect(itemIcon(ATLAS, 3, 400).width).toBe(128)
   })
 })
