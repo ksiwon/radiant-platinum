@@ -134,10 +134,24 @@ export async function pastoriaToCelestic(api, ctx,
     await api.clearTalk(); await api.settle()
     v = await vars()
     out.pastoria.exit = { went: outside, state: v.pastoria ?? null }
-    if ((v.pastoria ?? 0) === 4) {
-      const stood = await api.stepOn(MAP.pastoria, PASTORIA_BOMB, Math.min(300_000, api.left()))
+    /**
+     * ⚠️ **폭발 칸은 옆에서 밟는다.** (610,810) 바로 위(610,809)가 대습초원 문이라, 아래에서 올라와 밟으면 장면이
+     * 입력을 잡기 전에 남은 위 걸음이 문으로 들어간다. 실측(2026-10-10 연쇄 P3 · cb53c80): 「warped · 들판 상태 4」로
+     * 장면 없이 대습초원 로비에 들어갔고, 그 뒤 판이 들판 ↔ 입지호수근처를 맴돌았다. 왼쪽 칸에 먼저 서서 오른쪽으로
+     * 한 걸음 — 넘쳐도 (611,810)이다. 장면이 안 걸렸으면 다시 밟는다
+     */
+    let stood = null
+    // 앞 시도가 남긴 「폭발 칸 피하기」 벽을 걷는다 — 아직 상태 4면 그 칸이 목표다(실측: 두 번째 부름에서 「설 길이 없다」)
+    if ((v.pastoria ?? 0) === 4) ctx.setWalls?.(MAP.pastoria, [])
+    for (let i = 0; i < 3 && (v.pastoria ?? 0) === 4; i++) {
+      if ((await api.now()).map !== MAP.pastoria) await walk(MAP.pastoria, '들판시티로 돌아온다', 300_000)
+      await api.stepOn(MAP.pastoria, { x: PASTORIA_BOMB.x - 1, z: PASTORIA_BOMB.z }, Math.min(300_000, api.left()))
+      await api.clearTalk(); await api.settle()
+      stood = await api.stepOn(MAP.pastoria, PASTORIA_BOMB, Math.min(300_000, api.left()))
       await api.clearTalk(); await api.settle()
       v = await vars()
+    }
+    if (stood !== null) {
       out.pastoria.bomb = { stood, state: v.pastoria ?? null, moved: v.gruntEast === true }
       note('대습초원 폭발 (610,810)', `${stood} · 들판 상태 ${String(v.pastoria)} · 조무래기 옮김 ${String(v.gruntEast)}`)
     }
