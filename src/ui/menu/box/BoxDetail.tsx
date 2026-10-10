@@ -87,7 +87,9 @@ export function BoxDetail(
               </div>
               <div className={own.detailRow}>
                 <span className={own.detailLabel}>{labels.hp}</span>
-                <HpBar hp={mon.hp} max={max} height={10} numbers />
+                <span className={own.detailBar}>
+                  <HpBar hp={mon.hp} max={max} height={10} numbers />
+                </span>
               </div>
             </>
           )}

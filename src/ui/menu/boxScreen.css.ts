@@ -398,6 +398,9 @@ export const detailRow = style({
   color: vars.ink.normal,
 })
 
+/** 상세의 HP 막대 칸 — 줄이 남는 폭을 주지 않으면 막대 홈이 0폭으로 접힌다 */
+export const detailBar = style({ flex: '1 1 auto', minWidth: 120, maxWidth: 220 })
+
 export const detailLabel = style({ flex: '0 0 auto', width: 36, color: vars.ink.dim })
 
 /** 「지닌물건 없음」 — 원작은 이름표 없이 이 한 줄을 그대로 찍는다 */
