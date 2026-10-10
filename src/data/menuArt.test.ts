@@ -68,13 +68,19 @@ describe('그림 시트 — 못 받으면 null', () => {
 
 describe('시트 칸 구성 (굽는 쪽과의 계약)', () => {
   it('칸 수가 쓰는 쪽이 아는 수와 같다', () => {
-    expect(data.typeIconSheet('ko').rows).toBe(18)
+    expect(data.typeIconSheet('ko').cols * data.typeIconSheet('ko').rows).toBe(18)
     // 언어마다 파일이 다르다
     expect(data.typeIconSheet('en').path).toBe('data/typeIcons.en.png')
     expect(data.startMenuIconSheet('ja').path).toBe('data/startMenuIcons.ja.png')
     expect(data.MOVE_CLASS_SHEET.cols * data.MOVE_CLASS_SHEET.rows).toBe(3)
+    expect(data.MOVE_CLASS_ATLAS).toBe('data/moveClass.png')
+    expect(data.typeIconAtlas('ko')).toBe('data/typeIcons.ko.png')
+    expect(data.startMenuIconAtlas('en')).toBe('data/startMenuIcons.en.png')
+    for (const path of [data.DEX_SHAPE_ATLAS, data.TOWN_MAP_PLAYER_ATLAS, data.MAIL_ART_ATLAS, data.BERRY_ART_ATLAS, data.DIPLOMA_ART_ATLAS]) {
+      expect(path).toMatch(/^data\/\w+\.png$/)
+    }
     expect(data.startMenuIconSheet('ko').rows).toBe(10)
-    expect(data.DEX_SHAPE_SHEET.cols * data.DEX_SHAPE_SHEET.rows).toBe(15)
+    expect(data.DEX_SHAPE_SHEET.cols * data.DEX_SHAPE_SHEET.rows).toBe(14)
     expect(data.TOWN_MAP_PLAYER_SHEET.cols * data.TOWN_MAP_PLAYER_SHEET.rows).toBe(2)
     expect(data.MAIL_ART_SHEET.cols * data.MAIL_ART_SHEET.rows).toBe(12)
     expect(data.BERRY_ART_SHEET.cols * data.BERRY_ART_SHEET.rows).toBe(64)

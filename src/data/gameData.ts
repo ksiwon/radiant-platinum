@@ -619,17 +619,18 @@ export function femaleChance(genderRatio: number): number | null {
 // ─────────────────────────────────────────────────────────────────
 
 /**
- * 롬 타입 그림 — 32×16이 세로로 **18칸**이다 (9번이 ???). 칸 차례가 **엔진 타입 번호**다 (P0b ②).
+ * 롬 타입 그림 — 32×16이 가로로 **18칸**이다 (576×16, 9번이 ???). 칸 차례가 **엔진 타입 번호**다 (P0b ②).
  * 언어마다 따로 구워진다 (`typeIcons.{en,ko,ja}.png`) — 설정의 언어로 부른다
  */
+export const typeIconAtlas = (locale: DataLocale): string => `data/typeIcons.${locale}.png`
 export const typeIconSheet = (locale: DataLocale): SpriteSheet => ({
-  path: `data/typeIcons.${locale}.png`, cellW: 32, cellH: 16, cols: 1, rows: 18,
+  path: typeIconAtlas(locale), cellW: 32, cellH: 16, cols: 18, rows: 1,
 })
 
-/** 기술 분류 그림 — 32×16이 세로로 셋. 차례는 물리 · 특수 · 변화다 (P0b ③) */
-const MOVE_CLASS_ATLAS = 'data/moveClass.png'
+/** 기술 분류 그림 — 32×16이 가로로 셋 (96×16). 차례는 물리 · 특수 · 변화다 (P0b ③) */
+export const MOVE_CLASS_ATLAS = 'data/moveClass.png'
 export const MOVE_CLASS_SHEET: SpriteSheet = {
-  path: MOVE_CLASS_ATLAS, cellW: 32, cellH: 16, cols: 1, rows: 3,
+  path: MOVE_CLASS_ATLAS, cellW: 32, cellH: 16, cols: 3, rows: 1,
 }
 /** 기술 분류 → 시트의 칸 번호 */
 export const MOVE_CLASS_CELL = { physical: 0, special: 1, status: 2 } as const
@@ -639,38 +640,42 @@ export const MOVE_CLASS_CELL = { physical: 0, special: 1, status: 2 } as const
  * 칸 차례: 도감0 · 포켓몬1 · 가방(남)2 · 카드3 · 리포트4 · 설정5 · 닫기6 · 채팅7 · 포기8 · 가방(여)9.
  * 언어마다 따로 구워진다 (`startMenuIcons.{en,ko,ja}.png`). 필드 태스크가 30Hz로 돌려 움직인다
  */
+export const startMenuIconAtlas = (locale: DataLocale): string => `data/startMenuIcons.${locale}.png`
 export const startMenuIconSheet = (locale: DataLocale): SpriteSheet => ({
-  path: `data/startMenuIcons.${locale}.png`, cellW: 32, cellH: 32, cols: 2, rows: 10, gapY: 1,
+  path: startMenuIconAtlas(locale), cellW: 32, cellH: 32, cols: 2, rows: 10, gapY: 1,
 })
 
-/** 도감 형태 실루엣 — 32×32가 세로로 열다섯. 0이 「전부」(볼 칸)이고 1~14가 형태다 (P0b ④) */
-const DEX_SHAPE_ATLAS = 'data/dexShapes.png'
+/** 도감 형태 실루엣 — 32×32가 가로로 열넷 (448×32). 칸 번호 = `FilterForm` − 1이고 「전부」 칸은 없다 (P0b ④) */
+export const DEX_SHAPE_ATLAS = 'data/dexShapes.png'
 export const DEX_SHAPE_SHEET: SpriteSheet = {
-  path: DEX_SHAPE_ATLAS, cellW: 32, cellH: 32, cols: 1, rows: 15,
+  path: DEX_SHAPE_ATLAS, cellW: 32, cellH: 32, cols: 14, rows: 1,
 }
 
 /** 가이드맵 주인공 머리 — 16×16이 가로로 둘 (남 · 여) (P0b ⑧) */
-const TOWN_MAP_PLAYER_ATLAS = 'data/townMapPlayer.png'
+export const TOWN_MAP_PLAYER_ATLAS = 'data/townMapPlayer.png'
 export const TOWN_MAP_PLAYER_SHEET: SpriteSheet = {
   path: TOWN_MAP_PLAYER_ATLAS, cellW: 16, cellH: 16, cols: 2, rows: 1,
 }
 
-/** 편지지 12종 — 256×192가 3열 4줄 (P0b ⑨) */
-const MAIL_ART_ATLAS = 'data/mailArt.png'
+/** 편지지 12종 — 256×192가 세로로 열둘 (256×2304). 칸 번호 = `item − ITEM_GRASS_MAIL` (P0b ⑨) */
+export const MAIL_ART_ATLAS = 'data/mailArt.png'
 export const MAIL_ART_SHEET: SpriteSheet = {
-  path: MAIL_ART_ATLAS, cellW: 256, cellH: 192, cols: 3, rows: 4,
+  path: MAIL_ART_ATLAS, cellW: 256, cellH: 192, cols: 1, rows: 12,
 }
 
-/** 나무열매 그림 64장 — 32×32가 8×8 (P0b ⑩) */
-const BERRY_ART_ATLAS = 'data/berryArt.png'
+/** 나무열매 그림 64장 — 64×64가 8×8 (512×512). 열매 번호 n → 열 n % 8 · 줄 ⌊n / 8⌋ (P0b ⑩) */
+export const BERRY_ART_ATLAS = 'data/berryArt.png'
 export const BERRY_ART_SHEET: SpriteSheet = {
-  path: BERRY_ART_ATLAS, cellW: 32, cellH: 32, cols: 8, rows: 8,
+  path: BERRY_ART_ATLAS, cellW: 64, cellH: 64, cols: 8, rows: 8,
 }
 
-/** 상장 종이 둘 — 256×192가 세로로 둘. 0이 신오, 1이 전국도감 (P0b ⑪) */
-const DIPLOMA_ART_ATLAS = 'data/diplomaArt.png'
+/**
+ * 상장 종이 — 512×384. 왼쪽 256폭이 신오, 오른쪽이 전국도감이고 칸 하나가 256×384다 — 위 192줄이 **바탕**,
+ * 아래 192줄이 **종이**(0번 색 투명)다. 종이가 바탕 위에서 192줄 미끄러진다 (`diploma.c:330-336`) (P0b ⑪)
+ */
+export const DIPLOMA_ART_ATLAS = 'data/diplomaArt.png'
 export const DIPLOMA_ART_SHEET: SpriteSheet = {
-  path: DIPLOMA_ART_ATLAS, cellW: 256, cellH: 192, cols: 1, rows: 2,
+  path: DIPLOMA_ART_ATLAS, cellW: 256, cellH: 384, cols: 2, rows: 1,
 }
 
 /**
@@ -679,19 +684,49 @@ export const DIPLOMA_ART_SHEET: SpriteSheet = {
  * ⚠️ 그림을 안 구운 빌드와 구운 빌드가 같은 코드로 돈다. 못 받은 까닭(없다 · 네트워크)을 가르지
  * 않는다 — 화면은 그림이 없을 때의 길 하나만 안다
  */
-function loadSheet(sheet: SpriteSheet): Promise<SpriteSheet | null> {
-  return pinAtlas(sheet.path).then(() => sheet, () => null)
+function loadSheet(sheet: SpriteSheet, pinned: Promise<string>): Promise<SpriteSheet | null> {
+  return pinned.then(() => sheet, () => null)
 }
 
-export const loadTypeIcons = (locale: DataLocale): Promise<SpriteSheet | null> => loadSheet(typeIconSheet(locale))
-export const loadMoveClass = (): Promise<SpriteSheet | null> => loadSheet(MOVE_CLASS_SHEET)
-export const loadStartMenuIcons = (locale: DataLocale): Promise<SpriteSheet | null> =>
-  loadSheet(startMenuIconSheet(locale))
-export const loadDexShapes = (): Promise<SpriteSheet | null> => loadSheet(DEX_SHAPE_SHEET)
-export const loadTownMapPlayer = (): Promise<SpriteSheet | null> => loadSheet(TOWN_MAP_PLAYER_SHEET)
-export const loadMailArt = (): Promise<SpriteSheet | null> => loadSheet(MAIL_ART_SHEET)
-export const loadBerryArt = (): Promise<SpriteSheet | null> => loadSheet(BERRY_ART_SHEET)
-export const loadDiplomaArt = (): Promise<SpriteSheet | null> => loadSheet(DIPLOMA_ART_SHEET)
+export function loadTypeIcons(locale: DataLocale): Promise<SpriteSheet | null> {
+  const pinned = pinAtlas(typeIconAtlas(locale))
+  return loadSheet(typeIconSheet(locale), pinned)
+}
+
+export function loadMoveClass(): Promise<SpriteSheet | null> {
+  const pinned = pinAtlas(MOVE_CLASS_ATLAS)
+  return loadSheet(MOVE_CLASS_SHEET, pinned)
+}
+
+export function loadStartMenuIcons(locale: DataLocale): Promise<SpriteSheet | null> {
+  const pinned = pinAtlas(startMenuIconAtlas(locale))
+  return loadSheet(startMenuIconSheet(locale), pinned)
+}
+
+export function loadDexShapes(): Promise<SpriteSheet | null> {
+  const pinned = pinAtlas(DEX_SHAPE_ATLAS)
+  return loadSheet(DEX_SHAPE_SHEET, pinned)
+}
+
+export function loadTownMapPlayer(): Promise<SpriteSheet | null> {
+  const pinned = pinAtlas(TOWN_MAP_PLAYER_ATLAS)
+  return loadSheet(TOWN_MAP_PLAYER_SHEET, pinned)
+}
+
+export function loadMailArt(): Promise<SpriteSheet | null> {
+  const pinned = pinAtlas(MAIL_ART_ATLAS)
+  return loadSheet(MAIL_ART_SHEET, pinned)
+}
+
+export function loadBerryArt(): Promise<SpriteSheet | null> {
+  const pinned = pinAtlas(BERRY_ART_ATLAS)
+  return loadSheet(BERRY_ART_SHEET, pinned)
+}
+
+export function loadDiplomaArt(): Promise<SpriteSheet | null> {
+  const pinned = pinAtlas(DIPLOMA_ART_ATLAS)
+  return loadSheet(DIPLOMA_ART_SHEET, pinned)
+}
 
 /**
  * 도감 크기 비교 표 (`pokedex_heightweight` narc, P0b ⑤). 칸 구성은 굽는 쪽이 정하므로 여기서는

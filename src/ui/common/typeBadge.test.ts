@@ -24,15 +24,15 @@ describe('타입 그림', () => {
   afterEach(() => { warn.mockRestore() })
 
   it('그림이 있으면 innerText가 0이고 title만 단다', () => {
-    sheet = { path: 'data/typeIcons.ko.png', cellW: 32, cellH: 16, cols: 1, rows: 18 }
+    sheet = { path: 'data/typeIcons.ko.png', cellW: 32, cellH: 16, cols: 18, rows: 1 }
     const out = html(createElement(TypeBadge, { type: 3, name: '독' }))
     expect(out.replace(/<[^>]+>/g, '')).toBe('')
     expect(out).toContain('aria-hidden')
     expect(out).toContain('title="독"')
     // 32×16을 정수 2배로 — 64×32
     expect(out).toContain('width:64px;height:32px')
-    // 3번 칸 = 세로로 3 × 16 × 2
-    expect(out).toContain('background-position:-0px -96px')
+    // 3번 칸 = 가로로 3 × 32 × 2
+    expect(out).toContain('background-position:-192px -0px')
     expect(warn).not.toHaveBeenCalled()
   })
 
@@ -69,11 +69,11 @@ describe('타입 그림', () => {
   })
 
   it('분류 그림이 있으면 칸이 물리 0 · 특수 1 · 변화 2다', () => {
-    sheet = { path: 'data/moveClass.png', cellW: 32, cellH: 16, cols: 1, rows: 3 }
+    sheet = { path: 'data/moveClass.png', cellW: 32, cellH: 16, cols: 3, rows: 1 }
     const at = (category: 'physical' | 'special' | 'status'): string =>
       /background-position:(-?\d+px -?\d+px)/.exec(html(createElement(MoveClassBadge, { category, scale: 1 })))![1]!
     expect(at('physical')).toBe('-0px -0px')
-    expect(at('special')).toBe('-0px -16px')
-    expect(at('status')).toBe('-0px -32px')
+    expect(at('special')).toBe('-32px -0px')
+    expect(at('status')).toBe('-64px -0px')
   })
 })

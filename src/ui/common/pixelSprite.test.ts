@@ -127,11 +127,11 @@ describe('칸 사이에 틈이 있는 시트', () => {
     }
   })
 
-  it('타입 · 분류 시트는 32×16 칸이 세로로 선다 (18 · 3)', () => {
-    expect(sheetSize(typeIconSheet('ko'))).toEqual({ w: 32, h: 16 * 18 })
-    expect(sheetSize(MOVE_CLASS_SHEET)).toEqual({ w: 32, h: 16 * 3 })
+  it('타입 · 분류 시트는 32×16 칸이 가로로 선다 (18 · 3)', () => {
+    expect(sheetSize(typeIconSheet('ko'))).toEqual({ w: 32 * 18, h: 16 })
+    expect(sheetSize(MOVE_CLASS_SHEET)).toEqual({ w: 32 * 3, h: 16 })
     const at = pixelCell(typeIconSheet('en'), 17, 2)!
-    expect([at.w, at.h, at.x, at.y]).toEqual([64, 32, 0, 17 * 32])
+    expect([at.w, at.h, at.x, at.y]).toEqual([64, 32, 17 * 64, 0])
   })
 })
 
