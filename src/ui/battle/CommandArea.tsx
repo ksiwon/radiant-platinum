@@ -3,18 +3,25 @@
 // 칸 한 장의 모양은 `CommandButton`이, 스타일은 `command.css`가 쥔다. 이 파일은 **어느 칸이
 // 어떤 순서로 서는가**와 키 커서만 다룬다. 화면 짜맞춤과 상태는 `BattleScreen`에 남는다.
 //
-// `onAim`은 더블에서 겨눈 상대를 HUD가 알아야 할 때를 위해 미리 깔아 둔 자리다 — 지금은 부르기만 하고
-// 아무도 듣지 않는다.
+// 구역은 380×264 안에 든다 (4.16). 뿌리는 「싸운다」 한 판이 크고 나머지 셋이 가로 한 줄이다 — 보이는 차례는
+// 싸운다 → 가방 → 포켓몬 → 도망간다이고 ↓와 → 둘 다 다음 칸이다(`useListCursor`). 물음 글(「누구에게?」 ·
+// 「무엇을 할까?」)은 판 위에 안 뜬다 — 글창이 말한다.
+//
+// `onAim`은 더블에서 겨눈 상대를 HUD가 알아야 할 때를 위한 자리다 — `BattleScreen`이 받아 상대 판에 금 테두리를 준다.
 import { useEffect, useState } from 'react'
 import type { BattleAction } from '../../engine/battle/choice'
 import type { SafariCommand } from '../../engine/battle/safariBattle'
 import { MATCH_LABEL, type MoveMatch } from '../../engine/battle/movePreview'
-import type { Move } from '../../data/schema'
+import type { Move, PokeIcons } from '../../data/schema'
+import { loadPokeIcons } from '../../data/gameData'
 import { fillMenuText } from '../../data/uiText'
-import { withTopic } from '../korean'
-import { CommandButton } from './CommandButton'
+import { PIXEL } from '../theme/scale'
+import { TypeBadge } from '../common/TypeBadge'
+import { monIconAt } from '../menu/pokeIcon'
+import { CommandButton, EmptyPlate } from './CommandButton'
 import { useListCursor } from './listCursor'
 import type { BattleNames } from './messages'
+import { ppTone } from './ppTone'
 import { MSG } from './romText'
 import { romLine } from './romLine'
 import { typeColor } from './typeColor'
@@ -29,10 +36,7 @@ import * as css from './command.css'
  * 섞인다 (`OptionsScreen`의 `our`와 같은 까닭)
  */
 export interface Words {
-  fight: string
-  bag: string
   bagBlocked: string
-  party: string
   partyBlocked: string
   run: string
   runNever: string
@@ -82,22 +86,43 @@ export interface Extras {
   hmLock(move: number): string | null
 }
 
+/** 「싸운다」 판에 세울 아이콘의 주인 — 지금 명령을 묻는 포켓몬이다 (원작 `NewPokeIconSprite`) */
+export interface IconMon {
+  species: number
+  form: number
+}
+
+/**
+ * 포켓몬 아이콘 한 칸을 정수 2배(64)로 — 더블이면 자리마다 바뀌어서 **누구에게 묻는지가 글자 없이** 보인다.
+ * 글자가 0이다 (`aria-hidden`은 부르는 쪽 `lead`가 단다)
+ */
+function MonIcon({ mon }: { mon: IconMon }) {
+  const [icons, setIcons] = useState<PokeIcons | undefined>(undefined)
+  useEffect(() => {
+    let alive = true
+    void loadPokeIcons().then((got) => { if (alive) setIcons(got) }).catch(() => { /* 아이콘 없이도 판은 선다 */ })
+    return () => { alive = false }
+  }, [])
+  return <span style={monIconAt(icons, { ...mon, isEgg: false }, PIXEL.x2)} />
+}
+
 /**
  * 원작의 첫 단. 싸운다·가방·포켓몬·도망간다.
  *
- * 이름은 **롬 줄**이다 (배틀 글 뱅크 924~927 · `MSG`). 손으로 적은 「도망친다」는
- * 롬의 「도망간다」와도 달랐고 설정의 언어도 안 따랐다. 밑줄은 우리 글이라 `words`다
+ * 이름은 **롬 줄**이다 (배틀 글 뱅크 924~927 · `MSG`). 「싸운다」가 큰 판이고 나머지 셋이 가로 한 줄이다 —
+ * 원작도 「싸운다」가 위 2/3를 쓰고 나머지는 바닥 한 줄이다. 이름 밑줄(「기술을 고른다」 따위)은 롬에 없는
+ * 우리 글이고 이름과 같은 말이라 뺐다 — **꺼진 칸의 까닭**만 남는다
  */
 export function RootMenu(
-  { words, lines, canFight, canSwitch, wild, canSpend, who, onPick, onRun, onBack }: {
+  { words, lines, canFight, canSwitch, wild, canSpend, icon, onPick, onRun, onBack }: {
     words: Words
     /** 배틀 글 뱅크 (`BATTLE_BANK`) */
     lines: readonly string[]
     canFight: boolean
     canSwitch: boolean
     wild: boolean
-    /** 지금 명령을 묻고 있는 마리. 글창이 그 물음을 못 띄울 때만 있다 (더블) */
-    who: string | null
+    /** 지금 명령을 묻고 있는 마리의 아이콘. 없으면 판에 아이콘이 없다 */
+    icon: IconMon | null
     /** 앞 자리로 되돌아간다 (더블 둘째 자리). 없으면 X가 아무 일도 안 한다 */
     onBack: (() => void) | null
     /**
@@ -111,24 +136,23 @@ export function RootMenu(
 ) {
   const entries = [
     {
-      label: romLine(lines, MSG.fight) ?? '싸운다',
-      pilot: 'fight', sub: words.fight, tint: css.TINT.fight, on: canFight, go: () => { onPick('fight') },
+      label: romLine(lines, MSG.fight) ?? '싸운다', pilot: 'fight', size: 'hero' as const,
+      tint: css.TINT.fight, on: canFight, go: () => { onPick('fight') },
     },
     {
-      label: romLine(lines, MSG.bag) ?? '가방',
-      pilot: 'bag',
-      sub: canSpend ? words.bag : words.bagBlocked,
+      label: romLine(lines, MSG.bag) ?? '가방', pilot: 'bag', size: 'row' as const,
+      // 까닭은 꺼졌을 때만 말한다 — 켜진 칸의 설명은 이름과 같은 말이다
+      sub: canSpend ? undefined : words.bagBlocked,
       tint: css.TINT.bag, on: canSpend, go: () => { onPick('bag') },
     },
     {
-      label: romLine(lines, MSG.pokemon) ?? '포켓몬',
-      // 가방·도망과 같은 결이다 — 꺼진 칸은 왜 꺼졌는지를 말한다
-      sub: canSwitch ? words.party : words.partyBlocked,
+      label: romLine(lines, MSG.pokemon) ?? '포켓몬', size: 'row' as const,
+      sub: canSwitch ? undefined : words.partyBlocked,
       tint: css.TINT.party, on: canSwitch, go: () => { onPick('party') },
     },
     {
-      label: romLine(lines, MSG.run) ?? '도망간다',
-      sub: !wild ? words.runNever : canSpend ? words.run : words.runBlocked,
+      label: romLine(lines, MSG.run) ?? '도망간다', size: 'row' as const,
+      sub: !wild ? words.runNever : canSpend ? undefined : words.runBlocked,
       tint: css.TINT.run, on: wild && canSpend, go: onRun,
     },
   ]
@@ -137,22 +161,24 @@ export function RootMenu(
     (i) => { if (entries[i]?.on) entries[i].go() },
     onBack ?? undefined,
   )
+  const plate = (entry: (typeof entries)[number], i: number) => (
+    <CommandButton
+      key={entry.label}
+      on={i === cursor}
+      label={entry.label}
+      size={entry.size}
+      {...('sub' in entry && entry.sub !== undefined ? { sub: entry.sub } : {})}
+      {...(entry.size === 'hero' && icon !== null ? { lead: <MonIcon mon={icon} /> } : {})}
+      tint={entry.tint}
+      {...('pilot' in entry ? { pilot: entry.pilot } : {})}
+      onClick={entry.go}
+      disabled={!entry.on}
+    />
+  )
   return (
     <>
-      {/* 더블은 자리마다 물어본다. 누구에게 묻는지가 안 보이면 아무것도 못 고른다 */}
-      {who !== null && <div className={css.askWho}>{withTopic(who)} 무엇을 할까?</div>}
-      {entries.map((entry, i) => (
-        <CommandButton
-          key={entry.label}
-          on={i === cursor}
-          label={entry.label}
-          sub={entry.sub}
-          tint={entry.tint}
-          {...('pilot' in entry ? { pilot: entry.pilot } : {})}
-          onClick={entry.go}
-          disabled={!entry.on}
-        />
-      ))}
+      {plate(entries[0]!, 0)}
+      <div className={css.trio}>{entries.slice(1).map((entry, i) => plate(entry, i + 1))}</div>
     </>
   )
 }
@@ -165,7 +191,7 @@ export function RootMenu(
  *
  * ⚠️ **미끼와 진흙이 서로 반대가 아니다.** 미끼는 잡히는 값을 올리면서 도망도
  * 올리고, 진흙은 도망을 내리면서 잡히는 값도 내린다 — 어느 쪽도 공짜가 아니라
- * 그 대가를 칸 밑에 적는다
+ * 그 대가를 칸 밑에 적는다. 그 글이 길어서 여기는 세로 네 판이다(56 × 4 + 6 × 3 = 242, 264 안이다)
  */
 export function SafariMenu(
   { balls, onPick, words, lines, stock }: {
@@ -180,8 +206,7 @@ export function SafariMenu(
   },
 ) {
   const left = stock !== null ? fillMenuText(stock, [String(balls)]) : `${String(balls)}개 남음`
-  // 칸 이름은 롬 줄이다 — 「사파리볼」·「미끼」·「도망친다」로 손에 들고 있었는데 롬은
-  // 「볼」·「먹이」·「진흙」·「도망간다」다. 뱅크가 안 왔을 때만 같은 말로 물러선다
+  // 칸 이름은 롬 줄이다 — 뱅크가 안 왔을 때만 같은 말로 물러선다
   const entries: { label: string; sub: string; tint: string; go: SafariCommand }[] = [
     { label: romLine(lines, MSG.ball) ?? '볼', sub: left, tint: css.TINT.fight, go: 'ball' },
     { label: romLine(lines, MSG.bait) ?? '먹이', sub: words.bait, tint: css.TINT.bag, go: 'bait' },
@@ -226,7 +251,7 @@ export function YesNo(
   },
 ) {
   const entries = [
-    { label: yes, sub: words.swap, tint: css.TINT.party, yes: true },
+    { label: yes, sub: words.swap, tint: css.TINT.fight, yes: true },
     { label: no, sub: words.stay, tint: css.TINT.run, yes: false },
   ]
   const cursor = useListCursor(
@@ -250,10 +275,12 @@ export function YesNo(
 
 /** 기술 네 칸. 원작처럼 타입과 남은 PP를 같이 보여준다 */
 export function MoveMenu(
-  { actions, names, extras, onPick, onBack, doubles = false, targetName, previewOf, onAim }: {
+  { actions, names, extras, lines, onPick, onBack, doubles = false, targetName, previewOf, onAim }: {
     actions: BattleAction[]
     names: BattleNames | null
     extras: Extras | null
+    /** 배틀 글 뱅크 — 「돌아간다」(928) · 「PP」(938)가 롬 줄이다 */
+    lines: readonly string[]
     onPick: (a: BattleAction) => void
     onBack: () => void
     doubles?: boolean
@@ -263,7 +290,7 @@ export function MoveMenu(
     previewOf: (a: BattleAction) => MovePreview
     /**
      * 더블에서 **지금 겨눠지는 대상**(커서가 선 후보의 대상 번호, 아니면 null)을 위로 올린다. 체력판이 겨눠진
-     * 상대 판에 금 테두리를 두려는 자리다 (HUD 꾸러미) — 지금은 부르기만 한다
+     * 상대 판에 금 테두리를 두려는 자리다
      */
     onAim?: (target: number | null) => void
   },
@@ -303,26 +330,28 @@ export function MoveMenu(
     onAim(aimedTarget)
     return () => { onAim(null) }
   }, [aimedTarget, onAim])
+  const back = romLine(lines, MSG.cancel) ?? '돌아간다'
   if (aiming) {
+    // 「누구에게?」는 글창이 말한다 — `BattleScreen`이 겨눈 대상이 있을 때 그 줄을 올린다
     return (
       <>
-        <div className={css.askWho}>누구에게?</div>
         {aiming.map((a, i) => (
           <CommandButton
             key={a.type === 'move' ? a.target : i}
             on={i === aimCursor}
             label={a.type === 'move' ? targetName?.(a.target ?? 0) ?? '' : ''}
             sub={<MatchLine match={previewOf(a).match} />}
+            tint={css.TINT.fight}
             onClick={() => { onPick(a) }}
           />
         ))}
-        <button className={css.backButton} onClick={() => { setAiming(null) }}>← 돌아가기</button>
+        <button className={css.backStrip} onClick={() => { setAiming(null) }}>{back}</button>
       </>
     )
   }
   return (
     <MoveRows
-      rows={rows} names={names} extras={extras} onPick={pick} onBack={onBack}
+      rows={rows} names={names} extras={extras} lines={lines} onPick={pick} onBack={onBack}
       // 접힌 줄에는 후보가 하나일 때만 적는다. 여럿이면 자리마다 다르다
       previewOf={(a) => {
         const at = previewOf(a)
@@ -339,11 +368,31 @@ function MatchLine({ match }: { match: MoveMatch | null }) {
   return <span className={`${css.matchLine} ${css.matchTone[match]}`}>{MATCH_LABEL[match]}</span>
 }
 
+/**
+ * 기술 칸의 꼬리 — 「PP」 이름표와 `남은/최대`. 글자색은 원작 `GetPPTextColor`의 네 단이다(`ppTone`).
+ * **기술 칸만 `n/m` 꼴을 갖는다** — 하네스가 그 꼴로 기술 칸을 센다
+ */
+export function PpTail({ now, max, label }: { now: number; max: number; label: string }) {
+  return (
+    <span className={css.tail}>
+      <span className={css.ppLabel}>{label}</span>
+      <span className={`${css.pp} ${css.ppTone[ppTone(now, max)]}`}>
+        <span className={css.ppNow}>{now}</span>
+        <span className={css.ppMax}>/{max}</span>
+      </span>
+    </span>
+  )
+}
+
+/** 기술 단이 서는 판 수. 빈 칸으로 채워 칸 수가 바뀌어도 판이 오르내리지 않는다 */
+const MOVE_SLOTS = 4
+
 function MoveRows(
-  { rows: actions, names, extras, onPick, onBack, previewOf }: {
+  { rows: actions, names, extras, lines, onPick, onBack, previewOf }: {
     rows: BattleAction[]
     names: BattleNames | null
     extras: Extras | null
+    lines: readonly string[]
     onPick: (a: BattleAction) => void
     onBack: () => void
     previewOf: (a: BattleAction) => MovePreview
@@ -353,50 +402,36 @@ function MoveRows(
     const action = actions[i]
     if (action) onPick(action)
   }, onBack)
+  const ppLabel = romLine(lines, MSG.pp) ?? 'PP'
+  const back = romLine(lines, MSG.cancel) ?? '돌아간다'
   return (
     <>
       {actions.map((action, i) => {
         if (action.type !== 'move') return null
         const label = (action.move !== null ? names?.moves[action.move] : null) ?? action.name
         const { type: typeId, match } = previewOf(action)
-        const type = typeId !== null ? extras?.types[typeId] : undefined
-        // PP를 못 푸는 칸이 있다 — 발버둥이 그렇다. 그때는 오른쪽을 비운다
+        const typeName = typeId !== null ? extras?.types[typeId] : undefined
+        // PP를 못 푸는 칸이 있다 — 발버둥이 그렇다. 그때는 꼬리를 비운다
         const hasPp = action.pp !== undefined && action.maxPp !== undefined
-        const ppClass = !hasPp ? ''
-          : action.pp === 0 ? css.ppOut
-            : action.pp! <= Math.max(1, Math.floor(action.maxPp! / 4)) ? css.ppLow
-              : ''
         return (
           <CommandButton
             key={`m${action.slot}`}
             on={i === cursor}
+            tone="type"
             // 기술 칸의 색은 **타입 색**이다. 색만 보고도 무엇을 고르는지 안다
             {...(typeId !== null ? { tint: typeColor(typeId) } : {})}
             label={label}
-            /*
-              타입과 상성이 **한 줄에 같이** 선다. BDSP는 타입을 글자 대신
-              아이콘으로 놓아서 밑줄이 통째로 비지만, 우리 왼쪽에 있는 것은
-              점 하나뿐이라 그 점만으로는 무슨 타입인지 못 읽는다
-            */
-            sub={type !== undefined && (
-              <span className={css.subLine}>
-                {type}
-                {match !== null && <span className={css.sep} aria-hidden>·</span>}
-                <MatchLine match={match} />
-              </span>
-            )}
-            right={hasPp && (
-              <span className={`${css.pp} ${ppClass}`}>
-                <span className={css.ppNow}>{action.pp}</span>
-                <span className={css.ppMax}>/{action.maxPp}</span>
-              </span>
-            )}
+            // 타입 이름은 원판의 그림이 말한다 — 밑줄은 상성만 남는다
+            sub={match !== null && <MatchLine match={match} />}
+            lead={<TypeBadge type={typeId} {...(typeName !== undefined ? { name: typeName } : {})} />}
+            tail={hasPp ? <PpTail now={action.pp!} max={action.maxPp!} label={ppLabel} /> : undefined}
             pilot={`move-${String(i)}`}
             onClick={() => { onPick(action) }}
           />
         )
       })}
-      <button className={css.backButton} onClick={onBack}>← 돌아가기</button>
+      {Array.from({ length: Math.max(0, MOVE_SLOTS - actions.length) }, (_, i) => <EmptyPlate key={`e${String(i)}`} />)}
+      <button className={css.backStrip} onClick={onBack}>{back}</button>
     </>
   )
 }
