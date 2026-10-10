@@ -12,7 +12,7 @@ import type { PixelScale } from '../../theme/scale'
 import { itemIconAt } from '../itemIcon'
 import { boxWallpaper, pokeIconAt } from '../pokeIcon'
 import * as own from '../boxScreen.css'
-import { GRID, iconOf, LIFT, ringAt, ringSize, slotAt } from './boxMenus'
+import { GRID, iconOf, liftOf, ringAt, ringSize, slotAt } from './boxMenus'
 
 /** 벽지 배율 — 정수 3배 (`WALL.k`와 같다) */
 const WALL_SCALE = 3
@@ -126,7 +126,7 @@ export function BoxWall(
             style={{
               left: lifted.left,
               top: lifted.top,
-              '--lift': `-${String(LIFT)}px`,
+              '--lift': `-${String(liftOf(GRID, cursorAt ?? 0))}px`,
               ...pokeIconAt(icons, iconOf(lift), GRID.scale),
             } as CSSProperties}
           />
@@ -148,7 +148,7 @@ export function BoxWall(
             style={{
               left: lifted.left + (GRID.icon - 32) / 2,
               top: lifted.top + (GRID.icon - 32) / 2,
-              '--lift': `-${String(LIFT)}px`,
+              '--lift': `-${String(liftOf(GRID, cursorAt ?? 0))}px`,
               ...itemIconAt(itemIcons, liftItem, 1),
             } as CSSProperties}
           />
