@@ -87,7 +87,7 @@ export interface Extras {
 }
 
 /** 「싸운다」 판에 세울 아이콘의 주인 — 지금 명령을 묻는 포켓몬이다 (원작 `NewPokeIconSprite`) */
-export interface IconMon {
+interface IconMon {
   species: number
   form: number
 }

@@ -45,7 +45,7 @@ import { useLearnFlow, type LearnFlow } from '../common/learnFlow'
 import * as css from './command.css'
 
 /** 글창이 받는 것 — 물음 줄과, 있으면 그 아래 자라는 상세 */
-export interface LearnSay {
+interface LearnSay {
   text: string
   facts: ReactNode
 }

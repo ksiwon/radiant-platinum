@@ -48,7 +48,7 @@ export function clock(ms: number): string {
 }
 
 /** 요약에 쓰는 값 한 벌 */
-export interface ReportFacts {
+interface ReportFacts {
   /** 지금 선 곳 — 존 배너와 같은 이름이다(집 안은 그 마을 이름). 없으면 null */
   place: string | null
   /** 주인공 이름. 비면 「이름 없음」 */
@@ -86,7 +86,7 @@ export function useDexTotals(): { seen: number; caught: number } {
   return dexCounts(lists, nationalDex, pokedex)
 }
 
-export function useReportFacts(): ReportFacts {
+function useReportFacts(): ReportFacts {
   const [labels, setLabels] = useState<string[]>([])
   const locale = useGameLocale()
   const trainer = useSaveStore((s) => s.trainer)
@@ -127,7 +127,7 @@ const BADGE_SIZE = 38
 const TRAINER_CELL = { w: 36, h: 66, scale: 2 } as const
 
 /** 이 장이 지금 무엇을 하는가 — 쓰는 중이면 빛띠가 지나가고, 다 썼으면 테두리가 숨 쉰다 */
-export type SheetState = 'idle' | 'writing' | 'done'
+type SheetState = 'idle' | 'writing' | 'done'
 
 export function SaveInfo({ state = 'idle' }: { state?: SheetState }) {
   const facts = useReportFacts()

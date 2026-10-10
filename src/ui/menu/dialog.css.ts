@@ -32,7 +32,7 @@ export const info = style({
 })
 
 /** 요약창 맨 위 지명 — 원작은 이름표 없이 창 왼쪽 위에 한 줄로 찍는다 (`SAVE_INFO_LABEL_MAP_NAME`) */
-export const infoPlace = style({
+const infoPlace = style({
   gridColumn: '1 / -1',
   fontWeight: 700,
 })

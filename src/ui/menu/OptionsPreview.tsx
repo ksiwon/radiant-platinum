@@ -34,7 +34,7 @@ const TEXT_HOLD_FRAMES = 30
 /** 닫는다 줄이 보여 주는 바뀐 항목 한 줄 */
 export interface ChangeLine { label: string, from: string, to: string }
 
-export interface PreviewProps {
+interface PreviewProps {
   row: RowKey
   options: Options
   language: Language

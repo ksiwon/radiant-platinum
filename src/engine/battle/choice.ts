@@ -158,7 +158,7 @@ export interface PartySlot {
 }
 
 /** `Turtwig, L13, F` 꼴의 끝 글자에서 성별을 읽는다 */
-export function genderOfDetails(details: string): 'male' | 'female' | null {
+function genderOfDetails(details: string): 'male' | 'female' | null {
   const last = details.split(',').at(-1)?.trim()
   return last === 'F' ? 'female' : last === 'M' ? 'male' : null
 }

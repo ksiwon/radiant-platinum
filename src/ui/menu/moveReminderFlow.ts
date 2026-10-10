@@ -16,7 +16,7 @@
 import { fillMenuText } from '../../data/uiText'
 
 /** 이 화면이 쓰는 뱅크 줄 번호 (가르침과 되살리기가 같은 뜻의 줄을 하나씩 가진다) */
-export interface ReminderLines {
+interface ReminderLines {
   /** 「{마리}에게 어느 기술을 …하게 하겠습니까?」 — 목록 위 물음 */
   pick: number
   /** 「{기술} …하게 하겠습니까?」 — 빈 칸이 있을 때 */
@@ -66,7 +66,7 @@ export function pagesOf(raw: string | undefined, values: readonly string[]): str
 /** 칸이 `MOVES_MAX`개 다 찼나 */
 export const MOVES_MAX = 4
 
-export interface KnownMove { move: number, pp: number, ppUps: number }
+interface KnownMove { move: number, pp: number, ppUps: number }
 
 /**
  * 새 기술을 넣은 칸 목록. `slot`이 기존 칸이면 갈아 끼우고, 끝(`moves.length`)이면 덧붙인다.

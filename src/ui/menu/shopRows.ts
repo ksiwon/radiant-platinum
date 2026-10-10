@@ -13,7 +13,7 @@ export type ShopRow =
   | { kind: 'end' }
 
 /** 그리는 줄 — 주머니 머리는 고를 수 없다 */
-export type ShopEntry =
+type ShopEntry =
   | { kind: 'head', pocket: number }
   | { kind: 'row', index: number, row: ShopRow }
 
@@ -71,7 +71,7 @@ export function entriesOf(rows: readonly ShopRow[], grouped: boolean): ShopEntry
 }
 
 /** 계산서의 셈 — 위에서 아래로 「지갑 · ±합계 · 결과」 */
-export interface Receipt {
+interface Receipt {
   /** 부호가 붙은 합계 (사면 음수) */
   delta: number
   /** 셈한 뒤의 지갑 */

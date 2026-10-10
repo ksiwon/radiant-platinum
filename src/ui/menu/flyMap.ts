@@ -21,7 +21,7 @@ export const ZOOM: { out: PixelScale, in: PixelScale } = { out: 3, in: 4 }
 export type Spot = (typeof FLY_SPOTS)[number]
 
 /** 이름표가 표식의 어느 쪽에 앉는가 — 왼 · 오른 · 위 · 아래 */
-export type LabelSide = 'l' | 'r' | 't' | 'b'
+type LabelSide = 'l' | 'r' | 't' | 'b'
 
 /**
  * 스물 자리마다 이름표가 앉는 쪽 (`spawn` 번호 → 쪽).

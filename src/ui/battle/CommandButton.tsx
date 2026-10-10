@@ -15,7 +15,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import * as css from './command.css'
 
-export type PlateSize = 'hero' | 'row' | 'list' | 'slim'
+type PlateSize = 'hero' | 'row' | 'list' | 'slim'
 
 export function CommandButton({
   on, label, sub, tail, lead, tone = 'cmd', size = 'list', tint, disabled, pilot, moveId, onClick,

@@ -8,7 +8,7 @@ export type OptionKey = keyof Options
 /** 줄의 열쇠. 값이 있는 줄은 설정 이름 그대로고, 행동 줄이 셋이다 */
 export type RowKey = OptionKey | 'verify' | 'reset' | 'close'
 
-export type GroupId = 'battle' | 'display' | 'data'
+type GroupId = 'battle' | 'display' | 'data'
 
 export const ROW_GROUPS: readonly { id: GroupId, keys: readonly RowKey[] }[] = [
   { id: 'battle', keys: ['battleScene', 'battleRule', 'battlePace'] },

@@ -7,7 +7,7 @@ import { WEATHER_MOVE, type BattleNames } from './messages'
 import { STAT_SLOT } from './romText'
 
 /** 공 한 칸의 모양 — 색이 아니라 모양으로 갈린다 */
-export type BallShape = 'alive' | 'status' | 'fainted' | 'empty'
+type BallShape = 'alive' | 'status' | 'fainted' | 'empty'
 
 /**
  * 공 줄의 한 칸. 키가 없으면 빈 칸, 재생기가 보여 준 기절이면 회색 공, 상태 이상이면 귀퉁이에 점이 붙은 공이다.
@@ -35,7 +35,7 @@ export function showsExp(mine: boolean, doubles: boolean): boolean {
 }
 
 /** 변화 줄의 한 칸. `dir`이 있으면 ▲▼와 `amount`가 붙는다 */
-export interface ChangeItem {
+interface ChangeItem {
   key: string
   text: string
   dir: 'up' | 'down' | null
@@ -46,10 +46,10 @@ export interface ChangeItem {
 const BOOST_ORDER: readonly BoostStat[] = ['atk', 'def', 'spa', 'spd', 'spe', 'accuracy', 'evasion']
 
 /** 상태 이름표(뱅크 219)에서 혼란의 자리 (`MSGCOND_CONFUSION`) */
-export const COND_CONFUSION = 5
+const COND_CONFUSION = 5
 /** 기술 이름표에서 씨뿌리기 · 대타출동 */
-export const MOVE_LEECH_SEED = 73
-export const MOVE_SUBSTITUTE = 164
+const MOVE_LEECH_SEED = 73
+const MOVE_SUBSTITUTE = 164
 
 /**
  * 그 마리에게 걸린 **능력 변화와 혼란 · 씨뿌리기 · 대타**. 없으면 빈 배열이다 (줄을 안 그린다).
@@ -77,7 +77,7 @@ export function changeItems(mon: ViewMon, names: BattleNames | null): ChangeItem
 }
 
 /** 필드 → 기술 번호. 트릭룸 433 · 중력 356 */
-export const FIELD_STRIP_MOVE: Readonly<Record<string, number>> = { trickroom: 433, gravity: 356 }
+const FIELD_STRIP_MOVE: Readonly<Record<string, number>> = { trickroom: 433, gravity: 356 }
 
 /** 띠의 한 칸 */
 export interface StripCell {

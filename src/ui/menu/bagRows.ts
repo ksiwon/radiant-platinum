@@ -13,7 +13,7 @@ const TM_COUNT = 92
 const ITEM_CHERI_BERRY = ITEM_TABLE.findIndex(([name]) => name === 'ITEM_CHERI_BERRY')
 
 /** 줄의 꼴. 원작 줄 그리기가 주머니와 도구로 가른다 */
-export type RowKind =
+type RowKind =
   /** 그림 · 이름 · 개수 */
   | 'plain'
   /** `No01` + 기술 이름 + 개수 */

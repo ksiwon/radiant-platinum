@@ -11,7 +11,7 @@ import * as css from './summaryScreen.css'
 export const CHART_ORDER = ['hp', 'atk', 'def', 'spe', 'spd', 'spa'] as const
 export type ChartKey = (typeof CHART_ORDER)[number]
 
-export interface Point { x: number, y: number }
+interface Point { x: number, y: number }
 
 /**
  * 꼭짓점 여섯의 좌표. 첫 꼭짓점이 위(−90°)이고 60°씩 시계 방향이다.
@@ -38,7 +38,7 @@ const CX = 150
 const CY = 110
 const R = 96
 
-export interface ChartLabel {
+interface ChartLabel {
   key: ChartKey
   /** 롬 이름표 (뱅크 455의 110~115) */
   name: string
