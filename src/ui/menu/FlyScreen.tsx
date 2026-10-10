@@ -47,7 +47,7 @@ import { LINE } from '../theme/scale'
 import { MenuScreen } from './MenuScreen'
 import { monIconAt } from './pokeIcon'
 import {
-  CROP, SHEET, ZOOM, captionParts, cellBox, cellCenter, flyFoot, labelAnchor, labelledSpots, mapSize, markBox, panFor, stepSpot,
+  CROP, SHEET, ZOOM, captionParts, cellBox, cellCenter, flyCaption, flyFoot, labelAnchor, labelledSpots, mapSize, markBox, panFor, stepSpot,
 } from './flyMap'
 import type { Spot } from './flyMap'
 import { useMenuKeys } from './useMenuKeys'
@@ -79,17 +79,13 @@ export function playerBlock(): { x: number, z: number } {
 }
 
 /**
- * 지도 아래 날기 줄. 날기 자리가 아닌 칸이면 null이다.
+ * 지도 아래 날기 줄. 날기 자리가 아닌 칸이면 null이다 (글은 `flyMap`이 언어별로 든다).
  *
  * ⚠️ **보기만 하는 지도에서는 「Z · 여기로 날아간다」를 안 띄운다** — 벽 지도와
  * 타운맵 도구는 Z가 아무것도 안 한다(`fly`의 `viewOnly`). 열린 자리는 날 수
  * 있는 곳이라고만 적는다
  */
-export function flyCaption(spot: boolean, unlocked: boolean, viewOnly: boolean): string | null {
-  if (!spot) return null
-  if (!unlocked) return '아직 가 본 적이 없다'
-  return viewOnly ? '날 수 있는 곳' : 'Z · 여기로 날아간다'
-}
+export { flyCaption }
 
 /** 목록 머리 · 지금 있는 곳 — 롬에 없는 말이라 세 언어를 든다 */
 const COPY: Record<string, { open: string, here: string }> = {
@@ -105,6 +101,7 @@ export function FlyScreen() {
   const party = useSaveStore((s) => s.party)
   const gender = useSaveStore((s) => s.trainer.gender)
   const zoneName = useSessionStore((s) => s.zoneName)
+  const sessionMap = useSessionStore((s) => s.mapId)
   const locale = useGameLocale()
   const [cells, setCells] = useState<readonly TownMapCell[]>([])
   /** 칸 설명 (`TEXT_BANK_TOWN_MAP`). 0번은 날기 물음, 1번은 화면 이름 */
@@ -151,7 +148,7 @@ export function FlyScreen() {
   const spot = flySpotAt(cellHere?.map ?? -1, at.x, at.z)
   const isOpen = (spawn: number): boolean => flySpotOpen(spawn, flySpots, (f) => fieldScripts.vars.checkFlag(f))
   const unlocked = spot !== null && isOpen(spot.spawn)
-  const caption = flyCaption(spot !== null, unlocked, viewOnly)
+  const caption = flyCaption(spot !== null, unlocked, viewOnly, locale)
   /**
    * 열린 날기 자리 — 표 차례(이야기 순). 목록 · Q/E · 이름표가 같은 것을 본다.
    *
@@ -266,6 +263,9 @@ export function FlyScreen() {
   const col = gender === 'boy' ? 0 : 1
   const flyer = viewOnly ? undefined : party.find((m) => m.moves.some((s) => s.move === FIELD_MOVES.fly.move))
   const copy = COPY[locale] ?? COPY.ko!
+  // 지금 있는 곳은 이 화면이 받은 언어의 지명으로 다시 읽는다 — 세션의 존 이름은 맵에 들어설 때의 언어로 굳어 있다
+  const hereLabel = mapById(sessionMap)?.label
+  const hereName = (hereLabel !== undefined ? names[hereLabel] : undefined) ?? zoneName
   const act = caption === null ? null : captionParts(caption)
 
   return (
@@ -273,7 +273,7 @@ export function FlyScreen() {
       title={notes[1] ?? ''}
       {...(flyer !== undefined ? { icon: <span style={monIconAt(monIcons, flyer, 1)} aria-hidden /> } : {})}
       {...(!viewOnly && notes[0] !== undefined ? { note: notes[0] } : {})}
-      foot={flyFoot(zoomed, viewOnly)}
+      foot={flyFoot(zoomed, viewOnly, locale)}
     >
       <div className={own.stage}>
         <div className={own.viewport} ref={viewEl}>
@@ -393,7 +393,7 @@ export function FlyScreen() {
           <div className={own.now}>
             {playerSheet !== null && <span className={own.nowIcon} style={playerAt(col, 2) ?? undefined} aria-hidden />}
             {copy.here}
-            {zoneName !== null && <b className={own.nowName}>{zoneName}</b>}
+            {hereName !== null && <b className={own.nowName}>{hereName}</b>}
           </div>
         </div>
       </div>

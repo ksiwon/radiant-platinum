@@ -143,7 +143,37 @@ export function captionParts(caption: string): { key: string | null, text: strin
   return m === null ? { key: null, text: caption } : { key: m[1]!, text: m[2]! }
 }
 
+/**
+ * 가이드맵의 우리 말(롬에 없다). 「닫기」는 다른 화면 바닥 안내(`FOOT_WORDS`)와 같은 말이고, 「날 수 있는 곳」은 목록 머리와
+ * 같은 말이다
+ */
+const FLY_WORDS: Record<DataLocale, {
+  move: string, spots: string, zoom: string, whole: string, fly: string, close: string, notYet: string, flyHere: string,
+}> = {
+  ko: {
+    move: '옮기기', spots: '날 수 있는 곳', zoom: '확대', whole: '전체', fly: '날아간다', close: '닫기',
+    notYet: '아직 가 본 적이 없다', flyHere: '여기로 날아간다',
+  },
+  en: {
+    move: 'Move', spots: 'Places to fly', zoom: 'Zoom', whole: 'Full map', fly: 'Fly', close: 'Close',
+    notYet: 'Not visited yet', flyHere: 'Fly here',
+  },
+  ja: {
+    move: '移動', spots: '行ける場所', zoom: '拡大', whole: '全体', fly: '飛ぶ', close: '閉じる',
+    notYet: 'まだ行ったことがない', flyHere: 'ここへ飛ぶ',
+  },
+}
+
+/** 행동 줄 글 — 날기 자리가 아니면 `null`. 「Z · …」는 키캡과 말로 갈라 그린다(`captionParts`) */
+export function flyCaption(spot: boolean, unlocked: boolean, viewOnly: boolean, locale: DataLocale = 'ko'): string | null {
+  if (!spot) return null
+  const w = FLY_WORDS[locale]
+  if (!unlocked) return w.notYet
+  return viewOnly ? w.spots : `Z · ${w.flyHere}`
+}
+
 /** 바닥 안내 — 키 글자는 `KeyHints`가 키캡으로 감싼다. 보기만 하는 지도는 날기를 안 말한다 */
-export function flyFoot(zoomed: boolean, viewOnly: boolean): string {
-  return `↑↓←→ 옮기기 · Q/E 날 수 있는 곳 · Tab ${zoomed ? '전체' : '확대'}${viewOnly ? '' : ' · Z 날아간다'} · X 닫기`
+export function flyFoot(zoomed: boolean, viewOnly: boolean, locale: DataLocale = 'ko'): string {
+  const w = FLY_WORDS[locale]
+  return `↑↓←→ ${w.move} · Q/E ${w.spots} · Tab ${zoomed ? w.whole : w.zoom}${viewOnly ? '' : ` · Z ${w.fly}`} · X ${w.close}`
 }
