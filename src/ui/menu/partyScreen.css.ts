@@ -10,7 +10,7 @@
 //
 // ⚠️ **색은 여기서 안 고른다** (DESIGN.md §2). 판 색은 원작 팔레트(`party_menu/menu.pal`)에서 왔고 고른 판은
 // 금이다. 숫자는 Pretendard `tabular-nums`다 (mono 금지).
-import { style } from '@vanilla-extract/css'
+import { globalStyle, style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 import { EDGE, GAP, RADIUS, TEXT, TIME } from '../theme/scale'
 import { PICKED } from '../theme/window.css'
@@ -200,12 +200,9 @@ export const hpTag = style({
 })
 
 /** 막대. 홈과 채움은 `HpBar`가 그리고 여기는 폭만 준다 */
-export const barSlot = style({
-  flex: 1,
-  minWidth: 0,
-  display: 'flex',
-  selectors: { '& > *': { flex: 1 } },
-})
+export const barSlot = style({ flex: 1, minWidth: 0, display: 'flex' })
+// `HpBar`는 클래스를 못 받는다 — 자식 한 칸이 폭을 다 쓰게 한다 (`selectors`는 `&` 자신만 겨눌 수 있다)
+globalStyle(`${barSlot} > *`, { flex: 1 })
 
 /** 갈래 창의 비전 · 필드 기술 줄 — 롬 `{COLOR 1}`이다 (`emphasis.one`) */
 export const fieldMove = style({ color: vars.emphasis.one })

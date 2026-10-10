@@ -20,17 +20,15 @@
 // 파티가 아니라 **그 박스 서른 칸**을 넘겨 보고, 닫히면 박스 커서가 마지막으로 본 자리로
 // 간다 — 메뉴 스택의 파티 자리(`summarySlot`)로는 박스 마리를 가리킬 수 없어서 `source`로 받는다.
 import { followPartyReturn, setPartyReturnSlot, summaryLast } from './partyChoice'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import {
-  loadItemIcons, loadItemNames, loadLabels, loadMoveNames, loadMoves, loadSpecies,
+  loadItemIcons, loadItemNames, loadLabels, loadMoveNames, loadMoves, loadPokeIcons, loadSpecies,
   loadSpeciesNames, type MoveTable, type SpeciesTable,
 } from '../../data/gameData'
 import { loadUiText } from '../../data/uiText'
 import { assets, readJson } from '../../data/providers/assetProvider'
-import type { ItemIcons, Labels } from '../../data/schema'
-import { hpColor } from '../../engine/battle/healthbar'
-import { typeColor } from '../../engine/battle/typeColor'
-import { expToNextLevel, levelProgress } from '../../engine/pokemon/exp'
+import type { ItemIcons, Labels, PokeIcons } from '../../data/schema'
+import { expToNextLevel, levelProgress, MAX_LEVEL } from '../../engine/pokemon/exp'
 import {
   abilityOf, genderOf, isShiny, maxHp, maxPpOf, natureOf, statsOf,
   type PokemonInstance,
@@ -46,14 +44,28 @@ import { useGameLocale } from '../../state/optionsStore'
 import { playerTrainer, useSaveStore } from '../../state/saveStore'
 import { useAssetImage } from '../../data/providers/useAssetUrl'
 import { SPECIES_EGG, spriteKey } from '../../engine/pokemon/form'
+import { music } from '../../engine/audio/music'
 import { MenuScreen } from './MenuScreen'
-import { itemIcon } from './itemIcon'
+import { itemIconAt } from './itemIcon'
+import { monIconAt } from './pokeIcon'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
-import * as css from './menuChrome.css'
+import { CHART_ORDER, StatChart, type ChartKey } from './StatChart'
+import { accuracyOf, moveRows, powerOf, type MoveRowView } from './summaryMoves'
 import * as own from './summaryScreen.css'
-import { HP_VARS, STATUS_VARS } from '../theme/window.css'
+import { EXP_VARS, caret } from '../theme/window.css'
 import { vars } from '../theme/contract.css'
 import { pointerMoved } from '../pointerMoved'
+import { PARTY, PARTY_BANK } from '../battle/romText'
+import { romLine } from '../battle/romLine'
+import { useRomLines } from '../battle/useRomLines'
+import { GroundShadow } from '../common/GroundShadow'
+import { HpBar } from '../common/HpBar'
+import { GenderMark } from '../common/MonIdentity'
+import { describeMove } from '../common/MoveFacts'
+import { MoveLine } from '../common/MoveLine'
+import { StatTable } from '../common/StatTable'
+import { StatusTag } from '../common/StatusTag'
+import { MoveClassBadge, TypeBadge } from '../common/TypeBadge'
 
 /**
  * 요약 뱅크(455)의 글 번호. 원작 상수 이름 그대로다.
@@ -62,7 +74,7 @@ import { pointerMoved } from '../pointerMoved'
  * 이름이 붙은 것만 적어 두면 어느 줄이 무엇인지 여기서 읽힌다
  */
 const T = {
-  labelItem: 4,
+  labelItem: 4, noItem: 6,
   pageInfo: 7, labelDexNum: 8, labelSpecies: 10, labelType: 12,
   labelOtName: 13, labelOtId: 15, labelExp: 17, labelExpNext: 19,
   threeQuestions: 22, pageMemo: 23,
@@ -70,6 +82,8 @@ const T = {
   labelHp: 110, labelAttack: 111, labelDefense: 112,
   labelSpAttack: 113, labelSpDefense: 114, labelSpeed: 115, labelAbility: 116,
   pageMoves: 128, labelPower: 147, labelAccuracy: 148,
+  /** 바꾸기 출발 줄의 작은 표 — 「교체」 */ swap: 152,
+  /** 위력 ≤ 1 · 명중 0 — 「---」 */ noValue: 154,
 } as const
 
 /** 기술 네 칸 (`LEARNED_MOVES_MAX`). 그 **다음** 자리가 「그만둔다」다 */
@@ -83,14 +97,6 @@ const PAGE_TITLE: Record<Page, number> = {
   info: T.pageInfo, memo: T.pageMemo, skills: T.pageSkills, moves: T.pageMoves,
 }
 
-/** 능력 쪽의 여섯 줄. 차례가 원작 창 차례다 — HP·공격·방어·특공·특방·스피드 */
-const STAT_ROWS = [
-  ['hp', T.labelHp], ['atk', T.labelAttack], ['def', T.labelDefense],
-  ['spa', T.labelSpAttack], ['spd', T.labelSpDefense], ['spe', T.labelSpeed],
-] as const
-
-
-
 interface Tables {
   species: SpeciesTable
   moves: MoveTable
@@ -101,6 +107,8 @@ interface Tables {
   labels: Labels
   itemNames: string[]
   icons: ItemIcons
+  /** 파티 줄의 아이콘 시트 */
+  pokeIcons: PokeIcons
   memo: MemoNames
 }
 
@@ -166,13 +174,14 @@ export function SummaryScreen({ source }: { source?: SummarySource } = {}) {
       // ⚠️ 일본 롬에는 달 이름 표가 **없다** — 문장 틀이 숫자 뒤에 단위를 직접
       // 쓴다. 빈 배열로 두면 `memo.ts`가 숫자만 넣는다
       loadUiText('monthNames', locale).catch(() => [] as string[]),
+      loadPokeIcons(),
     ]).then(([
       species, moves, speciesNames, moveNames, moveTexts, summary,
-      labels, itemNames, icons, location, special, month,
+      labels, itemNames, icons, location, special, month, pokeIcons,
     ]) => {
       if (!alive) return
       setT({
-        species, moves, speciesNames, moveNames, moveTexts, summary, labels, itemNames, icons,
+        species, moves, speciesNames, moveNames, moveTexts, summary, labels, itemNames, icons, pokeIcons,
         memo: { location, special, month },
       })
     }).catch(() => { /* 글 없이는 쪽이 안 뜬다. 빈 창으로 남는다 */ })
@@ -181,6 +190,9 @@ export function SummaryScreen({ source }: { source?: SummarySource } = {}) {
 
   const mon = (boxed ? list[at] : list[Math.min(at, Math.max(0, list.length - 1))]) ?? undefined
   const info = mon && t ? t.species.of(mon) : undefined
+  // 마리를 넘기면 울음소리가 난다 (`main.c:565` `PlayMonCry`). 알은 울지 않는다
+  const cryOf = mon && !mon.isEgg ? mon.species : null
+  useEffect(() => { if (cryOf !== null) void music.playCry(cryOf) }, [at, cryOf])
   // 알은 메모 쪽만 볼 수 있다 (`PokemonSummaryScreen_PageIsVisble`)
   const isEgg = mon?.isEgg ?? false
   const pages: readonly Page[] = useMemo(
@@ -201,12 +213,21 @@ export function SummaryScreen({ source }: { source?: SummarySource } = {}) {
     : picking.teach === null ? moves.length : moves.length + 1
   const moveOn = Math.min(moveAt, Math.max(0, rows - 1))
 
+  /** 장이 들어오는 방향(1: 오른쪽에서, −1: 왼쪽에서). 쪽이 바뀔 때 8px 밀려 들어온다 */
+  const [dir, setDir] = useState(1)
+  /** 쪽을 옮긴다 — 가는 방향을 기억해 장이 그쪽에서 들어오게 한다. 탭 클릭도 이 길이다 */
+  const goPage = (next: Page): void => {
+    if (swapFrom !== null || next === shown) return
+    setDir(pages.indexOf(next) >= pageAt ? 1 : -1)
+    setPage(next)
+  }
   // 쪽은 돈다 — 쪽이 하나뿐인 알이면 안 넘어가니 소리도 없다
   const stepPage = (d: number) => (): boolean => {
     // 자리 바꾸기 동안은 ↑↓ · A · B만 받는다 (`HandleInput_MoveSwap`)
     if (swapFrom !== null) return false
     const next = pages[(pageAt + d + pages.length) % pages.length]
     if (!next || next === shown) return false
+    setDir(d >= 0 ? 1 : -1)
     setPage(next)
     return true
   }
@@ -234,6 +255,13 @@ export function SummaryScreen({ source }: { source?: SummarySource } = {}) {
     if (next < 0) return false
     setAt(next)
     return true
+  }
+  /** 파티 줄의 아이콘을 눌렀다 — `stepAt`과 같은 규칙이다 (자리 바꾸기 중에는 막히고, 알은 메모 쪽에서만 선다) */
+  const goMon = (index: number): void => {
+    const target = list[index]
+    if (swapFrom !== null || !target || index === at) return
+    if (target.isEgg && shown !== 'memo') return
+    setAt(index)
   }
 
   /** 닫는다. 박스가 띄운 요약은 박스에 마지막 자리를 넘긴다 */
@@ -309,87 +337,165 @@ export function SummaryScreen({ source }: { source?: SummarySource } = {}) {
         ? '←→ 쪽 · ↑↓ 기술 · Z 자리 바꾸기 · Tab 다음 포켓몬 · X 닫기'
         : '←→ 쪽 · ↑↓ 포켓몬 · X 닫기'
 
+  const mark = (p: Page): string => vars.page[p]
+  const ballId = mon && !mon.isEgg ? mon.ball : 0
+
   return (
     <MenuScreen
       title={text(PAGE_TITLE[shown])}
+      tabs={{
+        pages: pages.map((p) => ({ key: p, label: text(PAGE_TITLE[p]), mark: mark(p) })),
+        at: pageAt,
+        onPick: (i) => { goPage(pages[i] ?? shown) },
+      }}
       note={present > 1 ? `${String(order)} / ${String(present)}` : undefined}
       foot={foot}
     >
-      <div className={css.tabs} hidden={picking !== null}>
-        {pages.map((p) => (
-          <button
-            key={p}
-            type="button"
-            className={css.tab[p === shown ? 'on' : 'off']}
-            onClick={() => { setPage(p) }}
+      <div className={own.body}>
+        <PartyStrip
+          list={list} at={at} boxed={boxed} icons={t?.pokeIcons} names={t?.speciesNames}
+          onPick={goMon}
+        />
+        <Stage
+          mon={mon} name={name} t={t} tone={mark(shown)} ball={ballId} nameKey={`${String(at)}/${String(mon?.pid ?? 0)}`}
+        />
+        <div className={own.sheet}>
+          <div
+            key={shown}
+            className={own.page}
+            style={{ '--dir': dir } as CSSProperties}
           >
-            {text(PAGE_TITLE[p])}
-          </button>
-        ))}
-      </div>
-
-      <div className={own.stage}>
-        <Rail mon={mon} name={name} t={t} />
-        <div className={own.page}>
-          {mon && info && t && (
-            shown === 'info' ? <InfoPage mon={mon} t={t} trainerName={trainer.name} />
-              : shown === 'memo' ? <MemoPage mon={mon} t={t} />
-                : shown === 'skills' ? <SkillsPage mon={mon} t={t} />
-                  : (
-                    <MovesPage
-                      mon={mon} t={t} at={moveOn} teach={picking?.teach ?? null} swapFrom={swapFrom}
-                      onPick={(i) => { setMoveAt(i) }}
-                    />
-                  )
-          )}
+            {mon && info && t && (
+              shown === 'info' ? <InfoPage mon={mon} t={t} trainerName={trainer.name} />
+                : shown === 'memo' ? <MemoPage mon={mon} t={t} />
+                  : shown === 'skills' ? <SkillsPage mon={mon} t={t} tone={mark('skills')} />
+                    : (
+                      <MovesPage
+                        mon={mon} t={t} at={moveOn} teach={picking?.teach ?? null} swapFrom={swapFrom}
+                        onPick={(i) => { setMoveAt(i) }}
+                      />
+                    )
+            )}
+          </div>
         </div>
       </div>
     </MenuScreen>
   )
 }
 
-/** 왼쪽 기둥 — 그림·이름·레벨·지닌 도구. 쪽이 바뀌어도 안 바뀐다 */
-function Rail(
-  { mon, name, t }: { mon: PokemonInstance | undefined; name: string; t: Tables | null },
+/** 왼쪽 파티 줄 — 누가 위아래에 있는지 보인다. 박스에서 연 요약은 앞 · 지금 · 뒤 셋만 선다 */
+function PartyStrip(
+  { list, at, boxed, icons, names, onPick }: {
+    list: readonly (PokemonInstance | null)[]
+    at: number
+    boxed: boolean
+    icons: PokeIcons | undefined
+    names: readonly string[] | undefined
+    onPick: (index: number) => void
+  },
 ) {
-  const art = useAssetImage(
-    mon ? `data/pokemon/${spriteKey(mon.species, mon.form, mon.isEgg)}_front.png` : null,
-  )
-  if (!mon) return <div className={own.rail} />
-  const ratio = t?.species.of(mon).genderRatio ?? 255
-  const gender = mon.isEgg ? 'genderless' : genderOf(mon.pid, ratio)
-  const shiny = !mon.isEgg && isShiny(mon.pid, mon.otId, mon.otSecretId)
-
+  const indices = boxed
+    ? [nextSummaryMon(list, at, -1, true), at, nextSummaryMon(list, at, 1, true)].filter((i) => i >= 0 && list[i])
+    : list.flatMap((m, i) => (m ? [i] : []))
   return (
-    <div className={own.rail}>
-      {art === null
-        ? <div className={own.portraitGap} />
-        : <img className={own.portrait} src={art} alt="" />}
-      <span className={own.nameRow}>
-        {name}
-        {gender === 'male' && <span className={own.male}>♂</span>}
-        {gender === 'female' && <span className={own.female}>♀</span>}
-        {shiny && <span className={own.shiny}>★</span>}
-        {/* 다 나은 뒤에 남는 점. 노력치가 계속 두 배라는 표시다 (PARITY §3.9) */}
-        {!mon.isEgg && cured(mon) && <span className={own.pokerusCured} title="포켓루스">●</span>}
-      </span>
-      {/* 배틀 체력판과 같은 꼴이다 (BattleScreen의 `Lv{mon.level}`) */}
-      {!mon.isEgg && <span className={own.level}>Lv{mon.level}</span>}
-      {!mon.isEgg && infected(mon) && (
-        <span className={own.pokerus} style={STATUS_VARS.pkrs}>포켓루스</span>
-      )}
-      {mon.heldItem > 0 && (
-        <span className={own.held}>
-          <span className={own.heldIcon} style={itemIcon(t?.icons, mon.heldItem, 24)} aria-hidden />
-          {t?.itemNames[mon.heldItem] ?? ''}
-        </span>
-      )}
-      {mon.heldItem === 0 && t && <span className={own.held}>{t.summary[T.labelItem] ?? ''} —</span>}
+    <div className={own.strip}>
+      {indices.map((i) => {
+        const one = list[i]
+        if (!one) return null
+        return (
+          <button
+            key={i}
+            type="button"
+            tabIndex={-1}
+            className={i === at ? `${own.slot} ${own.slotOn}` : own.slot}
+            // 포커스를 안 받게 둔다 — 받으면 Space가 키 결정과 단추 클릭을 같이 건다
+            onMouseDown={(e) => { e.preventDefault() }}
+            onClick={() => { onPick(i) }}
+            aria-label={one.isEgg ? undefined : one.nickname ?? names?.[one.species]}
+          >
+            <span className={own.slotIcon} style={monIconAt(icons, one, 1)} aria-hidden />
+          </button>
+        )
+      })}
     </div>
   )
 }
 
-/** 정보 쪽 — 도감 번호·종족·타입·원트레이너·ID·경험치 (`DrawInfoPageWindows`) */
+/**
+ * 가운데 무대 — 볼 · 이름 · 성별 · Lv · 그림 · 타입 · 상태 · 지닌 도구. 쪽이 바뀌어도 안 바뀐다.
+ *
+ * 그림 뒤의 원 빛이 쪽 색이다(`--page`). 마리가 바뀌면 `nameKey`가 바뀌어 그림이 다시 내려앉는다
+ */
+function Stage(
+  { mon, name, t, tone, ball, nameKey }: {
+    mon: PokemonInstance | undefined
+    name: string
+    t: Tables | null
+    tone: string
+    ball: number
+    nameKey: string
+  },
+) {
+  const art = useAssetImage(
+    mon ? `data/pokemon/${spriteKey(mon.species, mon.form, mon.isEgg)}_front.png` : null,
+  )
+  if (!mon) return <div className={own.stage} />
+  const info = t?.species.of(mon)
+  const ratio = info?.genderRatio ?? 255
+  const gender = mon.isEgg ? 'genderless' : genderOf(mon.pid, ratio)
+  const shiny = !mon.isEgg && isShiny(mon.pid, mon.otId, mon.otSecretId)
+  const types = [...new Set(info?.types ?? [])]
+  const fainted = mon.hp <= 0 && !mon.isEgg
+
+  return (
+    <div className={own.stage} style={{ '--page': tone } as CSSProperties}>
+      <div className={own.idRow}>
+        {ball > 0 && <span className={own.ballIcon} style={itemIconAt(t?.icons, ball, 1)} aria-hidden />}
+        <span className={own.name}>{name}</span>
+        <GenderMark gender={gender} />
+        {shiny && <span className={own.shiny} aria-label="이로치">★</span>}
+        {/* 다 나은 뒤에 남는 점. 노력치가 계속 두 배라는 표시다 (PARITY §3.9) */}
+        {!mon.isEgg && cured(mon) && <span className={own.pokerusCured} title="포켓루스">●</span>}
+      </div>
+      {/* 배틀 체력판과 같은 꼴이다 (BattleScreen의 `Lv{mon.level}`) */}
+      {!mon.isEgg && (
+        <div className={own.lvRow}>
+          <span className={own.lvSmall}>Lv.</span>
+          <span className={own.lvBig}>{mon.level}</span>
+        </div>
+      )}
+      <div className={own.portraitWrap}>
+        <span className={own.glowOuter} aria-hidden />
+        <span className={own.glowInner} aria-hidden />
+        <span className={own.plinth} aria-hidden><GroundShadow w={140} h={22} /></span>
+        {art === null
+          ? <span className={own.portraitGap} />
+          : <img key={nameKey} className={own.portrait} src={art} alt="" />}
+      </div>
+      <div className={own.chips}>
+        {types.map((ty) => <TypeBadge key={ty} type={ty} name={t?.labels.types[ty] ?? ''} />)}
+      </div>
+      <div className={own.statusSlot}>
+        {!mon.isEgg && <StatusTag status={mon.status} fainted={fainted} pkrs={infected(mon)} />}
+      </div>
+      {!mon.isEgg && (
+        <div className={own.held}>
+          {mon.heldItem > 0 && (
+            <span className={own.heldIcon} style={itemIconAt(t?.icons, mon.heldItem, 1)} aria-hidden />
+          )}
+          <span className={own.heldText}>
+            <span className={own.heldLabel}>{t?.summary[T.labelItem] ?? ''}</span>
+            <span className={own.heldName}>
+              {mon.heldItem > 0 ? t?.itemNames[mon.heldItem] ?? '' : `${t?.summary[T.noItem] ?? ''}`}
+            </span>
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** 정보 쪽 — 도감 번호·종족·타입·원트레이너·ID·경험치 (`DrawInfoPageWindows`). 묶음 사이만 선이다 */
 function InfoPage(
   { mon, t, trainerName }: { mon: PokemonInstance; t: Tables; trainerName: string },
 ) {
@@ -401,46 +507,56 @@ function InfoPage(
   const progress = info ? levelProgress(info.growthRate, mon.exp) : 0
   // 원트레이너 이름의 색은 **성별**로 갈린다 — 남자 파랑, 여자 빨강
   const otClass = mon.origin.otGender === 'male' ? own.otMale : own.otFemale
+  // 100레벨이면 막대가 꽉 차고 오른쪽 끝 Lv가 비어 있다
+  const maxed = mon.level >= MAX_LEVEL
 
   return (
     <>
-      <Line label={t.summary[T.labelDexNum]}>
-        {/* ⚠️ 신오도감에 없는 종은 번호가 아니라 물음표 셋이다. 색이 다른 개체는
-            번호가 붉다 (`SUMMARY_TEXT_RED`) */}
-        <span style={shiny ? { color: vars.pick.edge } : undefined}>
-          {dex > 0 ? String(dex).padStart(3, '0') : t.summary[T.threeQuestions] ?? ''}
-        </span>
-      </Line>
-      <Line label={t.summary[T.labelSpecies]}>{t.speciesNames[mon.species] ?? ''}</Line>
-      <Line label={t.summary[T.labelType]}>
-        <span className={own.typeRow}>
-          {types.map((ty) => (
-            <span key={ty} className={own.typeChip} style={{ ['--tint' as string]: typeColor(ty) }}>
-              {t.labels.types[ty] ?? ''}
-            </span>
-          ))}
-        </span>
-      </Line>
-      <Line label={t.summary[T.labelOtName]}>
-        {/* 원트레이너 이름은 개체에 새겨진 것이다. 지금 주인공 이름이 아니다 —
-            둘이 갈리는 날(통신)에 이 자리가 곧바로 맞는다 */}
-        <span className={otClass}>{mon.origin.otName || trainerName}</span>
-      </Line>
-      <Line label={t.summary[T.labelOtId]}>{String(mon.otId).padStart(5, '0')}</Line>
-      <Line label={t.summary[T.labelExp]}>{mon.exp.toLocaleString()}</Line>
-      <Line label={t.summary[T.labelExpNext]}>
-        <span className={own.typeRow}>
-          <span className={own.expTrack}>
-            <span className={own.expFill} style={{ width: `${String(progress * 100)}%` }} />
+      <div className={own.group}>
+        <Line label={t.summary[T.labelDexNum]}>
+          {/* ⚠️ 신오도감에 없는 종은 번호가 아니라 물음표 셋이다. 색이 다른 개체는
+              번호가 붉다 (`SUMMARY_TEXT_RED`) */}
+          <span className={own.valueBig} style={shiny ? { color: vars.pick.edge } : undefined}>
+            {dex > 0 ? String(dex).padStart(3, '0') : t.summary[T.threeQuestions] ?? ''}
           </span>
-          <span>{next.toLocaleString()}</span>
-        </span>
-      </Line>
+        </Line>
+        <Line label={t.summary[T.labelSpecies]}>{t.speciesNames[mon.species] ?? ''}</Line>
+        <Line label={t.summary[T.labelType]}>
+          <span className={own.typeRow}>
+            {types.map((ty) => <TypeBadge key={ty} type={ty} name={t.labels.types[ty] ?? ''} />)}
+          </span>
+        </Line>
+      </div>
+      <div className={own.group}>
+        <Line label={t.summary[T.labelOtName]}>
+          {/* 원트레이너 이름은 개체에 새겨진 것이다. 지금 주인공 이름이 아니다 —
+              둘이 갈리는 날(통신)에 이 자리가 곧바로 맞는다 */}
+          <span className={otClass}>{mon.origin.otName || trainerName}</span>
+        </Line>
+        <Line label={t.summary[T.labelOtId]}>{String(mon.otId).padStart(5, '0')}</Line>
+      </div>
+      <div className={own.group}>
+        <div className={own.expRow}>
+          <span className={own.key}>{t.summary[T.labelExp] ?? ''}</span>
+          <span className={own.expValue}>{mon.exp.toLocaleString()}</span>
+        </div>
+        <div className={own.expRow}>
+          <span className={own.key}>{t.summary[T.labelExpNext] ?? ''}</span>
+          <span className={own.expValue}>{next.toLocaleString()}</span>
+        </div>
+        <div className={own.barEnds}>
+          <span>Lv.{mon.level}</span>
+          <span className={own.expTrack}>
+            <span className={own.expFill} style={{ ...EXP_VARS, width: `${String(progress * 100)}%` } as CSSProperties} />
+          </span>
+          <span>{maxed ? '' : `Lv.${String(mon.level + 1)}`}</span>
+        </div>
+      </div>
     </>
   )
 }
 
-/** 트레이너 메모 쪽 — 줄 번호까지 원작대로다 (`PrintTrainerMemo`) */
+/** 트레이너 메모 쪽 — 줄 번호까지 원작대로다 (`PrintTrainerMemo`). 줄 번호가 곧 공책 줄 번호다 */
 function MemoPage({ mon, t }: { mon: PokemonInstance; t: Tables }) {
   const mine = otMatches(mon, playerTrainer(useSaveStore.getState().trainer), mon.otId)
   const memo = useMemo(() => buildMemo(mon, mine, t.memo), [mon, mine, t.memo])
@@ -488,51 +604,79 @@ function Colored({ raw, slots }: { raw: string; slots: readonly string[] }) {
   )
 }
 
-/** 능력 쪽 — 여섯 능력치와 특성 (`DrawSkillsPageWindows`) */
-function SkillsPage({ mon, t }: { mon: PokemonInstance; t: Tables }) {
+/**
+ * 능력 쪽 — HP 막대와 육각형 · 다섯 능력치 · 특성 (`DrawSkillsPageWindows`).
+ *
+ * 육각형의 바깥 고리는 **이 마리의 최댓값**이다 (`StatChart`). 성격이 올린 능력의 이름은 빨강, 내린 쪽은 파랑이고
+ * 옆의 줄에는 CSS 세모가 붙는다
+ */
+function SkillsPage({ mon, t, tone }: { mon: PokemonInstance; t: Tables; tone: string }) {
   const info = t.species.of(mon)
   const stats = statsOf(mon, info)
   const full = maxHp(mon, info)
   const effect = natureEffect(natureOf(mon.pid))
   const ability = abilityOf(mon.pid, info.abilities)
+  const name = (id: number): string => t.summary[id] ?? ''
+  const markOf = (key: string): -1 | 0 | 1 => (effect.up === key ? 1 : effect.down === key ? -1 : 0)
+
+  // 육각형 꼭짓점 차례(`CHART_ORDER`)와 옆 줄 차례(`SIDE`)는 다르다 — 이름표 번호를 각자 쥔다
+  const chartName: Record<ChartKey, number> = {
+    hp: T.labelHp, atk: T.labelAttack, def: T.labelDefense, spe: T.labelSpeed, spd: T.labelSpDefense, spa: T.labelSpAttack,
+  }
+  const chartValue: Record<ChartKey, number> = {
+    hp: full, atk: stats.atk, def: stats.def, spe: stats.spe, spd: stats.spd, spa: stats.spa,
+  }
+  const side = SIDE.map(([key, label]) => ({ name: name(label), value: stats[key] }))
+  const up = SIDE.findIndex(([key]) => key === effect.up)
+  const down = SIDE.findIndex(([key]) => key === effect.down)
 
   return (
     <>
-      <div className={own.hpBar}>
-        <span className={own.key}>{t.summary[T.labelHp] ?? ''}</span>
-        <span className={own.hpTrack}>
-          <span
-            className={own.hpFill}
-            style={{
-              width: `${String(full > 0 ? (Math.max(0, Math.min(mon.hp, full)) / full) * 100 : 0)}%`,
-              ...HP_VARS[hpColor(mon.hp, full)],
-            }}
+      <div>
+        <div className={own.hpHead}>
+          <span className={own.key}>{name(T.labelHp)}</span>
+          <span className={own.hpValue}>{mon.hp} / {full}</span>
+        </div>
+        <HpBar hp={mon.hp} max={full} height={12} />
+      </div>
+
+      <div className={own.statsBody}>
+        <StatChart
+          values={CHART_ORDER.map((k) => chartValue[k])}
+          labels={CHART_ORDER.map((k) => ({ key: k, name: name(chartName[k]), mark: k === 'hp' ? 0 : markOf(k) }))}
+          accent={tone}
+        />
+        <div className={own.statSide}>
+          <StatTable
+            stats={side}
+            {...(up >= 0 && down >= 0 ? { nature: { up, down } } : {})}
           />
-        </span>
-        <span className={own.num}>{mon.hp} / {full}</span>
+        </div>
       </div>
 
-      <div className={own.stats}>
-        {STAT_ROWS.filter(([k]) => k !== 'hp').map(([key, label]) => (
-          <div key={key} className={own.line}>
-            <span className={own.statName[
-              effect.up === key ? 'up' : effect.down === key ? 'down' : ''
-            ]}
-            >
-              {t.summary[label] ?? ''}
-            </span>
-            <span className={own.num}>{stats[key]}</span>
-          </div>
-        ))}
+      <div className={own.ability}>
+        <div className={own.abilityHead}>
+          <span className={own.key} style={{ flex: '0 0 auto' }}>{name(T.labelAbility)}</span>
+          <span className={own.abilityName}>{t.labels.abilities[ability] ?? ''}</span>
+        </div>
+        <p className={own.abilityText}>{t.labels.abilityText[ability] ?? ''}</p>
       </div>
-
-      <Line label={t.summary[T.labelAbility]}>{t.labels.abilities[ability] ?? ''}</Line>
-      <div className={own.moveDetail}>{t.labels.abilityText[ability] ?? ''}</div>
     </>
   )
 }
 
-/** 기술 쪽 — 넉 칸과 고른 기술의 위력·명중·설명 (`DrawBattleMovesPageWindows`) */
+/** 옆 줄의 다섯 능력치. 차례가 원작 창 차례다 — 공격 · 방어 · 특수공격 · 특수방어 · 스피드 */
+const SIDE = [
+  ['atk', T.labelAttack], ['def', T.labelDefense], ['spa', T.labelSpAttack],
+  ['spd', T.labelSpDefense], ['spe', T.labelSpeed],
+] as const
+
+/**
+ * 기술 쪽 — 넉 칸과 고른 기술의 분류 · 위력 · 명중 · 설명 (`DrawBattleMovesPageWindows`).
+ *
+ * 칸은 넷을 늘 그린다 — 빈 칸은 「—」 / 「--」이고 커서가 서지 않는다. 「가르침」 모드의 새 기술은 가는 선 아래에
+ * 다섯째 줄로 뗀다
+ */
 function MovesPage(
   { mon, t, at, teach, swapFrom, onPick }: {
     mon: PokemonInstance; t: Tables; at: number
@@ -543,8 +687,10 @@ function MovesPage(
     onPick: (i: number) => void
   },
 ) {
+  const lines = useRomLines(PARTY_BANK)
+  const none = romLine(lines, PARTY.moveStatNoValue) ?? t.summary[T.noValue] ?? ''
   /**
-   * 화면에 서는 줄 — 아는 기술 넷 뒤에 배울 기술이 붙을 수 있다.
+   * 커서 번호 → 줄의 기술. 아는 기술 넷 뒤에 배울 기술이 붙을 수 있다.
    *
    * 아직 안 배운 기술이라 PP는 그 기술의 최대치로 세운다 — 개체에 없는 값이다
    */
@@ -556,47 +702,75 @@ function MovesPage(
   ]
   const chosen = list[at]
   const data = chosen ? t.moves.byId.get(chosen.move) : undefined
+  const rows = moveRows(mon.moves.length, teach !== null)
+
+  const rowOf = (row: MoveRowView, key: string) => {
+    if (row.kind === 'empty' || row.cursor === null) {
+      return (
+        <div key={key} className={own.move.empty}>
+          <MoveLine move={null} cols={['pp']} empty />
+        </div>
+      )
+    }
+    const slot = list[row.cursor]
+    const info = slot ? t.moves.byId.get(slot.move) : undefined
+    const state = row.cursor === at ? 'on' : row.cursor === swapFrom ? 'from' : 'off'
+    return (
+      <div
+        key={key}
+        className={state === 'from' ? `${own.move.from} ${own.moveFrom}` : own.move[state]}
+        data-swap-from={row.cursor === swapFrom ? 'on' : undefined}
+        onPointerMove={(e) => { if (pointerMoved(e)) onPick(row.cursor ?? 0) }}
+      >
+        {state === 'on' && <span className={caret} aria-hidden />}
+        {slot && (
+          <MoveLine
+            move={{
+              id: slot.move,
+              name: t.moveNames[slot.move] ?? '',
+              type: info?.type ?? null,
+              typeName: t.labels.types[info?.type ?? 0] ?? '',
+              ...(info ? { power: info.power, accuracy: info.accuracy } : {}),
+            }}
+            pp={slot.pp}
+            maxPp={maxPpOf(slot, info?.pp ?? 0)}
+            cols={['pp']}
+          />
+        )}
+        {state === 'from' && <span className={own.swapTag}>{t.summary[T.swap] ?? ''}</span>}
+      </div>
+    )
+  }
 
   return (
     <>
-      <div className={own.moves}>
-        {list.map((slot, i) => {
-          const info = t.moves.byId.get(slot.move)
-          return (
-            <div
-              key={`${String(slot.move)}/${String(i)}`}
-              className={own.move[i === at ? 'on' : i === swapFrom ? 'from' : 'off']}
-              data-swap-from={i === swapFrom ? 'on' : undefined}
-              onPointerMove={(e) => { if (pointerMoved(e)) onPick(i) }}
-            >
-              <span
-                className={own.typeChip}
-                style={{ ['--tint' as string]: typeColor(info?.type ?? 0) }}
-              >
-                {t.labels.types[info?.type ?? 0] ?? ''}
-              </span>
-              <span className={own.moveName}>{t.moveNames[slot.move] ?? ''}</span>
-              <span className={own.movePp}>
-                PP {slot.pp} / {maxPpOf(slot, info?.pp ?? 0)}
-              </span>
-            </div>
-          )
-        })}
+      <div className={own.moveList}>
+        {rows.filter((r) => r.kind !== 'teach').map((row, i) => rowOf(row, `m${String(i)}`))}
+        {rows.some((r) => r.kind === 'teach') && (
+          <>
+            <div className={own.teachRule} />
+            {rows.filter((r) => r.kind === 'teach').map((row) => rowOf(row, 'teach'))}
+          </>
+        )}
       </div>
 
-      <div className={own.moveDetail}>
-        <div className={own.moveFacts}>
-          {/* 위력·명중이 0이면 원작도 물음표 셋을 찍는다 — 변화 기술이다 */}
-          <span>
-            {t.summary[T.labelPower] ?? ''}{' '}
-            {data && data.power > 0 ? data.power : t.summary[T.threeQuestions] ?? ''}
-          </span>
-          <span>
-            {t.summary[T.labelAccuracy] ?? ''}{' '}
-            {data && data.accuracy > 0 ? data.accuracy : t.summary[T.threeQuestions] ?? ''}
-          </span>
+      <div className={own.detail}>
+        <div className={own.facts}>
+          <div className={own.fact}>
+            <span className={own.factLabel}>{romLine(lines, PARTY.moveCategoryLabel) ?? ''}</span>
+            {data && <MoveClassBadge category={data.category} />}
+          </div>
+          {/* 위력 ≤ 1 · 명중 0은 롬의 「---」다 (뱅크 3의 50 · 455의 154) */}
+          <div className={own.fact}>
+            <span className={own.factLabel}>{t.summary[T.labelPower] ?? ''}</span>
+            <span className={own.factValue}>{data ? powerOf(data.power, none) : ''}</span>
+          </div>
+          <div className={own.fact}>
+            <span className={own.factLabel}>{t.summary[T.labelAccuracy] ?? ''}</span>
+            <span className={own.factValue}>{data ? accuracyOf(data.accuracy, none) : ''}</span>
+          </div>
         </div>
-        {chosen ? t.moveTexts[chosen.move] ?? '' : ''}
+        <p className={own.moveText}>{chosen ? describeMove(t.moveTexts[chosen.move] ?? '') : ''}</p>
       </div>
     </>
   )

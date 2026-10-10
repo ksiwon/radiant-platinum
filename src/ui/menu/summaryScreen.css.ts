@@ -1,299 +1,389 @@
-// 요약 화면 (PARITY §5 · `applications/pokemon_summary_screen`).
+// 요약 화면 (`.audit/menu-ui/summary.md` §4 · PARITY §5 · `applications/pokemon_summary_screen`).
 //
-// ⚠️ **판을 늘어놓지 않는다.** 원작은 왼쪽에 포켓몬 한 마리가 크게 서 있고
-// 오른쪽 한 장에만 글이 있다 — 값마다 상자를 두르면 표가 되고, 표는 원작과
-// 아주 다르게 보인다. 여기서 테두리를 갖는 것은 **왼쪽 기둥과 오른쪽 장** 둘뿐이고
+// ⚠️ **판을 늘어놓지 않는다.** 원작은 왼쪽에 포켓몬 한 마리가 크게 서 있고 오른쪽 한 장에만 글이 있다 — 값마다
+// 상자를 두르면 표가 되고, 표는 원작과 아주 다르게 보인다. 선은 파티 줄과 무대 사이 하나와 쪽 안의 묶음 가름뿐이고
 // 안쪽은 전부 글줄이다.
-import { style, styleVariants } from '@vanilla-extract/css'
-import { GAP, RADIUS, TEXT } from '../theme/scale'
-import { BAR_FILL, BAR_TRACK, PICKED, STATUS_TAG } from '../theme/window.css'
+//
+// 쪽 색(`vars.page.*`)은 **탭 표식과 포켓몬 뒤 원 빛에만** 쓴다 (결정) — 판을 그 색으로 칠하지 않는다.
+// 숫자는 Pretendard `tabular-nums`다 (mono 금지). 도트는 정수배뿐이다 (그림 240 = 80 × 3 · 아이콘 32 = ×1).
+import { keyframes, style, styleVariants } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
+import { EDGE, GAP, RADIUS, TEXT, TIME } from '../theme/scale'
+import { PICKED, RULE } from '../theme/window.css'
 
-// 창 안을 가르는 선은 창 한 벌의 것이다 (`theme/window.css`)
-const EDGE = vars.window.rule
+/** 본문의 세 칸 — 파티 줄 · 무대 · 장 */
+const STRIP = 56
+const STAGE = 344
 
-/** 왼쪽 기둥(포켓몬)과 오른쪽 장(쪽). 기둥이 좁고 고정이다 */
-export const stage = style({
+export const body = style({
   flex: '1 1 auto',
   minHeight: 0,
   display: 'grid',
-  gridTemplateColumns: '186px minmax(0, 1fr)',
-  gap: 16,
-  padding: '10px 14px',
+  gridTemplateColumns: `${String(STRIP)}px ${String(STAGE)}px minmax(0, 1fr)`,
 })
 
-// ── 왼쪽 기둥 ────────────────────────────────────────────────────────────────
+// ── 파티 줄 ──────────────────────────────────────────────────────────────────
 
-export const rail = style({
+/** 세로 가운데에 아이콘이 선다. 파티 줄과 무대 사이에만 선이 있다 */
+export const strip = style({
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
-  gap: 2,
-  paddingTop: 4,
+  justifyContent: 'center',
+  gap: GAP.small,
+  borderRight: RULE,
 })
 
-/** 그림. 배틀 그림을 그대로 쓴다 — 파티 화면과 같은 자료다 */
-export const portrait = style({
-  width: 150,
-  height: 150,
-  objectFit: 'contain',
+export const slot = style({
+  appearance: 'none',
+  width: 44,
+  height: 40,
+  display: 'grid',
+  placeItems: 'center',
+  padding: 0,
+  border: 'none',
+  borderRadius: RADIUS.cell,
+  background: 'transparent',
+  cursor: 'pointer',
+})
+
+/** 지금 마리 — 파티 화면 · 탭과 같은 금 한 벌 */
+export const slotOn = style({
+  ...PICKED,
+  border: 'none',
+})
+
+/** 파티 아이콘 한 칸. 크기와 위치는 `monIconAt`이 인라인으로 준다 (32, 정수배) */
+export const slotIcon = style({
+  display: 'block',
   imageRendering: 'pixelated',
+  backgroundRepeat: 'no-repeat',
 })
 
-/** 알은 그림이 없다 — 자리만 비우고 아래 글로 알린다 */
-export const portraitGap = style({ width: 150, height: 150 })
+// ── 무대 (왼쪽) ──────────────────────────────────────────────────────────────
 
-export const nameRow = style({
+export const stage = style({
+  position: 'relative',
+  minWidth: 0,
   display: 'flex',
-  alignItems: 'baseline',
-  gap: 5,
-  fontSize: 18,
-  fontWeight: 700,
+  flexDirection: 'column',
+  alignItems: 'center',
+  padding: '16px 20px 18px',
+  // 쪽 색은 이 변수 하나로 온다 — 원 빛이 따라 바뀐다
+  vars: { '--page': vars.page.info },
 })
 
-export const male = style({ color: vars.state.male, fontSize: TEXT.base })
-export const female = style({ color: vars.state.female, fontSize: TEXT.base })
+export const idRow = style({
+  alignSelf: 'stretch',
+  display: 'flex',
+  alignItems: 'center',
+  gap: GAP.small,
+  minWidth: 0,
+})
 
-export const level = style({
-  fontSize: 13,
-  opacity: 0.72,
-  fontVariantNumeric: 'tabular-nums',
+export const ballIcon = style({ flex: '0 0 auto', imageRendering: 'pixelated', backgroundRepeat: 'no-repeat' })
+
+export const name = style({
+  fontSize: 22,
+  fontWeight: 700,
+  color: vars.ink.strong,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 })
 
 /** 색이 다른 개체의 별. 도감 번호도 붉게 뜬다 (`SUMMARY_TEXT_RED`) */
 export const shiny = style({ color: vars.pick.edge, fontSize: TEXT.small })
 
-/**
- * 포켓루스에 걸려 있는 동안 뜨는 딱지 (`SUMMARY_CONDITION_POKERUS`).
- *
- * 원작은 상태이상 칸에 이것을 넣는다 — 상태이상이 **없을 때만**이다. 그래서
- * 딱지도 상태 이상과 **같은 것**이고, 색만 `STATUS_VARS.pkrs`다.
- *
- * ⚠️ 한때 여기가 분홍(`state.female`)이었다. 실측해 보니 원작 포켓루스 딱지는
- * 잠듦과 같은 회록색이다 (DESIGN.md §1.5) — 성별 색과는 아무 상관이 없었다
- */
-export const pokerus = style([STATUS_TAG, {
-  marginTop: 4,
-  alignSelf: 'flex-start',
-}])
-
-/**
- * 다 나은 뒤에 남는 작은 점 (`SUMMARY_SPRITE_POKERUS_CURED_ICON`).
- *
- * 원작도 이로치 별과 **같은 그림 묶음**의 다른 칸이라 나란히 붙는다.
- * 이 점이 「노력치가 계속 두 배로 들어간다」는 표시다
- */
+/** 다 나은 뒤에 남는 작은 점 (`SUMMARY_SPRITE_POKERUS_CURED_ICON`) — 노력치가 계속 두 배라는 표시다 */
 export const pokerusCured = style({ color: vars.state.female, fontSize: TEXT.tiny })
 
-/** 지닌 도구 한 줄. 없으면 이 줄이 아예 없다 — 원작도 빈칸을 안 남긴다 */
+export const lvRow = style({
+  alignSelf: 'stretch',
+  display: 'flex',
+  alignItems: 'baseline',
+  gap: GAP.tight,
+  margin: '2px 0 0 32px',
+  color: vars.ink.strong,
+})
+export const lvSmall = style({ fontSize: TEXT.tiny, fontWeight: 700, color: vars.ink.dim })
+export const lvBig = style({ fontSize: TEXT.big, fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'tabular-nums' })
+
+export const portraitWrap = style({
+  position: 'relative',
+  width: 280,
+  height: 268,
+  display: 'grid',
+  placeItems: 'center',
+  marginTop: 2,
+  flex: '0 0 auto',
+})
+
+/**
+ * 뒤의 원 빛 — 바깥 고리(14%)와 안쪽(42%) 두 겹의 색 원이다. 쪽이 바뀌면 `--page`가 바뀌고, 색 값이 바뀌므로
+ * `background-color`가 `TIME.fade` 동안 섞인다 (그러데이션은 보간이 안 되어 색 원 둘로 쌓았다)
+ */
+export const glowOuter = style({
+  position: 'absolute',
+  left: 0,
+  top: 0,
+  width: 280,
+  height: 280,
+  borderRadius: RADIUS.round,
+  backgroundColor: `color-mix(in srgb, var(--page) 14%, transparent)`,
+  transition: `background-color ${TIME.fade}`,
+  '@media': { '(prefers-reduced-motion: reduce)': { transition: 'none' } },
+})
+export const glowInner = style({
+  position: 'absolute',
+  left: 24,
+  top: 24,
+  width: 232,
+  height: 232,
+  borderRadius: RADIUS.round,
+  backgroundColor: `color-mix(in srgb, var(--page) 42%, transparent)`,
+  transition: `background-color ${TIME.fade}`,
+  '@media': { '(prefers-reduced-motion: reduce)': { transition: 'none' } },
+})
+
+/** 받침 — `GroundShadow`가 그린다. 자리만 잡는다 */
+export const plinth = style({ position: 'absolute', left: 70, bottom: 26 })
+
+// 마리를 넘기면 그림이 누른 방향에서 12px 내려오며 나타나고 4px 한 번 뛴다. 입력을 막지 않는다
+const drop = keyframes({
+  from: { transform: 'translateY(-12px)', opacity: 0 },
+  to: { transform: 'translateY(0)', opacity: 1 },
+})
+const hop = keyframes({ '50%': { transform: 'translateY(-4px)' } })
+
+/** 그림 — 80 × 3 = 240. 정수배라 도트 폭이 고르다 */
+export const portrait = style({
+  position: 'relative',
+  width: 240,
+  height: 240,
+  imageRendering: 'pixelated',
+  animation: `${drop} 0.16s ease-out, ${hop} 0.22s ease-out 0.16s`,
+  '@media': { '(prefers-reduced-motion: reduce)': { animation: 'none' } },
+})
+/** 알은 그림이 없다 — 자리만 비운다 */
+export const portraitGap = style({ width: 240, height: 240 })
+
+export const chips = style({ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 })
+
+export const statusSlot = style({ marginTop: GAP.small, minHeight: 20, display: 'flex' })
+
+/** 지닌 도구 — 무대 맨 아래, 선 위 */
 export const held = style({
-  marginTop: 6,
-  fontSize: 12,
-  opacity: 0.66,
+  marginTop: 'auto',
+  alignSelf: 'stretch',
   display: 'flex',
   alignItems: 'center',
-  gap: 5,
+  gap: 10,
+  paddingTop: GAP.base,
+  borderTop: RULE,
+})
+export const heldIcon = style({ flex: '0 0 auto', imageRendering: 'pixelated', backgroundRepeat: 'no-repeat' })
+export const heldText = style({ display: 'flex', flexDirection: 'column', minWidth: 0 })
+export const heldLabel = style({ fontSize: TEXT.tiny, fontWeight: 700, color: vars.ink.dim })
+export const heldName = style({ fontSize: TEXT.base, fontWeight: 700, color: vars.ink.strong })
+
+// ── 장 (오른쪽) ──────────────────────────────────────────────────────────────
+
+export const sheet = style({
+  position: 'relative',
+  minWidth: 0,
+  minHeight: 0,
+  padding: '24px 28px 20px',
+  overflow: 'hidden',
 })
 
-export const heldIcon = style({
-  width: 24,
-  height: 24,
-  objectFit: 'none',
-  imageRendering: 'pixelated',
+// 쪽이 바뀌면 장이 들어오는 방향에서 8px 밀려 들어온다. `--dir`이 방향(1 · −1)이다
+const slideIn = keyframes({
+  from: { transform: 'translateX(calc(8px * var(--dir, 1)))', opacity: 0 },
+  to: { transform: 'translateX(0)', opacity: 1 },
 })
-
-// ── 오른쪽 장 ────────────────────────────────────────────────────────────────
-
 export const page = style({
+  height: '100%',
   minHeight: 0,
   display: 'flex',
   flexDirection: 'column',
-  gap: 10,
-  overflowY: 'auto',
-  overflowX: 'hidden',
-  paddingRight: 4,
-  scrollbarWidth: 'thin',
+  animation: `${slideIn} ${TIME.page} ease-out`,
+  '@media': { '(prefers-reduced-motion: reduce)': { animation: 'none' } },
 })
 
-/**
- * 한 줄 = 이름표 + 값.
- *
- * 이름표 폭을 못 박아 값이 세로로 줄을 맞춘다. 격자를 쓰면 빈 칸에도 선이
- * 생기는데, 원작은 이름표와 값 사이가 그냥 여백이다
- */
-export const line = style({
-  display: 'flex',
-  alignItems: 'baseline',
-  gap: 10,
-  fontSize: 15,
-  lineHeight: 1.75,
+/** 정보 쪽의 묶음. 묶음 사이만 선이다 */
+export const group = style({
+  selectors: { '& + &': { marginTop: GAP.base + 2, paddingTop: GAP.base + 2, borderTop: RULE } },
 })
 
-export const key = style({
-  flex: '0 0 92px',
-  fontSize: 12,
-  fontWeight: 600,
-  opacity: 0.5,
-})
-
+/** 한 줄 = 이름표 + 값. 이름표 폭을 못 박아 값이 세로로 줄을 맞춘다 */
+export const line = style({ display: 'flex', alignItems: 'baseline', minHeight: 40, gap: 0 })
+export const key = style({ flex: '0 0 112px', fontSize: 13, fontWeight: 700, color: vars.ink.dim })
 export const value = style({
-  flex: '1 1 auto',
+  fontSize: 18,
+  color: vars.ink.strong,
   fontVariantNumeric: 'tabular-nums',
+  minWidth: 0,
 })
+export const valueBig = style({ fontSize: TEXT.big, fontWeight: 700, lineHeight: 1 })
+export const typeRow = style({ display: 'flex', alignItems: 'center', gap: 6 })
 
 /** 원트레이너 이름의 색은 **성별**로 갈린다 (`SUMMARY_TEXT_BLUE`/`RED`) */
-export const otMale = style([value, { color: vars.state.male }])
-export const otFemale = style([value, { color: vars.state.female }])
+export const otMale = style({ color: vars.state.male, fontWeight: 700 })
+export const otFemale = style({ color: vars.state.female, fontWeight: 700 })
 
-/** 값이 오른쪽에 붙는 줄 — 능력치처럼 자릿수를 맞춰 읽는 것 */
-export const num = style([value, { textAlign: 'right', maxWidth: 92 }])
+export const expRow = style({ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', minHeight: 38 })
+export const expValue = style({ fontSize: 22, fontWeight: 700, color: vars.ink.strong, fontVariantNumeric: 'tabular-nums' })
 
-export const typeRow = style({
+/** 경험치 막대 — 504 × 12. 양끝에 현재 레벨과 다음 레벨 */
+export const barEnds = style({
   display: 'flex',
-  gap: 6,
   alignItems: 'center',
-})
-
-export const typeChip = style({
-  padding: '1px 9px 2px',
-  border: `1px solid ${vars.bar.edge}`,
-  borderRadius: RADIUS.bar,
-  fontSize: TEXT.tiny,
+  gap: 10,
+  marginTop: GAP.small,
+  fontSize: 13,
   fontWeight: 700,
-  color: vars.ink.onTint,
-  background: 'var(--tint)',
+  color: vars.ink.dim,
+  fontVariantNumeric: 'tabular-nums',
 })
-
-/** 경험치 막대. 다음 레벨까지 얼마나 남았는지가 숫자보다 먼저 보인다 */
-// ⚠️ `span`은 기본이 인라인이라 **높이가 안 먹는다.** 막대가 통째로 안 보였다
 export const expTrack = style({
   display: 'block',
-  flex: '0 1 200px',
-  height: 9,
-  ...BAR_TRACK,
+  position: 'relative',
+  flex: 1,
+  height: 12,
+  boxSizing: 'content-box',
+  overflow: 'hidden',
+  border: `${String(EDGE.bar)}px solid ${vars.bar.edge}`,
+  borderRadius: RADIUS.bar,
+  background: `linear-gradient(180deg, ${vars.bar.trackTop}, ${vars.bar.trackBottom})`,
 })
-
+// ⚠️ `span`은 기본이 인라인이라 **높이가 안 먹는다** — `display: block`이 꼭 있어야 한다
 export const expFill = style({
-  ...BAR_FILL,
-  vars: { '--lit': vars.bar.expLit, '--body': vars.bar.exp },
   display: 'block',
+  height: '100%',
   minWidth: 2,
-})
-
-// ── 능력 쪽 ──────────────────────────────────────────────────────────────────
-
-/** 여섯 능력치. 두 줄로 세우면 왼쪽이 HP·공격·방어, 오른쪽이 특공·특방·스피드다 */
-export const stats = style({
-  display: 'grid',
-  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-  columnGap: 22,
-})
-
-/** 성격이 올리는 쪽에 빨강, 내리는 쪽에 파랑 (원작이 이름표 색을 바꾼다) */
-export const statName = styleVariants({
-  '': [key, { flex: '0 0 64px' }],
-  up: [key, { flex: '0 0 64px', color: vars.state.bad }],
-  down: [key, { flex: '0 0 64px', color: vars.state.male }],
-})
-
-export const hpBar = style({
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  marginBottom: 2,
-})
-
-export const hpTrack = style({
-  display: 'block',
-  flex: '0 1 220px',
-  height: 9,
-  ...BAR_TRACK,
-})
-
-// ⚠️ 색은 화면이 `HP_VARS`로 얹는다 (`SummaryScreen.tsx`). 여기서 정하면
-// 파티 화면과 갈라진다
-export const hpFill = style({ ...BAR_FILL, display: 'block' })
-
-// ── 기술 쪽 ──────────────────────────────────────────────────────────────────
-
-export const moves = style({
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 2,
-})
-
-const moveBase = style({
-  display: 'flex',
-  alignItems: 'center',
-  gap: 9,
-  padding: `5px ${GAP.small}px`,
-  borderRadius: RADIUS.cell,
-  fontSize: TEXT.base,
-})
-
-export const move = styleVariants({
-  off: [moveBase],
-  on: [moveBase, {
-    ...PICKED,
-  }],
-  /**
-   * 자리 바꾸기에서 먼저 고른 칸. 원작은 커서를 하나 더 남겨 둔다
-   * (`SUMMARY_SPRITE_MOVE_SELECTOR_2`) — 칠하지 않고 테두리만 둘러 지금 커서와 가른다
-   */
-  from: [moveBase, {
-    boxShadow: `inset 0 0 0 2px ${vars.pick.edge}`,
-  }],
-})
-
-export const moveName = style({ flex: '1 1 auto' })
-
-export const movePp = style({
-  fontSize: 12,
-  opacity: 0.66,
-  fontVariantNumeric: 'tabular-nums',
-})
-
-/** 고른 기술의 위력·명중·설명. 쪽 아래에 붙어 자리가 안 흔들린다 */
-export const moveDetail = style({
-  marginTop: 8,
-  paddingTop: 8,
-  borderTop: `1px solid ${EDGE}`,
-  fontSize: 14,
-  lineHeight: 1.6,
-  whiteSpace: 'pre-line',
-  opacity: 0.86,
-  minHeight: 62,
-})
-
-export const moveFacts = style({
-  display: 'flex',
-  gap: 16,
-  fontSize: 12,
-  opacity: 0.6,
-  marginBottom: 4,
-  fontVariantNumeric: 'tabular-nums',
+  background: 'linear-gradient(180deg, var(--body) 0 25%, var(--lit) 25% 75%, var(--body) 75% 100%)',
 })
 
 // ── 메모 쪽 ──────────────────────────────────────────────────────────────────
 
 /**
- * 트레이너 메모.
- *
- * 원작은 줄 번호를 그대로 지켜서 **사이가 비는 것이 뜻**이다 — 성격과 만난
- * 자리가 붙어 있고 개성은 한 칸 아래다. 그 여백을 없애면 넉 줄이 뭉친다
+ * 트레이너 메모 — 공책 줄이 장 끝까지 깔린다. 원작은 줄 번호를 그대로 지켜서 **사이가 비는 것이 뜻**이다(성격과
+ * 만난 자리가 붙어 있고 개성은 한 칸 아래다). 줄 번호가 곧 공책 줄 번호다
  */
 export const memo = style({
-  fontSize: 15,
-  lineHeight: 1.7,
-  whiteSpace: 'pre-line',
-})
-
-export const memoRow = style({
-  minHeight: '1.7em',
-})
-
-/** 문장 틀 안의 `{COLOR 1}` 구간 — 만난 자리 이름이 여기 들어간다 */
-export const accent = style({
+  flex: 1,
+  margin: '0 -4px',
+  padding: '0 4px',
+  fontSize: 18,
+  lineHeight: '40px',
   color: vars.ink.strong,
-  fontWeight: 600,
+  whiteSpace: 'pre-line',
+  backgroundImage: `repeating-linear-gradient(180deg, transparent 0 39px, ${vars.window.rule} 39px 40px)`,
+})
+export const memoRow = style({ height: 40 })
+
+/** 문장 틀 안의 `{COLOR 1}` 구간 — 만난 자리 이름이 여기 들어간다 (`emphasis.two`) */
+export const accent = style({ color: vars.emphasis.two, fontWeight: 700 })
+
+// ── 능력 쪽 ──────────────────────────────────────────────────────────────────
+
+export const hpHead = style({ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: GAP.small })
+export const hpValue = style({ fontSize: 22, fontWeight: 700, color: vars.ink.strong, fontVariantNumeric: 'tabular-nums' })
+
+export const statsBody = style({
+  display: 'grid',
+  gridTemplateColumns: 'max-content minmax(0, 1fr)',
+  columnGap: GAP.base,
+  alignItems: 'center',
+  margin: '18px 0 8px',
+})
+
+export const chart = style({ display: 'block', overflow: 'visible' })
+const chartLabel = { fontFamily: vars.font.ui, fontSize: 13, fontWeight: 700 } as const
+export const chartText = style({ ...chartLabel, fill: vars.ink.dim })
+/** 성격이 올린 꼭짓점의 이름은 빨강, 내린 쪽은 파랑 */
+export const chartUp = style({ ...chartLabel, fill: vars.state.bad })
+export const chartDown = style({ ...chartLabel, fill: vars.state.male })
+
+/** 육각형 옆의 능력치 줄 — 값과 ▲▼는 `StatTable`이 그린다. 줄 높이만 키운다 */
+export const statSide = style({
+  display: 'grid',
+  gap: 6,
+  minWidth: 0,
+  fontSize: 22,
+})
+
+export const ability = style({ marginTop: 'auto', paddingTop: GAP.base + 2, borderTop: RULE })
+export const abilityHead = style({ display: 'flex', alignItems: 'baseline', gap: GAP.base + 2 })
+export const abilityName = style({ fontSize: TEXT.title, fontWeight: 700, color: vars.ink.strong })
+export const abilityText = style({ margin: '6px 0 0', fontSize: TEXT.base, lineHeight: 1.6, color: vars.ink.normal })
+
+// ── 기술 쪽 ──────────────────────────────────────────────────────────────────
+
+export const moveList = style({ display: 'flex', flexDirection: 'column', gap: GAP.tight })
+
+const moveBase = {
+  position: 'relative',
+  boxSizing: 'border-box',
+  height: 52,
+  display: 'flex',
+  alignItems: 'center',
+  padding: '0 14px 0 26px',
+  borderRadius: RADIUS.cell,
+  fontSize: 18,
+  fontWeight: 700,
+  color: vars.ink.strong,
+} as const
+
+export const move = styleVariants({
+  off: [moveBase],
+  /** 커서 줄 — 금 띠. 안 고른 줄은 아무것도 아니다 */
+  on: [moveBase, { ...PICKED, border: 'none' }],
+  /** 자리 바꾸기에서 먼저 고른 칸 — 테두리만 남기고 깜박인다 (`SUMMARY_SPRITE_MOVE_SELECTOR_2`) */
+  from: [moveBase, { boxShadow: `inset 0 0 0 ${String(EDGE.bar)}px ${vars.pick.edge}` }],
+  empty: [moveBase, { opacity: 0.42 }],
+})
+
+const blink = keyframes({ '50%': { boxShadow: `inset 0 0 0 ${String(EDGE.bar)}px transparent` } })
+export const moveFrom = style({
+  animation: `${blink} ${TIME.blink} steps(1, end) infinite`,
+})
+
+
+/** 먼저 고른 줄의 작은 「교체」 표 (뱅크 455의 152) */
+export const swapTag = style({
+  position: 'absolute',
+  right: 96,
+  top: '50%',
+  transform: 'translateY(-50%)',
+  padding: '1px 6px',
+  borderRadius: RADIUS.bar,
+  background: vars.pick.face,
+  color: vars.pick.text,
+  fontSize: TEXT.tiny,
+  fontWeight: 700,
+})
+
+/** 다섯째 줄(새 기술) 위의 가는 선 */
+export const teachRule = style({ height: 0, borderTop: RULE, margin: `${String(GAP.tight)}px 0` })
+
+export const detail = style({ marginTop: 'auto', paddingTop: GAP.wide, borderTop: RULE })
+export const facts = style({ display: 'flex', gap: 44 })
+export const fact = style({ display: 'flex', flexDirection: 'column' })
+export const factLabel = style({ fontSize: 13, fontWeight: 700, color: vars.ink.dim })
+export const factValue = style({
+  fontSize: 26,
+  lineHeight: 1.25,
+  fontWeight: 700,
+  color: vars.ink.strong,
+  fontVariantNumeric: 'tabular-nums',
+})
+export const moveText = style({
+  margin: '10px 0 0',
+  minHeight: 52,
+  fontSize: TEXT.base,
+  lineHeight: 1.6,
+  color: vars.ink.normal,
 })
