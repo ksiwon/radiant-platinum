@@ -128,8 +128,17 @@ export async function candiceToAcuity(api, ctx, { levels = { lead: 64, bird: 62,
   }
   if (!(await have(api, ITEM.hm08))) return done()
 
-  out.climb = await teachTo(api, ITEM.hm08, MOVE.rockClimb, BIDOOF_LINE,
-    { keep: keepAllButWeakest((await api.partyState()) ?? [], BIDOOF_LINE) })
+  /**
+   * ⚠️ **줍자마자 가르치면 한 번 헛돈다** — 괴력(`badges67` ①)과 같은 꼴이다. 실측(2026-10-10 연쇄 P4 · 8300444):
+   * 217번도로 트레이너전 · 도구 볼 대사 바로 뒤에 「아무도 못 배웠다」로 다리를 잃었다. 글·장면을 걷고 한 번 더 한다
+   */
+  for (let round = 0; round < 3; round++) {
+    await api.clearTalk(); await api.settle()
+    out.climb = await teachTo(api, ITEM.hm08, MOVE.rockClimb, BIDOOF_LINE,
+      { keep: keepAllButWeakest((await api.partyState()) ?? [], BIDOOF_LINE) })
+    if (out.climb.ok) break
+    note('비전머신08 락클라임 (헛돈 판의 화면)', JSON.stringify((out.climb.said ?? []).map((one) => one.slice(0, 120))))
+  }
   note('비전머신08 락클라임 → 비버통', out.climb.ok ? `배웠다 · 잊은 것 ${JSON.stringify(out.climb.lost ?? [])}` : String(out.climb.why))
   if (!out.climb.ok) return done()
   api.setClimb(true)
