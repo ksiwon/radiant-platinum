@@ -1,23 +1,22 @@
-// 설정 — 원작의 여섯 항목.
+// 설정 — 원작의 항목에 우리가 연 항목을 얹은 한 화면 (`options.md`).
 //
-// 항목도 값도 `options_menu` 뱅크(us#220)에서 그대로 온다. 우리가 이름을 새로
-// 짓지 않는다.
+// 항목도 값도 `options_menu` 뱅크(us#220)에서 그대로 온다. 우리가 이름을 새로 짓지 않는다.
 //
-// 여섯 항목이 다 먹는다: **이야기의 속도**(대사창 인쇄기), **배틀 애니메이션**
-// (기술 연출과 카메라 샷을 통째로 끈다 — 원작의 그 항목이 하는 일이다),
-// **시합규칙**(「교체」면 상대가 다음 마리를 내보내기 전에 우리도 바꿀지 묻는다),
-// **사운드**, 그리고 우리가 연 **배틀 진행**·**시점**.
+// 줄은 **묶음 셋**으로 가른다 (`optionsRows`): 배틀(배틀 애니메이션 · 시합 룰 · 배틀 진행) → 화면과 소리(시점 · 언어 ·
+// 사운드) → 데이터(에셋 확인 · 처음부터 · 닫는다). 값은 판이 아니라 **같은 열에 선 글자**고(`ValueStrip`), 고른 줄은 줄
+// 밖의 금 띠 하나가 미끄러진다. 아래 띠는 롬 설명(`MessageDock`)이고 그 오른쪽에 항목별 미리보기가 선다.
 //
-// 아래 네 줄은 원작에 없다. **배틀 진행**은 원작이 느리다고 오래 비판받은 대목을
-// 우리가 손댈 수 있게 연 자리고(원작 길이는 `playback.ts`에 그대로 있다),
-// 시점 전환은 3D로 옮기면서 생겼고, **언어**는 원작 롬이 언어마다 따로 찍혀 나와서
-// 있을 수 없던 항목이며, "처음부터"는 원작이 타이틀에서 위+SELECT+B로 하는 것을
-// 여기로 옮긴 것이다.
+// 값은 바꾸는 즉시 먹는다 (언어 · 시점은 화면에 바로 먹는다). 대신 **닫을 때 바꾼 것이 있으면 한 번 묻는다** —
+// 원작의 「선택하신 설정으로 변경하시겠습니까?」(뱅크 49)다 (`options_menu.c` `STATE_CONFIRM_NEW_SETTINGS`).
+// 「예」면 그대로 닫고, 「아니오」면 연 순간의 값으로 되돌리고 닫는다.
 //
-// 원작 항목의 글은 뱅크가 언어를 따라간다. 하지만 **우리가 연 항목은 뱅크에
-// 없어서** 그 넷만 여기서 두 언어로 적어 둔다 — 언어를 영어로 두고 이 화면을
-// 열었을 때 절반만 한국어로 남으면 그것 자체가 고장으로 보인다.
-import { useEffect, useState } from 'react'
+// 아래 항목은 원작에 없다. **배틀 진행**은 원작이 느리다고 오래 비판받은 대목을 우리가 손댈 수 있게 연 자리고(원작
+// 길이는 `playback.ts`에 그대로 있다), 시점 전환은 3D로 옮기면서 생겼고, **언어**는 원작 롬이 언어마다 따로 찍혀
+// 나와서 있을 수 없던 항목이며, "처음부터"는 원작이 타이틀에서 위+SELECT+B로 하는 것을 여기로 옮긴 것이다.
+//
+// 원작 항목의 글은 뱅크가 언어를 따라간다. 하지만 **우리가 연 항목은 뱅크에 없어서** 그 글만 여기서 세 언어로 적어 둔다 —
+// 언어를 영어로 두고 이 화면을 열었을 때 절반만 한국어로 남으면 그것 자체가 고장으로 보인다.
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { loadUiText, OPTIONS_TEXT } from '../../data/uiText'
 import { useMenuStore } from '../../state/menuStore'
 import {
@@ -29,14 +28,21 @@ import { APP_ROOT } from '../../data/assetBase'
 import { useSaveStore } from '../../state/saveStore'
 import { verifyEverything } from '../../app/integrityWatch'
 import { groupLabel } from '../../import/install/groupLabels'
-import { vars } from '../theme/contract.css'
+import { KeyHints } from '../common/KeyHints'
+import { MessageDock } from '../common/MessageDock'
+import { ValueStrip } from '../common/ValueStrip'
+import { YesNo } from '../common/YesNo'
+import { pointerMoved } from '../pointerMoved'
+import { OptionsPreview, type ChangeLine } from './OptionsPreview'
+import {
+  changedRows, groupTitle, isValueRow, pickLang, ROW_GROUPS, ROW_ORDER, snapshotOf, stepValue,
+  type OptionKey, type RowKey,
+} from './optionsRows'
+import { menuIcon } from './menuIcon'
 import { useMenuKeys, wrapCursor } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
-import * as own from './dialog.css'
-
-/** 자리는 `LANGUAGES`의 차례와 같다 — 한국어 · 영어 · 일본어 */
-const pickLang = <T,>(language: Language, ko: T, en: T, ja: T): T => [ko, en, ja][language] ?? ko
+import * as own from './optionsScreen.css'
 
 /**
  * 「처음부터」의 설명과 되묻는 말.
@@ -147,9 +153,9 @@ export function optionsFoot(language: Language): string {
 }
 
 interface Row {
-  key: keyof Options | 'reset' | 'verify'
+  key: RowKey
   label: string
-  /** 고를 수 있는 값의 글. 'reset'은 값이 없다 */
+  /** 고를 수 있는 값의 글. 행동 줄은 값이 없다 */
   values: string[]
   at: number
   help: string
@@ -161,8 +167,12 @@ export function OptionsScreen() {
   const [text, setText] = useState<string[]>([])
   const [cursor, setCursor] = useState(0)
   const [confirming, setConfirming] = useState(false)
+  /** 닫을 때 「선택하신 설정으로 변경하시겠습니까?」를 묻는 중인가 */
+  const [asking, setAsking] = useState(false)
   /** 손으로 부른 에셋 확인의 진행·결과. 없으면 안 눌렀다는 뜻이다 */
   const [verifying, setVerifying] = useState<VerifyNote | null>(null)
+  /** 확인이 도는 중이면 진행률(0~100). 커서를 다른 줄로 옮겨도 상태 칸에 남는다 */
+  const [verifyPct, setVerifyPct] = useState<number | null>(null)
   /**
    * 확인이 도는 중인가.
    *
@@ -174,7 +184,11 @@ export function OptionsScreen() {
   const closeAll = useMenuStore((s) => s.closeAll)
   const options = useOptionsStore()
   const resetSave = useSaveStore((s) => s.resetSave)
+  const gender = useSaveStore((s) => s.trainer.gender)
   const locale = useGameLocale()
+
+  // 연 순간의 값. 닫을 때 바뀐 줄을 세고 「아니오」면 여기로 되돌린다
+  const opened = useRef<Options>(snapshotOf(options))
 
   useEffect(() => {
     let alive = true
@@ -199,25 +213,25 @@ export function OptionsScreen() {
   const langs = availableLanguages()
   const here = LANGUAGES[options.language] ?? langs[0]!
 
-  const rows: Row[] = [
+  const byKey: Record<RowKey, Row> = {
     // ⚠️ **글자 속도 항목은 없앴다.** 대사가 쪽 단위로 통째로 올라가고 버튼
     // 하나로만 넘어가므로 고를 값이 없다 (`engine/script/printer`)
-    {
+    battleScene: {
       key: 'battleScene', label: at(OPTIONS_TEXT.labels.battleScene),
       values: pick(OPTIONS_TEXT.battleScene), at: options.battleScene,
       help: at(OPTIONS_TEXT.help.battleScene),
     },
-    {
+    battleRule: {
       key: 'battleRule', label: at(OPTIONS_TEXT.labels.battleRule),
       values: pick(OPTIONS_TEXT.battleRule), at: options.battleRule,
       help: at(OPTIONS_TEXT.help.battleRule),
     },
-    {
+    sound: {
       key: 'sound', label: at(OPTIONS_TEXT.labels.sound),
       values: pick(OPTIONS_TEXT.sound), at: options.sound,
       help: at(OPTIONS_TEXT.help.sound),
     },
-    {
+    battlePace: {
       key: 'battlePace', label: our('배틀 진행', 'BATTLE PACE', 'バトルの速さ'),
       values: our(
         ['원작대로', '빠르게', '아주 빠르게'],
@@ -231,7 +245,7 @@ export function OptionsScreen() {
         'メッセージが残る時間とHPゲージの速さ\n原作では終盤の1ターンに14秒ほどかかります',
       ), ours: true,
     },
-    {
+    view: {
       key: 'view', label: our('시점', 'CAMERA', 'カメラ'),
       values: our(['3인칭', '1인칭'], ['THIRD PERSON', 'FIRST PERSON'], ['三人称', '一人称']),
       at: options.view,
@@ -242,7 +256,7 @@ export function OptionsScreen() {
       ),
       ours: true,
     },
-    {
+    language: {
       key: 'language', label: our('언어', 'LANGUAGE', '言語'),
       // 우리가 옮긴 말이 아니라 그 나라 롬에 찍힌 글이다. 그래서 이름·기술·설명까지
       // 통째로 바뀐다 — 화면 글만 갈아 끼우는 것이 아니다.
@@ -250,7 +264,7 @@ export function OptionsScreen() {
       // 언어 이름은 그 언어로 적는 것이 맞다 — 어느 언어에서나 같다.
       // ⚠️ **설치된 것만 보여 준다.** 개발판은 세 벌이 다 있지만 공개판은
       // 사용자가 고른 롬 하나에서 나온 언어뿐이다 (optionsStore의
-      // `setAvailableLocales`). 안 그러면 고를 수는 있는데 글이 전부 비는
+      // `setAvailableLocales`). 안 그러면 고를 수는 있는데 글이 전부 빈
       // 칸이 생긴다
       values: langs.map((l) => LANGUAGE_NAMES[l]), at: Math.max(0, langs.indexOf(here)),
       help: our(
@@ -259,7 +273,7 @@ export function OptionsScreen() {
         '名前も技も説明も、その国のROMの文字になります\n今いるマップのセリフもすぐに切り替わります',
       ), ours: true,
     },
-    {
+    verify: {
       key: 'verify', label: our('에셋 확인', 'CHECK ASSETS', 'アセット確認'),
       values: [], at: 0,
       help: verifying?.text ?? our(
@@ -268,14 +282,37 @@ export function OptionsScreen() {
         'インストール済みのファイルを全部読み直して確かめます\n起動のたびには行わない検査です — 数分かかります',
       ), ours: true,
     },
-    {
+    reset: {
       key: 'reset', label: our('처음부터', 'NEW GAME', 'はじめから'),
       values: [], at: 0,
       help: resetText(options.language).help, ours: true,
     },
-  ]
+    // 원작의 「닫는다」 줄 — 설명은 뱅크 52번 「게임으로 돌아갑니다」
+    close: {
+      key: 'close', label: at(OPTIONS_TEXT.close), values: [], at: 0, help: at(OPTIONS_TEXT.closeHelp),
+    },
+  }
 
-  const row = rows[Math.min(cursor, rows.length - 1)]
+  const row = byKey[ROW_ORDER[Math.min(cursor, ROW_ORDER.length - 1)]!]
+
+  // 금 띠 자리 — 줄 높이와 묶음 머리 높이를 믿지 않고 DOM에서 잰다
+  const rowEls = useRef<(HTMLDivElement | null)[]>([])
+  const [bandTop, setBandTop] = useState(0)
+  useLayoutEffect(() => {
+    const el = rowEls.current[cursor]
+    if (el) setBandTop(el.offsetTop)
+  }, [cursor, text, langs.length, confirming])
+
+  const changed = changedRows(opened.current, options)
+
+  /** 값 목록에서 `value`(저장되는 값)가 가리키는 글. 언어는 저장 값이 `LANGUAGES` 기준 번호다 */
+  const valueText = (key: OptionKey, value: number): string =>
+    key === 'language' ? LANGUAGE_NAMES[LANGUAGES[value] ?? 'ko'] : byKey[key].values[value] ?? ''
+  const changes: ChangeLine[] = changed.map((key) => ({
+    label: byKey[key].label,
+    from: valueText(key, opened.current[key]),
+    to: valueText(key, options[key]),
+  }))
 
   /**
    * 설치본을 손으로 전부 확인한다.
@@ -290,8 +327,11 @@ export function OptionsScreen() {
       text: our(`확인하는 중… ${pct}%`, `Checking… ${pct}%`, `確認中… ${pct}%`), warn: false,
     })
     setVerifying(checking(0))
+    setVerifyPct(0)
     void verifyEverything((done, total) => {
-      setVerifying(checking(total > 0 ? Math.round((done / total) * 100) : 0))
+      const pct = total > 0 ? Math.round((done / total) * 100) : 0
+      setVerifying(checking(pct))
+      setVerifyPct(pct)
     })
       .then((got) => { setVerifying(verifyNote(got, options.language)) })
       .catch((e: unknown) => {
@@ -299,32 +339,56 @@ export function OptionsScreen() {
         console.warn('[options] 에셋 확인 실패', e)
         setVerifying(verifyNote('failed', options.language))
       })
-      .finally(() => { setBusy(false) })
+      .finally(() => { setBusy(false); setVerifyPct(null) })
   }
 
-  const move = (delta: number): void => {
-    if (!row || row.key === 'reset' || row.key === 'verify' || row.values.length === 0) return
-    const next = wrapCursor(row.at, delta, row.values.length)
+  /** 값을 `k`번째로 둔다. 안 바뀌었으면 `false` — 안 움직인 키는 소리를 안 낸다 */
+  const setValue = (r: Row, k: number): boolean => {
+    if (!isValueRow(r.key) || k === r.at || k < 0 || k >= r.values.length) return false
     // 언어 칸의 자리는 **설치된 목록 안의 자리**다. 저장하는 값은
     // `LANGUAGES` 기준 번호라 되돌려 준다
-    const value = row.key === 'language' ? LANGUAGES.indexOf(langs[next]!) : next
-    options.set(row.key,
+    const value = r.key === 'language' ? LANGUAGES.indexOf(langs[k]!) : k
+    options.set(r.key,
       value as BattleScene & BattleRule & SoundMode & ViewMode & BattlePace & Language)
+    return true
+  }
+
+  /** ←→로 값을 감는다. 값이 하나뿐이거나 행동 줄이면 `false` */
+  const move = (delta: number): boolean => {
+    const next = stepValue(row.at, delta, row.values.length)
+    return next !== null && setValue(row, next)
+  }
+
+  /** 닫는다. 바꾼 것이 있으면 한 번 묻는다 (결정) */
+  const requestClose = (): void => {
+    if (changed.length > 0) { setAsking(true); return }
+    back()
+  }
+
+  /** 「선택하신 설정으로 변경하시겠습니까?」의 답 — 「아니오」면 연 순간의 값으로 되돌린다 */
+  const answerClose = (yes: boolean): void => {
+    if (!yes) {
+      for (const key of changed) {
+        options.set(key, opened.current[key] as BattleScene & BattleRule & SoundMode & ViewMode & BattlePace & Language)
+      }
+    }
+    back()
   }
 
   useMenuKeys({
     // 원작 설정도 끝에서 감긴다 — `options_menu.c`의 `(cursor + 7 - 1) % 7` · `(cursor + 1) % 7`
-    up: () => { setCursor((c) => wrapCursor(c, -1, rows.length)) },
-    down: () => { setCursor((c) => wrapCursor(c, 1, rows.length)) },
-    left: () => { move(-1) },
-    right: () => { move(1) },
+    up: () => { setCursor((c) => wrapCursor(c, -1, ROW_ORDER.length)) },
+    down: () => { setCursor((c) => wrapCursor(c, 1, ROW_ORDER.length)) },
+    left: () => move(-1),
+    right: () => move(1),
     confirm: () => {
-      if (row?.key === 'reset') { setConfirming(true); return }
-      if (row?.key === 'verify') { checkAssets(); return }
-      move(1)
+      if (row.key === 'reset') { setConfirming(true); return }
+      if (row.key === 'verify') { checkAssets(); return }
+      if (row.key === 'close') { requestClose(); return }
+      return move(1)
     },
-    cancel: () => { if (confirming) setConfirming(false); else back() },
-  }, !confirming)
+    cancel: requestClose,
+  }, !confirming && !asking)
 
   if (confirming) return <ResetConfirm text={text} language={options.language} onNo={() => { setConfirming(false) }} onYes={() => {
     // 리포트를 지우고 타이틀로 나간다. 처음부터면 인트로부터 다시 봐야 한다
@@ -332,48 +396,116 @@ export function OptionsScreen() {
     void resetSave().then(() => { closeAll(); location.assign(APP_ROOT) })
   }} />
 
+  const warnNow = !asking && row.key === 'verify' && verifying?.warn === true
+  const note = changed.length > 0
+    ? our(`바꾼 항목 ${changed.length}`, `${changed.length} changed`, `変更 ${changed.length}件`)
+    : undefined
+
   return (
     <MenuScreen
       title={at(OPTIONS_TEXT.title) || our('설정', 'OPTIONS', '設定')}
-      foot={optionsFoot(options.language)}
+      icon={<span aria-hidden style={menuIcon('options', gender, true, 1, locale)} />}
+      {...(note !== undefined ? { note } : {})}
+      foot={asking
+        ? our('↑↓ 고르기 · Z 결정 · X 아니오', '↑↓ Choose · Z Set · X No', '↑↓ 選ぶ · Z 決定 · X いいえ')
+        : optionsFoot(options.language)}
+      message={(
+        // `display: contents` — 띠의 `order`가 창 안 flex에서 그대로 먹는다. 경고색만 이 안으로 건다
+        <div className={own.warn} data-warn={warnNow}>
+          <MessageDock
+            lines={asking ? at(OPTIONS_TEXT.confirmChanges) : row.help}
+            trailing={(
+              <OptionsPreview
+                row={row.key}
+                options={options}
+                language={options.language}
+                installed={langs.length}
+                verify={verifying}
+                verifyPct={verifyPct}
+                changes={changes}
+              />
+            )}
+          />
+        </div>
+      )}
     >
-      <div className={own.center}>
-        <div className={own.rows}>
-          {rows.map((r, i) => (
-            <div key={r.key} className={i === cursor ? own.optionRowOn : own.optionRow}>
-              {i === cursor && <span className={css.caret} aria-hidden />}
-              <span className={css.face}>
-                <span className={own.rowLabel}>
-                  {r.label}
-                  {r.ours && <span className={own.ours}>{our('추가', 'ADDED', '追加')}</span>}
-                </span>
-                <span className={own.values}>
-                  {r.values.map((v, k) => (
-                    // ⚠️ **자리(k)로 묶는다. 글(v)로 묶으면 안 된다.**
-                    //
-                    // 뱅크가 오기 전 첫 그림에서 값은 전부 빈 글이다. 그때 글로
-                    // 묶으면 한 줄의 두 칸이 **같은 열쇠**를 갖는데, React는 옛
-                    // 자식을 열쇠로 색인한 Map에 담고(`mapRemainingChildren`)
-                    // 남은 것만 지운다. 겹친 열쇠는 Map에서 덮여 사라지므로
-                    // **지워지지 않고 DOM에 남는다.** 그렇게 남은 빈 칸이 고른
-                    // 값 자리였으면 초록 판으로 보인다 — 글자 없는 초록 블럭이
-                    // 그것이었다. 값은 자리가 곧 뜻이라 처음부터 k가 맞다
-                    <span key={k} className={k === r.at ? own.valueOn : own.value}>{v}</span>
-                  ))}
-                </span>
-              </span>
-            </div>
+      <div className={own.body}>
+        <div className={own.list}>
+          {/* 금 띠 하나 — 줄이 아니라 줄 밖의 요소다. 고정 목록이라 미끄러진다 (SYSTEM §0 L5) */}
+          <span
+            className={own.band}
+            aria-hidden
+            style={{ transform: `translateY(${String(bandTop)}px)` }}
+          >
+            <span className={own.bandCaret} />
+          </span>
+          {ROW_GROUPS.map((group) => (
+            <Fragment key={group.id}>
+              <div className={own.groupHead}>{groupTitle(group.id, options.language)}</div>
+              {group.keys.map((key) => {
+                const i = ROW_ORDER.indexOf(key)
+                const r = byKey[key]
+                const on = i === cursor
+                const action = !isValueRow(key)
+                return (
+                  <div
+                    key={key}
+                    ref={(el) => { rowEls.current[i] = el }}
+                    className={on ? `${own.row} ${own.rowOn}` : own.row}
+                    aria-current={on ? 'true' : undefined}
+                    onPointerMove={(e) => { if (pointerMoved(e)) setCursor(i) }}
+                    onClick={() => { setCursor(i) }}
+                  >
+                    {/* 뱅크가 오기 전: 판이 아니라 「글이 올 자리」 가는 선을 둔다 */}
+                    <span className={key === 'reset' ? `${own.label} ${own.labelBad}` : own.label}>
+                      {r.label === '' ? <span className={own.placeholder} /> : r.label}
+                      {r.ours && <span className={own.ours}>{our('추가', 'ADDED', '追加')}</span>}
+                    </span>
+                    <span className={on && r.values.length > 1 ? `${own.chev} ${own.chevLive}` : own.chev}>
+                      <span className={own.chevLeft} />
+                    </span>
+                    <span className={own.values}>
+                      {!action && r.values.length > 0 && (
+                        // ⚠️ 값 key는 자리(k)다 — `ValueStrip`이 쥔다 (글로 묶으면 안 된다)
+                        <ValueStrip
+                          values={r.values}
+                          at={r.at}
+                          label={r.label}
+                          onPick={(k) => { setCursor(i); setValue(r, k) }}
+                        />
+                      )}
+                    </span>
+                    <span className={on && r.values.length > 1 ? `${own.chev} ${own.chevLive}` : own.chev}>
+                      <span className={own.chevRight} />
+                    </span>
+                    <span className={own.stateCol}>
+                      {key === 'verify' && verifyPct !== null && (
+                        <>
+                          <span className={own.track}>
+                            <span className={own.fill} style={{ width: `${String(verifyPct)}%` }} />
+                          </span>
+                          {verifyPct}%
+                        </>
+                      )}
+                      {action && on && !(key === 'verify' && verifyPct !== null) && (
+                        <span className={own.cap}>Z</span>
+                      )}
+                    </span>
+                  </div>
+                )
+              })}
+            </Fragment>
           ))}
         </div>
-        {/* 경고는 글머리 이모지가 아니라 색으로 — OS 컬러 이모지는 게임 글꼴과 따로 논다.
-            ⚠️ 결과는 「에셋 확인」 칸에서만 보이므로 그 칸일 때만 칠한다 */}
-        <div
-          className={own.help}
-          style={row?.key === 'verify' && verifying?.warn ? { color: vars.state.bad, fontWeight: 700 } : undefined}
-        >
-          {row?.help}
-        </div>
       </div>
+      {asking && (
+        <YesNo
+          className={own.closeAsk}
+          labels={[at(OPTIONS_TEXT.yes) || '예', at(OPTIONS_TEXT.no) || '아니오']}
+          initial={0}
+          onPick={answerClose}
+        />
+      )}
     </MenuScreen>
   )
 }
@@ -384,33 +516,27 @@ function ResetConfirm(
   { text: string[]; language: Language; onYes: () => void; onNo: () => void },
 ) {
   const our = (ko: string, en: string, ja: string): string => pickLang(language, ko, en, ja)
-  const [yes, setYes] = useState(false)
-  // 예/아니오는 가로로 놓였지만 두 축을 다 받는다 — 필드의 예/아니오는 ↑↓다
-  // (`field.ts`). 이 창에서만 ↑↓가 죽어 있으면 손에 익은 키가 안 먹는다.
-  // 이미 그 자리면 `false` — 안 움직인 키는 소리를 안 낸다 (`useMenuKeys`)
-  const toYes = (): boolean => { if (yes) return false; setYes(true); return true }
-  const toNo = (): boolean => { if (!yes) return false; setYes(false); return true }
-  useMenuKeys({
-    left: toYes,
-    up: toYes,
-    right: toNo,
-    down: toNo,
-    confirm: () => { if (yes) onYes(); else onNo() },
-    cancel: onNo,
-  })
   return (
     <div className={css.overlay}>
-      <div className={own.center}>
-        <div className={own.prompt}>
+      <div className={own.confirmCol}>
+        <div className={own.confirmPrompt}>
           {resetText(language).prompt}
         </div>
-        <div className={own.choices}>
-          <span className={yes ? own.choiceOn : own.choice}>{text[OPTIONS_TEXT.yes] ?? '예'}</span>
-          <span className={yes ? own.choice : own.choiceOn}>{text[OPTIONS_TEXT.no] ?? '아니오'}</span>
+        {/*
+          ⚠️ **처음 칸은 「아니오」다 — 계약이다.** 하네스가 설정 안에서 A를 연타하지 않는 까닭이 이 창이 지우는 창이기
+          때문이고(`journey.mjs`), 처음 칸이 「예」면 연타가 리포트를 지운다. 필드의 예/아니오처럼 ↑↓로 고른다
+        */}
+        <div className={own.confirmChoices}>
+          <YesNo
+            labels={[text[OPTIONS_TEXT.yes] ?? '예', text[OPTIONS_TEXT.no] ?? '아니오']}
+            initial={1}
+            onPick={(yes) => { if (yes) onYes(); else onNo() }}
+            onCancel={onNo}
+          />
         </div>
-      </div>
-      <div className={css.hint}>
-        {our('←→ 고르기 · Z 결정 · X 그만둔다', '←→ Choose · Z Set · X Cancel', '←→ 選ぶ · Z 決定 · X やめる')}
+        <div className={own.confirmHint}>
+          <KeyHints text={our('↑↓ 고르기 · Z 결정 · X 그만둔다', '↑↓ Choose · Z Set · X Cancel', '↑↓ 選ぶ · Z 決定 · X やめる')} />
+        </div>
       </div>
     </div>
   )

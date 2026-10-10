@@ -6,7 +6,7 @@
 //
 // **여기가 디스크로 나가는 유일한 문이다.** 걸어다니는 동안에는 아무것도
 // 안 남는다 (`state/saveStore.ts` 머리말).
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { fillMenuText, loadUiText, SAVE_TEXT, UI_BANK, YES_NO } from '../../data/uiText'
 import { loadDialogueBank } from '../../data/gameData'
 import { world } from '../../engine/map/world'
@@ -15,11 +15,15 @@ import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { avatarState, worldState } from '../../state/worldState'
-import { vars } from '../theme/contract.css'
+import { KeyHints } from '../common/KeyHints'
+import { MessageWindow } from '../common/MessageWindow'
+import { bandAt } from '../common/pickBand'
+import { pointerMoved } from '../pointerMoved'
+import { pickBand } from '../theme/window.css'
 import { useMenuKeys } from './useMenuKeys'
 import { SaveInfo } from './SaveInfo'
-import * as css from './menuChrome.css'
-import * as own from './dialog.css'
+import * as pop from '../common/choiceMenu.css'
+import * as own from './saveScreen.css'
 
 type Phase = 'ask' | 'overwrite' | 'writing' | 'done' | 'failed'
 
@@ -128,6 +132,61 @@ export function backupLine(backup: NonNullable<Backup>): string {
     : '브라우저가 백업 파일 다운로드를 막았다. 리포트는 남아 있다'
 }
 
+/**
+ * 쓰는 중 글 — 처음 쓰는 판(`SAVE_TYPE_NO_DATA_EXISTS`)은 21번 「리포트에 많은 내용을 기록 중입니다」,
+ * 이미 리포트가 있는 판(평소 quick 저장)은 15번 「작성하고 있습니다」다 (`CommonScript_TrySaveGame`).
+ * `loaded`는 이 판이 리포트를 불러온 것인가(`saveStore.loaded`)
+ */
+export function writingLine(common: readonly string[], loaded: boolean): string {
+  return (loaded ? common[SAVE_TEXT.writing] : common[SAVE_TEXT.writingFull]) ?? ''
+}
+
+/**
+ * 다 썼다는 소리를 내는가 — **쓰기가 끝나 `done`으로 들어서는 그 한 번**뿐이다 (`PlaySE SEQ_SE_DP_SAVE`).
+ * 실패(`failed`)는 소리가 없고, 같은 단계에서 다시 그려져도 다시 내지 않는다
+ */
+export function savedChime(prev: Phase | null, next: Phase): boolean {
+  return next === 'done' && prev !== 'done'
+}
+
+/**
+ * 예/아니오 창 — `YesNo`와 같은 살갗이지만 **키를 안 가진다.** 이 화면의 키는 `saveMenuKeys` 하나가 쥔다
+ * (←→와 ↑↓ 둘 다 받고, 다 쓴 뒤에는 「백업 파일 받기 / 닫기」를 같은 창에서 고른다). `YesNo`는 제 키를 가져서
+ * 같이 쓰면 Z 한 번이 두 번 먹는다 — 공용에 「키 없는 꼴」이 생기면 그쪽으로 바꾼다
+ */
+function ReportChoices(
+  { labels, label, yes, onPick, onHover }: {
+    labels: readonly [string, string]
+    /** 읽어 주는 이름 */
+    label: string
+    yes: boolean
+    onPick: (first: boolean) => void
+    onHover: (first: boolean) => void
+  },
+) {
+  return (
+    <div className={`${pop.root} ${own.choices}`} role="radiogroup" aria-label={label}>
+      <div className={`${pop.list} ${own.choiceList}`}>
+        <span className={pickBand.y} aria-hidden style={bandAt('y', yes ? 0 : 1)}>
+          <span className={pop.caret} />
+        </span>
+        {labels.map((text, i) => (
+          <div
+            key={i}
+            className={(i === 0) === yes ? `${pop.item} ${pop.itemOn}` : pop.item}
+            role="radio"
+            aria-checked={(i === 0) === yes}
+            onPointerMove={(e) => { if (pointerMoved(e)) onHover(i === 0) }}
+            onClick={() => { onPick(i === 0) }}
+          >
+            {text}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function SaveScreen() {
   const [common, setCommon] = useState<string[]>([])
   /** 예·아니오. 리포트 뱅크가 아니라 메뉴 뱅크에 있다 (`YES_NO`) */
@@ -147,6 +206,8 @@ export function SaveScreen() {
   )
   const [backup, setBackup] = useState<Backup>(null)
   const [yes, setYes] = useState(true)
+  /** 쓰기를 **시작할 때** 리포트를 불러온 판이었나 — 쓰는 중 글(15 · 21번)을 고른다. 쓰고 나면 `loaded`가 참이 되므로 그때 값을 쥔다 */
+  const [loadedAtStart, setLoadedAtStart] = useState(() => useSaveStore.getState().loaded)
   const back = useMenuStore((s) => s.back)
   const closeAll = useMenuStore((s) => s.closeAll)
   const save = useSaveStore()
@@ -165,6 +226,7 @@ export function SaveScreen() {
   }, [locale])
 
   const write = (): void => {
+    setLoadedAtStart(useSaveStore.getState().loaded)
     setPhase('writing')
     // 스크립트가 세운 플래그를 먼저 스토어로 끌어온다. 안 그러면 방금 만난
     // NPC의 상태가 리포트에 안 들어간다
@@ -205,52 +267,67 @@ export function SaveScreen() {
   const keys = saveKeys(phase, backup)
   useMenuKeys(saveMenuKeys(keys, yes, { setYes, write, back, retryBackup, closeAll }))
 
+  // 다 쓴 순간에 소리 한 번 — `SEQ_SE_DP_SAVE`. 소리 뭉치는 첫 화면 밖이라 그때 연다 (`engine/audio/lazy`)
+  const seen = useRef<Phase | null>(null)
+  useEffect(() => {
+    const prev = seen.current
+    seen.current = phase
+    if (!savedChime(prev, phase)) return
+    void Promise.all([import('../../engine/audio/music'), import('../../engine/audio/sfx')])
+      .then(([m, s]) => m.music.playEffect(s.SFX.SAVE))
+      .catch(() => { /* 소리는 필수가 아니다 */ })
+  }, [phase])
+
   const line = phase === 'overwrite' ? common[SAVE_TEXT.overwrite]
-    : phase === 'writing' ? common[SAVE_TEXT.writing]
+    : phase === 'writing' ? writingLine(common, loadedAtStart)
       : phase === 'failed' ? failedLine(common)
         : phase === 'done' ? fillMenuText(common[SAVE_TEXT.done] ?? '', [save.trainer.name])
           : common[SAVE_TEXT.ask]
 
+  const hint = SAVE_HINT[keys]
+
   return (
-    <div className={css.overlay}>
-      <div className={own.center}>
-        <SaveInfo />
-
-        <div className={own.prompt}>{line}</div>
-
-        {keys === 'answer' && (
-          <div className={own.choices}>
-            <span className={yes ? own.choiceOn : own.choice}>{entries[YES_NO.yes] ?? '예'}</span>
-            <span className={yes ? own.choice : own.choiceOn}>{entries[YES_NO.no] ?? '아니오'}</span>
-          </div>
-        )}
+    <div className={own.root}>
+      <div className={own.stage}>
+        <SaveInfo state={phase === 'writing' ? 'writing' : phase === 'done' ? 'done' : 'idle'} />
 
         {/*
-          ⚠️ **두 줄이다.** 브라우저 저장소는 사용자가 모르는 사이에 비워지므로
-          매 리포트마다 파일도 한 벌 내보낸다. 다운로드가 막히는 것은 흔한 일이고,
-          그때 리포트까지 실패한 것처럼 보이면 안 된다 (IMPORT.md §10)
+          ⚠️ **두 줄이다.** 브라우저 저장소는 사용자가 모르는 사이에 비워지므로 매 리포트마다 파일도 한 벌 내보낸다.
+          다운로드가 막히는 것은 흔한 일이고, 그때 리포트까지 실패한 것처럼 보이면 안 된다 (IMPORT.md §10) —
+          그래서 백업 줄은 대사와 따로, 대사창 왼쪽 위에 선다
         */}
         {backup && phase === 'done' && (
-          <div
-            className={own.backup}
-            // 이모지 대신 경고색이다 — OS 이모지는 창 글꼴과 색이 튄다
-            style={backup.started ? undefined : { color: vars.state.bad, fontWeight: 700 }}
-          >
+          <div className={backup.started ? own.backup : `${own.backup} ${own.backupBad}`}>
             {backupLine(backup)}
           </div>
         )}
 
+        {keys === 'answer' && (
+          <ReportChoices
+            label="예 아니오"
+            labels={[entries[YES_NO.yes] ?? '예', entries[YES_NO.no] ?? '아니오']}
+            yes={yes}
+            onHover={setYes}
+            onPick={(first) => { if (first) write(); else back() }}
+          />
+        )}
         {/* 마우스로도 누른다. 클릭도 사용자 동작이라 다운로드가 통과한다 */}
         {keys === 'retry' && (
-          <div className={own.choices}>
-            <span className={yes ? own.choiceOn : own.choice} onClick={retryBackup}>백업 파일 받기</span>
-            <span className={yes ? own.choice : own.choiceOn} onClick={closeAll}>닫기</span>
-          </div>
+          <ReportChoices
+            label="백업"
+            labels={['백업 파일 받기', '닫기']}
+            yes={yes}
+            onHover={setYes}
+            onPick={(first) => { if (first) retryBackup(); else closeAll() }}
+          />
         )}
+
+        <div className={own.messageBar}>
+          <MessageWindow lines={line ?? ''} {...(phase === 'writing' ? { dial: true } : {})} />
+        </div>
+
+        {hint !== '' && <div className={own.hint}><KeyHints text={hint} /></div>}
       </div>
-      {/* 창 없이 어두운 덮개 위에 바로 선다 — 밝은 창용 `css.hint`는 여기서 안 읽힌다 */}
-      <div className={own.hint}>{SAVE_HINT[keys]}</div>
     </div>
   )
 }
-
