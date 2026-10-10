@@ -8,7 +8,7 @@
 // 없기 때문이다. 못 뽑으면 이름 줄을 비운다 — 지어내지 않는다.
 
 /** 배지 비트 하나의 출처 */
-export interface BadgeLeader {
+interface BadgeLeader {
   /** `names/trainers.*`의 번호 (관장 이름) */
   trainer: number
   /** `trainers/<갈래>.png`의 갈래 번호 (`generated/trainer_classes.txt`의 `LEADER_*` 줄 − 1) */
@@ -47,7 +47,7 @@ export const BADGE_LEADERS: readonly BadgeLeader[] = [
 export const BADGE_BIT_OF_LINE: readonly number[] = [0, 1, 4, 2, 3, 5, 6, 7]
 
 /** 받은 배지인가 */
-export function hasBit(badges: number, bit: number): boolean {
+function hasBit(badges: number, bit: number): boolean {
   return (badges & (1 << bit)) !== 0
 }
 

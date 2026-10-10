@@ -221,9 +221,9 @@ function onlineLine(
 }
 
 /** 한 줄이 어느 갈래의 일인가 — 장소 일은 발자국 줄로, 나머지는 점 없이 그린다 */
-export type JournalLineKind = 'place' | 'mon' | 'trainer' | 'online'
+type JournalLineKind = 'place' | 'mon' | 'trainer' | 'online'
 
-export interface JournalLine {
+interface JournalLine {
   kind: JournalLineKind
   text: string
 }

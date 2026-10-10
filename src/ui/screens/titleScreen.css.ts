@@ -16,7 +16,7 @@ import { EDGE, GAP, RADIUS, TEXT, TIME } from '../theme/scale'
 import { RULE, WINDOW, WINDOW_SMALL } from '../theme/window.css'
 
 /** 고를 것 창의 폭 — 고지 창과 같다 */
-export const DOCK_W = 880
+const DOCK_W = 880
 /** 줄 1 · 줄 2의 높이 */
 const BAR_ROW = 56
 const STATUS_ROW = 32

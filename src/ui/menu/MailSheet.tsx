@@ -18,7 +18,7 @@ import { PaperSheet } from './PaperSheet'
 import { monIconAt } from './pokeIcon'
 import * as css from './mailSheet.css'
 
-export interface MailSheetIcon { species: number, form: number, isEgg: boolean }
+interface MailSheetIcon { species: number, form: number, isEgg: boolean }
 
 /** 쓰는 편지에 새겨질 아이콘 — **고른 자리부터 파티 끝까지** 최대 셋이다 (`Mail_SetTrainerAndIconData`) */
 export function mailSheetIcons(party: readonly MailSheetIcon[], slot: number): MailSheetIcon[] {

@@ -11,12 +11,12 @@ import { EDGE, GAP, RADIUS, TEXT, TIME } from '../theme/scale'
 import { PICKED } from '../theme/window.css'
 
 /** 편지지 한 장의 원본 크기 (`MAIL_ART_SHEET` 칸) */
-export const MAIL_W = 256
-export const MAIL_H = 192
+const MAIL_W = 256
+const MAIL_H = 192
 /** 도트 배율 — 정수배만 쓴다 */
-export const MAIL_SCALE = 2
+const MAIL_SCALE = 2
 export const SHEET_W = MAIL_W * MAIL_SCALE
-export const SHEET_H = MAIL_H * MAIL_SCALE
+const SHEET_H = MAIL_H * MAIL_SCALE
 
 /** 낱말 줄 하나의 높이. 세 줄이 편지지 위쪽 큰 칸(원작이 글자를 앉히는 자리)을 채운다 */
 const WORD_ROW = 60

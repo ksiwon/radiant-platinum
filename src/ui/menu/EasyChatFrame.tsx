@@ -10,7 +10,7 @@ import { ScrollKnob } from '../common/ScrollKnob'
 import { gameLocale } from '../../state/optionsStore'
 import * as css from './easyChatFrame.css'
 
-export interface FrameGroups {
+interface FrameGroups {
   labels: readonly string[]
   /** 무리마다의 낱말 수. 없으면 안 그린다 */
   counts?: readonly number[]
@@ -19,7 +19,7 @@ export interface FrameGroups {
   focus: 'on' | 'kept' | 'none'
 }
 
-export interface FrameWords {
+interface FrameWords {
   texts: readonly string[]
   at: number
   /** 포커스가 여기 있다 — 고른 줄에 금 띠 */

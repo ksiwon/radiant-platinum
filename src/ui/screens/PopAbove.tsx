@@ -15,7 +15,7 @@ const NIB_MARGIN = 20
 /** 창과 화면 가장자리 사이 */
 const EDGE_MARGIN = 16
 
-export interface AboveAt {
+interface AboveAt {
   left: number
   /** 꼭지가 창 왼쪽에서 얼마나 떨어지나 */
   nibAt: number

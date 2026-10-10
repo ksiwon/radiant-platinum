@@ -20,7 +20,7 @@ const rise = keyframes({
 })
 
 /** 판 전체 — 카드(584) + 틈(26) + 케이스(296) */
-export const BOARD = { width: 906, height: 474 } as const
+const BOARD = { width: 906, height: 474 } as const
 /** 카드 칸 — 원작 240×176의 2.43배, 비율이 같다 */
 const CARD = { width: 584, height: 428 } as const
 /** 케이스 칸 — 카드 위 끝과 등급 줄 아래 끝에 맞춘다 */
