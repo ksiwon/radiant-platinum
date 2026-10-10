@@ -420,11 +420,17 @@ export async function beaconToVictory(api, ctx, { potions = 25 } = {}) {
 
   if (!await knowsMove(MOVE.waterfall)) {
     const bibarel = (await party()).find((one) => BIDOOF_LINE.includes(one.species))
-    if (bibarel !== undefined && bibarel.moves.length >= 4 && bibarel.moves.some((m) => m.move === MOVE.cut)) {
+    /**
+     * 폭포오르기는 이 파티에서 비버통만 배운다 — 칸이 차 있으면 삭제사에게 간다. 풀베기가 먼저고, 없으면
+     * 바위깨기다(아래에서 기라티나가 다시 배운다). 락클라임이 다른 마리에게 갔으면(`teachTo` 대체) 칸 사정이 판마다 다르다
+     */
+    const drop = bibarel === undefined || bibarel.moves.length < 4 ? null
+      : [MOVE.cut, MOVE.rockSmash].find((mv) => bibarel.moves.some((m) => m.move === mv)) ?? null
+    if (drop !== null) {
       const fly = await api.flyTo(MAP.canalave, Math.min(120_000, api.left()))
       note('공중날기 → 운하시티', fly.ok ? '닿았다' : String(fly.why))
-      out.deleted = await deleteMove(api, ctx, { species: BIDOOF_LINE, move: MOVE.cut })
-      note('비버통 풀베기 지우기', out.deleted.ok ? '지웠다' : String(out.deleted.why ?? '못 지웠다'))
+      out.deleted = await deleteMove(api, ctx, { species: BIDOOF_LINE, move: drop })
+      note(`비버통 ${drop === MOVE.cut ? '풀베기' : '바위깨기'} 지우기`, out.deleted.ok ? '지웠다' : String(out.deleted.why ?? '못 지웠다'))
       if (!out.deleted.ok) return done()
     }
     out.waterfall = await teachTo(api, ITEM.hm07, MOVE.waterfall, BIDOOF_LINE)
