@@ -62,6 +62,9 @@ describe('상장', () => {
   it('종이는 정수배다 — 960×640에서 2배', () => {
     expect(diplomaScale(960, 640)).toBe(2)
     expect(diplomaScale(1920, 1080)).toBe(4)
+    // 2배(512×384)가 안 들어가는 낮은 창은 1배다 — 종이가 창을 넘지 않는다
+    expect(diplomaScale(960, 400)).toBe(1)
+    expect(192 * diplomaScale(960, 400)).toBeLessThanOrEqual(400)
     for (const [w, h] of [[500, 400], [1280, 800], [1600, 900]] as const) {
       expect(Number.isInteger(diplomaScale(w, h))).toBe(true)
     }

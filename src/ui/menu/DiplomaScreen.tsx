@@ -29,15 +29,18 @@ const LINE = { player: 0, sinnoh: 1, national: 2, maker: 3 } as const
 /** 바닥 안내 */
 const FOOT = 'Z · X 닫기'
 
-/** 창 크기에서 정한 정수 배율. 창이 바뀌면 다시 정한다 */
-function useScale(): 2 | 3 | 4 {
-  const [scale, setScale] = useState(() => diplomaScale(window.innerWidth, window.innerHeight))
+/** 창 크기와 거기서 정한 종이 정수 배율. 창이 바뀌면 둘 다 다시 잰다 (바탕이 창을 채우는 배율도 창 크기를 따른다) */
+function useView(): { scale: 1 | 2 | 3 | 4, w: number, h: number } {
+  const read = (): { scale: 1 | 2 | 3 | 4, w: number, h: number } => (
+    { scale: diplomaScale(window.innerWidth, window.innerHeight), w: window.innerWidth, h: window.innerHeight }
+  )
+  const [view, setView] = useState(read)
   useEffect(() => {
-    const fit = (): void => { setScale(diplomaScale(window.innerWidth, window.innerHeight)) }
+    const fit = (): void => { setView(read()) }
     window.addEventListener('resize', fit)
     return () => { window.removeEventListener('resize', fit) }
   }, [])
-  return scale
+  return view
 }
 
 /**
@@ -78,7 +81,7 @@ export function DiplomaScreen() {
   const [text, setText] = useState<string[]>([])
   /** `undefined`는 오는 중, `null`은 그림이 없다 */
   const [sheet, setSheet] = useState<SpriteSheet | null | undefined>(undefined)
-  const scale = useScale()
+  const { scale, w: viewW, h: viewH } = useView()
 
   useEffect(() => {
     let alive = true
@@ -94,7 +97,7 @@ export function DiplomaScreen() {
   const body = text[national ? LINE.national : LINE.sinnoh] ?? ''
   const player = fillMenuText(text[LINE.player] ?? '', [trainer.name])
   const maker = text[LINE.maker] ?? ''
-  const art = sheet ? artStyles(sheet, national, scale, { w: window.innerWidth, h: window.innerHeight }) : null
+  const art = sheet ? artStyles(sheet, national, scale, { w: viewW, h: viewH }) : null
 
   /** 글 한 덩어리의 자리 — 원작 256×192 안의 픽셀을 배율로 옮긴다. 원작 줄 간격이 16이다 */
   const placed = (at: { x: number, y: number }): CSSProperties => ({
