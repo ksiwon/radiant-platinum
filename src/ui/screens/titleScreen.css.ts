@@ -375,5 +375,13 @@ export const dimmed = style({
   transition: `filter ${TIME.open} ease-out`,
 })
 
-/** 뜨는 창 한 장 — 안에 덩이가 쌓인다. 폭은 `PopAbove`가 준다 */
-export const callout = style({ display: 'flex', flexDirection: 'column', maxHeight: '70vh', overflowY: 'auto' })
+/**
+ * 뜨는 창 한 장 — 안에 덩이가 쌓인다. 폭은 `PopAbove`가 준다.
+ *
+ * ⚠️ **누름을 되살린다.** 이 창은 `head` 안에 그려지는데 `head`가 `pointerEvents: 'none'`이라 그대로 두면 물려받는다 —
+ * 그러면 누름이 창을 지나 뒤의 `sky`로 빠져서 「이 리포트로 이어하기」 · 「처음부터 시작하기」를 마우스로 못 눌렀다(키보드만 됐다).
+ * e2e ㉕가 그 자리에서 섰다 (`<div class="titleScreen_sky"> intercepts pointer events`)
+ */
+export const callout = style({
+  display: 'flex', flexDirection: 'column', maxHeight: '70vh', overflowY: 'auto', pointerEvents: 'auto',
+})

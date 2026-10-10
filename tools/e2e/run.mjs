@@ -1847,7 +1847,23 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     await page.locator('input[accept=".rpsave"]').setInputFiles({
       name: download.suggestedFilename(), mimeType: 'application/json', buffer: bytes,
     })
-    await page.getByRole('button', { name: '이 리포트로 이어하기' }).click({ timeout: 60_000 })
+    try {
+      await page.getByRole('button', { name: '이 리포트로 이어하기' }).click({ timeout: 60_000 })
+    } catch (e) {
+      // 확인 창이 안 보일 때 무엇이 가렸는지 남긴다 — 화면과 단추에서 위로 올라가는 상자들
+      try { await page.screenshot({ path: resolve(ROOT, '.audit/tmp/e2e-25-bring.png') }) } catch { /* 글로만 */ }
+      const chain = await page.evaluate(() => {
+        const b = [...document.querySelectorAll('button')].find((x) => x.textContent === '이 리포트로 이어하기')
+        const out = []; let el = b
+        while (el && el !== document.body) {
+          const cs = getComputedStyle(el); const r = el.getBoundingClientRect()
+          out.push(`${String(el.className).slice(0, 28)} vis=${cs.visibility} disp=${cs.display} [${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.width)}x${Math.round(r.height)}]`)
+          el = el.parentElement
+        }
+        return out.join(' < ')
+      }).catch(() => '못 읽음')
+      throw new Error(`${String(e.message ?? e).split('\n')[0]} · 상자: ${chain}`)
+    }
     // ⚠️ **되살리면 타이틀에 안 머문다.** `commitImport`가 성공하면 곧장
     // `/play`로 들어간다 — 여기서 요약창을 찾으면 영영 없다. 들어간 것을 먼저
     // 보고, 리포트가 남았는지는 타이틀을 다시 열어서 본다
