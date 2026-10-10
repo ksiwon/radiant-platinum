@@ -215,7 +215,7 @@ const CLEAR: CutInFrame = {
  * 곧 `n`단 보간이 **n+1 프레임**을 먹는다. 3단 밝기 변화가 네 프레임인 까닭이고,
  * 번쩍임 전체 길이가 여기서 나온다
  */
-export class Linear {
+class Linear {
   private step = 0
   value: number
 

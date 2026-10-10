@@ -110,13 +110,13 @@ export const MAKER_TEXT: Record<DataLocale, MakerText> = {
     thanks: 'The pokeplatinum decompilation project by the pret team',
     notice: [
       'This is an unofficial, unaffiliated fan project.',
-      'All related trademarks and works belong to their respective owners,',
-      'and using game files you own, free and non-profit, does not imply the owners’ permission.',
+      'All related trademarks and works belong to their respective owners.',
+      'Using game files you own, free and non-commercially, does not mean the rights holders have given permission.',
     ],
   },
   ja: {
     tagline: 'ポケットモンスター プラチナをブラウザの3Dで作り直した非公式ファンプロジェクト',
-    about: 'KAIST 産業デザイン・計算機学部 — 教育と医療のためのAIサービスを設計し、作っています',
+    about: 'KAIST 産業デザイン・コンピュータサイエンス — 教育と医療のためのAIサービスを設計し、作っています',
     labelMaker: '制作', labelGames: '他のゲーム', labelThanks: '原作の解析',
     gameAbouts: ['ポケモンのタワーディフェンス x TFT ゲーム', 'ポケモンBGMのリズムゲーム'],
     thanks: 'pretチームの pokeplatinum デコンパイルプロジェクト',

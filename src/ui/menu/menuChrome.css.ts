@@ -471,8 +471,7 @@ export const tab = styleVariants({
  * 짧은 선 하나가 허공에 떠 있게 된다.
  *
  * ⚠️ **어두운 덮개 위에 바로 놓지 않는다.** `ink.faint`는 밝은 창용 색이라
- * 덮개 위에서는 안 읽힌다 — 창 없이 뜨는 화면(리포트·되돌릴 수 없는 물음)은
- * `dialog.css`의 `hint`를 쓴다
+ * 덮개 위에서는 안 읽힌다
  */
 export const hint = style({
   fontSize: TEXT.tiny,
