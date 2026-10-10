@@ -1046,6 +1046,9 @@ async function writeReport(saveAs) {
     return { n: all.length, at: all.findIndex((e) => e.getAttribute('aria-checked') === 'true') }
   })
   const first = await items()
+  // ⚠️ `n − 3`은 **설정**이다: 사파리 · 교감광장은 앞 줄이 숨어 줄 수가 일반과 달라서 뒤에서 센다. 시작 메뉴의
+  // 뒤 다섯 줄 차례(가방 · 카드 · 리포트 · 설정 · 닫기)에서 리포트가 뒤에서 셋째라는 약속이고(P1 하네스 계약),
+  // 그 차례가 바뀌면 이 수도 같이 바뀐다. 실제로 열렸는지는 아래에서 `data-menu`로 다시 확인한다
   const want = first.n - 3
   if (want < 0) return { ok: false, why: `시작 메뉴 칸이 ${String(first.n)}개뿐이다` }
   for (let i = 0; i < first.n + 3; i++) {

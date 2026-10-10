@@ -2229,11 +2229,16 @@ if (!(haveRom && haveBdsp)) {
           //
           // ⚠️ **글자 수 하나로 다섯을 다 못 잰다.** 구석 HUD가 늘 57자를 찍고
           // 있고, 메뉴가 뜨면 그 HUD가 **가려져서 오히려 줄어든다** — 실측으로
-          // (`.audit/probe/menuChars.mjs`, `play:dev`) 도감 2,795 · 공중날기 109 ·
+          // (`.audit/probe/menuChars.mjs`, `play:dev`) 도감 2,847 (2026-10-10 마지막 실측) · 공중날기 109 ·
           // 나무열매 71 · 크레딧 75 · **프런티어 51(바탕 57보다 적다)**이다.
           // 빈 화면도 HUD만으로 57자를 내므로, 글로 갈리는 것은 도감 하나뿐이다.
+          //
+          // ⚠️ **도감의 글자 수는 화면을 새로 그릴 때마다 달라진다 — 그래서 문턱이 아니라 구조로 가른다.**
+          // 줄 표식 `[data-dex-rows]`가 1 이상이고 `dexList()`가 내놓는 길이와 **같아야** 한다
+          // (줄이 하나라도 빠지면 글자 수는 문턱을 넘어도 목록이 잘린 것이다). 글은 200자 이상만 본다.
+          // 표식이 아직 없는 빌드(P7 이전)에서는 예전처럼 글자 1,000 이상으로 떨어지고, 결과 줄에 그렇게 적는다
           const screens = []
-          for (const [name, least] of [['pokedex', 1000]]) {
+          for (const [name, least] of [['pokedex', 200]]) {
             await page.evaluate(async (n) => {
               const m = await import('/src/state/menuStore.ts')
               m.useMenuStore.getState().open(n)
@@ -2243,13 +2248,43 @@ if (!(haveRom && haveBdsp)) {
               return t.length >= want ? t.length : false
             }, least, { timeout: 60_000 })
               // ⚠️ **넘긴 그 순간을 적으면 「1,001자」가 된다.** 문턱을 넘자마자
-              // 읽으면 아직 그리는 중이라, 개발 서버의 2,795자와 나란히 놓고
+              // 읽으면 아직 그리는 중이라, 개발 서버의 2,847자와 나란히 놓고
               // 볼 수 없다. 잠깐 두고 다 그린 것을 적는다
               .then(async () => {
                 await page.waitForTimeout(1500)
                 return page.evaluate(
                   () => (document.body.innerText ?? '').replace(/\s+/g, '').length)
               }).catch(() => 0)
+            // ── 구조 — 줄 표식과 `dexList` 길이 ──
+            let rowNote = ''
+            if (chars >= least) {
+              const rows = await page.evaluate(async () => {
+                const els = [...document.querySelectorAll('[data-dex-rows]')]
+                if (els.length === 0) return { marked: false }
+                // 표식이 컨테이너 하나에 개수로 달려도, 줄마다 달려도 읽는다
+                const one = els.length === 1 ? els[0].getAttribute('data-dex-rows') : null
+                const shown = one !== null && /^\d+$/.test(one) ? Number(one) : els.length
+                const [sort, save] = await Promise.all([
+                  import('/src/data/gameData.ts').then((g) => g.loadPokedexSort('en')),
+                  import('/src/state/saveStore.ts'),
+                ])
+                const ds = await import('/src/engine/pokemon/dexSort.ts')
+                const dex = save.useSaveStore.getState().pokedex
+                const want = ds.dexList(
+                  sort.lists, ds.NO_FILTER,
+                  (s) => save.dexHas(dex.seen, s), (s) => save.dexHas(dex.caught, s),
+                ).length
+                return { marked: true, shown, want }
+              }).catch((e) => ({ marked: true, shown: -1, want: -1, why: String(e).slice(0, 100) }))
+              if (rows.marked) {
+                assert(rows.shown >= 1 && rows.shown === rows.want,
+                  `${name} 줄 표식 ${String(rows.shown)}개 · dexList ${String(rows.want)}개 — 같아야 한다${rows.why ? ` (${rows.why})` : ''}`)
+                rowNote = ` · 줄 ${String(rows.shown)}`
+              } else {
+                assert(chars >= 1000, `${name} 화면에 줄 표식이 없고 글도 ${String(chars)}자뿐이다 (표식이 없는 빌드는 1,000자 이상)`)
+                rowNote = ' · 줄 표식 없음(글자 수로만)'
+              }
+            }
             if (chars < least) {
               // ⚠️ **「0자였다」만 적으면 다음 사람이 여덟 분을 다시 기다린다.**
               // 자료가 없는 것인지 화면이 안 뜬 것인지를 그 자리에서 갈라 적는다
@@ -2268,11 +2303,11 @@ if (!(haveRom && haveBdsp)) {
                 }
               })
               assert(false, `${name} 화면에 글이 ${String(chars)}자뿐이다`
-                + ` (개발 서버에서 2,795자다) · 메뉴 스택 ${why.stack}`
+                + ` (개발 서버에서 2,847자다) · 메뉴 스택 ${why.stack}`
                 + ` · 도감 정렬표 ${why.dex} · 화면 「${why.text}」`
                 + ` · 콘솔 ${String(errors.length)}건 ${errors.slice(0, 2).join(' / ')}`)
             }
-            screens.push(`${name} ${String(chars)}자`)
+            screens.push(`${name} ${String(chars)}자${rowNote}`)
             await page.evaluate(async () => {
               const m = await import('/src/state/menuStore.ts')
               m.useMenuStore.getState().closeAll()

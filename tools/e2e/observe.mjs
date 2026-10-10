@@ -797,8 +797,9 @@ function devObserver(page) {
       const byName = new Map()
       list.forEach((n, i) => { if (n !== '' && !byName.has(n)) byName.set(n, i) })
       return want.map((n) => {
-        const id = byName.get(n)
-        if (id === undefined) return null
+        // 번호(`data-move-id` · `data-learn-new`)면 그대로, 글이면 이름표로 찾는다
+        const id = typeof n === 'number' ? n : byName.get(n)
+        if (id === undefined || !Number.isInteger(id)) return null
         const info = moves.get(id)
         if (!info) return null
         return info.category === 'status' ? 0 : info.power
