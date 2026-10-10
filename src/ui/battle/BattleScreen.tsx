@@ -10,40 +10,34 @@
 // 카메라 컷(PLAN §7.3·§7.4)은 아직 없다.
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BURST, burstWhite } from '../../engine/battle/encounterBurst'
-import { encounterBurst, seqStage } from '../../scene/battle/stageRefs'
+import { encounterBurst } from '../../scene/battle/stageRefs'
 import type { BattleAction } from '../../engine/battle/choice'
-import type { SafariCommand } from '../../engine/battle/safariBattle'
+
 import type { Actor, SlotId } from '../../engine/battle/events'
 import { buildBeats, type Beat } from '../../engine/battle/playback'
-import type { BattleView, ViewMon } from '../../engine/battle/view'
+import type { BattleView } from '../../engine/battle/view'
 import {
   loadDialogueBank, loadItemNames, loadItems, loadLabels, loadMoveNames, loadMoves,
   loadSpecies, loadSpeciesNames, type DataLocale,
 } from '../../data/gameData'
-import { fillMenuText, START_MENU, UI_BANK } from '../../data/uiText'
+import { START_MENU, UI_BANK } from '../../data/uiText'
 import { isHmMove } from '../../engine/bag/fieldUse'
 import {
-  MATCH_LABEL, moveMatch, shownType, type MoveMatch,
+  moveMatch, shownType,
 } from '../../engine/battle/movePreview'
 import { formSpeciesId } from '../../engine/pokemon/form'
-import type { Move } from '../../data/schema'
 import { hasTrainer, useBattleStore, type RosterEntry, type TrainerTag } from '../../state/battleStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSessionStore } from '../../state/sessionStore'
-import { withTopic } from '../korean'
 import { useMenuKeys } from '../menu/useMenuKeys'
-import { HP_VARS, STATUS_VARS } from '../theme/window.css'
 import { vars } from '../theme/contract.css'
-import { useListCursor } from './listCursor'
 import { LearnMove } from './LearnMove'
 import { BattleBag } from './BattleBag'
 import { SwitchScreen } from './SwitchScreen'
 import { battleText, leadLines, learnResultLines, type BattleNames } from './messages'
-import { ownerOfKey, type KeyOwner } from '../../engine/battle/aftermath'
+import { ownerOfKey } from '../../engine/battle/aftermath'
 import { askLine, openingLine, closingLines } from './bookends'
-import { benchStatusOf } from './benchStatus'
 import { LevelPanel, type LevelPanelShow } from '../menu/LevelPanel'
-import { GAUGE_SLOTS, gaugeSlots } from './partyGauge'
 import {
   BATTLE_BANK, BATTLE_PARTY_BANK, BATTLE_PARTY_HM_CANT_FORGET, MOVE_BANK, MSG, STAT_BANK, STATUS_BANK,
 } from './romText'
@@ -51,13 +45,16 @@ import { romLine } from './romLine'
 import { useRomLines } from './useRomLines'
 import { TutorialPilot } from './TutorialPilot'
 import { lockMenuKeysToPilot } from '../menu/useMenuKeys'
-import { typeColor } from './typeColor'
 import { useBattlePlayback } from './useBattlePlayback'
 import { markVictory } from './victoryCue'
 import { music } from '../../engine/audio/music'
-import { shownColor, shownHp, useDrain, useSlide } from './hpDrain'
-import { CommandButton } from './CommandButton'
+import { MonCard, PartyGauge } from './HudPlates'
+import {
+  MoveMenu, RootMenu, SafariMenu, YesNo,
+  type Extras, type MenuPage, type MovePreview, type Words,
+} from './CommandArea'
 import * as css from './battleScreen.css'
+import * as cmd from './command.css'
 // ⚠️ **소리는 지연 마운트다.** `BattleScreen`은 App이 정적으로 잡는데(막을
 // 화면이 언제 뜰지 몰라서다), `BattleSound`가 `music`을 정적으로 잡으면 소리
 // 뭉치 gzip 11.1kB가 **타이틀 첫 화면**에 실린다. 배틀이 켜질 때 오면 된다
@@ -65,40 +62,6 @@ const BattleSound = lazy(() => import('./BattleSound').then((m) => ({ default: m
 import { maxPpOf } from '../../engine/pokemon/instance'
 import { dexHas, useSaveStore } from '../../state/saveStore'
 
-/** 상태 딱지. 파티 화면과 같은 낱말이다 — 롬 `menu_entries` 0~4의 「잠듦」 (`PartyScreen`) */
-const STATUS_LABEL: Record<string, string> = {
-  slp: '잠듦', psn: '독', tox: '맹독', brn: '화상', frz: '얼음', par: '마비',
-}
-
-/**
- * 롬에 없는 우리 글 — 명령 칸 밑줄과 바닥 안내.
- *
- * 명령 이름(싸운다·가방…)은 롬 줄이라 설정의 언어를 저절로 따른다. 이 표는 그
- * 밑에 붙는 설명과 안내라 롬에서 못 가져오므로, 설정의 세 언어를 **같은 자리에**
- * 둔다 — 한국어만 적어 두면 언어를 바꿔도 이 줄만 한국어로 남아 한 칸에 두 언어가
- * 섞인다 (`OptionsScreen`의 `our`와 같은 까닭)
- */
-interface Words {
-  fight: string
-  bag: string
-  bagBlocked: string
-  party: string
-  partyBlocked: string
-  run: string
-  runNever: string
-  runBlocked: string
-  bait: string
-  mud: string
-  stay: string
-  swap: string
-  skip: string
-  next: string
-  pick: string
-  back: string
-  continue: string
-  preparing: string
-  leave: string
-}
 
 const WORDS: Record<DataLocale, Words> = {
   ko: {
@@ -139,37 +102,6 @@ function slotOfKey(key: string): number {
   return Number.isInteger(n) ? n : -1
 }
 
-/**
- * 명령 메뉴가 지금 어느 단인가. 원작과 같은 두 단이다 —
- * 뿌리에서 무엇을 할지 고르고, 한 단 들어가서 무엇으로 할지 고른다
- */
-type MenuPage = 'root' | 'fight' | 'bag' | 'party'
-
-/**
- * 기술 한 칸이 **고르기 전에** 보여 주는 것 (PARITY §2.22).
- *
- * `type`이 기술표의 값과 다를 수 있다 — 잠재파워가 그렇다. 칸 색과 타입 이름도
- * 이 값을 따라가야 상성 표시와 어긋나지 않는다
- */
-interface MovePreview {
-  type: number | null
-  match: MoveMatch | null
-}
-
-/** 기술 칸이 타입까지 보여주려면 기술표가 필요하다. 이름만으로는 모자란다 */
-interface Extras {
-  types: string[]
-  /** 특성 설명. 교체 화면이 쓴다 */
-  abilityText: string[]
-  move(id: number): Move | undefined
-  /** 그 모습의 타입 둘. 상성 표시가 본다 (§2.22) */
-  typesOf(species: number, form: number): readonly number[] | null
-  /**
-   * 잊을 수 없는 기술이면 그 까닭(롬 글), 아니면 null — 비전기술이다
-   * (`CheckSelectedMoveIsHM` · REPAIR §76)
-   */
-  hmLock(move: number): string | null
-}
 
 /**
  * 무대가 다 서기를 기다리는 시한(ms).
@@ -343,6 +275,13 @@ export function BattleScreen() {
   // 사파리 남은 볼은 시작 메뉴 뱅크의 롬 줄이다 (`START_MENU.ballStock`)
   const startMenuLines = useRomLines(UI_BANK.startMenu)
   const [page, setPage] = useState<MenuPage>('root')
+  /**
+   * 더블에서 **지금 겨눠지는 대상**의 번호 (`MoveMenu`가 올린다 — 1·2는 상대, −1·−2는 짝). 체력판이 그 판에
+   * 금 테두리를 두려는 자리다 (HUD 꾸러미). 지금은 `MonCard`의 `data-aimed`로만 드러난다
+   */
+  const [aimTarget, setAimTarget] = useState<number | null>(null)
+  const aimedSlot = aimTarget === null ? null
+    : aimTarget === 1 ? 'p2a' : aimTarget === 2 ? 'p2b' : aimTarget === -1 ? 'p1a' : 'p1b'
   // 3D 무대는 씬이 떠 있을 때만 뒤에 선다. 개발 콘솔로 타이틀에서 배틀을 열면
   // 씬이 없으므로 그때만 배경을 깐다 — 안 그러면 타이틀 위에 HUD만 뜬다
   const staged = useSessionStore((s) => s.stageMounted)
@@ -653,6 +592,7 @@ export function BattleScreen() {
         <SwitchScreen
           actions={switchActions} party={party} roster={roster}
           names={names && extras ? { ...names, ...extras } : null}
+          replacing={asking?.key ?? null}
           onPick={choose}
           onBack={forcedHard ? null
             : forced ? () => { void cancelShift() }
@@ -700,6 +640,7 @@ export function BattleScreen() {
               key={m.key}
               mon={m} names={names} drainMs={script.holdMs} nickname={roster[m.key]?.nickname ?? null}
               caught={m.species !== null && dexHas(caughtDex, m.species)}
+              aimed={aimedSlot === m.slot}
             />
           ))}
         </div>
@@ -719,6 +660,7 @@ export function BattleScreen() {
               nickname={roster[m.key]?.nickname ?? null}
               // 묻는 동안만 흐린다 — 대사를 읽는 중(등판 줄 따위)에 둘째 판이 꺼져 보이면 안 된다
               dim={doubles && !reading && asking !== null && m.key !== asking.key}
+              aimed={aimedSlot === m.slot}
             />
           ))}
         </div>
@@ -734,7 +676,7 @@ export function BattleScreen() {
             {script.waitingPress && <span className={css.nextArrow} aria-hidden>▼</span>}
           </div>
         </div>
-        <div className={css.side}>
+        <div className={cmd.side}>
           {script.levelPanel !== null && (
             <LevelPanel
               before={script.levelPanel.before}
@@ -743,7 +685,7 @@ export function BattleScreen() {
               className={css.levelPanel}
             />
           )}
-          <div className={css.menu}>
+          <div className={cmd.menu}>
             {script.ask !== null && names && extras ? (
               // 기술 칸이 다 찼다. 답할 때까지 재생기가 서 있다
               <LearnMove
@@ -777,15 +719,15 @@ export function BattleScreen() {
               />
             ) : reading ? null : phase === 'over' ? (ally !== null ? null : (
               <button
-                className={`${css.button} ${css.buttonOn}`}
-                style={{ ['--tint' as string]: css.TINT.run }}
+                className={`${cmd.button} ${cmd.buttonOn}`}
+                style={{ ['--tint' as string]: cmd.TINT.run }}
                 onClick={closeWithFade}
                 autoFocus
               >
-                <span className={css.caret} aria-hidden />
-                <span className={css.face}>
-                  <span className={css.dot} aria-hidden />
-                  <span className={css.label}>{words.continue}</span>
+                <span className={cmd.caret} aria-hidden />
+                <span className={cmd.face}>
+                  <span className={cmd.dot} aria-hidden />
+                  <span className={cmd.label}>{words.continue}</span>
                 </span>
               </button>
             )) : shiftAsk !== null ? (
@@ -820,6 +762,7 @@ export function BattleScreen() {
                 doubles={doubles} previewOf={previewOf}
                 targetName={(t) => targetLabel(t, atSlot, view, bare)}
                 onBack={() => setPage('root')}
+                onAim={setAimTarget}
               />
             ) : (
               <RootMenu
@@ -881,508 +824,8 @@ function targetLabel(
   return `상대 ${name}`
 }
 
-/**
- * 한 쪽의 이름과 파티 공 (PARITY §2.2b · `PartyGaugeData_Fill`).
- *
- * 공 하나가 파티의 한 칸이다 — 멀쩡함·상태 이상·기절·빈 칸 넷으로
- * 갈린다(`STOCK_STATUS_*`). 기절은 **재생기가 보여 준 만큼만** 센다(`downKeys`) —
- * 정본을 보면 쓰러지는 연출보다 공이 먼저 꺼진다
- */
-function PartyGauge(
-  { label, owners, roster, down, view }: {
-    label: string
-    owners: readonly KeyOwner[]
-    roster: Record<string, RosterEntry>
-    down: readonly string[]
-    view: BattleView | null
-  },
-) {
-  const keys = gaugeSlots(Object.keys(roster), owners)
-  // ⚠️ **벤치도 본다** (`benchStatus`). 서 있는 네 자리만 보면 독에 걸린 채 물러난 마리가
-  // 공 줄에서 멀쩡한 초록으로 돌아간다 — 원작은 파티 전원의 `STOCK_STATUS`를 쓴다
-  const statusOf = (key: string): string | null => {
-    for (const m of [view?.active.p1a, view?.active.p1b, view?.active.p2a, view?.active.p2b]) {
-      if (m && m.key === key) return m.status === 'ok' ? null : m.status
-    }
-    return benchStatusOf(key)
-  }
-  return (
-    <div className={css.gaugeRow}>
-      <span>{label}</span>
-      {Array.from({ length: GAUGE_SLOTS }, (_, i) => {
-        const key = keys[i]
-        const state = key === undefined ? 'empty'
-          : down.includes(key) ? 'fainted'
-            : statusOf(key) !== null ? 'status' : 'alive'
-        return <span key={i} className={css.gaugeBall[state]} aria-label={state} />
-      })}
-    </div>
-  )
-}
 
-const GENDER_MARK: Record<string, { mark: string; cls: string }> = {
-  male: { mark: '♂', cls: css.male },
-  female: { mark: '♀', cls: css.female },
-}
 
-/**
- * 체력판.
- *
- * ⚠️ **색은 비율이 아니라 픽셀 수가 정한다** (`engine/battle/healthbar`).
- * 원작은 게이지를 48픽셀로 먼저 줄이고 그 픽셀 수로 색을 고른다 — 79 중 16은
- * 비율로는 0.2025라 노랑이 되지만 픽셀로는 9라서 빨강이다.
- *
- * 상대 판에는 체력 숫자도 경험치 줄도 없다. 원작이 그렇게 정해 뒀다 —
- * `HEALTHBOX_INFO_NOT_ON_ENEMY = CURRENT_HP | MAX_HP | EXP_GAUGE`. 내 판에는 둘 다 있다.
- *
- * 이름에 「야생」·「상대」를 안 붙인다 — 원작 체력판은 이름만이고, 그 말은 글창
- * 문장에만 붙는다. 붙이면 긴 이름이 판 폭을 밀어낸다.
- *
- * 판은 **미끄러져 들어오고 나간다** (`hpDrain`의 `useSlide` · `HealthBox_Scroll`) —
- * 등판 박자의 쉼이 끝난 뒤 들어오고, 쓰러지면 제 쪽 바깥으로 빠진다
- */
-/**
- * BDSP 시퀀스가 체력판을 감추는 동안 감춘다 (`seqStage.gauge` — `GaugeDispAll visible=0` · 맞기 전 `GaugeDisp trg=1`로 맞는 쪽만 다시).
- * 원작 플래티나도 기술 연출 동안 체력판을 숨긴다(`BattleDisplay_GetAnimHideFlags`). 자리 · 미끄러짐은 `useSlide`가 쥐고 여기서는
- * `visibility`만 만진다 — 두 임자가 같은 속성을 다투지 않는다
- */
-function useSeqGaugeHide(card: React.RefObject<HTMLDivElement | null>, slot: string): void {
-  useEffect(() => {
-    let raf = 0
-    let hidden = false
-    let touched: HTMLDivElement | null = null
-    const tick = (): void => {
-      const now = seqStage.gauge[slot] !== undefined
-      const el = card.current
-      if (el && now !== hidden) {
-        hidden = now
-        touched = el
-        el.style.visibility = now ? 'hidden' : ''
-      }
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => {
-      cancelAnimationFrame(raf)
-      if (touched) touched.style.visibility = ''
-    }
-  }, [card, slot])
-}
-
-function MonCard(
-  { mon, names, drainMs, nickname = null, showHp = false, caught = false, dim = false }:
-  {
-    mon: ViewMon; names: BattleNames | null; drainMs: number
-    /** 그 마리의 별명 (`RosterEntry.nickname`). 원작 체력판은 별명을 쓴다 (`Healthbox_DrawPokemonName`) */
-    nickname?: string | null
-    showHp?: boolean; caught?: boolean
-    /** 더블에서 **지금 명령을 묻고 있지 않은** 쪽. 흐리게 둔다 */
-    dim?: boolean
-  },
-) {
-  // ⚠️ **변신해도 이름은 제 것이다** (`baseSpecies`). 뷰의 `species`는 따라 한 쪽의 종이라
-  // 그대로 쓰면 메타몽 판이 「꼬마돌」로 바뀐다 — 원작 체력판은 제 별명을 그대로 둔다
-  const own = mon.baseSpecies ?? mon.species
-  const name = nickname ?? (own !== null ? names?.species[own] : null) ?? mon.speciesName
-  const ratio = mon.maxHp > 0 ? Math.max(0, Math.min(mon.hp, mon.maxHp)) / mon.maxHp : 0
-  const maxHp = mon.maxHp
-  const hpNow = useRef<HTMLSpanElement>(null)
-  // ⚠️ **게이지는 CSS 전환이 아니라 연출 시계가 민다** (`hpDrain`). CSS는 벽시계라
-  // 탭을 숨겨도, 프레임이 1초로 늘어져도 저 혼자 흐른다 — 재생기가 서 있는데
-  // 체력만 마저 줄었다.
-  //
-  // ⚠️ **폭·숫자·색이 한 값을 본다.** 숫자를 목표 체력으로 찍으면 맞자마자 끝값이 되고,
-  // 색을 목표 체력으로 고르면 바가 아직 초록 길이인데 빨강이 된다 — 원작은 게이지가 한
-  // 칸씩 움직일 때 숫자도 같이 내려가고(`HealthBox_DrawCurrentHP`) 색은 보이는 픽셀
-  // 수로 고른다(`App_BarColor`)
-  const bar = useDrain(ratio, drainMs, (shown) => {
-    const fill = bar.current
-    if (fill) {
-      const color = shownColor(shown, maxHp)
-      if (fill.dataset.hp !== color) {
-        fill.dataset.hp = color
-        const tone = HP_VARS[color]
-        if (tone) {
-          fill.style.setProperty('--lit', tone['--lit'])
-          fill.style.setProperty('--body', tone['--body'])
-        }
-      }
-    }
-    if (hpNow.current) hpNow.current.textContent = String(shownHp(shown, maxHp))
-  })
-  const card = useSlide(mon.presence !== 'down', drainMs, mon.slot, showHp ? 1 : -1)
-  useSeqGaugeHide(card, mon.slot)
-  const exp = expOf(mon)
-  const gender = GENDER_MARK[mon.gender]
-  return (
-    <div
-      ref={card}
-      className={`${css.card} ${showHp ? css.cardMine : css.cardFoe}`}
-      style={dim ? { opacity: 0.55 } : undefined}
-    >
-      <div className={css.cardHead}>
-        <span className={css.monName}>{name}</span>
-        {gender && <span className={`${css.genderMark} ${gender.cls}`}>{gender.mark}</span>}
-        {/* 브라우저 기본 말풍선(`title`)은 웹 페이지 티가 난다. 읽어 주는 이름만 둔다 */}
-        {caught && <span className={css.caughtMark} role="img" aria-label="도감에 등록된 포켓몬" />}
-        {mon.status !== 'ok' && (
-          <span className={css.statusTag} style={STATUS_VARS[mon.status]}>
-            {STATUS_LABEL[mon.status] ?? mon.status}
-          </span>
-        )}
-        <span className={css.monLevel}>Lv{mon.level}</span>
-      </div>
-      <div className={css.barRow}>
-        <span className={css.hpTag}>HP</span>
-        <div className={css.barTrack}>
-          {/* ⚠️ 폭과 색은 style로 안 준다 — `useDrain`만 쓴다 (두 임자가 다투면 튕긴다) */}
-          <div ref={bar} className={css.barFill} />
-        </div>
-      </div>
-      {showHp && (
-        <div className={css.hpText}>
-          {/* 숫자도 훅이 쓴다 — 게이지와 같은 프레임에 같은 값으로 내려간다 */}
-          <span ref={hpNow} className={css.hpNow} /> / {mon.maxHp}
-        </div>
-      )}
-      {showHp && exp !== null && <ExpLine progress={exp} level={mon.level} drainMs={drainMs} />}
-    </div>
-  )
-}
-
-/**
- * 그 마리의 경험치 진행도 (0~1). 내 쪽에만 있다 (`ViewMon.expProgress` · `engine/pokemon/exp`의
- * `levelProgress`). 뷰가 안 실어 왔으면 null — 줄을 안 그린다
- */
-function expOf(mon: ViewMon): number | null {
-  const at = mon.expProgress
-  return typeof at === 'number' && Number.isFinite(at) ? Math.max(0, Math.min(1, at)) : null
-}
-
-/**
- * 내 체력판의 경험치 줄 (`Healthbox_DrawExpBar`).
- *
- * HP 게이지와 **같은 시계**로 찬다 — 박자의 게이지 길이(`drainMs`) 동안이다. 레벨을
- * 넘으면 1까지 찬 뒤 **빈 게이지에서** 남은 몫을 다시 채운다 (`useDrain`의 `epoch`) —
- * 보이던 값에서 이으면 게이지가 거꾸로 줄어든다. 소리는 `BattleSound`가 같은 길이로 끊는다
- */
-function ExpLine({ progress, level, drainMs }: { progress: number; level: number; drainMs: number }) {
-  const fill = useDrain(progress, drainMs, undefined, level)
-  return (
-    <div className={css.expRow}>
-      <span className={css.expTag}>EXP</span>
-      <div className={css.expTrack}>
-        <div ref={fill} className={css.expFill} />
-      </div>
-    </div>
-  )
-}
-
-/**
- * 원작의 첫 단. 싸운다·가방·포켓몬·도망간다.
- *
- * 이름은 **롬 줄**이다 (배틀 글 뱅크 924~927 · `MSG`). 손으로 적은 「도망친다」는
- * 롬의 「도망간다」와도 달랐고 설정의 언어도 안 따랐다. 밑줄은 우리 글이라 `words`다
- */
-function RootMenu(
-  { words, lines, canFight, canSwitch, wild, canSpend, who, onPick, onRun, onBack }: {
-    words: Words
-    /** 배틀 글 뱅크 (`BATTLE_BANK`) */
-    lines: readonly string[]
-    canFight: boolean
-    canSwitch: boolean
-    wild: boolean
-    /** 지금 명령을 묻고 있는 마리. 글창이 그 물음을 못 띄울 때만 있다 (더블) */
-    who: string | null
-    /** 앞 자리로 되돌아간다 (더블 둘째 자리). 없으면 X가 아무 일도 안 한다 */
-    onBack: (() => void) | null
-    /**
-     * 턴을 쓸 수 있는 턴인가. 참기·역린에 묶였거나 앙코르에 걸리면 닫힌다 —
-     * 그때 가방과 도망은 **눌러도 아무 일이 없다**(`session.hasIdle`)
-     */
-    canSpend: boolean
-    onPick: (page: MenuPage) => void
-    onRun: () => void
-  },
-) {
-  const entries = [
-    {
-      label: romLine(lines, MSG.fight) ?? '싸운다',
-      pilot: 'fight', sub: words.fight, tint: css.TINT.fight, on: canFight, go: () => { onPick('fight') },
-    },
-    {
-      label: romLine(lines, MSG.bag) ?? '가방',
-      pilot: 'bag',
-      sub: canSpend ? words.bag : words.bagBlocked,
-      tint: css.TINT.bag, on: canSpend, go: () => { onPick('bag') },
-    },
-    {
-      label: romLine(lines, MSG.pokemon) ?? '포켓몬',
-      // 가방·도망과 같은 결이다 — 꺼진 칸은 왜 꺼졌는지를 말한다
-      sub: canSwitch ? words.party : words.partyBlocked,
-      tint: css.TINT.party, on: canSwitch, go: () => { onPick('party') },
-    },
-    {
-      label: romLine(lines, MSG.run) ?? '도망간다',
-      sub: !wild ? words.runNever : canSpend ? words.run : words.runBlocked,
-      tint: css.TINT.run, on: wild && canSpend, go: onRun,
-    },
-  ]
-  const cursor = useListCursor(
-    entries.length,
-    (i) => { if (entries[i]?.on) entries[i].go() },
-    onBack ?? undefined,
-  )
-  return (
-    <>
-      {/* 더블은 자리마다 물어본다. 누구에게 묻는지가 안 보이면 아무것도 못 고른다 */}
-      {who !== null && <div className={css.askWho}>{withTopic(who)} 무엇을 할까?</div>}
-      {entries.map((entry, i) => (
-        <CommandButton
-          key={entry.label}
-          on={i === cursor}
-          label={entry.label}
-          sub={entry.sub}
-          tint={entry.tint}
-          {...('pilot' in entry ? { pilot: entry.pilot } : {})}
-          onClick={entry.go}
-          disabled={!entry.on}
-        />
-      ))}
-    </>
-  )
-}
-
-/**
- * 사파리의 명령 넷 (PARITY §2.19 · `PLAYER_INPUT_SAFARI_*`).
- *
- * 차례가 원작 그대로다 — 볼·미끼·진흙·도망. 원작은 아래 화면에 네 칸을 두고
- * 남은 볼을 그 옆에 적는데, 우리는 한 화면이라 **볼 수를 첫 칸에 붙인다**.
- *
- * ⚠️ **미끼와 진흙이 서로 반대가 아니다.** 미끼는 잡히는 값을 올리면서 도망도
- * 올리고, 진흙은 도망을 내리면서 잡히는 값도 내린다 — 어느 쪽도 공짜가 아니라
- * 그 대가를 칸 밑에 적는다
- */
-function SafariMenu(
-  { balls, onPick, words, lines, stock }: {
-    balls: number; onPick: (command: SafariCommand) => void; words: Words
-    /** 배틀 글 뱅크 (`BATTLE_BANK`). 칸 이름 넷이 롬 줄이다 (931~933 · 927) */
-    lines: readonly string[]
-    /**
-     * 남은 볼 줄 — 시작 메뉴 뱅크의 「{N}개 남음」 (`START_MENU.ballStock`). 빈칸은
-     * 0번 칸이다. 뱅크가 안 왔으면 null
-     */
-    stock: string | null
-  },
-) {
-  const left = stock !== null ? fillMenuText(stock, [String(balls)]) : `${String(balls)}개 남음`
-  // 칸 이름은 롬 줄이다 — 「사파리볼」·「미끼」·「도망친다」로 손에 들고 있었는데 롬은
-  // 「볼」·「먹이」·「진흙」·「도망간다」다. 뱅크가 안 왔을 때만 같은 말로 물러선다
-  const entries: { label: string; sub: string; tint: string; go: SafariCommand }[] = [
-    { label: romLine(lines, MSG.ball) ?? '볼', sub: left, tint: css.TINT.fight, go: 'ball' },
-    { label: romLine(lines, MSG.bait) ?? '먹이', sub: words.bait, tint: css.TINT.bag, go: 'bait' },
-    { label: romLine(lines, MSG.mud) ?? '진흙', sub: words.mud, tint: css.TINT.party, go: 'mud' },
-    // 일반 배틀의 도망 칸과 같은 말이다 — 한쪽만 「이 판을 끝낸다」였다
-    { label: romLine(lines, MSG.run) ?? '도망간다', sub: words.run, tint: css.TINT.run, go: 'run' },
-  ]
-  const cursor = useListCursor(entries.length, (i) => {
-    const entry = entries[i]
-    // 볼이 0이면 던질 수가 없다. 그래도 칸은 남긴다 — 왜 못 던지는지가 보인다
-    if (entry && !(entry.go === 'ball' && balls <= 0)) onPick(entry.go)
-  })
-  return (
-    <>
-      {entries.map((entry, i) => (
-        <CommandButton
-          key={entry.label}
-          on={i === cursor}
-          label={entry.label}
-          sub={entry.sub}
-          tint={entry.tint}
-          onClick={() => { onPick(entry.go) }}
-          disabled={entry.go === 'ball' && balls <= 0}
-        />
-      ))}
-    </>
-  )
-}
-
-/**
- * 예·아니오 두 칸. 시합규칙 「교체」가 쓴다.
- *
- * 차례는 **예 → 아니오**다 — 필드 대사의 예·아니오, 원작과 같다. 그래도 커서는
- * **「아니오」에서 시작한다** — 원작이 그렇다. 빨리 넘기려고 Z를 연타하는 사람이
- * 뜻하지 않게 교체 화면으로 끌려가지 않는다. X는 「아니오」다 (필드와 같은 손버릇).
- *
- * 물음 글은 안 적는다 — 글창에 롬 줄이 이미 떠 있다
- */
-function YesNo(
-  { yes, no, words, onPick }: {
-    yes: string; no: string; words: Words; onPick: (yes: boolean) => void
-  },
-) {
-  const entries = [
-    { label: yes, sub: words.swap, tint: css.TINT.party, yes: true },
-    { label: no, sub: words.stay, tint: css.TINT.run, yes: false },
-  ]
-  const cursor = useListCursor(
-    entries.length, (i) => { onPick(entries[i]!.yes) }, () => { onPick(false) }, 1,
-  )
-  return (
-    <>
-      {entries.map((entry, i) => (
-        <CommandButton
-          key={entry.label}
-          on={i === cursor}
-          label={entry.label}
-          sub={entry.sub}
-          tint={entry.tint}
-          onClick={() => { onPick(entry.yes) }}
-        />
-      ))}
-    </>
-  )
-}
-
-/** 기술 네 칸. 원작처럼 타입과 남은 PP를 같이 보여준다 */
-function MoveMenu(
-  { actions, names, extras, onPick, onBack, doubles = false, targetName, previewOf }: {
-    actions: BattleAction[]
-    names: BattleNames | null
-    extras: Extras | null
-    onPick: (a: BattleAction) => void
-    onBack: () => void
-    doubles?: boolean
-    /** 대상 번호 → 화면에 쓸 이름 */
-    targetName?: (target: number) => string
-    /** 그 명령을 고르기 전에 보여 줄 것 */
-    previewOf: (a: BattleAction) => MovePreview
-  },
-) {
-  /**
-   * 대상을 고르는 중이면 그 기술의 후보들.
-   *
-   * ⚠️ **기술 목록에는 칸마다 하나만 세운다.** 후보를 그대로 펴면 몸통박치기가
-   * 두 줄로 뜬다 — 원작도 기술을 고른 **다음에** 누구에게인지를 묻는다
-   */
-  const [aiming, setAiming] = useState<BattleAction[] | null>(null)
-  // 같은 칸 번호의 후보를 하나로 접는다. 접힌 것이 둘 이상이면 대상을 묻는다
-  const groups = new Map<number, BattleAction[]>()
-  for (const a of actions) {
-    if (a.type !== 'move') continue
-    groups.set(a.slot, [...(groups.get(a.slot) ?? []), a])
-  }
-  const rows = [...groups.values()].map((g) => g[0]!)
-
-  const pick = (row: BattleAction): void => {
-    if (row.type !== 'move') return
-    const all = groups.get(row.slot) ?? [row]
-    if (doubles && all.length > 1) { setAiming(all); return }
-    onPick(row)
-  }
-
-  const aimCursor = useListCursor(
-    aiming?.length ?? 0,
-    (i) => { const a = aiming?.[i]; if (a) onPick(a) },
-    () => { setAiming(null) },
-  )
-  if (aiming) {
-    return (
-      <>
-        <div className={css.askWho}>누구에게?</div>
-        {aiming.map((a, i) => (
-          <CommandButton
-            key={a.type === 'move' ? a.target : i}
-            on={i === aimCursor}
-            label={a.type === 'move' ? targetName?.(a.target ?? 0) ?? '' : ''}
-            sub={<MatchLine match={previewOf(a).match} />}
-            onClick={() => { onPick(a) }}
-          />
-        ))}
-        <button className={css.backButton} onClick={() => { setAiming(null) }}>← 돌아가기</button>
-      </>
-    )
-  }
-  return (
-    <MoveRows
-      rows={rows} names={names} extras={extras} onPick={pick} onBack={onBack}
-      // 접힌 줄에는 후보가 하나일 때만 적는다. 여럿이면 자리마다 다르다
-      previewOf={(a) => {
-        const at = previewOf(a)
-        return a.type === 'move' && (groups.get(a.slot)?.length ?? 1) > 1
-          ? { type: at.type, match: null } : at
-      }}
-    />
-  )
-}
-
-/** 기술 이름 밑 한 줄. 상성이 없으면 자리도 안 잡는다 */
-function MatchLine({ match }: { match: MoveMatch | null }) {
-  if (match === null) return null
-  return <span className={`${css.matchLine} ${css.matchTone[match]}`}>{MATCH_LABEL[match]}</span>
-}
-
-function MoveRows(
-  { rows: actions, names, extras, onPick, onBack, previewOf }: {
-    rows: BattleAction[]
-    names: BattleNames | null
-    extras: Extras | null
-    onPick: (a: BattleAction) => void
-    onBack: () => void
-    previewOf: (a: BattleAction) => MovePreview
-  },
-) {
-  const cursor = useListCursor(actions.length, (i) => {
-    const action = actions[i]
-    if (action) onPick(action)
-  }, onBack)
-  return (
-    <>
-      {actions.map((action, i) => {
-        if (action.type !== 'move') return null
-        const label = (action.move !== null ? names?.moves[action.move] : null) ?? action.name
-        const { type: typeId, match } = previewOf(action)
-        const type = typeId !== null ? extras?.types[typeId] : undefined
-        // PP를 못 푸는 칸이 있다 — 발버둥이 그렇다. 그때는 오른쪽을 비운다
-        const hasPp = action.pp !== undefined && action.maxPp !== undefined
-        const ppClass = !hasPp ? ''
-          : action.pp === 0 ? css.ppOut
-            : action.pp! <= Math.max(1, Math.floor(action.maxPp! / 4)) ? css.ppLow
-              : ''
-        return (
-          <CommandButton
-            key={`m${action.slot}`}
-            on={i === cursor}
-            // 기술 칸의 색은 **타입 색**이다. 색만 보고도 무엇을 고르는지 안다
-            {...(typeId !== null ? { tint: typeColor(typeId) } : {})}
-            label={label}
-            /*
-              타입과 상성이 **한 줄에 같이** 선다. BDSP는 타입을 글자 대신
-              아이콘으로 놓아서 밑줄이 통째로 비지만, 우리 왼쪽에 있는 것은
-              점 하나뿐이라 그 점만으로는 무슨 타입인지 못 읽는다
-            */
-            sub={type !== undefined && (
-              <span className={css.subLine}>
-                {type}
-                {match !== null && <span className={css.sep} aria-hidden>·</span>}
-                <MatchLine match={match} />
-              </span>
-            )}
-            right={hasPp && (
-              <span className={`${css.pp} ${ppClass}`}>
-                <span className={css.ppNow}>{action.pp}</span>
-                <span className={css.ppMax}>/{action.maxPp}</span>
-              </span>
-            )}
-            pilot={`move-${String(i)}`}
-            onClick={() => { onPick(action) }}
-          />
-        )
-      })}
-      <button className={css.backButton} onClick={onBack}>← 돌아가기</button>
-    </>
-  )
-}
 
 
 /**

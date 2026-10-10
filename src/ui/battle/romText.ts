@@ -466,6 +466,23 @@ export const MSG = {
   /** 「{이름}은 새로 {기술}을 배웠다!」 */ battlePokemonLearnedMove: 1192,
   /** 예/아니오 창의 두 칸 (`BattleSubscreen_DrawYesNoMenu`) */ yes: 940,
   /** 〃 */ no: 941,
+  /** 명령 창의 「돌아간다」 (`BattleStrings_Text_Cancel`) — 기술 단 아래 글자 띠 */ cancel: 928,
+  /** 기술 칸 안의 「PP」 이름표 */ pp: 938,
+
+  // ── 진화 중의 기술 배우기 (`BattleStrings_Text_PokemonWantsToLearnTheMove` 이후) ─────────
+  //
+  // ⚠️ **배틀 것(1178~1192)과 같은 문장의 짝이다.** 진화 화면이 이 열 줄로 말한다 — 물음 창 부호
+  // (`{SCREEN 0}`)가 없다. 차례는 배틀과 같다 (`useLearnFlow`)
+  /** 「{이름} 새로 {기술} 배우고 싶다...!」 */ pokemonWantsToLearnTheMove: 1193,
+  /** 「그러나 {이름} 기술을 4개 알고 있으므로…」 */ howeverPokemonAlreadyKnowsFourMoves: 1194,
+  /** 「다른 기술을 잊게 하겠습니까?」 */ shouldAMoveBeDeleted: 1195,
+  /** 「어느 기술을 잊게 하겠습니까?」 */ whichMoveShouldBeForgotten3: 1196,
+  /** 「그럼... {기술} 배우는 것을 포기하겠습니까?」 */ stopTryingToTeachMove: 1197,
+  /** 「{이름} {기술} 결국 배우지 않았다!」 */ pokemonDidNotLearnTheMove: 1198,
+  /** 「1, 2, ...... 짠!」 */ evolutionOneTwoAndPoof: 1199,
+  /** 「{이름} {기술} 깨끗이 잊었다!」 */ pokemonForgotHowToUseMove: 1200,
+  /** 「그리고!」 */ evolutionAndDotDotDot: 1201,
+  /** 「{이름} 새로 {기술} 배웠다!」 */ evolvedPokemonLearnedMove: 1202,
 
   // ── 명령 첫 단 (`battle_subscreen.c`) ────────────────────────────────────
   /**
@@ -612,6 +629,32 @@ export const BAG = {
  */
 export const PARTY = {
   /** 누구를 내보낼지 고르는 줄 */ chooseAPokemon: 6,
+  /** 교체 창 단추 — 「교체한다」 */ shiftButton: 15,
+  /** 〃 「능력치를 본다」 */ summaryButton: 18,
+  /** 〃 「기술을 본다」 */ checkMovesButton: 19,
+  /** 도구 칸이 비었다 — 「지닌물건 없음」 */ pokemonNoItemHeld: 20,
+  /** 「다음 레벨까지」 */ pokemonExpToNextLevelLabel: 25,
+  /** 능력치 이름 다섯과 그 값 틀 (공격 · 방어 · 특수공격 · 특수방어 · 스피드) */
+  pokemonAttackStatLabel: 32,
+  pokemonAttackStatValue: 33,
+  pokemonDefenseStatLabel: 34,
+  pokemonDefenseStatValue: 35,
+  pokemonSpAtkStatLabel: 36,
+  pokemonSpAtkStatValue: 37,
+  pokemonSpDefStatLabel: 38,
+  pokemonSpDefStatValue: 39,
+  pokemonSpeedStatLabel: 40,
+  pokemonSpeedStatValue: 41,
+  /** 기술 칸 이름표 — 「PP」 */ movePPLabel: 43,
+  /** 〃 「위력」 */ movePowerLabel: 48,
+  /** 값이 없다 — 「---」 (위력 ≤ 1 · 명중 0) */ moveStatNoValue: 50,
+  /** 〃 「명중」 */ moveAccuracyLabel: 51,
+  /** 〃 「분류」와 그 값 셋. 차례가 물리 · 변화 · 특수다 */
+  moveCategoryLabel: 53,
+  moveCategoryPhysical: 54,
+  moveCategoryStatus: 55,
+  moveCategorySpecial: 56,
+  /** 이미 고른 칸이다 — 「{이름} 이미 선택되어 있습니다」 */ cantSwitchWithAlreadySelectedPokemon: 93,
   /** 도구를 누구에게 쓸지 고르는 줄 */ useOnWhichPokemon: 7,
   /** 이미 나가 있다 */ cantSwitchWithPokemonAlreadyInBattle: 76,
   /** 기력이 없다 */ cantSwitchWithFaintedPokemon: 77,

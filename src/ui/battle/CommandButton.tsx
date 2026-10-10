@@ -7,10 +7,10 @@
 // ⚠️ **모양이 갈리면 눈으로만 잡힌다.** 재질 두 벌이 로토무 방 벽을 흰색으로
 // 세웠던 것과 같은 갈래다 — 칸 하나에 점을 하나 더 달면 나머지 일곱은 안 따라온다.
 import type { ReactNode } from 'react'
-import * as css from './battleScreen.css'
+import * as css from './command.css'
 
 export function CommandButton({
-  on, label, sub, right, tint, disabled, pilot, onClick,
+  on, label, sub, right, tint, disabled, pilot, moveId, onClick,
 }: {
   /** 커서가 이 칸에 있는가. 삼각형과 밝기가 여기서 갈린다 */
   on: boolean
@@ -28,6 +28,8 @@ export function CommandButton({
   disabled?: boolean
   /** 잡는 법 강습의 손이 찾는 이름 (`data-pilot`) */
   pilot?: string
+  /** 기술 칸이면 그 기술 번호 (`data-move-id`). 하네스가 이름 글자 대신 이것을 읽는다 */
+  moveId?: number
   onClick: () => void
 }) {
   return (
@@ -37,6 +39,7 @@ export function CommandButton({
       onClick={onClick}
       disabled={disabled}
       data-pilot={pilot}
+      data-move-id={moveId}
     >
       {on && <span className={css.caret} aria-hidden />}
       <span className={css.face}>

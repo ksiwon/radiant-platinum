@@ -66,6 +66,11 @@ function ppText(slot: MoveSlot | undefined, data: Move | undefined): string {
 
 export function SwitchScreen(
   { actions, party, names, roster, onPick, onBack }: {
+    /**
+     * 교체로 **빠지는** 자리의 키(더블에서 어느 마리를 바꾸는지). 바꿀 자리 화살표를 그리려는 교체 꾸러미가
+     * 쓴다 — 배선만 미리 깔았고 지금은 읽지 않는다
+     */
+    replacing?: string | null
     actions: BattleAction[]
     party: readonly PartySlot[]
     names: SwitchNames | null
