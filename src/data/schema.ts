@@ -528,6 +528,12 @@ export const creditRowsSchema = z.object({
   })).nonempty(),
 })
 
+/**
+ * 도감 크기 비교 표 (`pokedex_heightweight`). 굽는 쪽(P0b ⑤)이 칸을 정하므로 모양을 안 좁힌다 —
+ * 쓰는 쪽(P7)이 맞춘 뒤에 좁힌다
+ */
+export const dexHeightWeightSchema = z.object({}).passthrough()
+
 export const boxWallpapersSchema = z.object({
   count: z.number().int().positive(),
   cols: z.number().int().positive(),
@@ -816,6 +822,7 @@ export type PokeIcons = z.infer<typeof pokeIconsSchema>
 export type BagSprite = z.infer<typeof bagSpriteSchema>
 export type MotionTiming = z.infer<typeof motionTimingSchema>
 export type BoxWallpapers = z.infer<typeof boxWallpapersSchema>
+export type DexHeightWeight = z.infer<typeof dexHeightWeightSchema>
 export type CreditsAtlas = z.infer<typeof creditsSchema>
 export type CreditRows = z.infer<typeof creditRowsSchema>
 export type TownMapFile = z.infer<typeof townMapSchema>

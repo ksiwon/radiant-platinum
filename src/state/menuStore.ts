@@ -183,6 +183,11 @@ interface MenuStore {
   /** 태그를 볼 나무열매의 **도구 번호** */
   berryItem: number
   /**
+   * 태그를 넘겨 볼 나무열매들의 **도구 번호** (가방 주머니의 차례). ↑↓가 이웃 열매로 간다 (결정 — 원작).
+   * 안 주고 연 태그(스크립트 따위)는 빈 배열이고, 그때는 한 열매만 본다
+   */
+  berryList: readonly number[]
+  /**
    * 지금 도는 NPC 교환 (`FieldTask_StartNPCTrade`).
    *
    * `slot`은 내가 건네는 파티 자리다 — 화면이 그 자리를 받는 마리로 갈아 끼운다
@@ -282,8 +287,8 @@ interface MenuStore {
   openSummaryToSelectMove: (what: NonNullable<MenuStore['selectMove']>) => void
   /** 기술 고르기가 끝났다. 스크립트가 `selectedMoveSlot`을 읽는다 */
   finishSelectMove: (slot: number) => void
-  /** 나무열매 태그를 쌓는다. B로 가방으로 돌아간다 */
-  openBerryTag: (item: number) => void
+  /** 나무열매 태그를 쌓는다. B로 가방으로 돌아간다. `list`는 이웃 열매로 넘길 목록이다 */
+  openBerryTag: (item: number, list?: readonly number[]) => void
   /** 도구 쓰기를 끝낸다 */
   clearUsingItem: () => void
   back: () => void
@@ -316,6 +321,7 @@ export const useMenuStore = create<MenuStore>()((set) => ({
   reminderLearned: false,
   diplomaNational: false,
   berryItem: 0,
+  berryList: [],
   choosingMon: false,
   chooseDaycare: false,
   chooseStart: 0,
@@ -388,10 +394,10 @@ export const useMenuStore = create<MenuStore>()((set) => ({
     return { stack, top: 'diploma' as const, diplomaNational: national }
   }),
 
-  openBerryTag: (item) => set((s) => {
+  openBerryTag: (item, list) => set((s) => {
     const stack: MenuScreen[] = [...s.stack, 'berryTag']
     capture(stack)
-    return { stack, top: 'berryTag' as const, berryItem: item }
+    return { stack, top: 'berryTag' as const, berryItem: item, berryList: list ?? [] }
   }),
 
   openBagToGive: (slot) => set((s) => {

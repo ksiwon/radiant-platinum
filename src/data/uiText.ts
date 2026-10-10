@@ -50,6 +50,21 @@ export const UI_BANK = {
   moveDescriptions: 646,
   /** `TEXT_BANK_POKEMON_STORAGE_SYSTEM` — 박스 이름 18개와 벽지 이름 32개 */
   storageSystem: 18,
+  /**
+   * `TEXT_BANK_BATTLE_PARTY` — 배틀 안 파티 화면 96줄. 메뉴 화면이 기술 정보의 이름표(위력 · 명중 · 분류 ·
+   * 물리/변화/특수 · 「---」)를 여기서 읽는다. 줄 번호는 `battle/romText`의 `PARTY`가 쥔다
+   */
+  battleParty: 3,
+  /**
+   * `TEXT_BANK_MOVE_REMINDER` — 기술 되살리기의 물음 · 가르치는 사람의 물음 · 이름표 (34줄).
+   *
+   * ⚠️ **굽는 쪽 둘이 이 뱅크를 싣기 전에는 설치본에 없다** (P0b). 받는 쪽이 빈 배열을 견뎌야 한다
+   */
+  moveReminder: 645,
+  /** `TEXT_BANK_BATTLE_FACTORY_APP` — 팩토리 화면의 물음과 단추 */
+  factoryApp: 364,
+  /** `TEXT_BANK_BATTLE_FRONTIER_RECORDS` — 프런티어 기록 이름표 (싱글 · 레벨 50 · 연승…) */
+  frontierRecords: 16,
   /** `TEXT_BANK_BOX_MESSAGES` — 박스 화면이 띄우는 말과 능력 이름표 */
   boxMessages: 19,
   /** `TEXT_BANK_POKEMON_SUMMARY_SCREEN` — 쪽 이름표부터 트레이너 메모의 문장 틀까지 187줄 */
@@ -155,6 +170,96 @@ export const TRADE_TEXT = {
   takeCare: 3,
 } as const
 
+/**
+ * 파티 화면의 아래 글 띠와 모드 줄 (`party_menu` 뱅크 453).
+ *
+ * 29~36은 파티 화면이 어떤 목적으로 열렸는지에 따라 바뀌는 안내문이고(`main.c:305-327`), 175~179는
+ * 기술머신 · 진화의돌 모드에서 판마다 HP 자리에 붙는 한 줄이다 (`windows.c:1032-1075`).
+ * 35번은 공백뿐이라 적지 않는다
+ */
+export const PARTY_MENU_TEXT = {
+  /** 「포켓몬을 선택해 주십시오」 — 기본 · 스크립트가 고르라고 연 화면 */ choose: 29,
+  /** 「어디로 이동할까?」 — 포켓몬을 집었다 */ moveTo: 30,
+  /** 「어느 포켓몬에게 건네줄까?」 */ give: 31,
+  /** 「어느 포켓몬에게 사용할까?」 — 도구 */ use: 32,
+  /** 「어느 포켓몬에게 가르칠까?」 — 기술머신 */ teach: 33,
+  /** 「포켓몬을 선택하고 결정」 */ chooseAndConfirm: 34,
+  /** 「어느 포켓몬에게 쓸까?」 — 우유마시기 */ milk: 36,
+  /** 기술머신 모드 — 「배울 수 있다!」 · 「배울 수 없다」 · 「이미 알고 있다」 */
+  canLearn: 175, cannotLearn: 176, alreadyKnows: 177,
+  /** 진화의돌 모드 — 「쓸 수 있습니다」 · 「쓸 수 없습니다」 */
+  canUse: 178, cannotUse: 179,
+  /** 알만 고르는 화면 — 「알을 선택해 주십시오」 */ chooseEgg: 197,
+  /** 알의 갈래 물음 — 「알을 어떻게 할까?」 */ eggAsk: 198,
+} as const
+
+/**
+ * 요약 화면의 이름표 (`pokemon_summary_screen` 뱅크 455).
+ *
+ * 능력 이름 여섯(110~115)은 HP · 공격 · 방어 · 특수공격 · 특수방어 · 스피드 차례다.
+ * `noPp`와 `noValue`는 빈 기술 칸과 위력 없는 기술 칸에 찍는다 — 지은 「???」가 아니다
+ */
+export const SUMMARY_TEXT = {
+  stats: [110, 111, 112, 113, 114, 115],
+  /** 「PP」 */ pp: 135,
+  /** 「위력」 · 「명중」 */ power: 147, accuracy: 148,
+  /** 바꾸기 출발 줄의 작은 표 — 「교체」 */ swap: 152,
+  /** 빈 기술 칸의 PP 자리 — 「--」 */ noPp: 153,
+  /** 위력 ≤ 1 · 명중 0 — 「---」 */ noValue: 154,
+} as const
+
+/** 팩토리 화면의 물음과 단추 (`battle_factory_app` 뱅크 364) */
+export const FACTORY_TEXT = {
+  /** 「{N}번째 포켓몬을 선택해 주십시오」 · 「이상의 {N}마리로 괜찮겠습니까?」 */
+  pickMon: 0, confirmTeam: 1,
+  /** 「잠시 기다려 주십시오」 */ wait: 2,
+  yes: 3, no: 4,
+  /** 「능력치 보기」 — 새 설계는 상세가 옆에 늘 떠 있어서 줄로 안 둔다 */ viewStats: 5,
+  /** 「대여받는다」 · 「닫는다」 · 「떼어낸다」 */ rent: 6, close: 7, release: 8,
+  /** 「교환할 포켓몬을 선택해 주십시오」 · 「포켓몬 교환을 중지하겠습니까?」 */ pickTrade: 9, stopTrade: 10,
+  /** 「받을 포켓몬을 선택해 주십시오」 · 「이 포켓몬을 받겠습니까?」 */ pickReceive: 13, confirmReceive: 14,
+} as const
+
+/** 프런티어 기록의 이름표 (`battle_frontier_records` 뱅크 16) */
+export const FRONTIER_TEXT = {
+  /** 「어떤 성적을 보겠습니까?」 */ ask: 0,
+  /** 「싱글」 */ single: 1,
+  /** 「레벨 50」 · 「오픈 레벨」 */ level50: 34, openLevel: 35,
+  /** 「{N}연승」 — 칸 0이 수다 */ streak: 38,
+} as const
+
+/**
+ * 기술 되살리기 · 기술 가르치는 사람의 글 (`move_reminder` 뱅크 645).
+ *
+ * 번호는 디컴프 `res/text/move_reminder.json`의 메시지 순서다. 앞 열한 줄이 되살리기(`Reminder_*`),
+ * 다음 열한 줄이 가르치는 사람(`Tutor_*`)이고 같은 차례다. 이름표 열두 줄이 그 뒤다
+ */
+export const MOVE_REMINDER_TEXT = {
+  /** 「어느 기술을 가르칠까?」 */ askTeachWhichToMon: 0,
+  /** 「○○을 가르치겠습니까?」 */ askShouldTeachMove: 1,
+  /** 「새 기술 가르치는 것을 포기하겠습니까?」 */ askGiveUpTeachingMon: 2,
+  /** 「○○ 배웠다」 — 팡파르 없이 */ learnedMoveNoFanfare: 3,
+  /** 「네 개를 넘길 수 없다 … 오래된 기술을 잊게 하겠습니까?」 */ askMoreThanFourMoves: 4,
+  /** 「1, 2, … 짠!」 + 잊었다 + 「그리고…」 */ twelveAndPoof: 5,
+  /** 「○○ 배웠다」 — 팡파르 */ learnedMoveFanfare: 6,
+  /** 「그만두겠습니까?」 */ askStopTryingToTeachMove: 7,
+  /** 「배우지 않았다」 */ monDidNotLearnMove: 8,
+  /** 비용 줄 (가르치는 사람만 쓴다) */ payment: 9,
+  /** 「잊어도 괜찮습니까?」 */ askForgetThisMove: 10,
+  /** 가르치는 사람 쪽 — 위와 같은 차례에 11을 더한다 */ tutorOffset: 11,
+  /** 이름표 — 분류 · 위력 · 명중 · PP · 배틀기 · 어필 · 콘테스트기 */
+  category: 22, power: 23, accuracy: 24, pp: 25, battleMoves: 26, appealPoints: 27, contestMoves: 28,
+  /** 값 틀 — 위력 · 명중 · PP */ powerValue: 29, accuracyValue: 30, ppValue: 31,
+  /** 「그만둔다」 */ cancel: 32,
+  /** 값이 없다 — 「---」 */ dashes: 33,
+} as const
+
+/** 가이드맵 (`town_map` 뱅크 615) — 날기 모드 머리 오른쪽의 물음과 화면 제목 */
+export const TOWN_MAP_TEXT = {
+  /** 「어디로 날아갈까요?」 */ ask: 0,
+  /** 「가이드맵」 — 화면 제목 */ title: 1,
+} as const
+
 /** 소지금 창 (`FieldMenu_CreateMoneyWindow` · `..._PrintMoneyToWindow`) */
 export const MONEY_WINDOW_TEXT = { label: 18, amount: 19 } as const
 
@@ -177,6 +282,10 @@ export const MART_TEXT = {
   noRoom: 7,
   /** 「프레미어볼 1개를\n서비스로 드리겠습니다!」 (`Shop_FinishPurchase`) */
   premier: 10,
+  /** 목록 끝 줄 — 「그만둔다」 */ closeRow: 8,
+  /** 「그 밖에 저희가 뭐 도와드릴 건 없습니까?」 */ more: 2,
+  /** 작별 — 「또 오세요!」 · BP 가게는 「BP를 모아서 또 방문해 주십시오!」 */ bye: 1, byeBP: 31,
+  /** BP 소지금 창의 값 — 「{n}BP」 */ bpMoney: 38,
   /** 개수 창 셋 — 「{0}개 갖고 있음」 · 「x{0}」 · 「{0}원」 / 「{0}BP」 (`Shop_ShowQtyWithinInventory` · `…TotalItemPurchase`) */
   inBag: 20, quantity: 21, total: 22, bpTotal: 34,
 } as const
@@ -347,6 +456,7 @@ export const POKEDEX_TEXT = {
 /** 리포트 흐름 (`common_strings`). 16번은 `{STRVAR_1 3, 0, 1}` — 주인공 이름 + 은/는 */
 export const SAVE_TEXT = {
   ask: 13, overwrite: 14, writing: 15, done: 16, failed: 18,
+  /** 「리포트에 많은 내용을 기록 중입니다 전원을 끄지 않도록 해주십시오」 — 오래 걸릴 때 */ writingFull: 21,
 } as const
 
 /**
@@ -375,6 +485,8 @@ export const OPTIONS_TEXT = {
   sound: [17, 18],
   help: { speed: 43, battleScene: 44, battleRule: 45, sound: 46, buttons: 47, frame: 48 },
   confirm: 9, yes: 50, no: 51, close: 42,
+  /** 닫을 때 한 번 묻는다 — 「선택하신 설정으로 변경하시겠습니까?」 (결정) */ confirmChanges: 49,
+  /** 「닫는다」 줄의 설명 — 「게임으로 돌아갑니다」 */ closeHelp: 52,
 } as const
 
 /** 타이틀 화면 (`main_menu_options`) */
@@ -442,6 +554,14 @@ export const BOX_TEXT = {
   jumpToBox: 8,
   pickTheme: 9,
   pickWallpaper: 10,
+  /** `box_messages` 뱅크 — 마리 상세의 이름표 넷 (`성격` · `Lv.` · `HP` · `기술`) */
+  nature: 35, level: 36, hp: 37, moves: 43,
+  /** 「데리고 갈 포켓몬을 선택하십시오!」 — 맡긴 마리 꺼내기 */ pickWithdraw: 18,
+  /** 「박스를 종료하겠습니까?」 — 결정에 따라 **묻지 않는다.** 번호만 적어 둔다 */ confirmExit: 11,
+  /** 「박스 조작을 계속하겠습니까?」 */ continueOps: 12,
+  /** 「포켓몬을 쥐고 있습니다!」 */ holding: 17,
+  /** 알림 줄 — 「가방이 가득 찼습니다!」 · 「메일은 가져올 수 없습니다!」 · 「알은 도구를 지닐 수 없습니다!」 · 「{도구} 지닐 수 없다!」 */
+  bagFull: 14, noMail: 24, eggNoItem: 34, cannotHold: 45,
   /** `box_messages` 뱅크 */
   partyFull: 5,
   lastMon: 6,
@@ -478,6 +598,14 @@ export const BOX_TEXT = {
 
 /** PC 메뉴의 항목 (`menu_entries`). 65 + 갈래 번호가 보관 시스템의 다섯 갈래다 */
 export const PC_MENU = { storageModes: 65 } as const
+
+/**
+ * 상점에서 파는 흐름의 줄 (`bag` 뱅크 7의 74~77).
+ *
+ * 원작은 개수가 하나면 개수를 안 묻고 곧바로 값을 말한다 (`ask`) — 그다음에 확인하면 `done`이다.
+ * 가방 화면이 같은 뱅크를 읽으므로 한 자리에 둔다
+ */
+export const SELL_TEXT = { cannot: 74, howMany: 75, ask: 76, done: 77 } as const
 
 /** 가방 뱅크가 상점 글까지 갖고 있다 (`TEXT_BANK_BAG`) */
 export const SHOP_TEXT = {

@@ -10,7 +10,7 @@
 // 보였고, e2e ㉖이 「그대로 두기」를 60초 기다리다 떨어졌다. 눈으로도 시험으로도
 // 안 잡히던 자리라, 여기서 **뿌리 태그를 직접 읽어** 막는다.
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
 const HERE = import.meta.dirname
@@ -99,4 +99,73 @@ describe('메뉴 화면은 3D 위에 선다', () => {
       ).toBe(true)
     })
   }
+})
+
+/**
+ * 층 둘 — `MenuLayer`는 **맨 위 화면 하나만** 그린다 (SYSTEM §2.3).
+ *
+ * 시작 메뉴가 다른 화면과 같이 그려지면 `radiogroup`이 둘이 되고 하네스의 「첫 radiogroup」이 엉뚱한 쪽을 읽는다.
+ * 스택 전체를 그리는 길(`stack.map`)이 없고, 시작 메뉴는 `case 'start'` 한 곳에서만 그려진다.
+ */
+describe('맨 위 화면 하나만 그린다', () => {
+  const layer = read('MenuLayer.tsx')
+  // 주석 속의 낱말을 안 센다
+  const code = layer.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+
+  it('시작 메뉴는 case \'start\' 한 곳에서만 그려진다', () => {
+    expect(code.match(/<StartMenu\b/g)).toHaveLength(1)
+    expect(code).toContain("case 'start': return <StartMenu />")
+  })
+
+  it('스택을 펴서 여럿을 그리지 않는다', () => {
+    expect(code).not.toMatch(/stack\.(map|filter|flatMap)\(/)
+    expect(code).not.toMatch(/\.map\(\(?\w*\)? => <\w+Screen/)
+  })
+
+  it('case마다 화면 하나만 돌려준다', () => {
+    for (const m of code.matchAll(/case '(\w+)': return (.+)/g)) {
+      const body = m[2]!
+      expect(body.match(/<[A-Z]\w*/g), m[1]).toHaveLength(1)
+      expect(body, m[1]).not.toContain('<>')
+    }
+  })
+})
+
+/**
+ * `role="radiogroup"`은 **떠 있을 수 없는 화면에만** 단다 (SYSTEM §2.3). 하네스의 대사 도우미가 「첫 radiogroup」을
+ * 읽을 때(`drive.mjs:513-524`) 다른 radiogroup이 같이 떠 있으면 엉뚱한 것을 답한다.
+ */
+describe('radiogroup은 허용된 화면에만 있다', () => {
+  /** 달아도 되는 파일 — 시작 메뉴 · 리포트 · 설정 · 카드 배지 + 그것이 쓰는 부품 둘 */
+  const ALLOWED = new Set([
+    'menu/StartMenu.tsx', 'menu/SaveScreen.tsx', 'menu/OptionsScreen.tsx', 'menu/TrainerCard.tsx',
+    'common/YesNo.tsx', 'common/ValueStrip.tsx',
+  ])
+
+  /** 메뉴 · 배틀 · 공용 폴더의 tsx를 모은다 (필드의 대사창과 인트로는 다른 층이다) */
+  function sources(): { rel: string; code: string }[] {
+    const here = resolve(HERE, '..')
+    const out: { rel: string; code: string }[] = []
+    for (const dir of ['menu', 'battle', 'common']) {
+      for (const name of readdirSync(resolve(here, dir))) {
+        if (!name.endsWith('.tsx')) continue
+        const code = readFileSync(resolve(here, dir, name), 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+        out.push({ rel: `${dir}/${name}`, code })
+      }
+    }
+    return out
+  }
+
+  it('허용 목록 밖의 파일에는 radiogroup이 없다', () => {
+    const offenders = sources().filter((s) => /radiogroup/.test(s.code) && !ALLOWED.has(s.rel)).map((s) => s.rel)
+    expect(offenders).toEqual([])
+  })
+
+  it('갈래 창과 틀에는 없다 — YesNo는 group일 때만이다', () => {
+    const all = new Map(sources().map((s) => [s.rel, s.code]))
+    expect(all.get('common/ChoiceMenu.tsx')).not.toContain('radiogroup')
+    expect(all.get('menu/MenuScreen.tsx')).not.toContain('radiogroup')
+    expect(all.get('common/YesNo.tsx')).toMatch(/group\s*\?\s*\{\s*role:\s*'radiogroup'/)
+  })
 })

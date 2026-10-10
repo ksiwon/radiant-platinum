@@ -7,19 +7,30 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { bankIndex, type TextBankName } from '../import/platinum/textBanks'
+import { bankIndex } from '../import/platinum/textBanks'
 import {
-  BAG_MENU, BOX_TEXT, fillMenuText, MAILBOX_TEXT, MAIN_MENU, MART_TEXT, OPTIONS_TEXT, PARTY_GIVE,
-  partyHeader, POKEDEX_TEXT, SAVE_TEXT, START_MENU, UI_BANK, YES_NO,
+  BAG_MENU, BOX_TEXT, FACTORY_TEXT, fillMenuText, FRONTIER_TEXT, MAILBOX_TEXT, MAIN_MENU, MART_TEXT,
+  MOVE_REMINDER_TEXT, OPTIONS_TEXT, PARTY_GIVE, PARTY_MENU_TEXT, partyHeader, POKEDEX_TEXT, SAVE_TEXT, SELL_TEXT,
+  START_MENU, SUMMARY_TEXT, TOWN_MAP_TEXT, UI_BANK, YES_NO,
 } from './uiText'
 import { withData, withDecomp } from './romData.testkit'
 
-/** uiText의 키 → textBanks의 이름 */
-const NAMED: Record<keyof typeof UI_BANK, TextBankName> = {
+/**
+ * uiText의 키 → textBanks의 이름.
+ *
+ * ⚠️ 값 타입이 `TextBankName`이 아니라 `string`이다 — `battleParty` · `moveReminder` · `factoryApp` ·
+ * `frontierRecords`는 굽는 쪽의 `TEXT_BANK_NAMES`(브라우저 변환기)에 아직 없을 수 있다. 그 목록은 P0b의 몫이고,
+ * 여기서는 뱅크 **번호**가 이름 순서와 맞는지만 잰다 (`싣는 뱅크에 빠짐이 없다`가 실린 것을 잰다)
+ */
+const NAMED: Record<keyof typeof UI_BANK, string> = {
   startMenu: 'start_menu',
   bagPockets: 'bag_pocket_names',
   bag: 'bag',
   partyMenu: 'party_menu',
+  battleParty: 'battle_party',
+  moveReminder: 'move_reminder',
+  factoryApp: 'battle_factory_app',
+  frontierRecords: 'battle_frontier_records',
   pokedex: 'pokedex',
   menuEntries: 'menu_entries',
   speciesCategory: 'species_category',
@@ -83,8 +94,11 @@ const EN_ONLY: readonly (keyof typeof UI_BANK)[] = [
   'speciesNamesWithArticles', 'trainerClassNamesWithArticles',
 ]
 
+/** 굽는 쪽(P0b)이 아직 안 실은 뱅크. 싣고 나면 지운다 (위 시험이 알려 준다) */
+const NOT_SHIPPED_YET: readonly (keyof typeof UI_BANK)[] = ['moveReminder']
+
 describe('메뉴 글', () => {
-  for (const [key, name] of Object.entries(NAMED) as [keyof typeof UI_BANK, TextBankName][]) {
+  for (const [key, name] of Object.entries(NAMED) as [keyof typeof UI_BANK, string][]) {
     it(`${key}가 ${name} 뱅크를 가리킨다`, () => {
       expect(UI_BANK[key]).toBe(bankIndex(name, 'us'))
     })
@@ -98,7 +112,24 @@ describe('메뉴 글', () => {
       (JSON.parse(readFileSync(index, 'utf8')) as { banks: { index: number }[] })
         .banks.map((b) => b.index),
     )
-    for (const bank of Object.values(UI_BANK)) expect(shipped.has(bank)).toBe(true)
+    for (const [key, bank] of Object.entries(UI_BANK)) {
+      // ⚠️ 기술 되살리기(645)는 굽는 쪽(P0b ⑥)이 아직 안 실었다 — `loadDialogueBankOrNull`이 그 빈자리를 견딘다.
+      // 싣는 날 아래 한 줄(`NOT_SHIPPED_YET`)을 지운다: 지우지 않으면 이 시험이 「이제 실렸다」고 알려 준다
+      if (NOT_SHIPPED_YET.includes(key as keyof typeof UI_BANK)) continue
+      expect(shipped.has(bank), key).toBe(true)
+    }
+  })
+
+  it('아직 안 실린 뱅크가 실렸으면 그 면제를 지운다', () => {
+    const index = resolve(__dirname, '../../public/data/dialogue/index.json')
+    if (!existsSync(index)) return
+    const shipped = new Set(
+      (JSON.parse(readFileSync(index, 'utf8')) as { banks: { index: number }[] })
+        .banks.map((b) => b.index),
+    )
+    for (const key of NOT_SHIPPED_YET) {
+      expect(shipped.has(UI_BANK[key]), `${key}가 실렸다 — NOT_SHIPPED_YET에서 지운다`).toBe(false)
+    }
   })
 
   it('조사·복수형 뱅크는 한국어 판에 없다', () => {
@@ -295,5 +326,102 @@ describe('파티 머리 글', () => {
   it('숫자를 명사구 뒤에 두고 동사 뒤에 매달지 않는다', () => {
     expect(partyHeader(5, 6)).toBe('전투 가능 5마리 · 파티 6/6')
     expect(partyHeader(1, 3)).not.toMatch(/있다/)
+  })
+})
+
+maybe('메뉴 개편이 더한 롬 글 자리', () => {
+  const bank = (at: number): string[] => JSON.parse(readFileSync(resolve(DATA, `${String(at)}.json`), 'utf8'))
+
+  it('파티 메뉴(453)의 안내문과 모드 줄', () => {
+    const party = bank(UI_BANK.partyMenu)
+    expect(party[PARTY_MENU_TEXT.choose]).toBe('포켓몬을 선택해 주십시오')
+    expect(party[PARTY_MENU_TEXT.give]).toBe('어느 포켓몬에게 건네줄까?')
+    expect(party[PARTY_MENU_TEXT.use]).toBe('어느 포켓몬에게 사용할까?')
+    expect(party[PARTY_MENU_TEXT.teach]).toBe('어느 포켓몬에게 가르칠까?')
+    expect([PARTY_MENU_TEXT.canLearn, PARTY_MENU_TEXT.cannotLearn, PARTY_MENU_TEXT.alreadyKnows]
+      .map((i) => party[i])).toEqual(['배울 수 있다!', '배울 수 없다', '이미 알고 있다'])
+    expect([PARTY_MENU_TEXT.canUse, PARTY_MENU_TEXT.cannotUse].map((i) => party[i]))
+      .toEqual(['쓸 수 있습니다', '쓸 수 없습니다'])
+    expect(party[PARTY_MENU_TEXT.chooseEgg]).toBe('알을 선택해 주십시오')
+    expect(party[PARTY_MENU_TEXT.eggAsk]).toBe('알을\n어떻게 할까?')
+  })
+
+  it('요약(455)의 이름표 — 능력 여섯 · PP · 위력 · 명중 · 「--」 · 「---」', () => {
+    const summary = bank(UI_BANK.summary)
+    expect(SUMMARY_TEXT.stats.map((i) => summary[i])).toEqual(['HP', '공격', '방어', '특수공격', '특수방어', '스피드'])
+    expect(summary[SUMMARY_TEXT.pp]).toBe('PP')
+    expect(summary[SUMMARY_TEXT.power]).toBe('위력')
+    expect(summary[SUMMARY_TEXT.accuracy]).toBe('명중')
+    expect(summary[SUMMARY_TEXT.swap]).toBe('교체')
+    expect(summary[SUMMARY_TEXT.noPp]).toBe('--')
+    expect(summary[SUMMARY_TEXT.noValue]).toBe('---')
+  })
+
+  it('팩토리(364)와 프런티어 기록(16)', () => {
+    const factory = bank(UI_BANK.factoryApp)
+    expect(factory[FACTORY_TEXT.pickMon]).toContain('번째 포켓몬을')
+    expect(factory[FACTORY_TEXT.rent]).toBe('대여받는다')
+    expect(factory[FACTORY_TEXT.close]).toBe('닫는다')
+    expect(factory[FACTORY_TEXT.stopTrade]).toContain('교환을')
+    const records = bank(UI_BANK.frontierRecords)
+    expect(records[FRONTIER_TEXT.single]).toBe('싱글')
+    expect(records[FRONTIER_TEXT.level50]).toBe('레벨 50')
+    expect(records[FRONTIER_TEXT.openLevel]).toBe('오픈 레벨')
+    expect(records[FRONTIER_TEXT.streak]).toMatch(/연승$/)
+  })
+
+  it('가이드맵(615) · 설정(220) · 리포트(213) · 상점(7 · 543)', () => {
+    const map = bank(UI_BANK.townMap)
+    expect(map[TOWN_MAP_TEXT.title]).toBe('가이드맵')
+    expect(map[TOWN_MAP_TEXT.ask]).toBe('어디로 날아갈까요?')
+    const opt = bank(UI_BANK.options)
+    expect(opt[OPTIONS_TEXT.confirmChanges]).toBe('선택하신 설정으로 변경하시겠습니까?')
+    expect(opt[OPTIONS_TEXT.closeHelp]).toBe('게임으로 돌아갑니다')
+    const common = bank(UI_BANK.common)
+    expect(common[SAVE_TEXT.writingFull]).toContain('많은 내용을 기록 중')
+    const bag = bank(UI_BANK.bag)
+    expect(bag[SELL_TEXT.cannot]).toContain('파실 수 없습니다')
+    expect(bag[SELL_TEXT.howMany]).toContain('몇 개 파시겠습니까?')
+    expect(bag[SELL_TEXT.ask]).toContain('쳐 드리겠습니다')
+    expect(bag[SELL_TEXT.done]).toContain('원을 받았다')
+    const shop = bank(UI_BANK.shop)
+    expect(shop[MART_TEXT.closeRow]).toBe('그만둔다')
+    expect(shop[MART_TEXT.bye]).toBe('또 오세요!')
+    expect(shop[MART_TEXT.more]).toContain('도와드릴 건 없습니까?')
+    expect(shop[MART_TEXT.byeBP]).toContain('BP를 모아서')
+  })
+
+  it('박스(19)의 이름표와 알림 줄', () => {
+    const box = bank(UI_BANK.boxMessages)
+    expect([BOX_TEXT.nature, BOX_TEXT.level, BOX_TEXT.hp, BOX_TEXT.moves].map((i) => box[i]))
+      .toEqual(['성격', 'Lv.', 'HP', '기술'])
+    expect(box[BOX_TEXT.pickWithdraw]).toContain('데리고 갈 포켓몬')
+    expect(box[BOX_TEXT.holding]).toBe('포켓몬을 쥐고 있습니다!')
+    expect(box[BOX_TEXT.bagFull]).toBe('가방이 가득 찼습니다!')
+  })
+
+  it('타이틀(550)의 줄 2 이름표 넷이 있다', () => {
+    const menu = bank(UI_BANK.mainMenu)
+    expect([MAIN_MENU.player, MAIN_MENU.playtime, MAIN_MENU.dex, MAIN_MENU.badges].map((i) => menu[i]))
+      .toEqual(['주인공', '플레이 시간', '포켓몬 도감', '가지고 있는 배지'])
+  })
+
+  it('배틀 파티(3)의 기술 정보 이름표 — 위력 · 명중 · 분류 · 물리 · 변화 · 특수 · 「---」', () => {
+    const party = bank(UI_BANK.battleParty)
+    expect(party).toHaveLength(96)
+    expect(party[48]).toBe('위력')
+    expect(party[51]).toBe('명중')
+    expect(party[53]).toBe('분류')
+    // 차례가 물리 · 변화 · 특수다 (엔진은 물리 · 특수 · 변화)
+    expect([54, 55, 56].map((i) => party[i])).toEqual(['물리', '변화', '특수'])
+    expect(party[50]).toBe('---')
+  })
+
+  it('기술 되살리기(645)는 굽는 쪽이 싣기 전이면 없다 — 번호표만 잠근다', () => {
+    expect(UI_BANK.moveReminder).toBe(645)
+    expect(MOVE_REMINDER_TEXT.askTeachWhichToMon).toBe(0)
+    expect(MOVE_REMINDER_TEXT.tutorOffset).toBe(11)
+    expect(MOVE_REMINDER_TEXT.cancel).toBe(32)
+    expect(MOVE_REMINDER_TEXT.dashes).toBe(33)
   })
 })

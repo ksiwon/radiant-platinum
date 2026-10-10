@@ -10,20 +10,21 @@ import {
   boxWallpapersSchema, creditRowsSchema, creditsSchema, signpostsSchema, unownFontSchema, wallpaperWordsSchema, slotSpritesSchema, itemFileSchema, itemIconsSchema, labelsSchema,
   berriesSchema, distortionSchema, pokedexHabitatSchema, pokedexSortSchema,
   frontierSchema,
-  martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, npcTradesSchema,
+  dexHeightWeightSchema, martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, npcTradesSchema,
   pokeIconsSchema,
   particleIndexSchema,
   propAnimsSchema,
   type PropAnimsFile,
   scriptFileSchema,
   speciesFileSchema, trainerFileSchema, townMapSchema, poketchMapSchema,
-  type BagSprite,
+  type BagSprite, type DexHeightWeight,
   type BoxWallpapers, type CreditRows, type CreditsAtlas, type Signposts, type UnownFont, type SlotSprites, type Item, type ItemIcons, type Labels,
   type MartTable, type MotionTiming, type Move, type NpcTrades, type PokeIcons, type ScriptFile,
   type Species, type Trainer, type TownMapFile, type PoketchMapFile,
   type PokedexHabitat, type PokedexSort, type Berries, type DistortionData,
   type FrontierData,
 } from './schema'
+import type { SpriteSheet } from './spriteSheet'
 import type { HiddenItem } from '../engine/world/hiddenItemTable'
 import type { MoveAnim } from '../engine/battle/moveAnimTable'
 
@@ -604,4 +605,114 @@ export function loadDialogueBank(locale: DataLocale, bank: number): Promise<stri
 export function femaleChance(genderRatio: number): number | null {
   if (genderRatio === 255) return null
   return genderRatio / 254
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 메뉴 개편이 읽는 새 그림 (SYSTEM §5 P0a 「불러오기」 · P0b ①~⑪)
+//
+// 굽는 쪽(`tools/extract` · `src/import/platinum`)이 만드는 그림을 읽는 자리다. 칸 구성은 **여기 적은
+// 값이 계약**이다 — 굽는 쪽이 다른 칸 배치로 구우면 이 시트 상수를 같이 고친다.
+//
+// ⚠️ **전부 실패하면 `null`이다.** 그림이 안 구워졌거나 설치본에 빠졌으면 화면이 그 그림 없이 서야 한다 —
+// 던지면 화면이 통째로 안 뜬다. `TypeBadge` · `menuIcon`의 글자 대체가 그 빈자리를 **가리므로**
+// 대체 경로를 탈 때 콘솔에 경고를 남긴다 (SYSTEM §6.1 ④). 여기서는 `null`로만 알린다.
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * 롬 타입 그림 — 32×16이 세로로 **18칸**이다 (9번이 ???). 칸 차례가 **엔진 타입 번호**다 (P0b ②).
+ * 언어마다 따로 구워진다 (`typeIcons.{en,ko,ja}.png`) — 설정의 언어로 부른다
+ */
+export const typeIconSheet = (locale: DataLocale): SpriteSheet => ({
+  path: `data/typeIcons.${locale}.png`, cellW: 32, cellH: 16, cols: 1, rows: 18,
+})
+
+/** 기술 분류 그림 — 32×16이 세로로 셋. 차례는 물리 · 특수 · 변화다 (P0b ③) */
+const MOVE_CLASS_ATLAS = 'data/moveClass.png'
+export const MOVE_CLASS_SHEET: SpriteSheet = {
+  path: MOVE_CLASS_ATLAS, cellW: 32, cellH: 16, cols: 1, rows: 3,
+}
+/** 기술 분류 → 시트의 칸 번호 */
+export const MOVE_CLASS_CELL = { physical: 0, special: 1, status: 2 } as const
+
+/**
+ * 시작 메뉴 아이콘 — 64×329. 왼쪽 열이 컬러, 오른쪽 열이 회색이고 칸 사이에 한 줄이 비어 있다 (P0b ①).
+ * 칸 차례: 도감0 · 포켓몬1 · 가방(남)2 · 카드3 · 리포트4 · 설정5 · 닫기6 · 채팅7 · 포기8 · 가방(여)9.
+ * 언어마다 따로 구워진다 (`startMenuIcons.{en,ko,ja}.png`). 필드 태스크가 30Hz로 돌려 움직인다
+ */
+export const startMenuIconSheet = (locale: DataLocale): SpriteSheet => ({
+  path: `data/startMenuIcons.${locale}.png`, cellW: 32, cellH: 32, cols: 2, rows: 10, gapY: 1,
+})
+
+/** 도감 형태 실루엣 — 32×32가 세로로 열다섯. 0이 「전부」(볼 칸)이고 1~14가 형태다 (P0b ④) */
+const DEX_SHAPE_ATLAS = 'data/dexShapes.png'
+export const DEX_SHAPE_SHEET: SpriteSheet = {
+  path: DEX_SHAPE_ATLAS, cellW: 32, cellH: 32, cols: 1, rows: 15,
+}
+
+/** 가이드맵 주인공 머리 — 16×16이 가로로 둘 (남 · 여) (P0b ⑧) */
+const TOWN_MAP_PLAYER_ATLAS = 'data/townMapPlayer.png'
+export const TOWN_MAP_PLAYER_SHEET: SpriteSheet = {
+  path: TOWN_MAP_PLAYER_ATLAS, cellW: 16, cellH: 16, cols: 2, rows: 1,
+}
+
+/** 편지지 12종 — 256×192가 3열 4줄 (P0b ⑨) */
+const MAIL_ART_ATLAS = 'data/mailArt.png'
+export const MAIL_ART_SHEET: SpriteSheet = {
+  path: MAIL_ART_ATLAS, cellW: 256, cellH: 192, cols: 3, rows: 4,
+}
+
+/** 나무열매 그림 64장 — 32×32가 8×8 (P0b ⑩) */
+const BERRY_ART_ATLAS = 'data/berryArt.png'
+export const BERRY_ART_SHEET: SpriteSheet = {
+  path: BERRY_ART_ATLAS, cellW: 32, cellH: 32, cols: 8, rows: 8,
+}
+
+/** 상장 종이 둘 — 256×192가 세로로 둘. 0이 신오, 1이 전국도감 (P0b ⑪) */
+const DIPLOMA_ART_ATLAS = 'data/diplomaArt.png'
+export const DIPLOMA_ART_SHEET: SpriteSheet = {
+  path: DIPLOMA_ART_ATLAS, cellW: 256, cellH: 192, cols: 1, rows: 2,
+}
+
+/**
+ * 그림 한 장을 잡아 두고 시트 자료를 돌려준다. 못 받으면 `null` — 던지지 않는다.
+ *
+ * ⚠️ 그림을 안 구운 빌드와 구운 빌드가 같은 코드로 돈다. 못 받은 까닭(없다 · 네트워크)을 가르지
+ * 않는다 — 화면은 그림이 없을 때의 길 하나만 안다
+ */
+function loadSheet(sheet: SpriteSheet): Promise<SpriteSheet | null> {
+  return pinAtlas(sheet.path).then(() => sheet, () => null)
+}
+
+export const loadTypeIcons = (locale: DataLocale): Promise<SpriteSheet | null> => loadSheet(typeIconSheet(locale))
+export const loadMoveClass = (): Promise<SpriteSheet | null> => loadSheet(MOVE_CLASS_SHEET)
+export const loadStartMenuIcons = (locale: DataLocale): Promise<SpriteSheet | null> =>
+  loadSheet(startMenuIconSheet(locale))
+export const loadDexShapes = (): Promise<SpriteSheet | null> => loadSheet(DEX_SHAPE_SHEET)
+export const loadTownMapPlayer = (): Promise<SpriteSheet | null> => loadSheet(TOWN_MAP_PLAYER_SHEET)
+export const loadMailArt = (): Promise<SpriteSheet | null> => loadSheet(MAIL_ART_SHEET)
+export const loadBerryArt = (): Promise<SpriteSheet | null> => loadSheet(BERRY_ART_SHEET)
+export const loadDiplomaArt = (): Promise<SpriteSheet | null> => loadSheet(DIPLOMA_ART_SHEET)
+
+/**
+ * 도감 크기 비교 표 (`pokedex_heightweight` narc, P0b ⑤). 칸 구성은 굽는 쪽이 정하므로 여기서는
+ * **모양을 안 검사한다**(`passthrough`) — 쓰는 도감 꾸러미(P7)가 굽는 쪽과 맞춘 뒤에 좁힌다
+ */
+export function loadDexHeightWeight(): Promise<DexHeightWeight | null> {
+  return fetchJson('dexHeightWeight.json', (v) => dexHeightWeightSchema.parse(v)).catch(() => null)
+}
+
+/**
+ * 기술머신 100개가 가르치는 기술 번호 (TM01…TM92, HM01…HM08). 가방과 상점이 같이 읽는다.
+ * 도구표를 못 받으면 `null` — 그때 줄은 기술 이름 대신 도구 이름으로 떨어진다
+ */
+export function loadTmMoves(): Promise<readonly number[] | null> {
+  return loadItems().then((table) => table.tmMoves, () => null)
+}
+
+/**
+ * 대사 뱅크를 받되 없으면 `null`. 굽는 쪽이 아직 안 실은 뱅크(기술 되살리기 645 · P0b ⑥)를 읽는 자리다 —
+ * 던지면 그 화면의 물음이 통째로 빈다. 받는 쪽이 `null`을 견디고 글 없이 선다
+ */
+export function loadDialogueBankOrNull(locale: DataLocale, bank: number): Promise<string[] | null> {
+  return loadDialogueBank(locale, bank).catch(() => null)
 }
