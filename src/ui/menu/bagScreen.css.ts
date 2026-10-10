@@ -219,14 +219,14 @@ export const countCol = style({
 export const faded = style({ opacity: 0.5 })
 
 /**
- * 갈래 창의 자리를 잡는 보이지 않는 점. 고른 줄 안에서 오른쪽 끝 24px 안쪽에 서고 `ChoiceMenu`가 이 점의 오른쪽에
+ * 갈래 창의 자리를 잡는 보이지 않는 점. 고른 줄 안에서 오른쪽 끝 244px 안쪽에 서고(개수 열 44 + 간격 밖이라 「×10」을 안 가린다) `ChoiceMenu`가 이 점의 오른쪽에
  * 앉는다 — 줄 전체를 원인으로 주면 오른쪽에 자리가 없어 창이 왼쪽 가방 칸으로 뒤집힌다
  */
 export const popAnchor = style({
   position: 'absolute',
   top: 0,
   bottom: 0,
-  right: 216,
+  right: 244,
   width: 1,
   pointerEvents: 'none',
 })
