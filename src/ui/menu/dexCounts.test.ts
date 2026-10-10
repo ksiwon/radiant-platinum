@@ -1,8 +1,9 @@
 // 도감 두 수 (`dexCounts.ts`)
 //
-// ⚠️ **카드와 도감 머리가 같은 수를 말해야 한다.** 도감 화면은 머리의 「발견한 수 · 잡은 수」를 안 거른 목록
-// (`dexList(…, NO_FILTER)`)의 빈 칸 아닌 줄로 센다(`PokedexScreen.tsx`). 여기 셈이 그것과 갈리면 같은 판의 두 화면 숫자가
-// 다시 어긋난다 — 구운 신오 · 전국 목록 위에서 아무렇게나 채운 도감 여럿으로 둘을 맞댄다.
+// ⚠️ **카드와 도감 머리가 같은 수를 말해야 한다.** 도감 화면은 머리의 「발견한 수 · 잡은 수」를 `dexCounts`로 센다
+// (`PokedexScreen.tsx` — 검색을 걸어도 안 바뀐다). 이 셈이 안 거른 목록(`dexList(…, NO_FILTER)`)의 빈 칸 아닌 줄 수와 갈리면
+// 같은 판의 두 화면 숫자가 다시 어긋난다 — 구운 신오 · 전국 목록 위에서 아무렇게나 채운 도감 여럿으로 둘을 맞댄다.
+// 목록이 마지막으로 본 번호에서 끊겨도(`cutAtLastSeen`) 끊기는 것은 안 본 칸뿐이라 이 수는 그대로다.
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'

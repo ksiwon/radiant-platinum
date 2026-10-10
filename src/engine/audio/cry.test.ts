@@ -9,7 +9,7 @@ import { it, expect } from 'vitest'
 import { renderSong } from './render'
 import { parseSwar } from './swar'
 import { parseSbnk } from './sbnk'
-import { CRY_SOURCE, FAINT_SEMITONES, MAX_CRY_SPECIES } from './music'
+import { CRY_SOURCE, ECHO_PITCH, FAINT_SEMITONES, MAX_CRY_SPECIES, NO_TUNE, panValue, pitchRate } from './music'
 import { SFX } from './sfx'
 import { withData } from '../../data/romData.testkit'
 
@@ -179,4 +179,27 @@ maybe('효과음 번호', () => {
       expect(out.left.length, `효과음 ${String(id)}`).toBeLessThan(48000 * 8)
     }
   })
+})
+
+// 도감 울음소리 쪽의 조절 (`crysub.c`)
+it('높낮이: 1/64반음이고 두 옥타브 아래(−1536)면 4배 느리다', () => {
+  expect(pitchRate(0)).toBe(1)
+  expect(pitchRate(-64 * 12 * 2)).toBe(0.25)
+  expect(pitchRate(64 * 12)).toBe(2)
+  // 코러스 목소리는 20/64반음 높다 — 반음의 3할쯤이라 박자가 아니라 맥놀이로 들린다
+  expect(ECHO_PITCH).toBe(20)
+  expect(pitchRate(ECHO_PITCH)).toBeGreaterThan(1)
+  expect(pitchRate(ECHO_PITCH)).toBeLessThan(2 ** (1 / 12))
+})
+
+it('좌우: 원작 −127~127이 웹오디오 −1~1이고 넘치면 자른다', () => {
+  expect(panValue(0)).toBe(0)
+  expect(panValue(127)).toBe(1)
+  expect(panValue(-127)).toBe(-1)
+  expect(panValue(300)).toBe(1)
+  expect(panValue(-300)).toBe(-1)
+})
+
+it('처음 값은 높낮이 보통 · 가운데 · 코러스 없음이다 (`InitCrySoundValues`)', () => {
+  expect(NO_TUNE).toEqual({ pitch: 0, pan: 0, echo: 0 })
 })
