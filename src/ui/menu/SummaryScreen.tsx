@@ -25,7 +25,7 @@ import {
   loadItemIcons, loadItemNames, loadLabels, loadMoveNames, loadMoves, loadPokeIcons, loadSpecies,
   loadSpeciesNames, type MoveTable, type SpeciesTable,
 } from '../../data/gameData'
-import { loadUiText } from '../../data/uiText'
+import { loadUiText, SUMMARY_PAGE_MOVES } from '../../data/uiText'
 import { assets, readJson } from '../../data/providers/assetProvider'
 import type { ItemIcons, Labels, PokeIcons } from '../../data/schema'
 import { expToNextLevel, levelProgress, MAX_LEVEL } from '../../engine/pokemon/exp'
@@ -81,7 +81,7 @@ const T = {
   pageSkills: 109,
   labelHp: 110, labelAttack: 111, labelDefense: 112,
   labelSpAttack: 113, labelSpDefense: 114, labelSpeed: 115, labelAbility: 116,
-  pageMoves: 128, labelPower: 147, labelAccuracy: 148,
+  pageMoves: SUMMARY_PAGE_MOVES, labelPower: 147, labelAccuracy: 148,
   /** 바꾸기 출발 줄의 작은 표 — 「교체」 */ swap: 152,
   /** 위력 ≤ 1 · 명중 0 — 「---」 */ noValue: 154,
 } as const

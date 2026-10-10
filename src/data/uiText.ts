@@ -319,6 +319,9 @@ export const HALL_OF_FAME_TEXT = {
   playerInfo: 13,
 } as const
 
+/** 요약 뱅크의 「기술」 쪽 이름 — 요약 화면의 탭이고, PC 전당의 기술 쪽 표시도 이 줄이다 */
+export const SUMMARY_PAGE_MOVES = 128
+
 /** PC로 다시 보는 화면 (`pc_hall_of_fame` 뱅크) */
 export const PC_HALL_OF_FAME_TEXT = {
   title: 0, level: 1, ot: 2, male: 3, female: 4, slash: 5,
