@@ -32,6 +32,8 @@ import { useSaveStore } from '../../state/saveStore'
 import { useBattleStore, type RosterEntry } from '../../state/battleStore'
 import { clampCursor, useMenuKeys, wrapCursor } from '../menu/useMenuKeys'
 import { itemIcon } from '../menu/itemIcon'
+import { GroundShadow } from '../common/GroundShadow'
+import { KeyHints } from '../common/KeyHints'
 import { withSubject } from '../korean'
 import type { BattleNames } from './messages'
 import { PartyCards, type PartyCard } from './PartyCards'
@@ -43,10 +45,13 @@ import { useRomLines } from './useRomLines'
 import * as css from './battleBag.css'
 import { pointerMoved } from '../pointerMoved'
 
-/** 목록의 아이콘. 줄 높이를 안 넘는다 */
-const LIST_ICON = 28
-/** 설명칸의 아이콘. 이 화면에서 제일 큰 그림이어야 한다 */
-const BIG_ICON = 72
+/** 목록의 아이콘. 칸(32)의 1배 — 정수배다 */
+const LIST_ICON = 32
+/** 설명칸의 아이콘. 이 화면에서 제일 큰 그림이어야 한다 (2배) */
+const BIG_ICON = 64
+
+/** 「마지막에 쓴 도구」 (배틀 가방 뱅크 2의 8) — 첫 화면의 단추 이름이다 */
+const LAST_USED_LINE = 8
 
 /**
  * 한 쪽에 놓는 개수. `BATTLE_POCKET_ITEMS_PER_PAGE` 그대로다.
@@ -64,10 +69,11 @@ const PER_PAGE = 6
  * `name`으로 떨어진다 (탭 이름이 비면 화면을 못 쓴다)
  */
 const CATEGORY = [
-  { name: '회복', line: BAG.pocketRestore, mask: BATTLE_POCKET.hp | BATTLE_POCKET.pp },
-  { name: '상태', line: BAG.pocketStatus, mask: BATTLE_POCKET.status },
-  { name: '볼', line: BAG.pocketBalls, mask: BATTLE_POCKET.ball },
-  { name: '배틀용', line: BAG.pocketBattleItems, mask: BATTLE_POCKET.battle },
+  // 롬의 주머니 줄은 두 줄짜리다 — 「HP/PP」(22)+「회복」(23), 「상태」(24)+「회복」(25). 한 줄만 읽으면 「상태」 탭이 무엇인지 모호하다
+  { name: '회복', lines: [22, BAG.pocketRestore], mask: BATTLE_POCKET.hp | BATTLE_POCKET.pp },
+  { name: '상태', lines: [BAG.pocketStatus, 25], mask: BATTLE_POCKET.status },
+  { name: '볼', lines: [BAG.pocketBalls], mask: BATTLE_POCKET.ball },
+  { name: '배틀용', lines: [BAG.pocketBattleItems], mask: BATTLE_POCKET.battle },
 ] as const
 
 /** 볼 번호는 도구 번호와 같다 (`capture.ts`의 Ball) */
@@ -403,53 +409,71 @@ export function BattleBag({
       : romLine(partyLines, PARTY.itemWontHaveAnyEffect)
     return (
       <div className={css.sheet}>
-        <PartyCards
-          cards={cards} cursor={target}
-          onHover={setTarget}
-          onPick={(i) => { setTarget(i); if (step === 'target') pickTarget() }}
-        />
-        <div className={css.detail}>
-          <div className={`${css.banner} ${here?.can ? css.bannerKind.ok : css.bannerKind.none}`}>
-            {here?.can ? here.note : blocked}
-          </div>
-          <div className={css.hero}>
-            <span
-              className={css.icon}
-              style={itemIcon(data?.icons, chosen?.item ?? 0, BIG_ICON)}
-              aria-hidden
-            />
-            <span>
-              <div className={css.heroName}>{data?.names[chosen?.item ?? 0] ?? ''}</div>
-              {/* 원작이 이 단에 세워 두는 물음. 기술 칸을 묻는 단은 줄이 다르다 */}
-              <div className={css.heroSub}>
-                {romLine(partyLines, step === 'move'
-                  ? PARTY.restoreWhichMove
-                  : PARTY.useOnWhichPokemon)}
-              </div>
-            </span>
-          </div>
-          {step === 'move' && (
-            <div className={css.moves}>
-              {slots.map((m, i) => {
-                const full = m.pp >= m.maxPp
-                return (
-                  <button
-                    key={`${String(m.move)}-${String(i)}`}
-                    className={`${css.move} ${i === slot ? css.moveOn : ''}`}
-                    onPointerMove={(e) => { if (pointerMoved(e)) setSlot(i) }}
-                    onClick={() => { setSlot(i); if (planAt(target, i)) commit(target, i) }}
-                    disabled={full}
-                  >
-                    <span>{(m.move !== null ? data?.moves[m.move] : null) ?? '―'}</span>
-                    <span className={css.pp}>{m.pp}/{m.maxPp}</span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
+        <div className={css.left}>
+          <PartyCards
+            cards={cards} cursor={target}
+            onHover={setTarget}
+            onPick={(i) => { setTarget(i); if (step === 'target') pickTarget() }}
+          />
         </div>
-        <div className={css.foot}>
-          {step === 'move' ? '↑↓ 기술 · Z 결정 · X 뒤로' : '↑↓ 고르기 · Z 결정 · X 뒤로'}
+        <div className={css.panel}>
+          {/* 고른 도구 한 줄 — 잠겨 있다. 위쪽 탭 · 목록 자리가 이 한 줄로 접힌다 */}
+          <div className={css.picked}>
+            <div className={`${css.row} ${css.rowOn}`}>
+              <span className={css.caretAt} aria-hidden />
+              <span className={css.icon} style={itemIcon(data?.icons, chosen?.item ?? 0, LIST_ICON)} aria-hidden />
+              <span className={css.label}>{data?.names[chosen?.item ?? 0] ?? ''}</span>
+              <span className={css.lead} aria-hidden />
+              <span className={css.count}>×{chosen?.count ?? 0}</span>
+            </div>
+          </div>
+          <div className={css.detail}>
+            <div className={css.hero}>
+              <span className={css.art}>
+                <span
+                  className={css.icon}
+                  style={itemIcon(data?.icons, chosen?.item ?? 0, BIG_ICON)}
+                  aria-hidden
+                />
+                <GroundShadow w={56} h={10} />
+              </span>
+              <span className={css.heroText}>
+                <span className={css.state}>
+                  <span className={here?.can ? css.stateDot.ok : css.stateDot.none} aria-hidden />
+                  {here?.can ? here.note : blocked}
+                </span>
+                {/* 원작이 이 단에 세워 두는 물음. 기술 칸을 묻는 단은 줄이 다르다 */}
+                <span className={css.heroSub}>
+                  {romLine(partyLines, step === 'move'
+                    ? PARTY.restoreWhichMove
+                    : PARTY.useOnWhichPokemon)}
+                </span>
+              </span>
+            </div>
+            {step === 'move' && (
+              <div className={css.moves}>
+                {slots.map((m, i) => {
+                  const full = m.pp >= m.maxPp
+                  return (
+                    <button
+                      key={`${String(m.move)}-${String(i)}`}
+                      className={`${css.move} ${i === slot ? css.moveOn : ''}`}
+                      onPointerMove={(e) => { if (pointerMoved(e)) setSlot(i) }}
+                      onClick={() => { setSlot(i); if (planAt(target, i)) commit(target, i) }}
+                      disabled={full}
+                    >
+                      {i === slot && <span className={css.caretAt} aria-hidden />}
+                      <span>{(m.move !== null ? data?.moves[m.move] : null) ?? '―'}</span>
+                      <span className={css.pp}>{m.pp}/{m.maxPp}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+          <div className={css.foot}>
+            <KeyHints text={step === 'move' ? '↑↓ 기술 · Z 결정 · X 닫기' : '↑↓ 고르기 · Z 결정 · X 닫기'} />
+          </div>
         </div>
       </div>
     )
@@ -475,9 +499,16 @@ export function BattleBag({
     : item !== null && !needsTarget(item) && embargoBlocks(item, embargo)
       ? romLine(bagLines, BAG.embargoBlockingItemUse, outName, embargoName)
       : null
+  /** 탭 글 — 롬 두 줄을 잇는다 (「HP/PP」+「회복」 · 「상태」+「회복」). 뱅크가 안 왔을 때만 `name`으로 떨어진다 */
+  const tabLabel = (c: (typeof CATEGORY)[number]): string =>
+    c.lines.map((n) => romLine(bagLines, n)).filter((t): t is string => t !== null).join(' ') || c.name
+  const last = memory.lastUsed
+  const lastName = last !== null ? data?.names[last.item] ?? '' : ''
+  const lastLine = last !== null && lastName !== '' ? romLine(bagLines, LAST_USED_LINE) : null
   return (
     <div className={css.sheet}>
-      <div className={css.left}>
+      <div className={css.left} />
+      <div className={css.panel}>
         <div className={css.tabs}>
           {CATEGORY.map((c, i) => (
             <button
@@ -486,9 +517,10 @@ export function BattleBag({
               data-pilot={`pocket-${String(i)}`}
               onPointerDown={() => { setTab(i) }}
             >
-              {romLine(bagLines, c.line) ?? c.name}
+              {tabLabel(c)}
             </button>
           ))}
+          <span className={css.tabMark} aria-hidden style={{ transform: `translateX(${String(tab * 100)}%)` }} />
         </div>
         {/*
           ⚠️ **줄마다 무엇인지 적어 둔다.** 화면을 모는 하네스(`tools/e2e/drive`)가
@@ -519,47 +551,63 @@ export function BattleBag({
                 onPointerMove={(e) => { if (pointerMoved(e)) setCursor(index) }}
                 onClick={() => { setCursor(index); pickItem() }}
               >
+                {index === at && <span className={css.caretAt} aria-hidden />}
                 <span
                   className={css.icon}
                   style={itemIcon(data?.icons, one.item, LIST_ICON)}
                   aria-hidden
                 />
                 <span className={css.label}>{data?.names[one.item] ?? ''}</span>
+                <span className={css.lead} aria-hidden />
                 <span className={css.count}>×{one.count}</span>
               </button>
             )
           })}
         </div>
-        {list.length > PER_PAGE && (
-          <div className={css.pager}>
-            <span>{page + 1} / {pages}쪽</span>
-            <span>{list.length}종</span>
+        {/* 쪽 — 여섯 넘을 때만 점. 왼쪽에는 마지막에 쓴 도구를 **표시만** 한다(키는 안 늘린다 — 열면 그 줄에 이미 서 있다) */}
+        <div className={css.pager}>
+          {lastLine !== null && <span className={css.lastUsed}>{lastLine} · {lastName}</span>}
+          {pages > 1 && (
+            <>
+              <span className={css.dots} aria-hidden>
+                {Array.from({ length: pages }, (_, p) => (
+                  <span key={p} className={p === page ? css.dot.on : css.dot.off} />
+                ))}
+              </span>
+              <span>{page + 1} / {pages}쪽</span>
+            </>
+          )}
+        </div>
+
+        {chosen && (
+          <div className={css.detail}>
+            <div className={css.hero}>
+              <span className={css.art}>
+                <span
+                  className={css.icon}
+                  style={itemIcon(data?.icons, chosen.item, BIG_ICON)}
+                  aria-hidden
+                />
+                <GroundShadow w={56} h={10} />
+              </span>
+              <span className={css.heroText}>
+                <span className={css.heroHead}>
+                  <span className={css.heroName}>{data?.names[chosen.item] ?? ''}</span>
+                  <span className={css.heroSub}>×{chosen.count}</span>
+                </span>
+                <span className={css.state}>
+                  <span className={why ? css.stateDot.none : css.stateDot.ok} aria-hidden />
+                  {why ?? (isBall ? '던져서 잡는다'
+                    : escapes ? '반드시 도망칠 수 있다'
+                      : item && !needsTarget(item) ? '나와 있는 포켓몬에게 쓴다' : '누구에게 쓸지 고른다')}
+                </span>
+              </span>
+            </div>
+            <div className={css.text}>{data?.descriptions[chosen.item] ?? ''}</div>
           </div>
         )}
+        <div className={css.foot}><KeyHints text="←→ 주머니 · ↑↓ 고르기 · Z 결정 · X 닫기" /></div>
       </div>
-
-      {chosen && (
-        <div className={css.detail}>
-          <div className={`${css.banner} ${why ? css.bannerKind.none : css.bannerKind.ok}`}>
-            {why ?? (isBall ? '던져서 잡는다'
-              : escapes ? '반드시 도망칠 수 있다'
-                : item && !needsTarget(item) ? '나와 있는 포켓몬에게 쓴다' : '누구에게 쓸지 고른다')}
-          </div>
-          <div className={css.hero}>
-            <span
-              className={css.icon}
-              style={itemIcon(data?.icons, chosen.item, BIG_ICON)}
-              aria-hidden
-            />
-            <span>
-              <div className={css.heroName}>{data?.names[chosen.item] ?? ''}</div>
-              <div className={css.heroSub}>{chosen.count}개 남았다</div>
-            </span>
-          </div>
-          <div className={css.text}>{data?.descriptions[chosen.item] ?? ''}</div>
-        </div>
-      )}
-      <div className={css.foot}>←→ 주머니 · ↑↓ 고르기 · Z 결정 · X 뒤로</div>
     </div>
   )
 }
