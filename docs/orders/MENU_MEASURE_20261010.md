@@ -77,11 +77,13 @@
 | `diplomaArt` | `data/diplomaArt.png` | 512×384. 왼쪽 신오 · 오른쪽 전국. 위 192줄 **바탕** · 아래 192줄 **종이**(0번 색 투명) | 종이가 바탕 위에서 위 화면 → 아래 화면으로 192줄 미끄러진다 (`diploma.c:330-336`) |
 | 대사 뱅크 645 | `data/dialogue/{en,ko,ja}/645.json` | `TEXT_BANK_MOVE_REMINDER` | 개발판 `dialogue.js`의 `EXTRA_BANKS`에 더했다. 브라우저 변환기는 이미 통째로 싣는다 |
 
+| BDSP 진화 · 부화 (`battleFx`) | `data/fx/prefab/ef_f_evolution_*.json` 아홉 · `sd9120_*.json` 열일곱 · `data/fx/model/ew121_egg00.glb` · `data/fx/index.json`의 `evolution` · `hatch` · `eggModel` | 굽는 쪽이 하나다(`import/bdsp/fx.ts`를 설치기와 노드 `bdspFx.mjs`가 같이 돈다). `GROUP_FORMAT.battleFx` 3 → **4** — 이미 깐 사람은 이 그룹을 다시 굽는다 | 시퀀스 번호 `sd9120`이 부화, `ef_f_evolution`이 진화 |
+
 - `trainerCase` 그룹은 `card.png` · `case.png`를 더 안 굽는다 (`index.json` 의 `card` 상자와 `text` 색은 그대로). `converter` 판을 2로 올렸다.
 - 새 그룹 여덟(`typeIcons` · `startMenuIcons` · `dexShapes` · `dexHeightWeight` · `townMapPlayer` · `mailArt` · `berryArt` · `diplomaArt`)을 `convert.ts` · `required.ts` · `groupLabels.ts` · `tools/assets/groups.mjs` · `package.json`에 등록했다. **`gameData.ts`의 로더(`pinAtlas` 등)는 P0a가 단다** — 그때 `assetContract.test.ts`가 위 파일 이름이 읽는 쪽과 짝이 맞는지 본다.
 
 ## 3. 못 한 것 · 남은 것
 
-- ⑫ BDSP 진화 · 부화 이펙트 원본과 알 모델은 이 문서 작성 시점에 굽지 않았다 (본문 보고 참조).
+- ⑫ 알 모델은 `ew121_egg00` 하나만 구웠다(정점 689 · 재질 하나, **그림이 없다** — 번들에 Texture2D가 없다). 같은 폴더의 `ew135_egg01_all` · `ew135_egg02_ue` · `ew135_egg03_sita`(알 통째 · 위 · 아래)는 껍질 갈라짐에 맞는 후보로 보이나 **굽지 않았고 쓰임은 열어 보지 않았다**.
 - `{COLOR n}`은 네 화면만 쟀다 (§1.4).
 - 시작 메뉴 30 Hz는 코드 읽기 + 하드웨어 상수로 정했다. 실기에서 프레임 수를 센 값이 아니다.
