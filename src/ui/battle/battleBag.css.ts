@@ -5,7 +5,7 @@
 // 줄은 장부 줄(이름 · 점선 · 개수), 상세는 가로선 아래 한 칸이다. 안 고른 줄에는 판이 없다 (`menuChrome` 규칙 ②).
 //
 // 왼쪽 352px은 배틀 무대가 `scrim.over`로 비친다 — 전에는 `scrim.deep`로 다 덮었다. 도구를 고르고 나면 **같은 덮개
-// 위에서** 왼쪽에 파티 카드(`PartyCards`)가 서고 오른쪽 창은 위쪽이 고른 도구 한 줄로 접힌다.
+// 위에서** 위에 파티 띠(`PartyCards`)가 가로로 서고 그 밑 오른쪽 창은 위쪽이 고른 도구 한 줄로 접힌다.
 //
 // 덮개는 교체 화면(`switchScreen.css`)의 `sheet`를 더 안 빌린다 — 그 파일은 P4가 다시 그리므로 두 화면이 같은 덮개를
 // 공유하면 한쪽이 바뀔 때 조용히 갈린다. 파티 카드(`PartyCards`)의 칸 모양은 그쪽 것 그대로 쓴다
@@ -20,6 +20,8 @@ const LEFT = 352
 const ROW = 40
 /** 탭 줄 높이 */
 const TAB = 48
+/** 파티 띠의 높이 (`switchScreen.css`의 `RAIL_H`와 같다 — 그 파일은 P4 것이라 값만 맞춘다) */
+const RAIL_H = 148
 
 const rise = keyframes({
   from: { opacity: 0, transform: 'translateY(6px)' },
@@ -37,12 +39,34 @@ export const sheet = style({
   zIndex: 3,
 })
 
-/** 대상 단에서 파티 카드가 서는 왼쪽 칸. 도구 단에서는 비워 둔다 */
+/** 도구 단에서 왼쪽 무대를 비워 두는 칸 */
 export const left = style({
   display: 'flex',
   flexDirection: 'column',
   minHeight: 0,
   paddingRight: GAP.base,
+})
+
+/**
+ * 대상 단의 덮개 — 위에 파티 띠(`PartyCards`, 폭 100% · 높이 148) 한 줄, 그 밑에 창이 도구 단과 **같은 오른쪽 칸**에 선다.
+ * 띠 밑 왼쪽은 비워 무대가 비친다. 띠가 창 위에 얹혀 두 창이 겹치지 않는다
+ */
+export const sheetTarget = style({
+  gridTemplateRows: `${String(RAIL_H)}px minmax(0, 1fr)`,
+  rowGap: GAP.base,
+})
+
+/** 파티 띠를 놓는 윗줄 — 두 칸을 가로지른다 */
+export const railTop = style({
+  gridColumn: '1 / -1',
+  gridRow: 1,
+  minWidth: 0,
+})
+
+/** 대상 단의 창은 띠 밑 오른쪽 칸 */
+export const panelBelow = style({
+  gridColumn: 2,
+  gridRow: 2,
 })
 
 /** 창 한 장 — 탭 · 목록 · 쪽 · 상세 · 바닥이 세로로 선다 */
