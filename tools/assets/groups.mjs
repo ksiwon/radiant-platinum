@@ -173,6 +173,30 @@ export const GROUPS = [
     match: oneOf('data/dexHeightWeight.json'),
   },
   {
+    // 타운맵의 주인공 머리 표식 남 · 여 (`applications/town_map/graphics.c` · `tmap_gra.narc`)
+    name: 'townMapPlayer',
+    make: 'pnpm extract:townMapPlayer',
+    match: oneOf('data/townMapPlayer.png'),
+  },
+  {
+    // 편지지 그림 열둘 (`applications/mail_viewer.c` · `mail_gra.narc`)
+    name: 'mailArt',
+    make: 'pnpm extract:mailArt',
+    match: oneOf('data/mailArt.png'),
+  },
+  {
+    // 나무열매 그림 예순넷 (`applications/berry_tag.c` · `ntag_gra.narc`)
+    name: 'berryArt',
+    make: 'pnpm extract:berryArt',
+    match: oneOf('data/berryArt.png'),
+  },
+  {
+    // 도감 완성 상장의 바탕과 종이 (`applications/diploma.c` · `syoujyou.narc`)
+    name: 'diplomaArt',
+    make: 'pnpm extract:diplomaArt',
+    match: oneOf('data/diplomaArt.png'),
+  },
+  {
     // 도서관 텔레비전 뉴스 (`StartLibraryTV`). 운하시티 도서관 3층에서 한 번 받는다
     name: 'libraryTv',
     make: 'pnpm extract:libraryTv',

@@ -30,6 +30,10 @@ import { convertSlots } from './slots'
 import { convertHallOfFameBg } from './hallOfFameBg'
 import { convertPointerHand } from './pointerHand'
 import { convertTrainerCase } from './trainerCase'
+import { convertDiplomaArt } from './diplomaArt'
+import { convertBerryArt } from './berryArt'
+import { convertMailArt } from './mailArt'
+import { convertTownMapPlayer } from './townMapPlayer'
 import { convertDexHeightWeight } from './dexHeightWeight'
 import { convertDexShapes } from './dexShapes'
 import { convertStartMenuIcons } from './startMenuIcons'
@@ -305,6 +309,34 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: ['data/trainerCase/trainer.png', 'data/trainerCase/badges.png', 'data/trainerCase/index.json'],
     converter: 2,
     convert: convertTrainerCase,
+  },
+  {
+    // 도감 완성 상장의 바탕과 종이 (`applications/diploma.c` · `syoujyou.narc`)
+    name: 'diplomaArt',
+    outputs: ['data/diplomaArt.png'],
+    converter: 1,
+    convert: convertDiplomaArt,
+  },
+  {
+    // 나무열매 그림 예순넷 (`applications/berry_tag.c` · `ntag_gra.narc`)
+    name: 'berryArt',
+    outputs: ['data/berryArt.png'],
+    converter: 1,
+    convert: convertBerryArt,
+  },
+  {
+    // 편지지 그림 열둘 (`applications/mail_viewer.c` · `mail_gra.narc`)
+    name: 'mailArt',
+    outputs: ['data/mailArt.png'],
+    converter: 1,
+    convert: convertMailArt,
+  },
+  {
+    // 타운맵의 주인공 머리 표식 남 · 여 (`applications/town_map/graphics.c` · `tmap_gra.narc`)
+    name: 'townMapPlayer',
+    outputs: ['data/townMapPlayer.png'],
+    converter: 1,
+    convert: convertTownMapPlayer,
   },
   {
     // 도감 키·몸무게 표와 키 비교의 자리·배율 (`pokedex_heightweight.c` · `zukan_data.narc`)

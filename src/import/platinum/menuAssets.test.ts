@@ -42,8 +42,8 @@ function expectSame(path: string, bytes: Uint8Array): void {
 }
 
 describe('그룹 표', () => {
-  it('새 그룹 넷이 변환기와 함께 붙어 있다', () => {
-    for (const name of ['typeIcons', 'startMenuIcons', 'dexShapes', 'dexHeightWeight']) {
+  it('새 그룹 여덟이 변환기와 함께 붙어 있다', () => {
+    for (const name of ['typeIcons', 'startMenuIcons', 'dexShapes', 'dexHeightWeight', 'townMapPlayer', 'mailArt', 'berryArt', 'diplomaArt']) {
       expect(GROUPS.find((g) => g.name === name)?.convert, name).toBeTypeOf('function')
     }
   })
@@ -212,6 +212,117 @@ withRom('en', 'ko', 'ja')('도감 몸 모양 · 키와 몸무게', () => {
     // 배율 256이 1배다 — 이상해씨 포켓몬 337 (그림이 작게 그려진다)
     expect(t.male.pokemonScale[1]).toBe(337)
   }, 60_000)
+})
+
+withRom('en', 'ko', 'ja')('글 화면 그림 — 주인공 표식 · 편지지 · 열매 · 상장', () => {
+  /** 칠한(알파가 0이 아닌) 픽셀 수 — 사각형 `[x, y, w, h]` 안에서 */
+  const solid = (p: { width: number, pixels: Uint8ClampedArray }, x0: number, y0: number, w: number, h: number): number => {
+    let n = 0
+    for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) if (p.pixels[(y * p.width + x) * 4 + 3] !== 0) n++
+    return n
+  }
+
+  it('네 그룹 모두 세 롬이 같은 그림을 내고 개발 산출물과 같다', async () => {
+    const first = new Map<string, Uint8Array>()
+    for (const group of ['townMapPlayer', 'mailArt', 'berryArt', 'diplomaArt']) {
+      for (const locale of ['en', 'ko', 'ja']) {
+        const out = await run(group, locale)
+        expect(out.size, group).toBe(1)
+        for (const [path, bytes] of out) {
+          expectSame(path, bytes)
+          const ref = first.get(path)
+          if (ref) {
+            const a = decodePngBytes(ref), b = decodePngBytes(bytes)
+            expect(Buffer.from(a.pixels).equals(Buffer.from(b.pixels)), `${path} ${locale}`).toBe(true)
+          } else first.set(path, bytes)
+        }
+      }
+    }
+  }, 300_000)
+
+  it('타운맵 주인공 — 남 · 여 16×16이고 서로 다른 그림이다', async () => {
+    const png = decodePngBytes((await run('townMapPlayer', 'en')).get('data/townMapPlayer.png')!)
+    expect([png.width, png.height]).toEqual([32, 16])
+    expect(solid(png, 0, 0, 16, 16)).toBeGreaterThan(100)
+    expect(solid(png, 16, 0, 16, 16)).toBeGreaterThan(100)
+    // 남자는 파랑 머리카락(팔레트 1행 99,140,214) · 여자는 분홍(198,107,156)이 섞여 있다
+    const has = (x0: number, rgb: number[]): boolean => {
+      for (let y = 0; y < 16; y++) for (let x = x0; x < x0 + 16; x++) {
+        const at = (y * 32 + x) * 4
+        if (png.pixels[at] === rgb[0] && png.pixels[at + 1] === rgb[1] && png.pixels[at + 2] === rgb[2]) return true
+      }
+      return false
+    }
+    expect(has(0, [189, 57, 74]) || has(0, [99, 140, 214])).toBe(true)
+    expect(has(16, [198, 107, 156]) || has(16, [247, 198, 222])).toBe(true)
+  }, 60_000)
+
+  it('편지지 열두 장은 256×192 전체가 불투명하다', async () => {
+    const png = decodePngBytes((await run('mailArt', 'en')).get('data/mailArt.png')!)
+    expect([png.width, png.height]).toEqual([256, 192 * 12])
+    expect(solid(png, 0, 0, 256, 192 * 12)).toBe(256 * 192 * 12)
+  }, 60_000)
+
+  it('열매 예순네 장 — 칸마다 그림이 있고 구석은 투명하다', async () => {
+    const png = decodePngBytes((await run('berryArt', 'en')).get('data/berryArt.png')!)
+    expect([png.width, png.height]).toEqual([512, 512])
+    for (let b = 0; b < 64; b++) {
+      const x0 = (b % 8) * 64, y0 = Math.floor(b / 8) * 64
+      expect(solid(png, x0, y0, 64, 64), `열매 ${String(b)}`).toBeGreaterThan(300)
+      expect(png.pixels[(y0 * png.width + x0) * 4 + 3], `열매 ${String(b)} 구석`).toBe(0)
+    }
+  }, 60_000)
+
+  it('상장 — 신오 · 전국, 위 192줄은 바탕 · 아래 192줄은 종이', async () => {
+    const png = decodePngBytes((await run('diplomaArt', 'en')).get('data/diplomaArt.png')!)
+    expect([png.width, png.height]).toEqual([512, 384])
+    for (const x0 of [0, 256]) {
+      expect(solid(png, x0, 0, 256, 192)).toBe(256 * 192)
+      const paper = solid(png, x0, 192, 256, 192)
+      expect(paper).toBeGreaterThan(5000)
+    }
+  }, 60_000)
+})
+
+withLocal(
+  '열매 칸 차례 — 디컴프', DECOMP && resolve(DECOMP, 'res/graphics/berry_tag/berry_tag.order'),
+  DECOMP && resolve(DECOMP, 'res/graphics/mail/mail.order'), DECOMP && resolve(DECOMP, 'res/graphics/diploma/diploma.order'),
+)('멤버 번호는 디컴프 `.order`와 같다', () => {
+  const order = (p: string): string[] => readFileSync(resolve(DECOMP!, p), 'utf8').split(/\r?\n/)
+
+  it('열매 — 타일 6~69 · 팔레트 70~133, 마지막 칸 134', () => {
+    const o = order('res/graphics/berry_tag/berry_tag.order').filter(Boolean)
+    expect(o).toHaveLength(134)
+    expect(o.indexOf('cheri.NCGR')).toBe(6)
+    expect(o.indexOf('cheri.NCLR')).toBe(70)
+    expect(o[69]).toMatch(/\.NCGR$/)
+    expect(o[133]).toMatch(/\.NCLR$/)
+    // 열매마다 NCGR 이름과 NCLR 이름이 같은 번호에 선다
+    for (let b = 0; b < 64; b++) expect(o[6 + b]!.replace('.NCGR', '')).toBe(o[70 + b]!.replace('.NCLR', ''))
+  })
+
+  it('편지 — 팔레트 0~11 · 타일 12~23 · 판 24~35 · 마지막 interface', () => {
+    const o = order('res/graphics/mail/mail.order').filter(Boolean)
+    expect(o).toHaveLength(37)
+    for (let m = 0; m < 12; m++) {
+      const name = o[m]!.replace('_tiles.NCLR', '')
+      expect(o[12 + m]).toBe(`${name}_tiles.NCGR`)
+      expect(o[24 + m]).toBe(`${name}.NSCR`)
+    }
+    expect(o[36]).toBe('interface.NSCR')
+    // 편지 차례 = 풀 · 불꽃 · 물방울 · 꽃 · 터널 · 철 · 하트 · 눈 · 우주 · 항공 · 모자이크 · 벽돌
+    expect(o.slice(0, 12).map((n) => n.replace('_mail_tiles.NCLR', ''))).toEqual(
+      ['grass', 'flame', 'bubble', 'bloom', 'tunnel', 'steel', 'heart', 'snow', 'space', 'air', 'mosaic', 'brick'],
+    )
+  })
+
+  it('상장 — 종이 · 바탕 타일 0~3, 팔레트 4~7, 판 8~11 (신오 다음 전국)', () => {
+    expect(order('res/graphics/diploma/diploma.order').filter(Boolean)).toEqual([
+      'sinnoh_document.NCGR', 'national_dex_document.NCGR', 'sinnoh_blank.NCGR', 'national_dex_blank.NCGR',
+      'sinnoh_document.NCLR', 'national_dex_document.NCLR', 'sinnoh_blank.NCLR', 'national_dex_blank.NCLR',
+      'sinnoh_document.NSCR', 'national_dex_document.NSCR', 'sinnoh_blank.NSCR', 'national_dex_blank.NSCR',
+    ])
+  })
 })
 
 withRom('en', 'ko', 'ja')('대사 뱅크 645 (기술 되살리기)', () => {
