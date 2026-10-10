@@ -108,7 +108,7 @@ async function prepare(api, ctx, note, { center, nurse = 1, levels, what }) {
       { what: '찌르호크', ...await ctx.candyUp(null, STARLY_LINE, levels.bird) },
       { what: '비버통', ...await ctx.candyUp(null, BIDOOF_LINE, levels.third) },
     ]
-    note(`${what} 사탕`, JSON.stringify(candy.map((c) => `${c.what} ${c.ran ? `${String(c.fed)}알 → L${String(c.level)}` : String(c.why)}`)))
+    note(`${what} 사탕`, JSON.stringify(candy.map((c) => `${c.what} ${c.ran ? `${String(c.fed)}알 → ${c.to ?? `L${String(c.level)}`}` : String(c.why)}`)))
   }
   const bag = await api.bagState()
   const potions = (bag?.items ?? []).find((one) => one.item === ITEM.hyperPotion)?.count ?? 0
@@ -434,14 +434,14 @@ export async function beaconToVictory(api, ctx, { potions = 25 } = {}) {
       if (!out.deleted.ok) return done()
     }
     out.waterfall = await teachTo(api, ITEM.hm07, MOVE.waterfall, BIDOOF_LINE)
-    note('비전머신07 폭포오르기 → 비버통', out.waterfall.ok ? `배웠다 · 잊은 것 ${JSON.stringify(out.waterfall.lost ?? [])}` : String(out.waterfall.why))
+    note('비전머신07 폭포오르기', out.waterfall.ok ? `${String(out.waterfall.learner ?? '?')}번이 배웠다${out.waterfall.fallback ? ' (대신)' : ''} · 잊은 것 ${JSON.stringify(out.waterfall.lost ?? [])}` : String(out.waterfall.why))
     if (!out.waterfall.ok) return done()
   }
   if (!await knowsMove(MOVE.rockSmash)) {
     const GIRATINA = [487]
     out.smash = await teachTo(api, ITEM.hm06, MOVE.rockSmash, GIRATINA,
       { keep: keepAllButWeakest(await party(), GIRATINA) })
-    note('비전머신06 바위깨기 → 기라티나', out.smash.ok ? `배웠다 · 잊은 것 ${JSON.stringify(out.smash.lost ?? [])}` : String(out.smash.why))
+    note('비전머신06 바위깨기', out.smash.ok ? `${String(out.smash.learner ?? '?')}번이 배웠다${out.smash.fallback ? ' (대신)' : ''} · 잊은 것 ${JSON.stringify(out.smash.lost ?? [])}` : String(out.smash.why))
     if (!out.smash.ok) return done()
   }
 

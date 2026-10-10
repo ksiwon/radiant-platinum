@@ -4,10 +4,35 @@ import { Vector2, Vector3 } from 'three'
 export type FieldActionFxKind =
   'cut' | 'rockSmash' | 'strength' | 'surf' | 'waterfall' | 'rockClimb'
 
-/** 켤 때의 시각. 원작이 본체 시계를 읽는 것과 같은 자리다 */
-function startHour(): number {
-  const now = new Date()
-  return now.getHours() + now.getMinutes() / 60
+const DAY_MS = 24 * 3_600_000
+
+/** 기계 시계의 오늘 몇 ms째인가 (지역 시각) */
+function wallMs(): number {
+  const d = new Date()
+  return ((d.getHours() * 60 + d.getMinutes()) * 60 + d.getSeconds()) * 1000 + d.getMilliseconds()
+}
+
+/**
+ * **게임 시각 — 기계 시계를 따라 흐른다.** 원작은 본체 시계를 그때그때 읽는다(`rtc.c`의
+ * `GetTimeOfDay` → `GS_RTC_GetTime`) — 저녁에 켜 두면 밤이 온다.
+ *
+ * `gameHour`에 값을 쓰면 **시계를 맞추는 것**이다(`pt.hour` · 세이브의 `hourPin` · 체크포인트의
+ * `hour` · 하네스의 정오 컷). 그 자리에서부터 다시 흐른다. ms 정수로 들고 있어서 12를 쓰면 곧바로
+ * 12를 읽는다 — 소수 오차로 11.999…가 되어 시간대가 한 칸 내려가는 일이 없다.
+ *
+ * ⚠️ 예전에는 켤 때 한 번 읽고 굳혔다. 실측(2026-10-10 연쇄 P4 영상): 한 시간 내내 포켓치가 17:37이었고
+ * 하늘 · 조명 · 시간대 인카운터도 그 시각에 멈춰 있었다
+ */
+function clock() {
+  let offsetMs = 0
+  return {
+    get gameHour(): number {
+      return ((((wallMs() + offsetMs) % DAY_MS) + DAY_MS) % DAY_MS) / 3_600_000
+    },
+    set gameHour(h: number) {
+      offsetMs = Math.round((((h % 24) + 24) % 24) * 3_600_000) - wallMs()
+    },
+  }
 }
 
 export const worldState = {
@@ -133,11 +158,10 @@ export const worldState = {
   /**
    * 시각. `gameHour`는 0~24 실수고 하늘·조명·인카운터가 이걸 본다.
    *
-   * **원작은 본체 시계를 그대로 읽는다**(`rtc.c`의 `GetTimeOfDay` → `GS_RTC_GetTime`).
-   * 그래서 여기도 기본값이 실제 시각이다 — 새벽에 켜면 밤 하늘이 뜬다.
-   * 시험용으로 흐르게 하려면 `pt.hour(20)`으로 밀 수 있다 (`devConsole`)
+   * 기계 시계를 따라 흐른다(위 `clock`) — 새벽에 켜면 밤 하늘이 뜨고, 켜 둔 채로 해가 진다.
+   * 시험용으로 `pt.hour(20)`처럼 맞추면 그 시각부터 흐른다 (`devConsole`)
    */
-  time: { elapsed: 0, gameHour: startHour() },
+  time: Object.assign(clock(), { elapsed: 0 }),
   // `interact`가 원작의 A, `cancel`이 B다. 대사창은 둘 다로 넘어가고
   // (`ScriptContext_CheckABPress`) 예/아니오는 B가 "아니오"로 간다
   input: { move: new Vector2(), run: false, interact: false, cancel: false },

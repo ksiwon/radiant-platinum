@@ -848,10 +848,10 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   /**
    * 시각을 못 박은 리포트면 그 값으로 (`state/save/schema`의 `hourPin`).
    *
-   * ⚠️ **파일이 시각을 들고 다녀야 밤을 다시 열 수 있다.** 게임 시각은 켤 때
-   * 기계 시계에서 한 번 받아 굳히는 값이라(`worldState`의 `startHour`),
-   * 안 들고 다니면 밤 자리를 담은 세이브가 낮에 열린다. 사람이 실제로 논
-   * 리포트는 이 값이 null이라 여기서 아무 일도 안 한다
+   * ⚠️ **파일이 시각을 들고 다녀야 밤을 다시 열 수 있다.** 게임 시각은 기계
+   * 시계를 따라 흐르므로(`worldState`의 `clock`), 안 들고 다니면 밤 자리를 담은
+   * 세이브가 낮에 열린다. 이 값은 시계를 그 시각으로 맞출 뿐이고 그 뒤로는 흐른다.
+   * 사람이 실제로 논 리포트는 이 값이 null이라 여기서 아무 일도 안 한다
    */
   const hourPin = useSaveStore((s) => s.hourPin)
   useEffect(() => {

@@ -88,7 +88,7 @@ async function prepare(api, ctx, note, { center, levels, what }) {
       { what: '찌르호크', ...await ctx.candyUp(null, STARLY_LINE, levels.bird) },
       { what: '비버통', ...await ctx.candyUp(null, BIDOOF_LINE, levels.third) },
     ]
-    note(`${what} 사탕`, JSON.stringify(candy.map((c) => `${c.what} ${c.ran ? `${String(c.fed)}알 → L${String(c.level)}` : String(c.why)}`)))
+    note(`${what} 사탕`, JSON.stringify(candy.map((c) => `${c.what} ${c.ran ? `${String(c.fed)}알 → ${c.to ?? `L${String(c.level)}`}` : String(c.why)}`)))
   }
   const bag = await api.bagState()
   const potions = (bag?.items ?? []).find((one) => one.item === ITEM.hyperPotion)?.count ?? 0
@@ -131,7 +131,7 @@ export async function candiceToAcuity(api, ctx, { levels = { lead: 64, bird: 62,
   // 줍자마자(트레이너전 · 도구 볼 대사 뒤) 첫 가르치기가 헛돌 수 있다 — `teachHm`이 걷고 다시 한다
   out.climb = await teachTo(api, ITEM.hm08, MOVE.rockClimb, BIDOOF_LINE,
     { keep: keepAllButWeakest((await api.partyState()) ?? [], BIDOOF_LINE) })
-  note('비전머신08 락클라임 → 비버통', out.climb.ok ? `배웠다 · 잊은 것 ${JSON.stringify(out.climb.lost ?? [])}` : String(out.climb.why))
+  note('비전머신08 락클라임', out.climb.ok ? `${String(out.climb.learner ?? '?')}번이 배웠다${out.climb.fallback ? ' (대신)' : ''} · 잊은 것 ${JSON.stringify(out.climb.lost ?? [])}` : String(out.climb.why))
   if (!out.climb.ok) return done()
   api.setClimb(true)
 

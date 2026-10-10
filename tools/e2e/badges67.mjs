@@ -414,11 +414,11 @@ export async function celesticToCanalave(api, ctx,
   // ① 비전머신 둘 — 비전기술과 공격 기술은 안 잊는다
   out.surf = await teachTo(api, ITEM.hm03, MOVE.surf, BIDOOF_LINE,
     { keep: keepAllButWeakest((await api.partyState()) ?? [], BIDOOF_LINE) })
-  note('비전머신03 파도타기 → 비버통', out.surf.ok ? `배웠다 · 잊은 것 ${JSON.stringify(out.surf.lost ?? [])}`
+  note('비전머신03 파도타기', out.surf.ok ? `${String(out.surf.learner ?? '?')}번이 배웠다${out.surf.fallback ? ' (대신)' : ''} · 잊은 것 ${JSON.stringify(out.surf.lost ?? [])}`
     : `${String(out.surf.why)} · 화면 ${JSON.stringify(out.surf.said ?? []).slice(0, 500)}`)
   out.fly = await teachTo(api, ITEM.hm02, MOVE.fly, STARLY_LINE,
     { keep: keepAllButWeakest((await api.partyState()) ?? [], STARLY_LINE) })
-  note('비전머신02 공중날기 → 찌르호크', out.fly.ok ? `배웠다 · 잊은 것 ${JSON.stringify(out.fly.lost ?? [])}`
+  note('비전머신02 공중날기', out.fly.ok ? `${String(out.fly.learner ?? '?')}번이 배웠다${out.fly.fallback ? ' (대신)' : ''} · 잊은 것 ${JSON.stringify(out.fly.lost ?? [])}`
     : `${String(out.fly.why)} · 화면 ${JSON.stringify(out.fly.said ?? []).slice(0, 500)}`)
 
   // ② 축복시티로 난다 → 218 게이트 → 218번도로를 파도타기로
@@ -448,7 +448,7 @@ export async function celesticToCanalave(api, ctx,
       { what: '찌르호크', ...await ctx.candyUp(null, STARLY_LINE, levels.bird) },
       { what: '비버통', ...await ctx.candyUp(null, BIDOOF_LINE, levels.third) },
     ]
-    note('동관 앞 사탕', JSON.stringify(out.candy.map((c) => `${c.what} ${c.ran ? `${String(c.fed)}알 → L${String(c.level)}` : String(c.why)}`)))
+    note('동관 앞 사탕', JSON.stringify(out.candy.map((c) => `${c.what} ${c.ran ? `${String(c.fed)}알 → ${c.to ?? `L${String(c.level)}`}` : String(c.why)}`)))
   }
   if (potions > 0) {
     out.potions = await api.buyAt(MAP.canalaveMart, ITEM.hyperPotion, potions, Math.min(300_000, api.left()))
@@ -741,7 +741,7 @@ export async function coronetToSnowpoint(api, ctx,
   // 마스 장면 바로 뒤라 첫 가르치기가 헛돌 수 있다(탐침 c4) — `teachHm`이 글·장면을 걷고 다시 한다
   out.strength = await teachTo(api, ITEM.hm04, MOVE.strength, BIDOOF_LINE,
     { keep: keepAllButWeakest((await api.partyState()) ?? [], BIDOOF_LINE) })
-  note('비전머신04 괴력 → 비버통', out.strength.ok ? `배웠다 · 잊은 것 ${JSON.stringify(out.strength.lost ?? [])}` : String(out.strength.why))
+  note('비전머신04 괴력', out.strength.ok ? `${String(out.strength.learner ?? '?')}번이 배웠다${out.strength.fallback ? ' (대신)' : ''} · 잊은 것 ${JSON.stringify(out.strength.lost ?? [])}` : String(out.strength.why))
 
   // ② 봉신으로 날아 211번도로 동 → 천관산 1F 북 방1 — 큰바위를 민다
   // 선단에서 이어 받은 판(`probe-snowpoint`)은 길을 건너뛰고 ③만 한다
@@ -795,7 +795,7 @@ export async function coronetToSnowpoint(api, ctx,
       { what: '찌르호크', ...await ctx.candyUp(null, STARLY_LINE, levels.bird) },
       { what: '비버통', ...await ctx.candyUp(null, BIDOOF_LINE, levels.third) },
     ]
-    note('무청 앞 사탕', JSON.stringify(out.candy.map((c) => `${c.what} ${c.ran ? `${String(c.fed)}알 → L${String(c.level)}` : String(c.why)}`)))
+    note('무청 앞 사탕', JSON.stringify(out.candy.map((c) => `${c.what} ${c.ran ? `${String(c.fed)}알 → ${c.to ?? `L${String(c.level)}`}` : String(c.why)}`)))
   }
   if (potions > 0) {
     out.potions = await api.buyAt(MAP.snowpointMart, ITEM.hyperPotion, potions, Math.min(300_000, api.left()))

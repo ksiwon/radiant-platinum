@@ -16,6 +16,7 @@ import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { useSessionStore } from '../../state/sessionStore'
 import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
+import { loadBagData } from './BagScreen'
 import * as own from './startMenu.css'
 
 interface Entry {
@@ -58,7 +59,9 @@ export function StartMenu() {
     let alive = true
     void loadUiText('startMenu', locale)
       .then((bank) => { if (alive) setTexts(bank) })
-      .catch(() => { /* 빈 메뉴 */ })
+      .catch((e: unknown) => { console.error('시작 메뉴 글을 못 받았다', e) })
+    // 가방은 시작 메뉴에서 가장 자주 여는 화면이다 — 여기서 미리 받아 두면 첫 프레임부터 찬다
+    void loadBagData(locale).catch(() => { /* 가방이 열릴 때 다시 받고, 거기서 드러낸다 */ })
     // 공중날기 줄의 글. 원작 시작 메뉴 뱅크에는 그 줄이 없어서(아래 `canFly`) 롬의
     // 기술 이름을 그대로 쓴다 — 그래야 언어를 바꿔도 한 목록에 두 언어가 안 섞인다
     void loadMoveNames(locale)
@@ -129,6 +132,12 @@ export function StartMenu() {
     // (`Menu_New(…, PAD_BUTTON_B | PAD_BUTTON_X)`)
     menu: closeAll,
   })
+
+  /**
+   * ⚠️ **글이 오기 전에는 판을 안 그린다.** 빈 줄과 ▶만 있는 판이 바쁜 맵에서 몇 프레임 떴다
+   * (2026-10-10 연쇄 P4 영상 48:32 · 48:41). 키는 위에서 이미 받으므로 그 사이 눌러도 자리는 그대로다
+   */
+  if (texts.length === 0) return null
 
   return (
     <div className={own.frame}>

@@ -233,6 +233,38 @@ export function bagFoot(mode: 'normal' | 'pick' | 'give' | 'menu' | 'count'): st
   }
 }
 
+/**
+ * **가방 화면이 쓰는 자료를 한 번에 받는다** — 시작 메뉴가 열릴 때 미리 데운다(`StartMenu`).
+ *
+ * ⚠️ **다 오기 전에는 화면을 안 그린다**(아래 `data === null`). 실측(2026-10-10 연쇄 P4 영상 48:33~48:45):
+ * 깨어진 세계처럼 바쁜 맵에서 금액과 노란 줄만 있고 도구 이름 · 주머니가 빈 가방이 몇 프레임 떴다.
+ * 로더는 실패를 캐시하지 않으므로(`gameData`의 `cache.delete`) 세 번까지 다시 받는다
+ */
+export async function loadBagData(locale: Parameters<typeof loadItemNames>[0]): Promise<Loaded> {
+  let last: unknown = null
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const [
+        items, names, descriptions, icons, pockets, species, moves,
+        bagText, menuText, bag,
+      ] = await Promise.all([
+        loadItems(), loadItemNames(locale), loadItemDescriptions(locale),
+        loadItemIcons(), loadUiText('bagPockets', locale), loadSpecies(), loadMoves(),
+        loadUiText('bag', locale), loadUiText('menuEntries', locale),
+        // ⚠️ **이 하나만 낱개로 받는다.** 나머지는 다 필수 그룹이라 없으면
+        // 애초에 게임이 안 열리는데, 이것은 아니다 — 한 뭉치로 묶으면 그림
+        // 한 장 때문에 도구 목록까지 같이 없어진다 (위 `bag` 주석)
+        loadBagSprite().catch(() => undefined),
+      ])
+      return { items, names, descriptions, icons, bag, pockets, species, moves, bagText, menuText }
+    } catch (e) {
+      last = e
+      await new Promise((ok) => setTimeout(ok, 300 * (attempt + 1)))
+    }
+  }
+  throw last
+}
+
 export function BagScreen() {
   const [data, setData] = useState<Loaded | null>(null)
   // 설정의 언어. 바뀌면 이름과 설명을 그 언어로 다시 받는다
@@ -263,27 +295,10 @@ export function BagScreen() {
 
   useEffect(() => {
     let alive = true
-    void Promise.all([
-      loadItems(), loadItemNames(locale), loadItemDescriptions(locale),
-      loadItemIcons(), loadUiText('bagPockets', locale), loadSpecies(), loadMoves(),
-      loadUiText('bag', locale), loadUiText('menuEntries', locale),
-      // ⚠️ **이 하나만 낱개로 받는다.** 나머지는 다 필수 그룹이라 없으면
-      // 애초에 게임이 안 열리는데, 이것은 아니다 — 한 뭉치로 묶으면 그림
-      // 한 장 때문에 도구 목록까지 같이 없어진다 (위 `bag` 주석)
-      loadBagSprite().catch(() => undefined),
-    ])
-      .then(([
-        items, names, descriptions, icons, pockets, species, moves,
-        bagText, menuText, bag,
-      ]) => {
-        if (alive) {
-          setData({
-            items, names, descriptions, icons, bag, pockets, species, moves,
-            bagText, menuText,
-          })
-        }
-      })
-      .catch(() => { /* 빈 가방으로 뜬다 */ })
+    void loadBagData(locale)
+      .then((loaded) => { if (alive) setData(loaded) })
+      // 세 번 받아도 안 되면 드러낸다 — 예전에는 여기서 삼켜서 이름 없는 가방이 영영 떴다
+      .catch((e: unknown) => { console.error('가방 자료를 못 받았다', e) })
     return () => { alive = false }
   }, [locale])
 
@@ -564,6 +579,9 @@ export function BagScreen() {
     : open ? 'menu'
       : pickPocket !== null ? 'pick'
         : giveTo !== null ? 'give' : 'normal'
+
+  // 자료가 오기 전의 반쪽 화면(금액 · 빈 줄)은 안 그린다 — 위 `loadBagData`
+  if (data === null) return null
 
   return (
     <MenuScreen

@@ -527,7 +527,7 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ],
     map: 342,
     spot: { kind: 'grass' },
-    // ⚠️ **낮을 못 박는다.** 안 박으면 `startHour()`가 실제 시각을 읽어서
+    // ⚠️ **낮을 못 박는다.** 안 박으면 게임 시각이 실제 시각을 따라가서
     // (`state/worldState.ts`) 밤에 훑으면 이 자리가 `grass-night`와 **통째로 같은
     // 그림**이 된다 — 실측으로 22시에 돌렸더니 밝기 82·흔어짐 43.5·삼각형
     // 182.8k·드로우콜 275가 둘 다 같았다. 낮과 밤을 견줌다는 뜻이 사라진다
