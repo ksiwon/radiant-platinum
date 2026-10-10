@@ -13,6 +13,7 @@ import { keyframes, style, styleVariants } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 import { EDGE, GAP, LINE, RADIUS, TEXT, TIME } from '../theme/scale'
 import { PICKED, RULE, WINDOW } from '../theme/window.css'
+import { RAIL_H } from './switchScreen.css'
 
 /** 왼쪽에 무대를 비워 두는 폭 */
 const LEFT = 352
@@ -20,8 +21,6 @@ const LEFT = 352
 const ROW = 40
 /** 탭 줄 높이 */
 const TAB = 48
-/** 파티 띠의 높이 (`switchScreen.css`의 `RAIL_H`와 같다 — 그 파일은 P4 것이라 값만 맞춘다) */
-const RAIL_H = 148
 
 const rise = keyframes({
   from: { opacity: 0, transform: 'translateY(6px)' },

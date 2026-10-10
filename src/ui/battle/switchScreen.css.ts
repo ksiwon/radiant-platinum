@@ -18,7 +18,8 @@ import { BATTLE_LINE } from './battleScreen.css'
 /** 좌우 여백과 세로 자리 */
 const SIDE = 32
 const RAIL_TOP = 204
-const RAIL_H = 148
+/** 파티 띠의 높이. 배틀 가방 대상 단도 같은 띠를 놓아 이 값을 읽는다 */
+export const RAIL_H = 148
 const SHEET_TOP = 360
 const SHEET_H = 196
 const LINE_TOP = 564
