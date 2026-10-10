@@ -85,11 +85,14 @@ export const ribbon = style({
   '@media': { '(prefers-reduced-motion: reduce)': { transition: 'none' } },
 })
 
+/** 원반 자리 — 그림을 자르는 원도 이 값을 쓴다 */
+const DISC_AT = { left: 8, top: 9 } as const
+
 /** 원반 — 판 색이 여기 실린다. 상태(기절)가 색이다 */
 export const disc = style({
   position: 'absolute',
-  left: 8,
-  top: 9,
+  left: DISC_AT.left,
+  top: DISC_AT.top,
   width: PLATE.disc,
   height: PLATE.disc,
   boxSizing: 'border-box',
@@ -118,18 +121,26 @@ export const discLead = style({
   boxShadow: `inset 0 0 0 ${String(EDGE.window)}px ${vars.window.faceTop}, inset 0 0 0 ${String(EDGE.window + 1)}px ${vars.panel.edge}`,
 })
 
+/** 그림 상자의 자리 — 원반 가운데에 발이 오게 위로 올린다 */
+const SPRITE_AT = { left: -10, top: -25 } as const
+
 /**
- * 그림. 원작 배틀 그림(80×80)을 **정수 2배**(160)로 그린다 — 1.2배였을 때 도트 폭이 1과 2로 섞였다.
- * 원반 위로 25px 넘친다 (`PLATE.sprite`는 원본의 정확히 두 배라 `image-rendering: pixelated`가 고르게 나온다)
+ * 그림. 원작 배틀 그림(80×80)을 **정수 2배**(160)로 그린다 — 1.2배였을 때 도트 폭이 1과 2로 섞였다
+ * (`PLATE.sprite`는 원본의 정확히 두 배라 `image-rendering: pixelated`가 고르게 나온다).
+ *
+ * ⚠️ **그림은 원반 밖으로 안 나간다**(DECISIONS 「그림은 제 틀을 넘지 않는다」). 큰 몸(토대부기의 나무 · 한카리아스의 날개)이
+ * 원반을 넘어 머리 줄 선과 이웃 판까지 닿았다 — 원반과 같은 원으로 잘라 메달처럼 담는다. 원의 가운데는 원반 가운데를
+ * 그림 상자 좌표로 옮긴 것이다
  */
 export const sprite = style({
   position: 'absolute',
-  left: -10,
-  top: -25,
+  left: SPRITE_AT.left,
+  top: SPRITE_AT.top,
   width: PLATE.sprite,
   height: PLATE.sprite,
   imageRendering: 'pixelated',
   pointerEvents: 'none',
+  clipPath: `circle(${String(PLATE.disc / 2)}px at ${String(DISC_AT.left + PLATE.disc / 2 - SPRITE_AT.left)}px ${String(DISC_AT.top + PLATE.disc / 2 - SPRITE_AT.top)}px)`,
 })
 
 /** 잡은 볼 — 도구 아이콘 아틀라스의 그 볼 칸 (`mon.ball`). 원반 왼쪽 아래다 */
