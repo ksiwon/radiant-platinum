@@ -140,6 +140,9 @@ const DEX_MAX = 493
 /** 뜨는 창(확인 · 알림)의 폭 */
 const CALLOUT_W = 470
 
+/** 알림이 저절로 사라지는 때 */
+const NOTICE_MS = 6000
+
 /**
  * 타이틀 — **이 탭에서 이미 세계를 세웠으면 통째로 다시 켠다** (원작의 리셋).
  *
@@ -446,7 +449,13 @@ function TitleMenu() {
     // 판이 있다는 표시는 밖에 있는 이 칸에 떠야 한다 — 안 그러면 창을 열지
     // 않는 사람에게 새 소식이 영영 안 보인다
     // 「더보기」를 다시 누르면 닫힌다
-    { key: 'more', label: '더보기', group: 'more', dot: newPatch, go: () => { setShowMore((v) => !v) } },
+    { key: 'more', label: '더보기', group: 'more', dot: newPatch,
+      go: () => {
+        // ⚠️ **열 때 다른 뜨는 창을 닫는다.** 확인 창이 뜬 채 더보기가 열리면 두 창이 같은 자리에 겹친다
+        if (!showMore) { setConfirmNew(false); setPending(null); setConfirmRestore(false); setNotice(null) }
+        setShowMore(!showMore)
+      },
+    },
   ]
 
   /**
@@ -559,6 +568,20 @@ function TitleMenu() {
     return () => { watch.disconnect() }
   }, [entries.length])
 
+  // ⚠️ **알림은 그 알림이 난 칸에 고정한다.** 커서를 따라다니면 읽던 말풍선이 옮겨 다닌다. 커서가 움직이거나 몇 초 지나면 지운다
+  const [noticeKey, setNoticeKey] = useState<string | null>(null)
+  useEffect(() => {
+    if (notice === null) { setNoticeKey(null); return }
+    setNoticeKey(cursorKey ?? null)
+    const timer = window.setTimeout(() => { setNotice(null) }, NOTICE_MS)
+    return () => { window.clearTimeout(timer) }
+    // 알림이 새로 날 때만 — 커서가 움직여도 이 효과가 다시 돌면 칸이 따라다닌다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notice])
+  useEffect(() => {
+    if (noticeKey !== null && cursorKey !== noticeKey) setNotice(null)
+  }, [cursorKey, noticeKey])
+
   /** 뜨는 창이 꼭지로 가리킬 칸 */
   const anchorOf = (key: string): HTMLElement | null => buttonEls.current.get(key) ?? null
 
@@ -568,7 +591,7 @@ function TitleMenu() {
   const showUnreadable = unreadable !== null && cursorKey === 'backup'
   const showBroken = assetBroken && cursorKey === 'import'
   const callout = confirmAnchor !== null || notice !== null || showUnreadable || showBroken
-  const calloutAnchor = confirmAnchor ?? cursorKey ?? null
+  const calloutAnchor = confirmAnchor ?? (notice !== null ? noticeKey : null) ?? cursorKey ?? null
 
   const gendered = report?.trainer.gender === 'girl' ? css.female : css.male
 
