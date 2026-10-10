@@ -2,7 +2,9 @@ import type { EvolutionPhase, HatchPhase, TradePhase } from '../state/cinematicS
 import {
   EVO_CLAMP_FRAMES, evolutionBodyWhite, evolutionScales, type EvolutionBeats,
 } from '../engine/pokemon/evolutionBeat'
-import { hatchEggVisible, hatchShake, type HatchBeats } from '../engine/pokemon/hatchBeat'
+import {
+  hatchBornVisible, hatchBornWhite, hatchEggVisible, hatchShake, type HatchBeats,
+} from '../engine/pokemon/hatchBeat'
 
 interface EvolutionPose {
   beforeVisible: boolean
@@ -57,7 +59,17 @@ export function evolutionPose(
   }
 }
 
-interface HatchPose { rock: number; lift: number; shellVisible: boolean }
+interface HatchPose {
+  rock: number
+  lift: number
+  shellVisible: boolean
+  /** 새 몸이 서 있어야 하나 — 흰 막이 다 선 프레임부터다 */
+  bornVisible: boolean
+  /** 새 몸이 얼마나 하얀가 (0~1). 머무는 25프레임은 새하얀 실루엣이다 */
+  bornWhite: number
+  /** 새 몸의 크기. 흰 막 속에서 0.28에서 1로 자란다 */
+  bornScale: number
+}
 
 /**
  * 알이 흔들리는 자세 (`cutscenes/egg_hatch`).
@@ -69,16 +81,42 @@ interface HatchPose { rock: number; lift: number; shellVisible: boolean }
  * ⚠️ **흔드는 폭만 우리 것이다** — 원작은 2D 스프라이트를 픽셀로 밀고 아핀으로
  * 누르는데 우리 알은 3D라 옮길 좌표가 없다
  *
+ * ⚠️ **새 몸은 흰 막 속에서 나타난다.** 알이 사라진 프레임이 아니라 막이 다 선 프레임(`beats.reveal`)이다 — 알이
+ * 사라지고 10프레임 뒤에 막이 서기 시작해 16걸음에 다 선다
+ *
  * @param frame 장면이 시작하고 몇 프레임째인가 (60Hz)
  */
 export function hatchPose(phase: HatchPhase, frame: number, beats: HatchBeats): HatchPose {
-  if (phase === 'born') return { rock: 0, lift: 0, shellVisible: false }
+  const bornVisible = hatchBornVisible(frame, beats)
+  const born = {
+    bornVisible,
+    bornWhite: bornVisible ? hatchBornWhite(frame, beats) : 0,
+    bornScale: bornVisible ? Math.min(1, 0.28 + (Math.max(0, frame - beats.reveal) / 60) * 1.8) : 0,
+  }
+  if (phase === 'born') return { rock: 0, lift: 0, shellVisible: false, ...born }
   return {
     rock: hatchShake(frame, beats),
     // 흔들릴 때 살짝 뜬다 — 원작이 아핀으로 누르는 자리다
     lift: Math.abs(hatchShake(frame, beats)) * 0.22,
     shellVisible: hatchEggVisible(frame, beats),
+    ...born,
   }
+}
+
+/**
+ * 진화의 기술 창이 열리면 몸이 왼쪽으로 비켜 선다 — 화면 높이의 몇 배인가.
+ *
+ * 설계는 960×640에서 220px이다 (`evolution` §4.4). 화면 크기가 달라도 같은 몫이 되게 높이에 비례한다
+ */
+export const BODY_SHIFT_TALL = 220 / 640
+
+/**
+ * 몸의 x를 목표로 당긴다. `TIME.fade`(0.18s) 안에 거의 닿는 지수 감쇠다 — 움직임을 줄이는 설정이면 곧장 간다
+ */
+export function shiftToward(now: number, target: number, dt: number, reduced: boolean): number {
+  if (reduced) return target
+  const next = now + (target - now) * (1 - Math.exp(-dt * 18))
+  return Math.abs(target - next) < 1e-3 ? target : next
 }
 
 interface TradePose {

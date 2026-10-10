@@ -19,4 +19,15 @@ describe('cinematic store', () => {
     useCinematicStore.getState().finishHatch()
     expect(useCinematicStore.getState().phase).toBe('born')
   })
+
+  it('stands a companion beside the new body and slides the body aside, both gone on the next scene', () => {
+    const store = useCinematicStore.getState()
+    store.startEvolution({ species: 290, form: 0 }, { species: 291, form: 0 })
+    useCinematicStore.getState().setCompanion({ species: 292, form: 0 })
+    useCinematicStore.getState().setBodyShift(true)
+    expect(useCinematicStore.getState()).toMatchObject({ companion: { species: 292 }, bodyShift: true })
+    expect(useCinematicStore.getState().companionAt).toBeGreaterThan(0)
+    useCinematicStore.getState().announceEvolution({ species: 1, form: 0 }, { species: 2, form: 0 })
+    expect(useCinematicStore.getState()).toMatchObject({ companion: null, bodyShift: false })
+  })
 })

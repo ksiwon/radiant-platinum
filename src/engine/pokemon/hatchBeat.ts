@@ -8,9 +8,12 @@
 // (`IncrementShakeAnimation`이 `shakeProgress >= 10`에서 끝나고
 // `EggHatch_ShakeEgg`가 6에서 `EGG_SHAKE_HALF_OVER`를 돌려준다).
 //
-// ⚠️ **알 그림은 우리 것이다.** 원작은 2D 스프라이트를 여섯 칸으로 갈아 끼운다
+// ⚠️ **알 그림은 BDSP 모델이다.** 원작은 2D 스프라이트를 여섯 칸으로 갈아 끼운다
 // (온전함 → 금 하나 → 금 둘 → 큰 금 → 뚫림 → 깨지기 직전). 우리 무대는 3D라
 // 그 칸이 없어서 흔들림과 **입자만** 원작 것을 쓴다 (`scene/CinematicStage`).
+//
+// ⚠️ **알이 사라진 뒤의 41프레임이 `end`에 든다** — 흰 막 16 · 새 몸이 머무는 25 · 흰 막 걷힘 16. 한동안 `end`가
+// 123이었고 새 몸이 흰 막 없이 알 자리에서 자랐다 (`hatchVeil` · `hatchBars`).
 import { splLifeFrames } from '../battle/spl/emitter'
 import type { SplFile } from '../battle/spl/resource'
 
@@ -36,6 +39,18 @@ const MINOR = 2
 const AFTER = 10
 /** `PaletteData_StartFade(..., 0, 0, 16, ...)` — 열여섯 걸음 */
 const FADE = 16
+/** 새 몸이 흰 막 속에 선 채 머무는 프레임 (`main.c:560-565`의 `subStateTimer >= 25`) */
+const REVEAL_HOLD = 25
+/** 위아래 띠가 걷히는 속도 — 프레임당 4줄 (`main.c:530-545`) */
+const BAND_STEP = 4
+/** 원작 화면의 줄 수 (`HW_LCD_HEIGHT`) */
+const LCD_LINES = 192
+/**
+ * 띠의 높이 (줄). 위 32 · 아래 48 — 실측이다 (`docs/orders/MENU_MEASURE_20261010.md`, `egg_hatch` 스프라이트).
+ * 한동안 160px(= 아래 48줄)를 추정으로 위아래 둘 다에 썼다
+ */
+const BAND_TOP = 32
+const BAND_BOTTOM = 48
 
 interface HatchCue {
   readonly frame: number
@@ -51,7 +66,9 @@ export interface HatchBeats {
   readonly burst: number
   /** 알이 사라지는 프레임 */
   readonly hide: number
-  /** 연출이 끝나는 프레임 */
+  /** 흰 막이 다 서고 새 몸이 그 속에 나타나는 프레임 */
+  readonly reveal: number
+  /** 연출이 끝나는 프레임 — 흰 막이 다 걷힌 때다 */
   readonly end: number
   readonly cues: readonly HatchCue[]
 }
@@ -83,8 +100,10 @@ function beatsFrom(life: readonly number[]): HatchBeats {
   const idle = Math.max(first + (life[0] ?? 0), more + (life[1] ?? 0))
   const burst = idle + HALF
   const hide = idle + SHAKE
+  // 알이 사라지고 10프레임 뒤 흰 막이 16걸음에 서고, 새 몸이 그 속에 나타나 25프레임 머문 뒤 16걸음에 걷힌다
+  const reveal = hide + AFTER + FADE
   const end = Math.max(
-    hide + AFTER + FADE,
+    reveal + REVEAL_HOLD + FADE,
     burst + Math.max(life[2] ?? 0, life[3] ?? 0),
   )
   return {
@@ -92,6 +111,7 @@ function beatsFrom(life: readonly number[]): HatchBeats {
     more,
     burst,
     hide,
+    reveal,
     end,
     cues: [
       { frame: first, res: EGG_EMITTERS.first },
@@ -123,11 +143,45 @@ export function hatchEggVisible(frame: number, beats: HatchBeats): boolean {
   return frame < beats.hide
 }
 
-/** 알이 사라진 뒤 화면을 덮는 흰 막 (0~1) */
+/**
+ * 화면을 덮는 흰 막 (0~1) — 알이 사라지고 10프레임 뒤 16걸음에 서고, 새 몸이 머무는 25프레임 동안 서 있다가 16걸음에 걷힌다
+ * (`main.c:512-576`). 새 몸은 이 막 **속에서** 나타난다
+ */
 export function hatchVeil(frame: number, beats: HatchBeats): number {
   const from = beats.hide + AFTER
   if (frame < from) return 0
-  return Math.min(1, (frame - from) / FADE)
+  if (frame < beats.reveal) return (frame - from) / FADE
+  const out = beats.reveal + REVEAL_HOLD
+  if (frame < out) return 1
+  return Math.max(0, 1 - (frame - out) / FADE)
+}
+
+/** 새 몸이 서 있어야 하나 — 흰 막이 다 선 프레임부터다 */
+export function hatchBornVisible(frame: number, beats: HatchBeats): boolean {
+  return frame >= beats.reveal
+}
+
+/**
+ * 새 몸이 얼마나 하얀가 (0~1). 머무는 25프레임은 새하얀 실루엣이고 막이 걷힐 때 같이 풀린다.
+ * 막이 걷힌 뒤에는 제 색이다
+ */
+export function hatchBornWhite(frame: number, beats: HatchBeats): number {
+  const out = beats.reveal + REVEAL_HOLD
+  if (frame < out) return 1
+  return Math.max(0, 1 - (frame - out) / FADE)
+}
+
+/**
+ * 위아래 검은 띠가 화면에서 차지하는 몫 (0~1, 화면 높이 기준).
+ *
+ * 처음부터 서 있다가 알이 사라지고 10프레임 뒤 프레임마다 4줄씩 걷힌다 — 위 32줄은 8프레임, 아래 48줄은 12프레임이다
+ */
+export function hatchBars(frame: number, beats: HatchBeats): { top: number, bottom: number } {
+  const moved = Math.max(0, frame - (beats.hide + AFTER)) * BAND_STEP
+  return {
+    top: Math.max(0, BAND_TOP - moved) / LCD_LINES,
+    bottom: Math.max(0, BAND_BOTTOM - moved) / LCD_LINES,
+  }
 }
 
 // ── 소리 ─────────────────────────────────────────────────────────────────────

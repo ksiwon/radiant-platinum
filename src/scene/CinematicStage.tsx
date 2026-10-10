@@ -14,7 +14,10 @@ import { SplParticles } from './battle/SplParticles'
 import type { SplCue } from './battle/splDraw'
 import type { SplBasis } from './battle/splPlace'
 import { preloadSplPack, splFileFor, SPL_EGG, SPL_EVOLVE } from './battle/splPack'
-import { cinematicScale, evolutionPose, hatchPose, tradePose } from './cinematicMotion'
+import {
+  BODY_SHIFT_TALL, cinematicScale, evolutionPose, hatchPose, shiftToward, tradePose,
+} from './cinematicMotion'
+import { EGG_SCALE, loadEggModel, type EggModel } from './cinematicEgg'
 
 function Model({
   species,
@@ -22,6 +25,7 @@ function Model({
   gender,
   shiny,
   white,
+  opacity,
 }: {
   species: number
   form: number
@@ -29,6 +33,8 @@ function Model({
   shiny?: boolean
   /** 이 몸을 얼마나 하얗게 지울 것인가 (0~1). 프레임마다 바뀌므로 ref로 받는다 */
   white?: RefObject<number>
+  /** 이 몸이 얼마나 보이나 (0~1) — 껍질몬이 0.4초에 선다. 프레임마다 바뀌므로 ref로 받는다 */
+  opacity?: RefObject<number>
 }) {
   const whitener = useRef<Whitener | null>(null)
   // 몸이 없으면 아래 절차형 몸으로 떨어진다
@@ -36,7 +42,7 @@ function Model({
     form,
     gender,
     shiny,
-    prepare: white
+    prepare: white || opacity
       ? (made) => {
           // ⚠️ **재질을 이 몸 몫으로 복제한다** — `SkeletonUtils.clone`이 재질을
           // 나눠 쓰므로 그대로 칠하면 다른 화면의 같은 종까지 하얘진다
@@ -52,6 +58,7 @@ function Model({
 
   useFrame(() => {
     if (white) whitener.current?.set(white.current)
+    if (opacity) whitener.current?.fade(opacity.current)
   })
 
   if (!body) return <FallbackModel species={species} />
@@ -84,7 +91,31 @@ function FallbackModel({ species }: { species: number }) {
   )
 }
 
+/**
+ * 알. BDSP 알 모델(`cinematicEgg`)에 정점 얼룩을 칠해 세운다. 묶음에 모델이 없으면(옛 판 · 설치 전) 예전의 도형 알로 떨어진다
+ * — 2D로 돌아가지 않는다(몸의 `FallbackModel`과 같은 규칙)
+ */
 function Egg({ shell }: { shell: boolean }) {
+  const [model, setModel] = useState<EggModel | null>(null)
+  useEffect(() => {
+    let alive = true
+    void loadEggModel().then((got) => { if (alive) setModel(got) })
+    return () => {
+      alive = false
+    }
+  }, [])
+  if (model === null) return <ShapeEgg shell={shell} />
+  return (
+    <group visible={shell}>
+      <mesh castShadow geometry={model.geometry} position={[0, model.lift * EGG_SCALE, 0]} scale={EGG_SCALE}>
+        <meshStandardMaterial vertexColors roughness={0.62} />
+      </mesh>
+    </group>
+  )
+}
+
+/** 모델이 없을 때의 도형 알 — 구 하나와 얼룩 다섯 */
+function ShapeEgg({ shell }: { shell: boolean }) {
   const spots = useMemo(
     () =>
       [
@@ -134,6 +165,25 @@ const EVO_EMITTER_Y = (8 * 172) / 4096
  */
 const EVO_EYE = [0, 2.5, 7] as const
 const EVO_AIM = [0, 1.25, 0] as const
+
+/**
+ * 몸이 서 있는 거리에서 화면 세로가 담는 폭(월드 단위). 기술 창이 열릴 때 몸이 비켜서는 폭을 화면 높이의 몫으로
+ * 주려고 잰다 (`BODY_SHIFT_TALL`)
+ */
+const VIEW_TALL = (() => {
+  const far = Math.hypot(EVO_EYE[1] - EVO_AIM[1], EVO_EYE[2] - EVO_AIM[2])
+  return 2 * far * Math.tan((cinematicStage.fov / 2) * (Math.PI / 180))
+})()
+
+/** 껍질몬이 새 몸 옆에 설 때 둘이 갈라 서는 폭 — 새 몸은 왼쪽으로, 껍질몬은 오른쪽으로 */
+const COMPANION_X = 1.15
+/** 껍질몬이 서는 데 걸리는 시간 (진화 설계 §4.5의 0.4초) */
+const COMPANION_FADE_S = 0.4
+
+/** 움직임을 줄이는 설정인가 — 몸이 비켜서는 것을 곧장 한다 */
+function reducedMotion(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
 
 /**
  * 원작 입자 카메라가 원점에서 보는 세로 폭 (DS 단위) — **여덟이다.**
@@ -245,8 +295,15 @@ export function CinematicStage() {
   const before = useCinematicStore((s) => s.before)
   const after = useCinematicStore((s) => s.after)
   const startedAt = useCinematicStore((s) => s.startedAt)
+  const companion = useCinematicStore((s) => s.companion)
   const beforeRef = useRef<Group>(null)
   const afterRef = useRef<Group>(null)
+  /** 두 몸을 한꺼번에 옮기는 짐 — 기술 창이 열리면 왼쪽으로 · 껍질몬이 서면 둘이 갈라 선다 */
+  const shiftRef = useRef<Group>(null)
+  const companionRef = useRef<Group>(null)
+  const shiftX = useRef(0)
+  /** 껍질몬이 얼마나 보이나. 프레임마다 바뀌므로 상태가 아니라 ref다 */
+  const companionAlpha = useRef(0)
   const eggRef = useRef<Group>(null)
   const lightRef = useRef<PointLight>(null)
   const started = useRef(performance.now() / 1000)
@@ -294,8 +351,21 @@ export function CinematicStage() {
     started.current = performance.now() / 1000
   }, [scene, phase])
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     elapsed.current = performance.now() / 1000 - started.current
+    // 몸 옮김과 껍질몬 — 진화 장면에서만 쓴다
+    {
+      const now = useCinematicStore.getState()
+      const aside = scene === 'evolution' && now.bodyShift
+      const pair = scene === 'evolution' && now.companion !== null && !aside
+      const target = aside ? -BODY_SHIFT_TALL * VIEW_TALL : pair ? -COMPANION_X : 0
+      shiftX.current = shiftToward(shiftX.current, target, Math.min(delta, 0.1), reducedMotion())
+      if (shiftRef.current) shiftRef.current.position.x = shiftX.current
+      // 껍질몬은 몸을 비켜 세운 뒤에 선다 — 기술 창이 열려 있는 동안은 안 보인다
+      const since = (performance.now() - now.companionAt) / 1000
+      companionAlpha.current = pair ? Math.min(1, Math.max(0, since / COMPANION_FADE_S)) : 0
+      if (companionRef.current) companionRef.current.visible = companionAlpha.current > 0
+    }
     const oldBody = beforeRef.current
     const newBody = afterRef.current
     const egg = eggRef.current
@@ -339,10 +409,11 @@ export function CinematicStage() {
       if (egg) egg.visible = false
       if (lightRef.current) lightRef.current.intensity = pose.light
     } else {
-      white.current = 0
       // 진화와 같은 시계를 본다 — 마디가 프레임 단위다 (`cinematicStore`)
       const frame = Math.max(0, ((performance.now() - startedAt) * 60) / 1000)
       const pose = hatchPose(phase as HatchPhase, frame, eggBeats)
+      // 새 몸은 흰 막 속에서 나타나 새하얀 실루엣으로 머물다 막과 같이 풀린다
+      white.current = pose.bornWhite
       if (egg) {
         egg.visible = pose.shellVisible
         egg.rotation.z = pose.rock
@@ -350,11 +421,11 @@ export function CinematicStage() {
       }
       if (oldBody) oldBody.visible = false
       if (newBody) {
-        newBody.visible = phase === 'born'
+        newBody.visible = pose.bornVisible
         newBody.position.y = 0
-        newBody.scale.setScalar(phase === 'born' ? Math.min(1, 0.28 + elapsed.current * 1.8) : 0)
+        newBody.scale.setScalar(pose.bornScale)
       }
-      if (lightRef.current) lightRef.current.intensity = phase === 'born' ? 1.5 : 0.35
+      if (lightRef.current) lightRef.current.intensity = pose.bornVisible ? 1.5 : 0.35
     }
   })
 
@@ -372,25 +443,39 @@ export function CinematicStage() {
       <directionalLight position={[-4, 7, 5]} intensity={2.1} color="#e6efff" castShadow />
       <pointLight ref={lightRef} position={[0, 2, 2.2]} color="#fff4bd" distance={8} />
 
-      <group ref={beforeRef} position={[0, 0, 0]}>
-        {before && (
-          <Model
-            species={before.species}
-            form={before.form}
-            gender={before.gender}
-            shiny={before.shiny}
-            white={white}
-          />
-        )}
+      <group ref={shiftRef}>
+        <group ref={beforeRef} position={[0, 0, 0]}>
+          {before && (
+            <Model
+              species={before.species}
+              form={before.form}
+              gender={before.gender}
+              shiny={before.shiny}
+              white={white}
+            />
+          )}
+        </group>
+        <group ref={afterRef} position={[0, 0, 0]} visible={false}>
+          {after && (
+            <Model
+              species={after.species}
+              form={after.form}
+              gender={after.gender}
+              shiny={after.shiny}
+              white={white}
+            />
+          )}
+        </group>
       </group>
-      <group ref={afterRef} position={[0, 0, 0]} visible={false}>
-        {after && (
+      {/* 껍질몬 — 글 없이 새 몸 옆에 0.4초에 선다 (원작도 말없이 파티에 넣는다) */}
+      <group ref={companionRef} position={[COMPANION_X, 0, 0]} visible={false}>
+        {companion && (
           <Model
-            species={after.species}
-            form={after.form}
-            gender={after.gender}
-            shiny={after.shiny}
-            white={white}
+            species={companion.species}
+            form={companion.form}
+            gender={companion.gender}
+            shiny={companion.shiny}
+            opacity={companionAlpha}
           />
         )}
       </group>

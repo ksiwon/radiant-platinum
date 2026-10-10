@@ -24,6 +24,8 @@ interface Held {
   material: Tintable
   color: Color | null
   emissive: Color | null
+  opacity: number
+  transparent: boolean
 }
 
 const WHITE = new Color(1, 1, 1)
@@ -31,6 +33,11 @@ const WHITE = new Color(1, 1, 1)
 export interface Whitener {
   /** 0이면 제 색, 1이면 새하얗다 */
   set: (amount: number) => void
+  /**
+   * 0이면 안 보이고 1이면 제 모습이다 — 껍질몬이 0.4초에 서는 것(진화 설계 §4.5).
+   * 1이면 재질을 원래 상태로 돌려 놓는다(투명 정렬을 안 탄다)
+   */
+  fade: (alpha: number) => void
   /** 몸을 내릴 때 — 복제한 재질을 버린다 */
   dispose: () => void
 }
@@ -52,6 +59,8 @@ export function whitenBody(root: Object3D): Whitener {
         material: next,
         color: next.color ? next.color.clone() : null,
         emissive: next.emissive ? next.emissive.clone() : null,
+        opacity: next.opacity,
+        transparent: next.transparent,
       })
       return next
     }
@@ -64,6 +73,13 @@ export function whitenBody(root: Object3D): Whitener {
       for (const at of held) {
         if (at.color) at.material.color?.copy(at.color).lerp(WHITE, t)
         if (at.emissive) at.material.emissive?.copy(at.emissive).lerp(WHITE, t)
+      }
+    },
+    fade: (alpha) => {
+      const a = Math.min(1, Math.max(0, alpha))
+      for (const at of held) {
+        at.material.transparent = a < 1 ? true : at.transparent
+        at.material.opacity = at.opacity * a
       }
     },
     dispose: () => {

@@ -6,13 +6,16 @@
 //
 // ⚠️ **←가 옛것이고 →가 새것이다.** `PCHallOfFame_LoadLeftEntry`가
 // `++entryIndex`인데 그 번호는 「최근에서 몇 번째 거슬러」라서, 왼쪽으로 갈수록
-// 과거로 간다. 그대로 옮긴다.
+// 과거로 간다. 그대로 옮긴다. 머리 오른쪽의 눈금도 같은 방향이다(왼쪽이 옛 기록).
 //
 // ⚠️ **↑↓도 줄을 넘긴다.** 마리 끝에 닿으면 다음 줄로 넘어가는데, ↑는 옛 줄의
 // **마지막 마리**로 가고 ↓는 새 줄의 **첫 마리**로 간다 — 원작이 위쪽만
 // `pokemonIndex = pokemonCount - 1`을 따로 세운다.
 //
 // A가 「일반」과 「기술」을 오간다 (`textState ^= 1`).
+//
+// 이 화면은 창이 아니라 장면이다 (`MenuScreen cinematic bare`) — 3D 단 여섯이 화면 전체 폭에 서고, 머리(제목 · 눈금)와
+// 아래 띠(이름표 · 파티 줄 · 키 안내)는 자기가 둔다. 단 여섯은 원작 좌표다 (`scene/hallOfFameArchive`).
 import { useEffect, useMemo, useState } from 'react'
 import { music } from '../../engine/audio/music'
 import { genderOf, isShiny } from '../../engine/pokemon/instance'
@@ -25,24 +28,28 @@ import {
 } from '../../engine/world/hallOfFame'
 import {
   loadMoveNames,
+  loadPokeIcons,
   loadSpecies,
   loadSpeciesNames,
   type SpeciesTable,
 } from '../../data/gameData'
+import type { PokeIcons } from '../../data/schema'
 import { fillMenuText, loadUiText, PC_HALL_OF_FAME_TEXT } from '../../data/uiText'
 import { useGameLocale } from '../../state/optionsStore'
 import { useMenuStore } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
+import { KeyHints } from '../common/KeyHints'
+import { GenderMark } from '../common/MonIdentity'
+import { HOF_ARCHIVE_PX } from '../../scene/hallOfFameArchive'
 import { useMenuKeys } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
+import { monIconAt } from './pokeIcon'
+import { pcMeterAt, pcMeterCount } from './recordsLayout'
 import { useHallOfFameStageStore } from '../../state/hallOfFameStageStore'
 import * as css from './pcHallOfFame.css'
 
-/**
- * 여섯 자리 (`spriteCoordinates`). 화면 256×192 기준의 픽셀이라 비율로 옮긴다.
- *
- * 격자가 아니다 — 가운데 위에 첫 마리, 그 좌우에 둘, 아래에 셋이 어긋나게 선다
- */
+/** 바닥 키 안내 — 「Z 기술 보기」는 쪽이 바뀌어도 그대로다(어느 쪽인지는 쪽 표시가 말한다) */
+const PC_FOOT = '←→ 기록 · ↑↓ 포켓몬 · Z 기술 보기 · X 닫기'
 
 interface Tables {
   species: SpeciesTable
@@ -57,6 +64,7 @@ export function PCHallOfFameScreen() {
   const back = useMenuStore((s) => s.back)
   const record = useSaveStore((s) => s.hallOfFame)
   const [tables, setTables] = useState<Tables | null>(null)
+  const [icons, setIcons] = useState<PokeIcons>()
   const [entry, setEntry] = useState(0)
   const [at, setAt] = useState(0)
   /** 0 일반 · 1 기술 (`PC_HALL_OF_FAME_TEXT_GENERAL` · `..._MOVES`) */
@@ -72,9 +80,12 @@ export function PCHallOfFameScreen() {
       loadMoveNames(locale),
       loadUiText('pcHallOfFame', locale),
       loadUiText('monthNames', locale).catch(() => [] as string[]),
+      loadPokeIcons(),
     ])
-      .then(([species, names, moveNames, text, month]) => {
-        if (alive) setTables({ species, names, moveNames, text, month })
+      .then(([species, names, moveNames, text, month, pokeIcons]) => {
+        if (!alive) return
+        setTables({ species, names, moveNames, text, month })
+        setIcons(pokeIcons)
       })
       .catch(() => {
         /* 글 없이는 이름표가 안 뜬다 */
@@ -163,30 +174,76 @@ export function PCHallOfFameScreen() {
     return (
       // 기록이 없으면 무대가 비어 있다 — 뒤로 비칠 것이 없으니 창을 그린다
       <MenuScreen title="명예의 전당" foot="X 닫기" cinematic framed>
-        <div className={css.empty}>아직 전당에 든 기록이 없다.</div>
+        <div className={css.empty}>
+          {/* 여섯 단의 윤곽 — 「여기에 파티 여섯이 선다」. 원작 어긋난 배치 그대로다 */}
+          <div className={css.emptyStage} aria-hidden>
+            {HOF_ARCHIVE_PX.map(([px, py], i) => (
+              <span key={i} className={css.emptySpot} style={{ left: px * 2, top: (py - 20) * 2 }} />
+            ))}
+          </div>
+          <div>아직 전당에 든 기록이 없다.</div>
+        </div>
       </MenuScreen>
     )
   }
 
+  // 눈금 — 왼쪽이 옛 기록, 오른쪽이 새 기록. 지금 기록만 금색이다
+  const bars = pcMeterCount(count)
+  const now = pcMeterAt(count, entry)
+
   return (
-    <MenuScreen
-      title="명예의 전당"
-      cinematic
-      note={`${String(entry + 1)} / ${String(count)}`}
-      foot="←→ 기록 · ↑↓ 포켓몬 · Z 기술 보기 · X 닫기"
-    >
-      <div className={css.stage}>
+    <MenuScreen title="명예의 전당" cinematic bare>
+      <div className={css.root}>
+        <div className={css.shadeBand} aria-hidden />
+
         <div className={css.title}>{title}</div>
-        <div className={css.info}>
+        <div className={css.counter}>
+          <span className={css.counterText}>
+            <span className={css.counterNow}>{String(count - entry)}</span>
+            <span>/ {String(count)}</span>
+          </span>
+          <span className={css.meter}>
+            <span>← 옛 기록</span>
+            <span className={css.meterBars} aria-hidden>
+              {Array.from({ length: bars }, (_, i) => (
+                <span key={i} className={i === now ? css.barNow : css.bar} />
+              ))}
+            </span>
+            <span>새 기록 →</span>
+          </span>
+        </div>
+
+        {/* 이름표 — 마리나 쪽이 바뀌면 100ms 페이드로 갈아 낀다 */}
+        <div key={`${String(entry)}:${String(at)}:${String(page)}`} className={css.plate}>
           {page === 0 ? <General mon={mon} tables={tables} /> : <Moves mon={mon} tables={tables} />}
+        </div>
+        <div className={css.pages} aria-hidden>
+          <span className={page === 0 ? css.pageNow : css.page} />
+          <span className={page === 1 ? css.pageNow : css.page} />
+        </div>
+
+        {/* 파티 줄 — 고른 마리만 컬러에 금 띠 */}
+        <div className={css.party} aria-hidden>
+          {mons.map((member, i) => (
+            <span key={i} className={i === at ? css.cellOn : css.cell}>
+              <span
+                className={css.icon}
+                style={monIconAt(icons, { species: member.species, form: member.form, isEgg: false }, 1)}
+              />
+            </span>
+          ))}
+        </div>
+
+        <div className={css.keys}>
+          <KeyHints text={PC_FOOT} tone="dark" />
         </div>
       </div>
     </MenuScreen>
   )
 }
 
-/** 「일반」 — 별명/종족 ♂ Lv.n 과 어버이 */
-function General({ mon, tables }: { mon: HallOfFameMon | undefined; tables: Tables | null }) {
+/** 「일반」 — 별명 / 종족 ♂ Lv.n / 어버이 */
+function General({ mon, tables }: { mon: HallOfFameMon | undefined, tables: Tables | null }) {
   if (!mon || !tables) return null
   const text = (i: number): string => tables.text[i] ?? ''
   const speciesName = tables.names[mon.species] ?? ''
@@ -194,24 +251,21 @@ function General({ mon, tables }: { mon: HallOfFameMon | undefined; tables: Tabl
   const level = fillMenuText(text(PC_HALL_OF_FAME_TEXT.level), [String(mon.level)])
   return (
     <>
-      <div className={css.row}>
-        <span>{mon.nickname || speciesName}</span>
-        <span>{text(PC_HALL_OF_FAME_TEXT.slash)}</span>
+      <div className={css.plateName}>{mon.nickname || speciesName}</div>
+      <div className={css.plateInfo}>
         <span>{speciesName}</span>
-        {gender === 'male' && <span className={css.male}>♂</span>}
-        {gender === 'female' && <span className={css.female}>♀</span>}
+        <GenderMark gender={gender} onDark />
         <span>{level}</span>
       </div>
-      <div className={css.row}>
-        <span>{text(PC_HALL_OF_FAME_TEXT.ot)}</span>
-        <span>{mon.otName}</span>
+      <div className={css.plateOt}>
+        {text(PC_HALL_OF_FAME_TEXT.ot)} {mon.otName}
       </div>
     </>
   )
 }
 
 /** 「기술」 — 네 칸. 0번 칸에서 멈춘다 (`if (moves[i]) … else break`) */
-function Moves({ mon, tables }: { mon: HallOfFameMon | undefined; tables: Tables | null }) {
+function Moves({ mon, tables }: { mon: HallOfFameMon | undefined, tables: Tables | null }) {
   if (!mon || !tables) return null
   const shown: string[] = []
   for (const move of mon.moves) {
@@ -219,10 +273,16 @@ function Moves({ mon, tables }: { mon: HallOfFameMon | undefined; tables: Tables
     shown.push(tables.moveNames[move] ?? `#${String(move)}`)
   }
   return (
-    <div className={css.moves}>
-      {shown.map((name, i) => (
-        <span key={i}>{name}</span>
-      ))}
-    </div>
+    <>
+      <div className={css.plateName}>
+        <span>{mon.nickname || tables.names[mon.species] || ''}</span>
+        <span className={css.plateTag}>기술</span>
+      </div>
+      <div className={css.moves}>
+        {shown.map((name, i) => (
+          <span key={i}>{name}</span>
+        ))}
+      </div>
+    </>
   )
 }

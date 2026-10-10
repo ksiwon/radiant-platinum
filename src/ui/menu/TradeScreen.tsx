@@ -15,14 +15,19 @@
 // ⚠️ **통신관 그림은 옮기지 않는다.** 원작 일곱 마디 중 다섯이 볼이 관을 타고
 // 건너가는 2D 연출이라 3D 무대에 대응물이 없다. `transit` 한 마디로 묶고
 // 그동안 무대를 비운다 (`cinematicMotion.tradePose`) — 지어낸 그림으로 채우지
-// 않는다.
+// 않는다. 길 띠(위 가운데)는 그림이 아니라 **보내는 마리와 받는 마리**를 보이는 진행 표시이고, 마름모는 관을 지나는
+// 마디에만 선 위를 건넌다.
+//
+// ⚠️ **창이 아니라 장면이다** (`cinematic bare`) — 창 얼굴이 뒤의 3D를 가리지 않는다. 한동안 제목 글자 비교에 이 장면이
+// 빠져 있어 불투명 창이 무대를 덮고 있었다.
 //
 // ⚠️ **버튼이 없다.** 원작도 이 장면에서는 입력을 안 받는다. 시간이 다 흐르면
 // 저절로 닫히고 스크립트가 이어진다
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  loadMoves, loadNpcTrades, loadSpecies, loadSpeciesNames,
+  loadMoves, loadNpcTrades, loadPokeIcons, loadSpecies, loadSpeciesNames,
 } from '../../data/gameData'
+import type { PokeIcons } from '../../data/schema'
 import { fillMenuText, loadUiText, TRADE_TEXT } from '../../data/uiText'
 import { music } from '../../engine/audio/music'
 import { fieldBgm } from '../../engine/audio/songs'
@@ -36,8 +41,10 @@ import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { poketchGotMon } from '../../scene/poketch'
+import { MessageWindow } from '../common/MessageWindow'
 import { MenuScreen } from './MenuScreen'
-import * as own from './evolutionScreen.css'
+import { monIconAt } from './pokeIcon'
+import * as own from './tradeScreen.css'
 
 /**
  * 교환 장면의 곡 (`SEQ_KOUKAN`).
@@ -78,6 +85,7 @@ interface Ready {
   receiving: PokemonInstance
   speciesNames: string[]
   tradeText: string[]
+  icons: PokeIcons
 }
 
 export function TradeScreen() {
@@ -99,8 +107,8 @@ export function TradeScreen() {
     let alive = true
     void Promise.all([
       loadNpcTrades(), loadSpecies(), loadMoves(), loadSpeciesNames(locale),
-      loadUiText('trade', locale), loadUiText('npcTradeNames', locale),
-    ]).then(([trades, species, moves, speciesNames, tradeText, nameBank]) => {
+      loadUiText('trade', locale), loadUiText('npcTradeNames', locale), loadPokeIcons(),
+    ]).then(([trades, species, moves, speciesNames, tradeText, nameBank, icons]) => {
       if (!alive) return
       const record = trades.trades[trade.tradeId]
       const save = useSaveStore.getState()
@@ -140,7 +148,7 @@ export function TradeScreen() {
         },
       )
       fieldBgm.override = BGM
-      setReady({ names, sending, receiving, speciesNames, tradeText })
+      setReady({ names, sending, receiving, speciesNames, tradeText, icons })
       setStep(0)
     }).catch(() => {
       // 표를 못 받으면 교환을 못 치른다. 조용히 파티를 건드리느니 닫는다
@@ -184,13 +192,34 @@ export function TradeScreen() {
 
   if (!trade || !ready) return null
 
+  const line = lineFor(ready, step)
   return (
-    <MenuScreen title="교환" cinematic foot="">
+    <MenuScreen title="교환" cinematic bare>
       <div className={own.stage}>
-        <div className={own.cinematicSpace} aria-hidden />
-        <div className={own.line}>{lineFor(ready, step)}</div>
+        <div className={own.route} aria-hidden>
+          <TradeMon mon={ready.sending} ready={ready} />
+          <div className={own.line}>
+            {/* 마름모는 관을 지나는 마디에만 있다 — 통신관 그림을 지어내지 않는다 */}
+            {step === 3 && (
+              <span className={own.diamond} style={{ ['--travel' as string]: `${String(TRANSIT_MS)}ms` }} />
+            )}
+          </div>
+          <TradeMon mon={ready.receiving} ready={ready} />
+        </div>
+        {/* 줄이 바뀔 때 새로 선다(`key`) — 100ms 페이드. 관을 지나는 동안은 창이 비어 있다 */}
+        {line !== '' && <div key={step} className={own.dock}><MessageWindow lines={line} /></div>}
       </div>
     </MenuScreen>
+  )
+}
+
+/** 길 띠의 한쪽 끝 — 아이콘 64(32의 2배)와 이름 */
+function TradeMon({ mon, ready }: { mon: PokemonInstance, ready: Ready }) {
+  return (
+    <span className={own.mon}>
+      <span className={own.icon} style={monIconAt(ready.icons, mon, 2)} />
+      <span className={own.monName}>{nameOf(mon, ready.speciesNames)}</span>
+    </span>
   )
 }
 

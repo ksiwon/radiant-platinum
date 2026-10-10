@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { cinematicScale, evolutionPose, hallFitScale, hatchPose, HALL_SLOT_TALL, HALL_SLOT_WIDE, tradePose } from './cinematicMotion'
+import {
+  BODY_SHIFT_TALL, cinematicScale, evolutionPose, hallFitScale, hatchPose, HALL_SLOT_TALL, HALL_SLOT_WIDE, shiftToward, tradePose,
+} from './cinematicMotion'
 import { EVO_BEATS, EVO_CLAMP_FRAMES } from '../engine/pokemon/evolutionBeat'
 import { EGG_BEATS } from '../engine/pokemon/hatchBeat'
 
@@ -48,6 +50,35 @@ describe('cinematic 3D motion', () => {
     expect(hatchPose('shaking', 10, EGG_BEATS).shellVisible).toBe(true)
     // 껍질은 터진 뒤에 사라진다
     expect(hatchPose('shaking', EGG_BEATS.hide, EGG_BEATS).shellVisible).toBe(false)
+  })
+
+  it('stands the newborn in the white veil, not on the frame the egg vanishes', () => {
+    const { hide, reveal } = EGG_BEATS
+    // 알이 사라진 프레임에도 새 몸은 아직 없다 — 흰 막이 서기 시작할 뿐이다
+    expect(hatchPose('shaking', hide, EGG_BEATS).bornVisible).toBe(false)
+    expect(hatchPose('born', reveal - 1, EGG_BEATS).bornVisible).toBe(false)
+    const at = hatchPose('born', reveal, EGG_BEATS)
+    expect(at.bornVisible).toBe(true)
+    // 처음엔 새하얀 실루엣이고 작다
+    expect(at.bornWhite).toBe(1)
+    expect(at.bornScale).toBeCloseTo(0.28)
+    // 막이 걷힌 뒤에는 제 색에 제 크기다
+    const end = hatchPose('born', EGG_BEATS.end, EGG_BEATS)
+    expect(end.bornWhite).toBe(0)
+    expect(end.bornScale).toBe(1)
+  })
+
+  it('slides the body aside toward the target and lands exactly on it', () => {
+    let x = 0
+    for (let i = 0; i < 60; i++) x = shiftToward(x, -1, 1 / 60, false)
+    expect(x).toBe(-1)
+    // 한 걸음마다 목표에 가까워진다 — 되돌아가지 않는다
+    const a = shiftToward(0, -1, 1 / 60, false)
+    expect(a).toBeLessThan(0)
+    expect(a).toBeGreaterThan(-1)
+    // 움직임을 줄이면 곧장 간다
+    expect(shiftToward(0, -1, 1 / 60, true)).toBe(-1)
+    expect(BODY_SHIFT_TALL).toBeCloseTo(220 / 640)
   })
 
   it('shows exactly one body per trade phase — never both', () => {
