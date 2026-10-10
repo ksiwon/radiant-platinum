@@ -736,27 +736,44 @@ export async function coronetToSnowpoint(api, ctx,
 
   // ② 봉신으로 날아 211번도로 동 → 천관산 1F 북 방1 — 큰바위를 민다
   // 선단에서 이어 받은 판(`probe-snowpoint`)은 길을 건너뛰고 ③만 한다
-  if ((await api.now()).map !== MAP.snowpoint) {
-    if ((await api.now()).map !== MAP.coronetNorth1) {
-      const fly = await api.flyTo(MAP.celestic, Math.min(120_000, api.left()))
-      note('공중날기 → 봉신마을', fly.ok ? '닿았다' : String(fly.why))
-      // 마스전에서 둘이 쓰러진 채로 온다 (탐침 c4) — 천관산 야생 앞에서 먼저 센터에
-      const heal = await api.healAt(MAP.celesticCenter, Math.min(300_000, api.left()))
-      note('천관산 앞 회복 (봉신 센터)', heal.ok ? '나았다' : String(heal.why))
-      await via(api, note, [MAP.celesticCenter, MAP.celestic, MAP.route211east, MAP.coronetNorth1], '천관산 1F 북 방1로 — 211번도로 동을 지나')
+  /**
+   * ⚠️ **217번도로에서 전멸하면 봉신 센터에서 다시 간다.** 실측(2026-10-10 연쇄 P3 · 62ac794): 217 트레이너에게
+   * 져서 봉신 센터(443)로 돌아왔고, 예지호수근처로 다시 걷다가 **제자리로 돌아온 큰바위** 앞(218 (28,30))에서
+   * 120바퀴를 되밀렸다. 큰바위 앞까지 다시 가서 밀고, 지난 맵 뒤부터 잇는다(세 번까지)
+   */
+  const PAST_BOULDER = [
+    [MAP.coronetB1F, '천관산 B1F(219)', 900_000],
+    [MAP.coronetNorth2, '천관산 1F 북 방2(217)', 600_000],
+    [MAP.route216, '216번도로(383)', 900_000],
+    [MAP.route217, '217번도로(385)', 1_500_000],
+    [MAP.acuityLakefront, '예지호수근처(340)', 900_000],
+    [MAP.snowpoint, '선단시티(165)', 900_000],
+  ]
+  for (let round = 0; round < 3 && (await api.now()).map !== MAP.snowpoint && api.left() > 0; round++) {
+    let here = (await api.now()).map
+    if (round > 0) note('선단 가는 길 다시', `${String(round + 1)}번째 · 지금 맵 ${String(here)}`)
+    if (!PAST_BOULDER.some(([m]) => m === here)) {
+      if (here !== MAP.coronetNorth1) {
+        if (here !== MAP.celesticCenter && here !== MAP.celestic) {
+          const fly = await api.flyTo(MAP.celestic, Math.min(120_000, api.left()))
+          note('공중날기 → 봉신마을', fly.ok ? '닿았다' : String(fly.why))
+        }
+        // 마스전에서 둘이 쓰러진 채로 온다 (탐침 c4) — 천관산 야생 앞에서 먼저 센터에
+        const heal = await api.healAt(MAP.celesticCenter, Math.min(300_000, api.left()))
+        note('천관산 앞 회복 (봉신 센터)', heal.ok ? '나았다' : String(heal.why))
+        await via(api, note, [MAP.celesticCenter, MAP.celestic, MAP.route211east, MAP.coronetNorth1], '천관산 1F 북 방1로 — 211번도로 동을 지나')
+      }
+      out.push = await api.strengthPush(MAP.coronetNorth1, CORONET_BOULDER, 'ArrowUp', 3, Math.min(300_000, api.left()))
+      note('큰바위 (29,30) 괴력', out.push.ok ? `${String(out.push.pushed)}번 밀었다` : String(out.push.why))
+      here = (await api.now()).map
     }
-    out.push = await api.strengthPush(MAP.coronetNorth1, CORONET_BOULDER, 'ArrowUp', 3, Math.min(300_000, api.left()))
-    note('큰바위 (29,30) 괴력', out.push.ok ? `${String(out.push.pushed)}번 밀었다` : String(out.push.why))
-    await walk(MAP.coronetB1F, '천관산 B1F(219)', 900_000)
-    await walk(MAP.coronetNorth2, '천관산 1F 북 방2(217)', 600_000)
-    await spray('216·217번도로')
-    await walk(MAP.route216, '216번도로(383)', 900_000)
-    await walk(MAP.route217, '217번도로(385)', 1_500_000)
-    await api.clearTalk(); await api.settle()
-    await spray('217번도로·예지호수근처')
-    await walk(MAP.acuityLakefront, '예지호수근처(340)', 900_000)
-    await api.clearTalk(); await api.settle()
-    await walk(MAP.snowpoint, '선단시티(165)', 900_000)
+    const from = PAST_BOULDER.findIndex(([m]) => m === here) + 1
+    for (const [m, what, budget] of PAST_BOULDER.slice(from)) {
+      if (m === MAP.route216) await spray('216·217번도로')
+      if (m === MAP.acuityLakefront) { await api.clearTalk(); await api.settle(); await spray('217번도로·예지호수근처') }
+      if (m === MAP.snowpoint) { await api.clearTalk(); await api.settle() }
+      if ((await walk(m, what, budget)) !== 'arrived') break
+    }
   }
   if (stopAt === MAP.snowpoint || (await api.now()).map !== MAP.snowpoint) return done()
 
