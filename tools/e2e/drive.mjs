@@ -733,7 +733,7 @@ export async function driveStory(page, {
           texts.push((await rows.nth(i).innerText()).replace(/\s+/g, ' '))
         }
         at = texts.findIndex((t) => t.includes('효과가 굉장함'))
-        if (at < 0) at = texts.findIndex((t) => !t.includes('효과가 별로') && !t.includes('효과가 없다'))
+        if (at < 0) at = texts.findIndex((t) => !t.includes('효과가 별로') && !t.includes('효과가 없음'))
         if (at < 0) at = 0
       }
       await rows.nth(Math.min(at, n - 1)).click({ timeout: 3000 }).catch(() => {})
@@ -764,19 +764,51 @@ export async function driveStory(page, {
      * 0으로 접으면 제일 좋은 기술을 잊는다
      */
     const forgetPick = async () => {
-      const rows = page.locator('button').filter({ hasText: /\d+\s*\/\s*\d+/ })
+      /**
+       * 새 기술의 번호는 뿌리의 `data-learn-new`다 (`useLearnFlow` · 배틀과 진화 둘 다).
+       * 기술 칸은 `[data-move-id]`를 먼저 읽는다. 표식이 없는 지금 DOM에서는 PP(`n/n`)가
+       * 붙은 button의 첫 줄이고, 새 기술은 「그만둔다」 칸의 작은 줄(밑줄)이다
+       */
+      const root = page.locator('[data-learn-new]').first()
+      const freshId = await root.getAttribute('data-learn-new', { timeout: 300 }).catch(() => null)
+      // 다섯째 칸(새 기술)도 `data-move-id`를 달 수 있다 — 새 기술의 번호와 같은 칸은 뺀다.
+      // 뿌리가 있으면 그 안만 본다(배틀 명령 칸의 `data-move-id`와 섞이지 않게)
+      const scope = (await root.count()) > 0 ? root.locator('[data-move-id]') : page.locator('[data-move-id]')
+      const marked = []
+      for (let i = 0, m = await scope.count(); i < m; i++) {
+        const id = await scope.nth(i).getAttribute('data-move-id')
+        if (id !== freshId) marked.push(scope.nth(i))
+      }
+      const useIds = marked.length > 0
+      const rows = useIds
+        ? { count: async () => marked.length, nth: (i) => marked[i] }
+        : page.locator('button').filter({ hasText: /\d+\s*\/\s*\d+/ })
       const n = await rows.count()
       if (n === 0) return null
-      // 새 기술의 이름은 「그만둔다」 칸의 작은 줄에 그대로 적혀 있다
-      const stop = page.locator('button').filter({ hasText: '그만둔다' }).first()
-      const sub = (await stop.innerText().catch(() => '')).replace(/\s+/g, ' ')
-      const fresh = /(\S+)을\(를\) 안 배운다/.exec(sub)
-      if (fresh === null) return null
+      let fresh = null
+      let key = null
+      if (freshId !== null && freshId !== '') {
+        key = Number(freshId)
+        if (!Number.isFinite(key)) return null
+        // 번호로 물으면 이름을 화면에서 읽을 필요가 없다. 이름은 증거(`learnTaught`)용이다
+        fresh = freshId
+      } else {
+        const stop = page.locator('button').filter({ hasText: '그만둔다' }).first()
+        const lines = (await stop.innerText().catch(() => '')).split(/\r?\n/).map((t) => t.trim()).filter((t) => t !== '')
+        // 「그만둔다」 아래 작은 줄이 새 기술 이름이다. 없으면 모르는 것이다
+        fresh = lines.length >= 2 ? lines[1] : null
+        if (fresh === null) return null
+      }
       const names = []
       for (let i = 0; i < n; i++) {
-        names.push((await rows.nth(i).innerText()).split(/\r?\n/)[0].trim())
+        if (useIds) {
+          names.push(Number(await rows.nth(i).getAttribute('data-move-id')))
+        } else {
+          names.push((await rows.nth(i).innerText()).split(/\r?\n/)[0].trim())
+        }
       }
-      const read = await obs.movePower([...names, fresh[1]])
+      // 번호면 `movePower`가 번호를, 이름이면 이름을 받는지는 관측 쪽 몫이다 — 못 읽으면 null로 접는다
+      const read = await obs.movePower([...names, key ?? fresh])
       if (!read.known || !Array.isArray(read.value)) return null
       const power = read.value
       const gain = power[power.length - 1]
@@ -786,29 +818,43 @@ export async function driveStory(page, {
         if (typeof power[i] !== 'number') return null
         if (at < 0 || power[i] < power[at]) at = i
       }
-      return at >= 0 && power[at] < gain ? { at, was: names[at], now: fresh[1] } : null
+      return at >= 0 && power[at] < gain ? { at, was: String(names[at]), now: String(fresh) } : null
     }
 
     const answerLearnMove = async () => {
       const seen = (text) => page.locator('button').filter({ hasText: text }).count()
-      // 세 단은 화면의 **다른 칸**으로 갈린다 (`LearnMove`의 `Stage`)
-      const ask = await seen('기술 하나를 잊는다') > 0
-      const giveUp = await seen('다시 고른다') > 0
-      const forget = !ask && !giveUp && await seen('그만둔다') > 0
-      if (!ask && !giveUp && !forget) return false
+      /**
+       * 단은 뿌리의 `data-learn-stage`(ask · pick · wellThen · confirmGiveUp)가 말해 준다
+       * (`useLearnFlow` · 배틀과 진화 둘 다). 표식이 없는 쪽은 **롬 글**로 갈린다 —
+       * 첫 물음의 칸 「잊게 한다!」(368:1181), 포기 물음의 칸 「포기한다!」(1186),
+       * 그리고 기술 고르기의 꼬리 「그만둔다」. 10-01 이전의 칸 이름은 지웠다
+       */
+      let stage = await page.locator('[data-learn-stage]').first()
+        .getAttribute('data-learn-stage', { timeout: 300 }).catch(() => null)
+      if (stage === null || stage === '') {
+        if (await seen('잊게 한다') > 0) stage = 'ask'
+        else if (await seen('포기한다') > 0) stage = 'confirmGiveUp'
+        else if (await seen('그만둔다') > 0) stage = 'pick'
+        else return false
+      }
+      if (!['ask', 'pick', 'wellThen', 'confirmGiveUp'].includes(stage)) return false
       /**
        * ⚠️ **누르지 말고 키로 답한다.** 실측(`_wild42`, 2026-09-16): 칸을
        * `click()`으로 고르면 **3초씩 통째로 시간이 나가고** 화면은 그대로다 —
        * 40번을 그렇게 눌러 122초를 썼다. 대사가 아직 흐르는 동안은 그 칸이
        * 눌릴 자리에 안 서 있다는 뜻이다. 사람은 키로 답하고, 키는 먹는다.
        *
-       * 커서는 **안 돌아간다** (`clampCursor`) — 첫 칸에서 시작해 아래로만 간다
+       * 커서는 **안 돌아간다** (`clampCursor`) — 첫 칸에서 시작해 아래로만 간다.
+       *
+       * 갈래: `ask`는 첫 칸(잊게 한다)이 Space다. `confirmGiveUp`의 첫 칸은 **포기한다**다 —
+       * 이 단은 「안 배운다」로 정했을 때만 오므로 Space면 끝난다. 「포기하지 않는다」를
+       * 고르면 `ask`로 돌아가 같은 자리를 맴돈다. `wellThen`은 「그럼...」 한 줄이라 Space로 넘긴다
        */
-      if (ask) await tap('Space', 120)                                   // 예
-      else if (giveUp) { await tap('ArrowDown', 60); await tap('Space', 120) } // 다시 고른다
+      if (stage === 'ask' || stage === 'wellThen' || stage === 'confirmGiveUp') await tap('Space', 120)
       else {
         const pick = await forgetPick()
         if (pick === null) {
+          // 다섯째 칸(새 기술 · 「그만둔다」)까지 내려가 Space — 안 배운다
           for (let i = 0; i < 5; i++) await tap('ArrowDown', 40)
           await tap('Space', 120)
           learnKept++
@@ -2893,6 +2939,10 @@ export async function driveStory(page, {
       if (mid !== null && held(mid) > held(before)) break
       await tap('Space', 350)
     }
+    // 🔸 **작별 「또 오세요!」 (계획 · 아직 안 쟀다).** 새 상점은 「그만둔다」 줄 뒤에 「또 오세요!」를 띄우고
+    // **아무 키나 누르면 바로 닫히며 0.9초 뒤 저절로도 닫힌다**(SYSTEM 4.29). 아래 X 하나와 `clearTalk`(상점이면 X로 나간다)가
+    // 그 길을 그대로 밟으므로 코드는 안 고친다 — `journey`로 상점을 지난 판에서 **작별 글이 떴다가 한 키에 닫히는지**를
+    // 재고(`shops` 세기와 `clearTalk` 걸음 수), 안 맞을 때만 여기를 고친다
     await tap('KeyX', 200)
     await clearTalk()
     await settle()
@@ -2977,6 +3027,10 @@ export async function driveStory(page, {
       for (let i = 0; i < 6; i++) await tap('KeyX', 80)
       return { ok: false, why: `시작 메뉴가 안 열렸다 (${JSON.stringify(menu?.texts ?? null)})` }
     }
+    // ⚠️ **사파리 · 교감광장에서는 시작 메뉴가 줄을 숨긴다** (줄 수가 일반과 다르다). 그래서 앞에서 세지 않고
+    // **뒤에서 센다** — `n − 5`는 계산이 아니라 **설정**이다: 시작 메뉴의 뒤 다섯 줄(가방 · 카드 · 리포트 · 설정 · 닫기)의
+    // 차례는 어느 갈래에서나 같다는 약속(P1의 하네스 계약)이고, 그 차례가 바뀌면 여기를 같이 고친다.
+    // 줄 이름으로 찾는 `menu.want`가 먼저다 — 이름이 안 읽힐 때만 이 자리로 떨어진다
     const want = menu.want >= 0 ? menu.want : menu.n - 5
     for (let i = 0; i < menu.n + 3; i++) {
       const at = await rowAt()
@@ -3006,12 +3060,17 @@ export async function driveStory(page, {
       for (let i = 0; i < 6; i++) await tap('KeyX', 80)
       return { ok: false, why: `주머니 ${String(slot.pocket)}로 못 옮겼다 (${JSON.stringify(mid.known ? mid.value : mid.why)})` }
     }
+    // ⚠️ **맨 끝에 「닫는다」 줄이 있다.** 줄은 `0..itemCount`이고 `itemCount`째가 닫는다다
+    // (`recallCursor`가 거기까지 당긴다). 기억한 칸이 닫는다 줄이면 `dy`가 음수라 위로 올라오는 길이고,
+    // 도구 줄은 늘 `slot.row < itemCount`이므로 이 길이 닫는다 줄을 눌러 가방을 닫는 일은 없다.
+    // 올라온 뒤에 선 자리가 그 칸이 아니면 아래 단언이 결정을 안 누르고 까닭을 돌려준다
+    const fromClose = mid.known && mid.value.row >= mid.value.items
     const dy = slot.row - rowFrom
     for (let i = 0; i < Math.abs(dy); i++) await tap(dy > 0 ? 'ArrowDown' : 'ArrowUp', 80)
     const stood = await bagCursor()
     if (!stood.known || stood.value.pocket !== slot.pocket || stood.value.row !== slot.row) {
       for (let i = 0; i < 6; i++) await tap('KeyX', 80)
-      return { ok: false, why: `그 칸에 못 섰다 (${JSON.stringify(stood.known ? stood.value : stood.why)} · 원한 자리 ${String(slot.pocket)}/${String(slot.row)})` }
+      return { ok: false, why: `${fromClose ? '닫는다 줄에서 올라와서 ' : ''}그 칸에 못 섰다 (${JSON.stringify(stood.known ? stood.value : stood.why)} · 원한 자리 ${String(slot.pocket)}/${String(slot.row)})` }
     }
     return { ok: true, slot, why: null }
   }
@@ -3033,7 +3092,11 @@ export async function driveStory(page, {
     const pocket = b.bagMemory.pocket
     return {
       known: true,
-      value: { pocket, row: b.recallCursor(pocket, bag[pocket]?.length ?? 0), pockets: bag.length },
+      value: {
+        pocket, row: b.recallCursor(pocket, bag[pocket]?.length ?? 0), pockets: bag.length,
+        // 줄 수 — 이 값과 `row`가 같으면 커서가 맨 끝 「닫는다」 줄에 서 있다
+        items: bag[pocket]?.length ?? 0,
+      },
     }
   }).catch((e) => ({ known: false, why: String(e?.message ?? e).slice(0, 160) }))
 
