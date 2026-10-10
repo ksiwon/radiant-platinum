@@ -12,7 +12,7 @@
 export interface Rect { x: number, y: number, w: number, h: number }
 
 /** `getBoundingClientRect()`가 주는 것 중 쓰는 칸만 */
-export interface DomBox { left: number, top: number, width: number, height: number }
+interface DomBox { left: number, top: number, width: number, height: number }
 
 /**
  * 창 기준 구멍. 창 얼굴 `::before`는 창의 **테두리 안쪽**(`inset: 0`은 패딩 상자)에 서므로 테두리 두께를 뺀다.
@@ -58,7 +58,7 @@ export function canvasRect(hole: DomBox, canvas: { w: number, h: number }, dpr: 
 /** 구도 — 키가 구멍 높이의 78%, 발이 아래 12%에 온다 (SYSTEM §2.4 「구도」) */
 export const FIT = { heightFrac: 0.78, feetFrac: 0.12, widthFrac: 0.9, fov: 30 } as const
 
-export interface FitInput {
+interface FitInput {
   /** 몸의 키 (발 = 0) · 가로 폭(x · z 중 큰 쪽) */
   height: number
   width: number
@@ -179,7 +179,7 @@ function solve3(m: readonly (readonly number[])[], b: Rgb): [number, number, num
 }
 
 /** 흔들림 — y축으로 ±20°를 8초에 (SYSTEM §2.4 「움직임」). 한 바퀴 돌리지 않는다 */
-export const SWAY = { degrees: 20, seconds: 8 } as const
+const SWAY = { degrees: 20, seconds: 8 } as const
 
 /** 시간(초) → 흔들림 각(라디안). `reduced`면 0 */
 export function swayAngle(seconds: number, reduced: boolean): number {

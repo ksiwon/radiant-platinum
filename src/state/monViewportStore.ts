@@ -28,7 +28,7 @@ export function specKey(spec: MonViewportSpec): string {
 }
 
 /** 3D 쪽이 그 몸에 대해 아는 것. `loading`은 기록이 없는 것과 같아서 따로 안 둔다 */
-export type BodyState = 'ready' | 'none'
+type BodyState = 'ready' | 'none'
 
 interface Hole {
   /** 이 구멍을 올린 쪽의 표. 놓을 때 이것이 맞아야 놓인다 */
@@ -115,7 +115,7 @@ export interface ViewportModeInput {
   shown: { key: string, state: BodyState } | null
 }
 
-export type ViewportMode = 'model' | 'sprite' | 'unseen'
+type ViewportMode = 'model' | 'sprite' | 'unseen'
 
 /**
  * 구멍에 무엇이 서는가 (SYSTEM §2.4 「떨어지기」).
