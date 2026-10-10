@@ -8,7 +8,7 @@
 // 사건을 시간축에 펴는 것은 `engine/battle/playback.ts`다. 이 화면은 그 재생기가
 // 지금까지 접은 뷰만 그린다 — sim의 최종 상태를 직접 보지 않는다. 기술 연출과
 // 카메라 컷(PLAN §7.3·§7.4)은 아직 없다.
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { BURST, burstWhite } from '../../engine/battle/encounterBurst'
 import { encounterBurst } from '../../scene/battle/stageRefs'
 import type { BattleAction } from '../../engine/battle/choice'
@@ -20,7 +20,7 @@ import {
   loadDialogueBank, loadItemNames, loadItems, loadLabels, loadMoveNames, loadMoves,
   loadSpecies, loadSpeciesNames, type DataLocale,
 } from '../../data/gameData'
-import { START_MENU, UI_BANK } from '../../data/uiText'
+import { fillMenuText, START_MENU, UI_BANK } from '../../data/uiText'
 import { isHmMove } from '../../engine/bag/fieldUse'
 import {
   moveMatch, shownType,
@@ -48,7 +48,10 @@ import { lockMenuKeysToPilot } from '../menu/useMenuKeys'
 import { useBattlePlayback } from './useBattlePlayback'
 import { markVictory } from './victoryCue'
 import { music } from '../../engine/audio/music'
-import { MonCard, PartyGauge } from './HudPlates'
+import { MonCard, PartyGauge, SafariPlate } from './HudPlates'
+import { FieldStrip } from './FieldStrip'
+import { CommandButton } from './CommandButton'
+import { KeyHints } from '../common/KeyHints'
 import {
   MoveMenu, RootMenu, SafariMenu, YesNo,
   type Extras, type MenuPage, type MovePreview, type Words,
@@ -65,30 +68,29 @@ import { dexHas, useSaveStore } from '../../state/saveStore'
 
 const WORDS: Record<DataLocale, Words> = {
   ko: {
-    fight: '기술을 고른다', bag: '도구를 쓴다', bagBlocked: '지금은 쓸 수 없다', party: '교체한다',
-    partyBlocked: '교체할 포켓몬이 없다',
+    bagBlocked: '지금은 쓸 수 없다', partyBlocked: '교체할 포켓몬이 없다',
     run: '배틀을 끝낸다', runNever: '도망칠 수 없다', runBlocked: '지금은 도망칠 수 없다',
     bait: '잡기 쉬워지고 잘 달아난다', mud: '안 달아나지만 잡기 어려워진다',
     stay: '그대로 싸운다', swap: '포켓몬을 고른다',
-    skip: 'Z 넘기기', next: 'Z 계속', pick: '↑↓ 고르기 · Z 결정', back: ' · X 뒤로',
+    skip: 'Z 넘기기', next: 'Z 계속', pick: '↑↓ 고르기 · Z 결정', back: ' · X 닫기',
     continue: '계속', preparing: '배틀 준비 중…', leave: '필드로 돌아가기',
   },
   en: {
-    fight: 'Choose a move', bag: 'Use an item', bagBlocked: 'Can\'t use items now', party: 'Switch Pokémon',
+    bagBlocked: 'Can\'t use items now',
     partyBlocked: 'No Pokémon to switch in',
     run: 'End the battle', runNever: 'No escape here', runBlocked: 'Can\'t run right now',
     bait: 'Easier to catch, but flees more', mud: 'Flees less, but harder to catch',
     stay: 'Keep battling', swap: 'Choose a Pokémon',
-    skip: 'Z Skip', next: 'Z Continue', pick: '↑↓ Select · Z Confirm', back: ' · X Back',
+    skip: 'Z Skip', next: 'Z Continue', pick: '↑↓ Select · Z Confirm', back: ' · X Close',
     continue: 'Continue', preparing: 'Preparing the battle…', leave: 'Return to the field',
   },
   ja: {
-    fight: 'わざを選ぶ', bag: '道具を使う', bagBlocked: '今は使えない', party: '入れ替える',
+    bagBlocked: '今は使えない',
     partyBlocked: '入れ替えるポケモンがいない',
     run: 'バトルを終える', runNever: '逃げられない', runBlocked: '今は逃げられない',
     bait: '捕まえやすいが逃げやすくなる', mud: '逃げにくいが捕まえにくくなる',
     stay: 'そのまま戦う', swap: 'ポケモンを選ぶ',
-    skip: 'Z 送る', next: 'Z 続ける', pick: '↑↓ 選ぶ · Z 決定', back: ' · X 戻る',
+    skip: 'Z 送る', next: 'Z 続ける', pick: '↑↓ 選ぶ · Z 決定', back: ' · X 閉じる',
     continue: '続ける', preparing: 'バトルの準備中…', leave: 'フィールドに戻る',
   },
 }
@@ -280,6 +282,11 @@ export function BattleScreen() {
    * 금 테두리를 두려는 자리다 (HUD 꾸러미). 지금은 `MonCard`의 `data-aimed`로만 드러난다
    */
   const [aimTarget, setAimTarget] = useState<number | null>(null)
+  /**
+   * 기술 배우기가 **글창에 올리는 물음과 상세** (`LearnMove`의 `onSay`). 물음이 글창 줄이다 — 명령 구역은 264 안에서
+   * 칸만 맡는다. 새 기술과 커서 칸의 위력 · 명중 · 분류는 글창 안에서 자란다
+   */
+  const [learnSay, setLearnSay] = useState<{ text: string; facts: ReactNode } | null>(null)
   const aimedSlot = aimTarget === null ? null
     : aimTarget === 1 ? 'p2a' : aimTarget === 2 ? 'p2b' : aimTarget === -1 ? 'p1a' : 'p1b'
   // 3D 무대는 씬이 떠 있을 때만 뒤에 선다. 개발 콘솔로 타이틀에서 배틀을 열면
@@ -540,7 +547,7 @@ export function BattleScreen() {
    */
   const commanding = phase === 'running' && !reading && script.ask === null && shiftAsk === null
   const askingNow = view?.active[atSlot === 0 ? 'p1a' : 'p1b'] ?? null
-  const commandLine = !commanding ? null : askLine({
+  const commandLine = !commanding ? null : aimTarget !== null ? '누구에게?' : askLine({
     lines, kind, playerName,
     who: askingNow !== null && actions.length > 0 && !forced && (page === 'root' || page === 'fight')
       ? bare(askingNow.key) : null,
@@ -617,10 +624,15 @@ export function BattleScreen() {
         />
       )}
       <div className={css.field}>
+        {/*
+          날씨 · 필드 띠는 **있을 때만** 선다 (`FieldStrip`). 이름은 기술 이름(롬)이다
+        */}
+        {view !== null && <FieldStrip weather={view.weather} field={view.field} moveNames={names?.moves ?? []} />}
         <div className={css.foeSlot}>
           {/*
             쪽마다 공 한 줄 (`PartyGaugeData_New`). 트레이너가 둘이면 한 줄에 첫 상대가
-            0~2번, 둘째가 3~5번 칸이다 (`partyGauge.gaugeSlots`)
+            0~2번, 둘째가 3~5번 칸이다 (`partyGauge.gaugeSlots`). 이름은 이 탭 창 안에 든다 —
+            무대 위 맨 글자가 아니다
           */}
           {trainerSide && foes.length > 0
             ? (
@@ -630,7 +642,9 @@ export function BattleScreen() {
                 roster={roster} down={downKeys} view={view}
               />
             )
-            : foeName && <div className={css.foeTrainer}>{foeName}</div>}
+            : foeName && (
+              <PartyGauge label={foeName} owners={[]} roster={roster} down={downKeys} view={view} balls={false} />
+            )}
           {/*
             ⚠️ **판의 key는 마리다.** 자리 번호로 두면 쓰러진 마리(0)의 판이 그대로 다음
             마리 판이 되어, 새 포켓몬의 HP 바가 0에서 가득으로 1초 넘게 차올랐다
@@ -640,6 +654,9 @@ export function BattleScreen() {
               key={m.key}
               mon={m} names={names} drainMs={script.holdMs} nickname={roster[m.key]?.nickname ?? null}
               caught={m.species !== null && dexHas(caughtDex, m.species)}
+              trainerSide={trainerSide}
+              doubles={doubles}
+              inward={doubles && m === foe}
               aimed={aimedSlot === m.slot}
             />
           ))}
@@ -651,15 +668,25 @@ export function BattleScreen() {
           */}
           {trainerSide && (
             <PartyGauge
-              label={playerName} owners={['player']} roster={roster} down={downKeys} view={view}
+              label={playerName} owners={['player']} roster={roster} down={downKeys} view={view} mine
+            />
+          )}
+          {/* 사파리에는 내 판이 없고 볼 판이 선다 (`healthbox.c:624-659`) — 글은 시작 메뉴 뱅크 9 · 11이다 */}
+          {kind === 'safari' && (
+            <SafariPlate
+              label={startMenuLines[START_MENU.safariBalls] ?? null}
+              count={startMenuLines[START_MENU.ballStock] !== undefined
+                ? fillMenuText(startMenuLines[START_MENU.ballStock]!, [String(safari?.balls ?? 0)]) : null}
             />
           )}
           {[mine, mineB].map((m) => m && (
             <MonCard
               key={m.key} mon={m} names={names} drainMs={script.holdMs} showHp
               nickname={roster[m.key]?.nickname ?? null}
-              // 묻는 동안만 흐린다 — 대사를 읽는 중(등판 줄 따위)에 둘째 판이 꺼져 보이면 안 된다
-              dim={doubles && !reading && asking !== null && m.key !== asking.key}
+              doubles={doubles}
+              inward={doubles && m === mine}
+              // 묻는 동안만 금 테두리와 흔들림이다 — 대사를 읽는 중(등판 줄 따위)에 둘째 판이 달라 보이면 안 된다
+              asking={doubles && !reading && asking !== null && m.key === asking.key}
               aimed={aimedSlot === m.slot}
             />
           ))}
@@ -671,10 +698,13 @@ export function BattleScreen() {
         {/* 강습 동안에도 글 넘기기는 산다 (`TutorialPilot`의 `data-pilot-pass`) */}
         <div className={css.log} onClick={tapLog} data-pilot-pass>
           <div className={css.logText}>
-            {pilotLine ?? commandLine ?? script.text}
-            {/* 누름을 기다릴 때만 뜬다 — 연출·게이지 동안은 눌러도 아무 일이 없다 */}
-            {script.waitingPress && <span className={css.nextArrow} aria-hidden>▼</span>}
+            {learnSay !== null && script.ask !== null ? learnSay.text : pilotLine ?? commandLine ?? script.text}
           </div>
+          {/* 고른 기술의 상세(위력 · 명중 · 분류 · 설명)가 글창 안에서 자란다 */}
+          {learnSay !== null && script.ask !== null && learnSay.facts !== null
+            && <div className={css.logFacts}>{learnSay.facts}</div>}
+          {/* 누름을 기다릴 때만 뜬다 — 연출·게이지 동안은 눌러도 아무 일이 없다. 글 밖 구석에 박힌 삼각이다 */}
+          {script.waitingPress && <span className={css.nextArrow} aria-hidden />}
         </div>
         <div className={cmd.side}>
           {script.levelPanel !== null && (
@@ -700,6 +730,7 @@ export function BattleScreen() {
                 moveData={(id) => extras.move(id)}
                 typeName={(t) => extras.types[t]}
                 lockedWhy={(id) => extras.hmLock(id)}
+                onSay={setLearnSay}
                 onAnswer={(forget) => {
                   const ask = script.ask!
                   // ⚠️ **잊을 기술은 덮기 전에 읽는다** — `learnMove`가 그 칸을 새 기술로 덮는다
@@ -718,18 +749,13 @@ export function BattleScreen() {
                 }}
               />
             ) : reading ? null : phase === 'over' ? (ally !== null ? null : (
-              <button
-                className={`${cmd.button} ${cmd.buttonOn}`}
-                style={{ ['--tint' as string]: cmd.TINT.run }}
+              <CommandButton
+                on
+                size="list"
+                label={words.continue}
+                tint={cmd.TINT.run}
                 onClick={closeWithFade}
-                autoFocus
-              >
-                <span className={cmd.caret} aria-hidden />
-                <span className={cmd.face}>
-                  <span className={cmd.dot} aria-hidden />
-                  <span className={cmd.label}>{words.continue}</span>
-                </span>
-              </button>
+              />
             )) : shiftAsk !== null ? (
               // 시합규칙 「교체」 — 상대가 다음 마리를 내보내기 전에 묻는다.
               // 여기서 바꾸면 턴을 안 쓴다.
@@ -758,7 +784,7 @@ export function BattleScreen() {
               null
             ) : page === 'fight' ? (
               <MoveMenu
-                actions={moveActions} names={names} extras={extras} onPick={choose}
+                actions={moveActions} names={names} extras={extras} lines={lines} onPick={choose}
                 doubles={doubles} previewOf={previewOf}
                 targetName={(t) => targetLabel(t, atSlot, view, bare)}
                 onBack={() => setPage('root')}
@@ -774,28 +800,32 @@ export function BattleScreen() {
                 // 배틀 형식을 안 보고 마주 선 상대 첫 자리와 견준다 (`battle_lib.c` 3284)
                 wild={kind === 'wild' && (!doubles || partner !== null)}
                 canSpend={canSpendTurn}
-                // 글창이 이미 「무엇을 할까?」를 말하면 같은 물음을 또 안 적는다
-                who={commandLine === null && asking ? bare(asking.key) : null}
+                // 「싸운다」 판에 지금 묻는 마리의 아이콘이 선다 (더블은 자리마다 바뀐다)
+                icon={askingNow !== null && askingNow.species !== null
+                  ? { species: askingNow.species, form: askingNow.form ?? 0 } : null}
                 onPick={setPage}
                 onRun={() => void run()}
                 onBack={doubles && atSlot > 0 ? () => { backSlot() } : null}
               />
             )}
           </div>
-          {/*
-            전면 화면(교체·가방)은 자기 바닥에 직접 적는다.
+        </div>
+        {/*
+          전면 화면(교체·가방)은 자기 바닥에 직접 적는다.
 
-            ⚠️ **누를 수 있는 것만 적는다.** 재생 중에는 줄일 것이 있을 때만 「Z 넘기기」,
-            끝나면 고를 것이 「계속」 하나라 「Z 계속」, 잡는 법 강습은 저절로 닫히므로 비운다.
-            「X 뒤로」는 돌아갈 단이 있을 때만이다 — 싱글 뿌리 메뉴·사파리는 X가 아무 일도 안 한다
-          */}
-          <div className={css.keyHint}>
-            {reading
+          ⚠️ **누를 수 있는 것만 적는다.** 재생 중에는 줄일 것이 있을 때만 「Z 넘기기」,
+          끝나면 고를 것이 「계속」 하나라 「Z 계속」, 잡는 법 강습은 저절로 닫히므로 비운다.
+          「X 닫기」는 돌아갈 단이 있을 때만이다 — 싱글 뿌리 메뉴·사파리는 X가 아무 일도 안 한다.
+          창 한 장 안의 키캡이다 (SYSTEM §0 L6)
+        */}
+        <div className={css.keyHint}>
+          <KeyHints
+            text={reading
               ? (script.skippable || script.waitingPress ? words.skip : '')
               : phase === 'over'
                 ? (ally !== null ? '' : words.next)
                 : words.pick + (canBack ? words.back : '')}
-          </div>
+          />
         </div>
       </div>
       </>}
