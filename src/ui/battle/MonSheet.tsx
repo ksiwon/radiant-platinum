@@ -215,7 +215,7 @@ export function MonSheet(
           {shown !== undefined ? (
             <div className={css.block}>
               <div className={css.blockHead}>{shown.name}</div>
-              <p className={css.blockText}>{describeMove(descriptions[shown.data?.id ?? 0] ?? '')}</p>
+              <p className={css.blockText}>{shown.data === undefined ? '' : describeMove(descriptions[shown.data.id] ?? '')}</p>
             </div>
           ) : (
             <>
