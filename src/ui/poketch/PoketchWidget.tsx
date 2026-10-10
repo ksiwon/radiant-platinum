@@ -43,6 +43,9 @@ function othersBusy(): boolean {
 
 export function PoketchWidget() {
   const poketch = useSaveStore((s) => s.poketch)
+  // 메뉴 스택이 비어 있지 않은 동안에는 늘 걷는다 — 시작 메뉴 · 전당 · 크레딧 · 상장 같은 의식 화면도 여기 든다.
+  // 포켓치는 한 자리를 다투는 물건이라 메뉴가 서 있는 동안 위로 비켜선다 (SYSTEM §0 포켓치)
+  const stowed = useMenuStore((s) => s.stack.length > 0)
   const view = usePoketchStore((s) => s.view)
   const setView = usePoketchStore((s) => s.setView)
   const [names, setNames] = useState<readonly string[]>([])
@@ -164,7 +167,9 @@ export function PoketchWidget() {
 
   return (
     <div
-      className={css.root}
+      className={stowed ? `${css.root} ${css.stowed}` : css.root}
+      data-poketch-stowed={stowed ? '' : undefined}
+      aria-hidden={stowed ? true : undefined}
       style={assignInlineVars({
         [css.ground]: palette.ground,
         [css.mid]: palette.mid,

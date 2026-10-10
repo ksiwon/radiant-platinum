@@ -12,7 +12,7 @@
 // 그리고 있었다 — 롬의 네 단계 중 제일 밝은 것이 화면의 86%를 덮는다.
 import { createVar, globalStyle, keyframes, style, styleVariants } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
-import { EDGE, GAP, RADIUS, TEXT } from '../theme/scale'
+import { EDGE, GAP, RADIUS, TEXT, TIME } from '../theme/scale'
 
 /** 액정의 명암 네 단계 중 셋. `poketchShades`가 값을 준다 */
 export const ground = createVar()
@@ -33,6 +33,18 @@ export const root = style({
   pointerEvents: 'none',
   userSelect: 'none',
   animation: `${wake} 0.18s ease-out`,
+  // 메뉴가 열리면 위로 걷히고 닫히면 내려온다 (`stowed`)
+  transition: `transform ${TIME.slide} ease-out, opacity ${TIME.slide} ease-out`,
+  '@media': { '(prefers-reduced-motion: reduce)': { transition: 'none' } },
+})
+
+/**
+ * 걷힌 포켓치 — 위로 올라가 화면 밖에 선다. 몸체 높이를 모르니(액정 크기와 앱마다 다르다) 자기 높이만큼
+ * 올리고 여백을 더 얹는다. 시계는 시작 메뉴 레일 머리가 대신 보인다
+ */
+export const stowed = style({
+  transform: 'translateY(calc(-100% - 24px))',
+  opacity: 0,
 })
 
 /** 시계 몸체. 위쪽이 밝고 아래가 죽는 회색 플라스틱 */
