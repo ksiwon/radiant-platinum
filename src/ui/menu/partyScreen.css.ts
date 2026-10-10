@@ -1,121 +1,158 @@
-// 포켓몬 화면 — 판 여섯이 화면을 채운다 (DESIGN.md §5).
+// 포켓몬 화면 — 명판 여섯이 두 열로 선다 (`.audit/menu-ui/party.md` §4).
 //
-// 원작 배치를 그대로 옮겼다. 판 하나가 16×6타일(128×48)이고 두 줄 세 칸인데,
-// **오른쪽 줄이 한 타일 내려가 있다** (`sMemberPanelTemplates`: 왼쪽이
-// y=0·6·12, 오른쪽이 y=1·7·13). 그 어긋남이 여섯을 한 덩어리가 아니라 여섯으로
-// 보이게 하는 것이고, 판이 화면 아래까지 내려와서 빈자리가 안 남는다.
+// 원작 배치를 그대로 옮겼다. 판 여섯이 두 줄 세 칸이고 **오른쪽 줄이 한 칸 아래에 선다**
+// (`sMemberPanelTemplates`: 왼쪽 y=0·6·12, 오른쪽 y=1·7·13). 그 어긋남이 여섯을 한 덩어리가 아니라 여섯으로
+// 보이게 한다.
 //
-// ⚠️ **오른쪽에 상세 칸을 세우지 않는다.** 한때 여기가 「왼쪽 카드 / 오른쪽
-// 능력·기술」이었다 — 원작에 없는 칸이고(능력은 요약 화면이 맡는다), 그
-// 배치가 곧 설정 앱의 배치다. 갈래 메뉴는 원작처럼 **판 위에 창 하나**로 뜬다.
+// ⚠️ **판이 상자가 아니다.** 원반(받침) 하나와 이름이 얹히는 띠 하나, 두 겹이다. 사방 테두리를 두르면 같은 상자
+// 여섯이 격자에 놓인 모양으로 돌아간다 (사용자 「투박하다」 지적). 가장 커야 할 것은 그림이고, 그림이 원반 위로
+// 넘친다.
 //
-// ⚠️ 카드에서 제일 커야 할 것은 **그림**이다. 전에는 62픽셀짜리 그림 옆에
-// 테두리·그림자·비스듬한 모서리가 붙어서, 정작 포켓몬은 작고 장식만 컸다.
-//
-// ⚠️ **색은 여기서 안 고른다** (DESIGN.md §2). HP 세 색은 원작 팔레트에서 오고
-// (`party_menu/menu.pal`), 판 색도 같은 팔레트에서 왔다. 고른 판은 금 테두리다.
+// ⚠️ **색은 여기서 안 고른다** (DESIGN.md §2). 판 색은 원작 팔레트(`party_menu/menu.pal`)에서 왔고 고른 판은
+// 금이다. 숫자는 Pretendard `tabular-nums`다 (mono 금지).
 import { style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
-import { EDGE, GAP, RADIUS, TEXT } from '../theme/scale'
-import { BAR_FILL, BAR_TRACK, PICKED, STATUS_TAG, WINDOW_SMALL } from '../theme/window.css'
+import { EDGE, GAP, RADIUS, TEXT, TIME } from '../theme/scale'
+import { PICKED } from '../theme/window.css'
+
+// 갈래 창 처방은 `menuChrome`에서 다시 내보낸다 — 가방 · 메일박스 · 상점의 import가 안 바뀐다
+export { choice, choiceAsk, choiceOn, choices } from './menuChrome.css'
+// 레벨업 창 처방은 `levelPanel.css`로 옮겼다. 다시 내보내기만 한다 (`levelPanel.css`가 정본)
+export { levelPanel, levelRow, levelValue } from './levelPanel.css'
+
+/** 판 하나의 크기 — 원반 · 띠 · 글이 이 안에서 절대 좌표로 선다 */
+const PLATE = { height: 150, disc: 124, ribbonTop: 27, ribbonHeight: 96, textLeft: 150, sprite: 160 } as const
+
+/** 오른쪽 줄이 내려간 만큼. 원작이 한 타일(판 높이의 1/6)이고 시안은 24다 */
+const STAGGER = 24
+
+/** 본문 칸 — 갈래 창 · 레벨업 창이 이 칸 안에서 절대 좌표로 앉는다 */
+export const stage = style({
+  position: 'relative',
+  flex: '1 1 auto',
+  minHeight: 0,
+  display: 'flex',
+  flexDirection: 'column',
+})
 
 /**
- * 판 여섯. 두 줄 세 칸으로 **본문을 꽉 채운다**.
+ * 판 여섯. 두 열 세 줄이고 위는 그림이 원반 위로 넘치는 만큼(25) 비운다.
  *
- * `1fr` 세 줄이라 창이 커지면 판이 커진다 — 여기서만은 그게 맞다. 원작도
- * 판이 화면 전체를 나눠 갖지, 위쪽에 몰려 있지 않다
+ * 열 아래에 오른쪽 줄이 내려간 만큼(`STAGGER`)을 비워서 오른쪽 셋째 판이 본문 밖으로 안 나간다. 판은 고정 높이
+ * 150이고 줄이 그보다 낮으면 가운데에 걸쳐 앉는다 — 원반과 그림은 판 안 좌표라 흔들리지 않는다
  */
 export const grid = style({
+  flex: '1 1 auto',
   minHeight: 0,
   display: 'grid',
   gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
   gridTemplateRows: 'repeat(3, minmax(0, 1fr))',
-  gap: GAP.small,
+  columnGap: GAP.loose + GAP.tight,
+  rowGap: GAP.small,
+  padding: `${GAP.loose + 2}px ${GAP.wide}px ${STAGGER}px`,
+  boxSizing: 'border-box',
 })
 
-/** 오른쪽 줄이 내려간 만큼. 원작이 한 타일(판 높이의 1/6)이다 */
-const STAGGER = 22
-
 /**
- * 판 하나.
- *
- * 면과 테두리가 원작 팔레트에서 온다 — 판이 색을 갖고 있어야 여섯이 판으로
- * 읽힌다. 얇은 선 하나로 두면 큰 빈 상자 여섯이 된다
+ * 판 하나. 열 안에서 가운데에 앉고, 오른쪽 열은 `top`으로 내려 세운다 (레이아웃을 안 건드려 이웃 칸이 안 밀린다)
  */
-export const card = style({
+export const plate = style({
   position: 'relative',
-  display: 'flex',
-  alignItems: 'center',
-  gap: GAP.base,
-  minHeight: 0,
-  padding: `0 ${GAP.base}px`,
-  borderRadius: RADIUS.cell,
-  background: `linear-gradient(180deg, ${vars.window.faceTop} 0%, ${vars.panel.face} 100%)`,
-  boxShadow: `inset 0 0 0 1px ${vars.panel.edge}`,
+  alignSelf: 'center',
+  height: PLATE.height,
+  minWidth: 0,
+  cursor: 'pointer',
 })
 
-/** 오른쪽 줄. 원작처럼 한 칸 내려 세운다 */
-export const cardRight = style({ marginTop: STAGGER })
+export const plateRight = style({ top: STAGGER })
 
-/** 선두는 왼쪽 모서리를 크게 깎는다 — 원작 판도 첫 칸만 그 모양이다 */
-export const cardLead = style({
-  borderTopLeftRadius: RADIUS.window + 6,
-  borderBottomLeftRadius: RADIUS.window + 6,
+/**
+ * 띠 — 판이 아니라 이름이 얹히는 띠. 원반 가운데에서 시작해 오른쪽으로 옅어진다.
+ * 옅어짐은 토큰만 섞는다 (`color-mix`)
+ */
+export const ribbon = style({
+  position: 'absolute',
+  left: 70,
+  right: 0,
+  top: PLATE.ribbonTop,
+  height: PLATE.ribbonHeight,
+  borderRadius: `0 ${String(RADIUS.window)}px ${String(RADIUS.window)}px 0`,
+  background: `linear-gradient(90deg,
+    color-mix(in srgb, ${vars.panel.face} 62%, transparent) 0%,
+    color-mix(in srgb, ${vars.panel.face} 22%, transparent) 100%)`,
+  borderBottom: `${String(EDGE.bar)}px solid color-mix(in srgb, ${vars.panel.edge} 55%, transparent)`,
+  transition: `background ${TIME.slide}, box-shadow ${TIME.slide}`,
+  '@media': { '(prefers-reduced-motion: reduce)': { transition: 'none' } },
 })
 
-export const cardOn = style({
-  ...PICKED,
-  background: `linear-gradient(180deg, ${vars.window.faceTop} 0%, ${vars.panel.face} 100%)`,
+/** 원반 — 판 색이 여기 실린다. 상태(기절)가 색이다 */
+export const disc = style({
+  position: 'absolute',
+  left: 8,
+  top: 9,
+  width: PLATE.disc,
+  height: PLATE.disc,
+  boxSizing: 'border-box',
+  borderRadius: RADIUS.round,
+  background: `radial-gradient(circle at 50% 32%, ${vars.window.faceTop} 0%, ${vars.panel.face} 72%)`,
+  border: `${String(EDGE.window)}px solid ${vars.panel.edge}`,
+  transition: `border-color ${TIME.slide}`,
+  selectors: {
+    // 발밑 — 그림자가 아니라 원반 위에 깐 타원이다
+    '&::after': {
+      content: '""',
+      position: 'absolute',
+      left: 22,
+      right: 22,
+      bottom: 16,
+      height: 14,
+      borderRadius: RADIUS.round,
+      background: `radial-gradient(ellipse at center,
+        color-mix(in srgb, ${vars.panel.edge} 45%, transparent) 0%, transparent 70%)`,
+    },
+  },
+})
+
+/** 선두 — 원반 고리가 두 겹이다. 원작 첫 판의 모양을 옮긴 것이다 */
+export const discLead = style({
+  boxShadow: `inset 0 0 0 ${String(EDGE.window)}px ${vars.window.faceTop}, inset 0 0 0 ${String(EDGE.window + 1)}px ${vars.panel.edge}`,
 })
 
 /**
- * 빈 자리.
- *
- * 원작은 여섯 칸을 늘 그린다. 안 채워진 칸은 얇은 점선 자리로 남아서
- * 「여섯 중 몇」이 화면에 그대로 보인다
+ * 그림. 원작 배틀 그림(80×80)을 **정수 2배**(160)로 그린다 — 1.2배였을 때 도트 폭이 1과 2로 섞였다.
+ * 원반 위로 25px 넘친다 (`PLATE.sprite`는 원본의 정확히 두 배라 `image-rendering: pixelated`가 고르게 나온다)
  */
-export const cardEmpty = style([card, {
-  background: 'none',
-  boxShadow: 'none',
-  border: `1px dashed ${vars.window.rule}`,
-}])
-
-/**
- * 쓰러진 판.
- *
- * 원작도 **색으로 말한다** — 기절한 칸만 팔레트가 주황으로 바뀐다
- * (`main.c:1426`의 `palette += 2`). 우리도 흐리게 죽이는 대신 그 색을 쓴다.
- * 그림만 회색으로 빼서 「이 마리가 못 싸운다」가 두 번 보이게 한다
- */
-export const cardFainted = style({
-  background: `linear-gradient(180deg, ${vars.window.faceTop} 0%, ${vars.panel.faintedFace} 100%)`,
-  boxShadow: `inset 0 0 0 1px ${vars.panel.faintedEdge}`,
-})
-
-/**
- * 그림 자리.
- *
- * 원작 배틀 그림(80×80)을 그대로 쓴다 — 파티용 아이콘을 따로 안 뽑았고,
- * 지어내는 것보다 있는 그림이 낫다. 못 받으면 빈 칸으로 남는다
- */
-export const portrait = style({
-  width: 96,
-  height: 96,
-  maxHeight: '86%',
-  flex: '0 0 auto',
+export const sprite = style({
+  position: 'absolute',
+  left: -10,
+  top: -25,
+  width: PLATE.sprite,
+  height: PLATE.sprite,
   imageRendering: 'pixelated',
-  objectFit: 'contain',
+  pointerEvents: 'none',
 })
 
-/** 쓰러진 마리의 그림만 회색으로. 판 색은 `cardFainted`가 따로 말한다 */
-export const portraitDown = style([portrait, { filter: 'grayscale(0.85)', opacity: 0.6 }])
+/** 잡은 볼 — 도구 아이콘 아틀라스의 그 볼 칸 (`mon.ball`). 원반 왼쪽 아래다 */
+export const ball = style({
+  position: 'absolute',
+  left: 6,
+  top: 104,
+  imageRendering: 'pixelated',
+  backgroundRepeat: 'no-repeat',
+})
 
-export const body = style({
+/** 글 칸. 세 줄을 띠 안에 세로 가운데로 세운다 */
+export const text = style({
+  position: 'absolute',
+  left: PLATE.textLeft,
+  right: GAP.base + 2,
+  top: PLATE.ribbonTop + 4,
+  height: PLATE.ribbonHeight - 8,
   display: 'flex',
   flexDirection: 'column',
-  gap: GAP.tight,
+  justifyContent: 'center',
+  gap: 7,
   minWidth: 0,
-  flex: 1,
 })
 
 export const nameRow = style({
@@ -126,7 +163,7 @@ export const nameRow = style({
 })
 
 export const name = style({
-  fontSize: TEXT.base,
+  fontSize: 19,
   fontWeight: 700,
   color: vars.ink.strong,
   minWidth: 0,
@@ -135,20 +172,17 @@ export const name = style({
   whiteSpace: 'nowrap',
 })
 
-export const male = style({ color: vars.state.male, fontWeight: 700 })
-export const female = style({ color: vars.state.female, fontWeight: 700 })
-
 export const level = style({
   marginLeft: 'auto',
   flex: '0 0 auto',
-  fontSize: TEXT.small,
-  // 숫자도 UI 글꼴이다 — 고정폭 글꼴로 따로 그리면 「Lv.」과 숫자가 한 낱말 안에서 갈린다. 폭은 `tnum`이 맞춘다
+  fontSize: TEXT.base - 1,
+  // 숫자도 UI 글꼴이다 — 폭은 `tnum`이 맞춘다 (mono 금지)
   fontVariantNumeric: 'tabular-nums',
   color: vars.ink.dim,
 })
 
-/** 상태 이상. 색이 무엇에 걸렸는지를 나른다 — 배틀 화면과 **같은 것**이다 */
-export const status = style([STATUS_TAG, { flex: '0 0 auto' }])
+/** 상태 딱지 옆 간격만 — 딱지 모양은 `StatusTag`가 갖는다 */
+export const tagSlot = style({ alignSelf: 'center', display: 'inline-flex' })
 
 export const barRow = style({
   display: 'flex',
@@ -165,85 +199,130 @@ export const hpTag = style({
   color: vars.ink.dim,
 })
 
-/** 막대의 홈. 짙은 테두리 안에 흰 바탕 — 원작 구조다 (DESIGN.md §1.3) */
-export const hpTrack = style({
-  position: 'relative',
-  display: 'block',
+/** 막대. 홈과 채움은 `HpBar`가 그리고 여기는 폭만 준다 */
+export const barSlot = style({
   flex: 1,
-  height: 9,
-  ...BAR_TRACK,
+  minWidth: 0,
+  display: 'flex',
+  selectors: { '& > *': { flex: 1 } },
 })
 
-/**
- * ⚠️ `display: block`이 **꼭 있어야 한다.**
- *
- * `<span>`은 인라인이라 `width`도 `height`도 안 먹는다. 그래서 색을 제대로
- * 골라 넣고도 화면에는 게이지가 통째로 검게 떴다 — 홈이 보이고 채움이 없었다.
- * 스타일만 보면 멀쩡해서 눈으로는 원인이 안 보이는 자리다
- *
- * 결 넷은 원작 그대로다: 본색 1줄 · 밝은 쪽 2줄 · 본색 1줄
- */
-export const hpFill = style({
-  ...BAR_FILL,
-  display: 'block',
-  transition: 'width 220ms linear',
+/** 갈래 창의 비전 · 필드 기술 줄 — 롬 `{COLOR 1}`이다 (`emphasis.one`) */
+export const fieldMove = style({ color: vars.emphasis.one })
+
+export const lowerRow = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: GAP.tight,
+  minHeight: 28,
 })
 
-export const hpText = style({
-  flex: '0 0 auto',
-  minWidth: 58,
-  textAlign: 'right',
-  fontSize: TEXT.tiny,
-  fontVariantNumeric: 'tabular-nums',
+/** 지닌 도구 — 아이콘 32 + 이름 */
+export const held = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 2,
+  marginLeft: -GAP.tight,
+  minWidth: 0,
+  fontSize: 13,
   color: vars.ink.dim,
+  whiteSpace: 'nowrap',
 })
 
-/** 자리를 바꾸려고 집어 든 카드 */
-export const cardHeld = style({
-  outline: `${EDGE.bar}px dashed ${vars.pick.edge}`,
+export const heldIcon = style({ flex: '0 0 auto', imageRendering: 'pixelated', backgroundRepeat: 'no-repeat' })
+
+export const heldName = style({ overflow: 'hidden', textOverflow: 'ellipsis' })
+
+export const hpNumbers = style({
+  marginLeft: 'auto',
+  flex: '0 0 auto',
+  fontSize: TEXT.base - 1,
+  fontVariantNumeric: 'tabular-nums',
+  color: vars.ink.normal,
+})
+export const hpMax = style({ color: vars.ink.faint, fontSize: 13 })
+
+/** 기술머신 · 진화의돌 모드의 한 줄 — HP 막대 자리를 대신한다 (롬 175~179) */
+export const verdict = style({
+  fontFamily: vars.font.pixel,
+  fontSize: TEXT.base,
+  color: vars.ink.faint,
+  minHeight: 14,
+})
+export const verdictGood = style({ color: vars.state.good, fontWeight: 700 })
+
+/** 못 하는 판 — 그림과 글을 흐린다 (원반은 그대로다) */
+export const unable = style({ opacity: 0.45 })
+
+/** 고른 판 — 띠 전체가 금 면이다. 원반 고리와 이름도 금빛이다 */
+export const ribbonOn = style({
+  ...PICKED,
+  left: 64,
+  borderRadius: RADIUS.window,
+  borderBottomColor: 'transparent',
+  background: `linear-gradient(90deg, ${vars.pick.face}, color-mix(in srgb, ${vars.pick.face} 40%, transparent))`,
+})
+export const discOn = style({ borderColor: vars.pick.edge })
+export const nameOn = style({ color: vars.pick.text })
+
+/** 자리를 바꾸려고 집어 든 판 — 띠에 금 점선 바깥선 */
+export const ribbonHeld = style({
+  outline: `${String(EDGE.bar)}px dashed ${vars.pick.edge}`,
   outlineOffset: -2,
 })
 
-// 갈래 메뉴(`choices` · `choiceAsk` · `choice` · `choiceOn`)는 `menuChrome`으로 올라갔다 (SYSTEM §2.1).
-// 파티 · 메일박스 · 상점의 import가 안 바뀌게 여기서 다시 내보내기만 한다
-export { choice, choiceAsk, choiceOn, choices } from './menuChrome.css'
-
 /**
- * 레벨업 능력치 창 (`PartyMenu_DrawLevelUpStatIncreases`) — 원작은 왼쪽 위 구석
- * (1,1)에 14×12칸으로 띄운다. 이름은 왼쪽, 값은 오른쪽 끝에 맞춘다.
- *
- * 폭은 **판 한 열을 넘지 않는다** — 넘으면 옆 열의 대상 판을 덮는다
- * (`levelPanelRight`는 대상이 왼쪽 열일 때)
+ * 기절한 판. 원작도 **색으로 말한다** — 기절한 칸만 팔레트가 주황으로 바뀐다 (`main.c:1426`의 `palette += 2`).
+ * 그림만 회색으로 빼서 「이 마리가 못 싸운다」가 두 번 보이게 한다
  */
-export const levelPanel = style({
-  ...WINDOW_SMALL,
+export const ribbonFainted = style({
+  background: `linear-gradient(90deg,
+    color-mix(in srgb, ${vars.panel.faintedFace} 55%, transparent),
+    color-mix(in srgb, ${vars.panel.faintedFace} 14%, transparent))`,
+  borderBottomColor: `color-mix(in srgb, ${vars.panel.faintedEdge} 50%, transparent)`,
+})
+export const discFainted = style({
+  background: `radial-gradient(circle at 50% 32%, ${vars.window.faceTop} 0%, ${vars.panel.faintedFace} 72%)`,
+  borderColor: vars.panel.faintedEdge,
+})
+export const spriteFainted = style({ filter: 'grayscale(0.85)', opacity: 0.6 })
+
+/** 빈 자리 — 상자가 아니라 점선 원반 하나. 「여섯 중 몇」이 상자 없이도 보인다 */
+export const ghost = style({
   position: 'absolute',
-  left: GAP.base,
-  top: GAP.base,
-  zIndex: 2,
-  width: `calc(50% - ${String(GAP.base * 2)}px)`,
-  maxWidth: 320,
+  left: 8,
+  top: 9,
+  width: PLATE.disc,
+  height: PLATE.disc,
   boxSizing: 'border-box',
-  padding: `${GAP.small}px ${GAP.base}px`,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 2,
+  borderRadius: RADIUS.round,
+  border: `${String(EDGE.bar)}px dashed ${vars.window.rule}`,
 })
 
-export const levelPanelRight = style([levelPanel, {
-  left: 'auto',
-  right: GAP.base,
-}])
-
-export const levelRow = style({
-  display: 'flex',
-  justifyContent: 'space-between',
-  gap: GAP.base,
-  fontSize: TEXT.base,
-  lineHeight: 1.5,
+/** 아래 글 띠의 「취소」 단추 (453:1) — 마우스용이다. 키 커서 자리는 아니다 */
+export const cancel = style({
+  appearance: 'none',
+  font: 'inherit',
+  fontFamily: vars.font.ui,
+  fontSize: TEXT.base - 1,
+  fontWeight: 700,
+  color: vars.ink.normal,
+  height: 34,
+  padding: `0 ${GAP.wide}px`,
+  borderRadius: RADIUS.cell,
+  border: `${String(EDGE.window)}px solid ${vars.window.edge}`,
+  boxShadow: `inset 0 0 0 1px ${vars.window.edgeDim}`,
+  background: `linear-gradient(180deg, ${vars.window.faceTop}, ${vars.window.faceBottom})`,
+  cursor: 'pointer',
 })
 
-export const levelValue = style({
-  fontVariantNumeric: 'tabular-nums',
-  fontWeight: 600,
+/** 글 띠 왼쪽의 도구 아이콘과 이름 (기술머신 · 도구 모드) */
+export const messageItem = style({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: GAP.tight,
+  fontFamily: vars.font.ui,
+  fontSize: TEXT.small - 1,
+  color: vars.ink.dim,
+  whiteSpace: 'nowrap',
 })

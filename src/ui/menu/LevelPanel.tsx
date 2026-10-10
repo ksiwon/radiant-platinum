@@ -18,7 +18,8 @@ import { useEffect, useState } from 'react'
 import { fillMenuText, loadUiText } from '../../data/uiText'
 import { useGameLocale } from '../../state/optionsStore'
 import type { Stats } from '../../data/schema'
-import * as own from './partyScreen.css'
+import type { CSSProperties } from 'react'
+import * as own from './levelPanel.css'
 
 /** 파티 뱅크(453)의 자리 — 185~190이 능력치 이름, 191이 「+n」, 192가 새 값이다 */
 const TEXT = { statNames: 185, statGain: 191, statValue: 192 } as const
@@ -40,6 +41,8 @@ interface LevelPanelProps {
   text?: readonly string[]
   /** 창 자리. 안 주면 왼쪽 위다 (원작 파티 화면의 (1,1)) */
   className?: string
+  /** 자리를 숫자로 줄 때 — 파티 화면이 고른 판의 열 안에 앉힌다 */
+  style?: CSSProperties
 }
 
 /**
@@ -59,7 +62,7 @@ export function levelPanelRows(
   }))
 }
 
-export function LevelPanel({ before, after, show, text, className }: LevelPanelProps) {
+export function LevelPanel({ before, after, show, text, className, style }: LevelPanelProps) {
   const locale = useGameLocale()
   const [loaded, setLoaded] = useState<readonly string[]>([])
   useEffect(() => {
@@ -72,7 +75,7 @@ export function LevelPanel({ before, after, show, text, className }: LevelPanelP
   }, [text, locale])
 
   return (
-    <div className={className ?? own.levelPanel} data-level-panel={show}>
+    <div className={className ?? own.levelPanel} style={style} data-level-panel={show}>
       {levelPanelRows(before, after, show, text ?? loaded).map((row) => (
         <div key={row.key} className={own.levelRow}>
           <span>{row.label}</span>
