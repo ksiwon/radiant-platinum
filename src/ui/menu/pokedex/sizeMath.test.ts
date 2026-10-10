@@ -9,8 +9,8 @@ import { TAG_W } from '../pokedexScreen.css'
 import type { DexHeightWeight } from '../../../data/schema'
 import { pngBox as measure } from './pngAlpha.testkit'
 import {
-  ANCHOR, BOX, GROUND, K, TOP, TRAINER_FEET, TRAINER_WEIGHT, alphaBox, comparisonFor, heightLayout, seesawDegrees,
-  silhouetteCenterX, tiltStep,
+  ANCHOR, BAND, BOX, GROUND, K, STAGE_W, TAG_GAP, TAG_H, TOP, TRAINER_FEET, TRAINER_WEIGHT, alphaBox, comparisonFor, heightLayout, seesawDegrees,
+  silhouetteCenterX, tiltStep, foldTagX,
 } from './sizeMath'
 
 const DATA = resolve(__dirname, '../../../../public/data')
@@ -151,10 +151,19 @@ describe('시소 (`Unk_ov21_021E9DB0`)', () => {
   })
 })
 
-describe.runIf(table !== null && existsSync(resolve(DATA, 'pokemon/1_front.png')))('실제 그림 493장', () => {
-  /** 이름표가 땅선 아래로 내려가는 양 (`DexSize`의 `TAG_GAP`과 같아야 한다) */
-  const TAG_GAP = 16
+describe('이름표 자리', () => {
+  it('이름표 아래가 풀밭 띠 안이다', () => {
+    expect(TAG_GAP + TAG_H).toBeLessThanOrEqual(BAND)
+  })
 
+  it('접기는 무대 안에 가두고 폭의 절반을 남긴다', () => {
+    expect(foldTagX(-50, TAG_W)).toBe(TAG_W / 2)
+    expect(foldTagX(STAGE_W + 50, TAG_W)).toBe(STAGE_W - TAG_W / 2)
+    expect(foldTagX(200, TAG_W)).toBe(200)
+  })
+})
+
+describe.runIf(table !== null && existsSync(resolve(DATA, 'pokemon/1_front.png')))('실제 그림 493장', () => {
   it('주인공 그림의 발 줄이 `TRAINER_FEET`이다', () => {
     for (const id of ['0', '1']) {
       const box = pngBox(resolve(DATA, `trainers/${id}.png`))
@@ -194,6 +203,8 @@ describe.runIf(table !== null && existsSync(resolve(DATA, 'pokemon/1_front.png')
         const mx = silhouetteCenterX(l.mon, pngBox(file))
         const tx = silhouetteCenterX(l.trainer, pngBox(resolve(DATA, `trainers/${tid}.png`)))
         expect(tx - mx, `종 ${String(id)} ${g}`).toBeGreaterThanOrEqual(TAG_W)
+        // 무대 안으로 접은 뒤에도 안 겹친다 — 접으면 가운데끼리 가까워질 수 있다 (화면이 그리는 자리)
+        expect(foldTagX(tx, TAG_W) - foldTagX(mx, TAG_W), `접은 뒤 종 ${String(id)} ${g}`).toBeGreaterThanOrEqual(TAG_W)
       }
     }
   }, 60_000)

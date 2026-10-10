@@ -38,6 +38,20 @@ export const GROUND = 127
  */
 export const TRAINER_FEET = 79
 
+/** 키 비교 무대의 폭 — 원작 위 화면 256 DS를 정수 2배로 */
+export const STAGE_W = 256 * K
+/** 풀밭 띠 높이 (px) — 땅선 아래로 이 만큼이 풀밭이다 */
+export const BAND = 72
+/** 땅선 아래로 이름표를 내리는 양 (px) — 가장 깊은 발(3 DS × K)보다 크다 */
+export const TAG_GAP = 16
+/** 이름표 높이 (px) — 이름 한 줄(16) + 키 한 줄(20)에 줄 높이를 얹은 값. 스타일이 이 높이로 고정한다 */
+export const TAG_H = 48
+
+/** 이름표 가운데를 무대 안으로 접는다 — 이름표 폭의 절반이 무대 밖으로 안 나가게 */
+export function foldTagX(x: number, tagW: number): number {
+  return Math.max(tagW / 2, Math.min(STAGE_W - tagW / 2, x))
+}
+
 export type Gender = 'male' | 'female'
 
 /** 한 종의 비교 값 */
