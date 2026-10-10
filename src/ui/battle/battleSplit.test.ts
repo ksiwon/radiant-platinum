@@ -28,8 +28,9 @@ describe('클래스 이름이 그대로다', () => {
   })
 
   it('명령 구역의 이름은 command.css로 나갔고 HUD 쪽에는 안 남았다', () => {
-    const moved = ['button', 'buttonOn', 'menu', 'side', 'pp', 'ppNow', 'ppMax', 'ppLow', 'ppOut', 'askWho',
-      'waiting', 'backButton', 'caret', 'face', 'dot', 'label', 'labelCol', 'subLine', 'sep', 'matchLine',
+    // 판 얼굴이 둘(`buttonCmd` · `buttonType`)이 되고 물음 줄(`askWho` · `waiting`)은 글창으로 올라갔다 (P5)
+    const moved = ['buttonCmd', 'buttonType', 'buttonOn', 'menu', 'side', 'pp', 'ppNow', 'ppMax', 'ppLow', 'ppOut',
+      'backStrip', 'caret', 'face', 'wedge', 'label', 'labelCol', 'subLine', 'sep', 'matchLine',
       'matchTone', 'TINT', 'itemIcon', 'learnRoot']
     for (const name of moved) {
       expect(cmdCss, name).toHaveProperty(name)
@@ -38,7 +39,8 @@ describe('클래스 이름이 그대로다', () => {
   })
 
   it('HUD 쪽 이름은 battleScreen.css에 그대로 있다', () => {
-    const stayed = ['screen', 'fallback', 'field', 'foeSlot', 'mineSlot', 'foeTrainer', 'gaugeRow', 'gaugeBall',
+    // 공 줄은 판 위의 작은 창(`tray`)이 되었고 무대 위 맨 글자(`foeTrainer` · `gaugeRow`)는 없어졌다 (P11)
+    const stayed = ['screen', 'fallback', 'field', 'foeSlot', 'mineSlot', 'tray', 'gaugeBall',
       'card', 'cardHead', 'monName', 'barRow', 'barTrack', 'expRow', 'expFill', 'hpNow', 'caughtMark', 'statusTag',
       'console_', 'log', 'nextArrow', 'wipe', 'wipeHold', 'openVeil', 'loading', 'loadingBack', 'closeVeil',
       'closeVeilOn', 'levelPanel', 'keyHint']

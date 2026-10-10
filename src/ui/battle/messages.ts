@@ -505,9 +505,12 @@ const FIELD_NEEDS_WHO = new Set<number>([
 
 /**
  * 날씨가 때리는 줄의 첫 칸은 **날씨 이름**인데, 롬은 그것을 기술 이름표에서
- * 읽는다. 모래바람 201 · 싸라기눈 258이 그 기술 번호다
+ * 읽는다. 모래바람 201 · 싸라기눈 258이 그 기술 번호다.
+ *
+ * 비바라기 240 · 쾌청 241은 때리지 않아 이 줄에는 안 쓰이고, 체력판 위의 날씨 띠(`FieldStrip`)가 같은 표에서
+ * 이름을 읽는다
  */
-const WEATHER_MOVE: Record<string, number> = { Sandstorm: 201, Hail: 258 }
+export const WEATHER_MOVE: Record<string, number> = { Sandstorm: 201, Hail: 258, RainDance: 240, SunnyDay: 241 }
 
 /** 매 턴 깎는 기술 중 **저만의 줄**이 있는 것. 나머지는 두루 쓰는 줄로 간다 */
 const DAMAGE_BY_MOVE: Record<number, number> = {
