@@ -14,13 +14,13 @@
 //
 // 오른쪽 기술 목록은 남는다 — 원작에는 없지만 커서를 올리면 설명이 뜨는 자리라
 // 갈래 메뉴와 겹치지 않는다.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import {
-  loadItemNames, loadMoveNames, loadSpecies, loadSpeciesNames, type SpeciesTable,
+  loadItemIcons, loadItemNames, loadMoveNames, loadSpecies, loadSpeciesNames, type SpeciesTable,
 } from '../../data/gameData'
+import type { ItemIcons } from '../../data/schema'
 import { fillMenuText, loadUiText, PARTY_GIVE, partyHeader } from '../../data/uiText'
 import { genderOf, maxHp } from '../../engine/pokemon/instance'
-import { hpColor } from '../../engine/battle/healthbar'
 import { FIELD_MOVES, MENU_MOVES, type FieldMoveId, type MenuMoveId } from '../../engine/script/fieldMoves'
 import { beginChatter, fieldMoveFromMenu, menuMoveVerdictNow } from '../../engine/script/field'
 import { HP_TRANSFER_SE, hpTransferAmount, hpTransferGiven, hpTransferTarget } from '../../engine/pokemon/hpTransfer'
@@ -33,7 +33,7 @@ import { EASY_CHAT_WORD_NONE } from '../../engine/world/easyChat'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import type { PokemonInstance } from '../../engine/pokemon/instance'
-import { clampCursor, useMenuKeys } from './useMenuKeys'
+import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
 import { loadItems, loadMoves, type ItemTable, type MoveTable } from '../../data/gameData'
 import { planItemUse } from '../../engine/battle/meta/bagItem'
 import {
@@ -49,7 +49,7 @@ import { useSessionStore } from '../../state/sessionStore'
 import { worldState } from '../../state/worldState'
 import type { Stats } from '../../data/schema'
 import {
-  canShayminSky, changeForm, heldItemKeepsGiratinaForm, ITEM_GRACIDEA, SHAYMIN_SKY, spriteKey,
+  canShayminSky, changeForm, heldItemKeepsGiratinaForm, ITEM_GRACIDEA, SHAYMIN_SKY,
 } from '../../engine/pokemon/form'
 import { formTables, withHeldItem } from './formChange'
 import { giveVerdict } from './BagScreen'
@@ -58,18 +58,16 @@ import { music } from '../../engine/audio/music'
 import { MenuScreen } from './MenuScreen'
 import { PARTY_SLOT_NONE, partyChoice, partyStartCursor, setPartyReturnSlot } from './partyChoice'
 import { LevelPanel, type LevelPanelShow } from './LevelPanel'
-import * as css from './menuChrome.css'
+import { EmptyPlate, MonPlate } from './MonPlate'
+import { askLine, modeLine, partyMode, stoneVerdict, teachVerdict, verdictLine, type PlateVerdict } from './partyText'
+import { choiceHeight, placeInColumn } from './partyPlace'
 import * as own from './partyScreen.css'
-import { HP_VARS, STATUS_VARS } from '../theme/window.css'
-import { useAssetImage } from '../../data/providers/useAssetUrl'
-import { pointerMoved } from '../pointerMoved'
-
-/** 상태 이상 배지. 이름은 `TEXT_BANK_MENU_ENTRIES` 0~4와 같은 낱말이다 */
-const STATUS_LABEL: Record<string, string> = {
-  psn: '독', tox: '맹독', brn: '화상', frz: '얼음', par: '마비', slp: '잠듦', ko: '기절',
-}
-
-
+import { PANEL_WIDTH } from './levelPanel.css'
+import { itemIconAt } from './itemIcon'
+import type { Box } from '../common/choicePlace'
+import { ChoiceMenu } from '../common/ChoiceMenu'
+import { MessageDock } from '../common/MessageDock'
+import { EDGE, GAP, LINE } from '../theme/scale'
 
 
 
@@ -126,6 +124,8 @@ const P = {
   levelUp: 193, levelLearned: 194,
   switch_: 145, summary: 146, item: 147, mail: 148, mailRead: 149, mailTake: 150,
   cancel: 152, give: 160, take: 161,
+  /** 아래 글 띠의 「취소」 단추 (`POS_CANCEL`) */
+  cancelButton: 1,
   /** 「맡긴다」 — 키우미집 갈래의 첫 줄 (`PartyMenu_Text_MailStore` · 갈래 번호 8) */
   store: 151,
   /**
@@ -173,6 +173,8 @@ function pagesOf(text: string): string[] {
 interface Choice {
   label: string
   run: () => void
+  /** 비전 · 필드 기술 줄 — 롬이 `{COLOR 1}`로 칠한다 (`emphasis.one`) */
+  field?: boolean
 }
 
 /** 빈칸이 없는 글. 줄 바꿈만 남기고 제어 부호를 뗀다 */
@@ -248,6 +250,8 @@ export function PartyScreen() {
   const choosingMon = useMenuStore((s) => s.choosingMon)
   const chooseDaycare = useMenuStore((s) => s.chooseDaycare)
   const [tables, setTables] = useState<{ items: ItemTable; moves: MoveTable } | null>(null)
+  /** 도구 아이콘 시트 — 잡은 볼과 지닌 도구가 이 한 장에서 나온다. 못 받으면 아이콘 자리만 빈다 */
+  const [icons, setIcons] = useState<ItemIcons | undefined>(undefined)
 
   // ⚠️ 도구를 들고 왔을 때만 받으면 **「뺏는다」가 주머니를 모른다.** 표가
   // 없으면 돌려받은 도구가 0번 주머니로 들어가서 조용히 엉뚱한 칸에 쌓인다
@@ -256,6 +260,7 @@ export function PartyScreen() {
     void Promise.all([loadItems(), loadMoves()]).then(([items, moves]) => {
       if (alive) setTables({ items, moves })
     }).catch(() => { /* 아무것도 못 쓴다 */ })
+    void loadItemIcons().then((sheet) => { if (alive) setIcons(sheet) }).catch(() => { /* 아이콘 자리만 빈다 */ })
     return () => { alive = false }
   }, [])
 
@@ -408,6 +413,7 @@ export function PartyScreen() {
         const move = slot.move
         out.push({
           label: moveNames[move] ?? '',
+          field: true,
           run: () => { setMenu(null); runFieldMove(move) },
         })
       }
@@ -930,10 +936,33 @@ export function PartyScreen() {
    */
   const stepMenu = (d: number) => (): boolean => {
     const now = Math.min(menuAt, choices.length - 1)
-    const next = clampCursor(now, d, choices.length)
+    // 갈래가 넷 이상이면 끝에서 돈다 (`loopAround` · `windows.c:803`). 예/아니오는 안 돈다
+    const next = choices.length >= 4 ? wrapCursor(now, d, choices.length) : clampCursor(now, d, choices.length)
     if (next === now) return false
     setMenuAt(next)
     return true
+  }
+  /**
+   * 취소 — X · Esc, 그리고 글 띠의 「취소」 단추가 같은 길을 탄다.
+   *
+   * ⚠️ 단추는 **키 커서 자리가 아니다.** 원작은 → 끝에서 이 단추로 가지만, 하네스가 → 끝에서 멈추기를 기대한다
+   */
+  const cancelKey = (): void => {
+    if (turnPage()) return
+    setNotice(null)
+    // `PartyMenu_ResetCursor` — 커서는 그 자리에 두고 고르기만 그만둔다
+    if (transfer !== null) { if (transfer.phase === 'pick') setTransfer(null); return }
+    // 기술머신 물음에서 B는 그 물음의 **「아니오」**와 같다 (원작의 yes/no 창)
+    if (menu === 'learnAsk' || menu === 'learnForget') { setMenu('learnStop'); setMenuAt(0); return }
+    if (menu === 'learnStop') { stopLearning(); return }
+    if (menu === 'item') { setMenu('root'); setMenuAt(0); return }
+    // 맞바꿀지 묻는 창의 B는 아니오다 — 가방으로 돌아간다
+    if (menu === 'giveSwap') { setMenu(null); back(); return }
+    if (inMenu) { setMenu(null); return }
+    // 안 고르고 나간다. 원작도 이때 `PARTY_SLOT_NONE`을 준다
+    if (choosingMon) { partyChoice.slot = PARTY_SLOT_NONE; partyChoice.summary = false; closeAll(); return }
+    if (held !== null) { setHeld(null); return }
+    back()
   }
   useMenuKeys({
     // ⚠️ **위아래는 두 칸씩이다.** 판이 두 줄로 서 있어서 한 칸씩 옮기면
@@ -965,83 +994,177 @@ export function PartyScreen() {
       setMenu('root')
       setMenuAt(0)
     },
-    cancel: () => {
-      if (turnPage()) return
-      setNotice(null)
-      // `PartyMenu_ResetCursor` — 커서는 그 자리에 두고 고르기만 그만둔다
-      if (transfer !== null) { if (transfer.phase === 'pick') setTransfer(null); return }
-      // 기술머신 물음에서 B는 그 물음의 **「아니오」**와 같다 (원작의 yes/no 창)
-      if (menu === 'learnAsk' || menu === 'learnForget') { setMenu('learnStop'); setMenuAt(0); return }
-      if (menu === 'learnStop') { stopLearning(); return }
-      if (menu === 'item') { setMenu('root'); setMenuAt(0); return }
-      // 맞바꿀지 묻는 창의 B는 아니오다 — 가방으로 돌아간다
-      if (menu === 'giveSwap') { setMenu(null); back(); return }
-      if (inMenu) { setMenu(null); return }
-      // 안 고르고 나간다. 원작도 이때 `PARTY_SLOT_NONE`을 준다
-      if (choosingMon) { partyChoice.slot = PARTY_SLOT_NONE; partyChoice.summary = false; closeAll(); return }
-      if (held !== null) { setHeld(null); return }
-      back()
-    },
+    cancel: cancelKey,
   })
+
 
   const nameOf = (mon: PokemonInstance): string => mon.nickname ?? names[mon.species] ?? ''
   const alive = party.filter((m) => m.hp > 0).length
 
-  /**
-   * 아래 띠.
-   *
-   * ⚠️ **알림이 여기로 온다.** 「밖에서는 쓸 수 없는 기술이다」 같은 한 줄이
-   * 한때 오른쪽 상세 칸 밑에 붙어 있었는데 그 칸이 없어졌다. 원작도 이런 말은
-   * 화면 아래 글상자에 한 줄로 뜬다
-   */
-  const foot = pages[0] ?? notice ?? (transfer !== null
-    ? plainText(partyText[P.useOnWhich])
-    : inMenu
+  // ── 아래 글 띠 · 바닥 키 안내 ──────────────────────────────────────────
+  //
+  // ⚠️ **알림과 넘길 글이 글 띠로 온다.** 「밖에서는 쓸 수 없는 기술이다」 같은 한 줄도 원작은 화면 아래 글상자에
+  // 뜬다. 글 띠는 DOM에서 **맨 끝**이다 (`MenuScreen`의 `message` · 하네스 `drive.mjs:3559`)
+  const mode = partyMode({
+    held: held !== null,
+    milkPick: transfer !== null,
+    giving: givingItem !== null,
+    using: usingItem?.use ?? null,
+  })
+  const modeText = plainText(partyText[modeLine(mode)])
+  /** 갈래 창이 떠 있을 때의 물음. 갈래 창 안이 아니라 글 띠에 뜬다 (원작 `PartyMenu_PrintShortMessage`) */
+  const menuAsk = (): string => {
+    const who = selected ? nameOf(selected) : ''
+    if (menu === 'item') return plainText(partyText[P.askItem])
+    if (menu === 'giveSwap') {
+      return fillMenuText(partyText[PARTY_GIVE.swapAsk] ?? '', [who, itemNames[selected?.heldItem ?? 0] ?? ''])
+        .replace(/[\r\f]/g, '\n')
+    }
+    if (menu === 'learnForget') return plainText(partyText[P.whichForget])
+    if (menu === 'learnAsk' || menu === 'learnStop') {
+      return fillMenuText(partyText[menu === 'learnAsk' ? P.learnAsk : P.stopAsk] ?? '',
+        [learning === null ? '' : nameOf(party[learning.slot] ?? selected), learning === null ? '' : moveNames[learning.move] ?? ''])
+    }
+    return fillMenuText(partyText[askLine(selected?.isEgg === true)] ?? '', [who])
+  }
+  const dockLines = pages[0] ?? notice ?? (inMenu ? menuAsk() : modeText)
+
+  const footKeys = inMenu
     ? '↑↓ 고르기 · Z 결정 · X 되돌리기'
-    : choosingMon
+    : transfer !== null || choosingMon || givingItem !== null
       ? '↑↓←→ 고르기 · Z 결정 · X 그만둔다'
-      : givingItem !== null
-        ? plainText(partyText[PARTY_GIVE.which])
       : usingItem !== null
-        ? '↑↓←→ 누구에게 · Z 쓴다 · X 그만둔다'
+        ? `↑↓←→ 누구에게 · Z ${usingItem.use === 'tmhm' ? '가르친다' : '쓴다'} · X 그만둔다`
         : held !== null
           ? '↑↓←→ 옮기기 · Z 놓기 · X 되돌리기'
-          : '↑↓←→ 고르기 · Z 메뉴 · X 닫기')
+          : '↑↓←→ 고르기 · Z 메뉴 · X 닫기'
+
+  /** 글 띠 왼쪽 — 가방에서 들고 온 도구의 아이콘과 이름(기술머신이면 기술 이름) */
+  const carried = usingItem?.item ?? givingItem
+  const carriedMove = usingItem?.use === 'tmhm' && tables !== null
+    ? tmMove(tables.items.get(usingItem.item), tables.items.tmMoves)
+    : null
+  const showCarried = carried !== null && pages.length === 0 && !inMenu
+  const carriedName = carried === null ? ''
+    : carriedMove === null ? itemNames[carried] ?? '' : `${itemNames[carried] ?? ''} · ${moveNames[carriedMove] ?? ''}`
+
+  // ── 판마다 붙는 한 줄 (기술머신 · 진화의돌 모드) ───────────────────────
+  const verdictOf = (mon: PokemonInstance): PlateVerdict | null => {
+    if (usingItem === null || !tables || !species || mon.isEgg) return null
+    const info = species.of(mon)
+    if (usingItem.use === 'tmhm') {
+      const item = tables.items.get(usingItem.item)
+      const index = tmIndex(item)
+      const move = tmMove(item, tables.items.tmMoves)
+      if (index === null || move === null) return 'cannotLearn'
+      return teachVerdict(teachMoveCheck(mon.moves, info.tm, index, move).kind)
+    }
+    if (usingItem.use === 'evoStone') {
+      const evo = evolutionTarget(EvoClass.ITEM, mon, info, {
+        item: usingItem.item,
+        holdEffect: mon.heldItem > 0 ? tables.items.get(mon.heldItem).holdEffect : undefined,
+      })
+      return stoneVerdict(evo !== null)
+    }
+    return null
+  }
+
+  // ── 갈래 창 · 레벨업 창의 자리 ─────────────────────────────────────────
+  //
+  // 고른 판이 선 **열 안에** 앉힌다 — 판 옆에 띄우면 이웃 열의 이름과 HP 막대를 덮는다 (`partyPlace`)
+  const stageRef = useRef<HTMLDivElement>(null)
+  const plateEls = useRef<(HTMLDivElement | null)[]>([])
+  const [geom, setGeom] = useState<{ plate: Box; bounds: Box } | null>(null)
+  const floating = inMenu || levelPanel !== null
+  const floatSlot = levelPanel !== null ? levelPanel.slot : at
+  useLayoutEffect(() => {
+    const stage = stageRef.current
+    const node = plateEls.current[floatSlot]
+    if (!floating || !stage || !node) { setGeom(null); return }
+    const s = stage.getBoundingClientRect()
+    const p = node.getBoundingClientRect()
+    setGeom({
+      plate: { left: p.left - s.left, top: p.top - s.top, width: p.width, height: p.height },
+      bounds: { left: 0, top: 0, width: s.width, height: s.height },
+    })
+  }, [floating, floatSlot, choices.length, party.length])
+
+  /** 창 밖 크기 어림 — 레벨업 창은 여섯 줄(줄 높이 24 · 간격 2), 갈래 창은 줄 수 × 32 */
+  const LEVEL_HEIGHT = 6 * 24 + 5 * 2 + 2 * (GAP.small + EDGE.window)
+  const where = (height: number, width: number): CSSProperties => {
+    if (geom === null) return { visibility: 'hidden' }
+    const at2 = placeInColumn(geom.plate, { width, height }, geom.bounds)
+    return { left: at2.left, top: at2.top, width }
+  }
 
   return (
     <MenuScreen
       title="포켓몬"
       note={partyHeader(alive, party.length)}
-      foot={foot}
+      foot={footKeys}
+      message={(
+        <MessageDock
+          lines={dockLines}
+          icon={showCarried && carried !== null
+            ? <i className={own.heldIcon} style={itemIconAt(icons, carried, 1)} aria-hidden />
+            : undefined}
+          trailing={(
+            <>
+              {showCarried && <span className={own.messageItem}>{carriedName}</span>}
+              {/* 마우스용 단추다. 포커스를 안 받게 둔다 — 받으면 Space가 키 결정과 단추 클릭을 같이 건다 */}
+              <button
+                type="button"
+                className={own.cancel}
+                tabIndex={-1}
+                onMouseDown={(e) => { e.preventDefault() }}
+                onClick={cancelKey}
+              >
+                {plainText(partyText[P.cancelButton])}
+              </button>
+            </>
+          )}
+        />
+      )}
     >
-      <div className={css.stageWide}>
+      <div className={own.stage} ref={stageRef}>
         <div className={own.grid}>
-          {party.map((mon, i) => (
-            <Card
-              key={`${String(mon.pid)}/${String(i)}`}
-              mon={mon}
-              name={nameOf(mon)}
-              genderRatio={species?.of(mon).genderRatio ?? 255}
-              full={species ? fullHp(mon, species) : mon.hp}
-              lead={i === 0}
-              right={i % 2 === 1}
-              on={i === at}
-              picked={i === held}
-              onPick={() => {
-                if (held !== null) return // 집은 채로는 마우스가 커서를 안 끈다
-                setCursor(i)
-              }}
-              onGrab={() => {
-                // 스크립트가 고르라고 연 화면에서는 자리를 못 바꾼다 — 집는
-                // 순간 Z가 「놓기」가 되어 고를 길이 사라진다
-                if (choosingMon && chooseDaycare) { setCursor(i); setMenu('daycare'); setMenuAt(0); return }
-                if (choosingMon) { partyChoice.slot = i; partyChoice.summary = false; closeAll(); return }
-                if (givingItem !== null) { if (pages.length === 0 && menu === null) { setCursor(i); giveItem(i) } return }
-                if (held === null) setHeld(i)
-                else { swapParty(held, i); setHeld(null); setCursor(i) }
-              }}
-            />
-          ))}
+          {party.map((mon, i) => {
+            const verdict = verdictOf(mon)
+            return (
+              <MonPlate
+                key={`${String(mon.pid)}/${String(i)}`}
+                mon={mon}
+                name={nameOf(mon)}
+                gender={genderOf(mon.pid, species?.of(mon).genderRatio ?? 255)}
+                full={species ? fullHp(mon, species) : mon.hp}
+                lead={i === 0}
+                right={i % 2 === 1}
+                on={i === at}
+                grabbed={i === held}
+                // 집은 마리와 놓을 자리는 가만히 있다 (`sprites.c:562`)
+                still={held !== null}
+                verdict={verdict}
+                verdictText={verdict === null ? '' : plainText(partyText[verdictLine(verdict)])}
+                icons={icons}
+                itemName={itemNames[mon.heldItem] ?? ''}
+                plateRef={(node) => { plateEls.current[i] = node }}
+                onPick={() => {
+                  // 집은 채로는 마우스가 커서를 안 끈다. 갈래 창이 떠 있을 때도 안 끈다 — 창이 이 판 위에 앉아 있다
+                  if (held !== null || menu !== null) return
+                  setCursor(i)
+                }}
+                onGrab={() => {
+                  // 스크립트가 고르라고 연 화면에서는 자리를 못 바꾼다 — 집는
+                  // 순간 Z가 「놓기」가 되어 고를 길이 사라진다
+                  if (choosingMon && chooseDaycare) { setCursor(i); setMenu('daycare'); setMenuAt(0); return }
+                  if (choosingMon) { partyChoice.slot = i; partyChoice.summary = false; closeAll(); return }
+                  if (givingItem !== null) { if (pages.length === 0 && menu === null) { setCursor(i); giveItem(i) } return }
+                  if (held === null) setHeld(i)
+                  else { swapParty(held, i); setHeld(null); setCursor(i) }
+                }}
+              />
+            )
+          })}
           {/*
             빈 자리도 그린다.
 
@@ -1050,23 +1173,17 @@ export function PartyScreen() {
             맞춘 꼴이고, 무엇보다 「여섯 중 셋」이라는 것이 화면에서 사라진다
           */}
           {Array.from({ length: Math.max(0, 6 - party.length) }, (_, k) => (
-            <div
-              key={`empty/${String(k)}`}
-              className={(party.length + k) % 2 === 1
-                ? `${own.cardEmpty} ${own.cardRight}`
-                : own.cardEmpty}
-              aria-hidden
-            />
+            <EmptyPlate key={`empty/${String(k)}`} right={(party.length + k) % 2 === 1} />
           ))}
         </div>
 
         {/*
           레벨업 능력치 창 (`LevelPanel` — 배틀의 레벨업도 같은 창을 쓴다).
 
-          ⚠️ **대상이 없는 쪽 열에 띄운다.** 원작은 늘 왼쪽 위 (1,1)에 14×12칸
+          ⚠️ **고른 판이 선 열 안에 앉힌다.** 원작은 늘 왼쪽 위 (1,1)에 14×12칸
           (`windows.c` `PartyMenu_DrawLevelUpStatIncreases`)이라 0·2번 판을 덮는데,
           그러면 선두에게 먹일 때 누가 올랐는지가 창 밑으로 사라진다 (기획
-          JOURNEY21_NEXT_DECISIONS §4)
+          JOURNEY21_NEXT_DECISIONS §4). 이웃 열의 글도 덮지 않는다
         */}
         {levelPanel !== null && (
           <LevelPanel
@@ -1074,40 +1191,24 @@ export function PartyScreen() {
             after={levelPanel.after}
             show={levelPanel.show}
             text={partyText}
-            className={levelPanel.slot % 2 === 0 ? own.levelPanelRight : own.levelPanel}
+            style={where(LEVEL_HEIGHT, PANEL_WIDTH)}
           />
         )}
 
-        {/* 갈래 메뉴는 원작처럼 오른쪽 아래 구석에 창 하나로 뜬다 */}
+        {/* 갈래 창. 물음은 글 띠로 가고 여기는 갈래만 남는다. 키는 이 화면이 쥔다 (`enabled={false}`) */}
         {inMenu && (
-          <div className={own.choices}>
-            {/* 원작이 먼저 묻고("○○을 어떻게 할까?") 그 아래에 갈래를 편다 */}
-            <div className={own.choiceAsk}>
-              {menu === 'item'
-                ? plainText(partyText[P.askItem])
-                : menu === 'giveSwap'
-                  ? fillMenuText(partyText[PARTY_GIVE.swapAsk] ?? '',
-                    [selected ? nameOf(selected) : '', itemNames[selected?.heldItem ?? 0] ?? '']).replace(/[\r\f]/g, '\n')
-                : menu === 'learnForget'
-                  ? plainText(partyText[P.whichForget])
-                  : menu === 'learnAsk' || menu === 'learnStop'
-                    ? fillMenuText(partyText[menu === 'learnAsk' ? P.learnAsk : P.stopAsk] ?? '',
-                      [learning === null ? '' : nameOf(party[learning.slot] ?? selected),
-                        learning === null ? '' : moveNames[learning.move] ?? ''])
-                    : fillMenuText(partyText[P.askMon] ?? '', [selected ? nameOf(selected) : ''])}
-            </div>
-            {choices.map((c, i) => (
-              <div
-                key={c.label + String(i)}
-                className={i === Math.min(menuAt, choices.length - 1)
-                  ? own.choiceOn : own.choice}
-                onPointerMove={(e) => { if (pointerMoved(e)) setMenuAt(i) }}
-                onClick={c.run}
-              >
-                {c.label}
-              </div>
-            ))}
-          </div>
+          <ChoiceMenu
+            items={choices.map((c, i) => ({
+              key: c.label + String(i),
+              label: c.field === true ? <span className={own.fieldMove}>{c.label}</span> : c.label,
+            }))}
+            at={Math.min(menuAt, choices.length - 1)}
+            anchor={null}
+            onAt={setMenuAt}
+            onPick={(i) => { choices[i]?.run() }}
+            enabled={false}
+            rootProps={{ style: where(choiceHeight(choices.length, LINE.row, GAP.small, EDGE.window), 220) }}
+          />
         )}
       </div>
     </MenuScreen>
@@ -1117,85 +1218,3 @@ export function PartyScreen() {
 function fullHp(mon: PokemonInstance, species: SpeciesTable): number {
   return maxHp(mon, species.of(mon))
 }
-
-const GENDER_MARK: Record<string, { mark: string; cls: string }> = {
-  male: { mark: '♂', cls: own.male },
-  female: { mark: '♀', cls: own.female },
-}
-
-/**
- * 카드 한 장.
- *
- * 쓰러진 카드는 **회색으로 죽인다** — 여섯 장을 한눈에 훑을 때 회복해야 할
- * 것이 어느 것인지가 글자를 안 읽어도 보여야 한다
- */
-function Card(
-  { mon, name, genderRatio, full, lead, right, on, picked, onPick, onGrab }: {
-    mon: PokemonInstance
-    name: string
-    genderRatio: number
-    full: number
-    lead: boolean
-    /** 오른쪽 줄인가. 원작이 오른쪽을 한 칸 내려 세운다 */
-    right: boolean
-    on: boolean
-    picked: boolean
-    onPick: () => void
-    onGrab: () => void
-  },
-) {
-  // 종별 그림은 짧게 산다 — 파티가 바뀌면 다른 종이 된다. 잡았다 놓는 갈래다
-  const art = useAssetImage(`data/pokemon/${spriteKey(mon.species, mon.form, mon.isEgg)}_front.png`)
-  const fainted = mon.hp <= 0
-  const ratio = full > 0 ? Math.max(0, Math.min(mon.hp, full)) / full : 0
-  const gender = GENDER_MARK[genderOf(mon.pid, genderRatio)]
-  const state = fainted ? 'ko' : mon.status
-  const shell = [
-    own.card,
-    lead ? own.cardLead : '',
-    right ? own.cardRight : '',
-    fainted ? own.cardFainted : '',
-    on ? own.cardOn : '',
-    picked ? own.cardHeld : '',
-  ].filter(Boolean).join(' ')
-
-  return (
-    <div className={shell} onPointerMove={(e) => { if (pointerMoved(e) && !on) onPick() }} onClick={onGrab}>
-      {/* 그림을 못 받아도 카드는 서야 한다. 자리만 비운다 */}
-      {art !== null && (
-        <img
-          className={fainted ? own.portraitDown : own.portrait}
-          src={art}
-          alt=""
-          onError={(e) => { e.currentTarget.style.visibility = 'hidden' }}
-        />
-      )}
-      <span className={own.body}>
-        <span className={own.nameRow}>
-          <span className={own.name}>{name}</span>
-          {gender && <span className={gender.cls}>{gender.mark}</span>}
-          {state !== 'ok' && (
-            <span className={own.status} style={STATUS_VARS[state]}>
-              {STATUS_LABEL[state] ?? state}
-            </span>
-          )}
-          <span className={own.level}>Lv.{mon.level}</span>
-        </span>
-        <span className={own.barRow}>
-          <span className={own.hpTag}>HP</span>
-          <span className={own.hpTrack}>
-            <span
-              className={own.hpFill}
-              style={{
-                width: `${String(ratio * 100)}%`,
-                ...HP_VARS[hpColor(mon.hp, full)],
-              }}
-            />
-          </span>
-          <span className={own.hpText}>{mon.hp}/{full}</span>
-        </span>
-      </span>
-    </div>
-  )
-}
-
