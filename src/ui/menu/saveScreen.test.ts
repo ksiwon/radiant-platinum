@@ -4,10 +4,19 @@
 // ←→만 받아서 필드의 ↑↓ 손버릇이 죽었고, 다 쓴 뒤에도 안내가 「X 그만둔다」를 띄웠다.
 // 못 썼을 때는 롬 줄 대신 지은 문장 아래에 개발 말 원인을 붙였다. 백업 줄에는
 // 저장소 이름·확장자가 붙은 파일 이름이 그대로 찍혔다.
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { SAVE_TEXT } from '../../data/uiText'
+import { fieldScripts } from '../../engine/script/field'
+import { FLAG_HAS_POKEDEX } from '../../engine/script/vars'
+import { dexSet } from '../../engine/pokemon/dex'
+import { useSaveStore } from '../../state/saveStore'
 
-const { backupLine, failedLine, SAVE_HINT, saveKeys, saveMenuKeys } = await import('./SaveScreen')
+const {
+  backupLine, failedLine, SAVE_HINT, saveKeys, saveMenuKeys, savedChime, writingLine,
+} = await import('./SaveScreen')
+const { SaveInfo } = await import('./SaveInfo')
 
 const blocked = { started: false }
 const got = { started: true }
@@ -139,5 +148,72 @@ describe('백업 줄', () => {
   it('막혔으면 리포트는 남았다고 따로 알린다', () => {
     expect(backupLine(blocked)).toContain('막았다')
     expect(backupLine(blocked)).toContain('리포트는 남아 있다')
+  })
+})
+
+describe('쓰는 중 글', () => {
+  const common: string[] = []
+  common[SAVE_TEXT.writing] = '작성하고 있습니다'
+  common[SAVE_TEXT.writingFull] = '리포트에 많은 내용을 기록 중입니다'
+
+  it('이미 리포트가 있는 판은 15번, 처음 쓰는 판은 21번이다', () => {
+    expect(SAVE_TEXT.writing).toBe(15)
+    expect(SAVE_TEXT.writingFull).toBe(21)
+    expect(writingLine(common, true)).toBe('작성하고 있습니다')
+    expect(writingLine(common, false)).toBe('리포트에 많은 내용을 기록 중입니다')
+  })
+
+  it('글이 아직 안 왔으면 비워 둔다', () => {
+    expect(writingLine([], true)).toBe('')
+  })
+})
+
+describe('다 쓴 소리', () => {
+  it('쓰기가 끝나 done으로 들어서는 한 번뿐이다', () => {
+    expect(savedChime('writing', 'done')).toBe(true)
+    expect(savedChime(null, 'done')).toBe(true)
+    expect(savedChime('done', 'done')).toBe(false)
+    expect(savedChime('writing', 'failed')).toBe(false)
+    expect(savedChime('ask', 'writing')).toBe(false)
+  })
+})
+
+describe('요약 장의 dd 수 (하네스가 마지막 dl의 dd를 센다)', () => {
+  // ⚠️ 서버 렌더는 zustand의 **처음 상태**를 읽는다(`getInitialState`) — `setState`가 안 먹어서 그 객체를 직접 건드린다
+  const initial = useSaveStore.getInitialState()
+  /** 마지막 `dl`의 `dd` 수. 이 화면 안에 `dl`이 하나뿐이라는 것도 같이 본다 */
+  function render(): { html: string; dd: number } {
+    const html = renderToStaticMarkup(createElement(SaveInfo))
+    expect(html.match(/<dl[\s>]/g)).toHaveLength(1)
+    return { html, dd: (html.match(/<dd[\s>]/g) ?? []).length }
+  }
+
+  it('도감 전에는 셋이다', () => {
+    fieldScripts.vars.clearFlag(FLAG_HAS_POKEDEX)
+    expect(render().dd).toBe(3)
+  })
+
+  it('도감을 받고 본 것이 있으면 넷이다', () => {
+    fieldScripts.vars.setFlag(FLAG_HAS_POKEDEX)
+    initial.pokedex.seen.set(dexSet(initial.pokedex.seen, 387))
+    try {
+      expect(render().dd).toBe(4)
+    } finally {
+      fieldScripts.vars.clearFlag(FLAG_HAS_POKEDEX)
+      initial.pokedex.seen.fill(0)
+    }
+  })
+
+  it('이름이 장에 뜨고, 배지 · 파티 · 주인공 그림은 dl 밖이다', () => {
+    const was = initial.trainer.name
+    initial.trainer.name = 'TESTER'
+    try {
+      const { html } = render()
+      const dl = /<dl[\s\S]*?<\/dl>/.exec(html)?.[0] ?? ''
+      expect(dl).toContain('TESTER')
+      expect(html.replace(dl, '')).not.toMatch(/<d[dt][\s>]/)
+    } finally {
+      initial.trainer.name = was
+    }
   })
 })
