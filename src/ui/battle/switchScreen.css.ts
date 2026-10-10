@@ -309,6 +309,7 @@ export const fade = style({
 })
 
 export const colA = style({
+  position: 'relative',
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
@@ -321,7 +322,7 @@ export const art = style({
   width: 160,
   height: 160,
   flex: '0 0 auto',
-  marginTop: -4,
+  marginTop: -8,
   display: 'grid',
   placeItems: 'center',
 })
@@ -342,7 +343,20 @@ export const who = style({
 })
 export const whoName = style({ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })
 export const whoLevel = style({ fontSize: 12, fontWeight: 700, color: vars.ink.dim, fontVariantNumeric: 'tabular-nums' })
-export const chips = style({ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 })
+/**
+ * 타입 칩 — 앞모습 왼쪽 위 모서리에 세로로 얹는다. 열 높이(창 196 − 안쪽 여백)가 그림 160 + 이름 줄로 이미 차서
+ * 칩 줄을 밑에 두면 창 밑으로 삐져나온다. 앞모습 칸(80)의 모서리는 비어 있다
+ */
+export const chips = style({
+  position: 'absolute',
+  top: 0,
+  left: 4,
+  zIndex: 1,
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-start',
+  gap: 2,
+})
 
 /** B열 맨 위의 탭 줄 */
 export const tabsRow = style({ height: 26, display: 'flex', alignItems: 'flex-start' })
