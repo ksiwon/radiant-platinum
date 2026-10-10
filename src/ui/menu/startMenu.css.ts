@@ -37,6 +37,12 @@ const FOOT_HEIGHT = 32
 
 /** 엿보기 창의 크기 (바깥 치수) */
 export const PEEK = { width: 220, height: 104 } as const
+/** 엿보기 창의 안쪽 폭 — 테두리(`EDGE.window`)와 좌우 안쪽 여백(`GAP.base`)을 뺀 것. 내용은 이 안에 선다 */
+export const PEEK_INNER = PEEK.width - 2 * EDGE.window - 2 * GAP.base
+/** 배지 여덟 칸 사이 간격 — `BadgeRail`의 `gap`(`GAP.tight`)과 같다 */
+const PEEK_BADGE_GAPS = 7 * GAP.tight
+/** 트레이너 카드 엿보기의 배지 한 칸 — 안쪽 폭에서 거꾸로 정한다(여덟 칸 + 틈 일곱이 안 넘친다) */
+export const PEEK_BADGE = Math.floor((PEEK_INNER - PEEK_BADGE_GAPS) / 8)
 /** 엿보기와 레일 사이 — 꼭지(`NIB`)가 튀어나오는 만큼과 숨 쉴 틈 */
 const PEEK_GAP = NIB + 4
 

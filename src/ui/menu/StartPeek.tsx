@@ -141,7 +141,7 @@ function CardPeek({ data }: { data: PeekData }) {
   const playtime = clock(useSaveStore((s) => s.trainer.playtimeMs))
   return (
     <div className={own.peekCol}>
-      <BadgeRail badges={badges} size={22} />
+      <BadgeRail badges={badges} size={own.PEEK_BADGE} />
       <span className={own.peekSub}>
         {data.info[SAVE_INFO.playtime] ?? ''} <span className={own.peekStrong}>{playtime}</span>
       </span>
