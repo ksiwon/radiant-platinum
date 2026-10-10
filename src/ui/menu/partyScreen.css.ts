@@ -204,45 +204,9 @@ export const cardHeld = style({
   outlineOffset: -2,
 })
 
-/**
- * 갈래 메뉴 (`GetContextMenuEntriesForPartyMon`).
- *
- * 원작은 **오른쪽 아래 구석에 창 하나**로 뜬다. 판 위에 겹친다 — 판 여섯이
- * 화면을 다 쓰므로 겹치는 것 말고는 놓을 자리가 없고, 원작도 그렇게 한다.
- * 가리는 것은 오른쪽 아래 판 하나뿐이고 고르는 마리는 왼쪽에 남는다
- */
-export const choices = style({
-  ...WINDOW_SMALL,
-  position: 'absolute',
-  right: GAP.base,
-  bottom: GAP.base,
-  zIndex: 2,
-  minWidth: 240,
-  maxWidth: 360,
-  padding: `${GAP.small}px ${GAP.base}px ${GAP.base}px`,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 1,
-})
-
-export const choiceAsk = style({
-  fontSize: TEXT.base,
-  fontWeight: 600,
-  whiteSpace: 'pre-line',
-  lineHeight: 1.5,
-  marginBottom: GAP.small,
-})
-
-export const choice = style({
-  padding: `5px ${GAP.small + 2}px`,
-  borderRadius: RADIUS.cell,
-  fontSize: TEXT.base,
-})
-
-export const choiceOn = style([choice, {
-  ...PICKED,
-  fontWeight: 600,
-}])
+// 갈래 메뉴(`choices` · `choiceAsk` · `choice` · `choiceOn`)는 `menuChrome`으로 올라갔다 (SYSTEM §2.1).
+// 파티 · 메일박스 · 상점의 import가 안 바뀌게 여기서 다시 내보내기만 한다
+export { choice, choiceAsk, choiceOn, choices } from './menuChrome.css'
 
 /**
  * 레벨업 능력치 창 (`PartyMenu_DrawLevelUpStatIncreases`) — 원작은 왼쪽 위 구석

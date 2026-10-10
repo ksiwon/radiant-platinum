@@ -22,6 +22,11 @@ export const vars = createThemeContract({
     rule: null,
     /** 창 안에 깔린 가로 결 */
     grain: null,
+    /**
+     * 그림 밑 그늘 타원 (`GroundShadow`). `rule`과 RGB가 같고 알파만 옅다 —
+     * 그림자(`boxShadow`)가 아니라 땅에 닿은 자리를 보이는 면이다
+     */
+    shade: null,
   },
 
   /** 고른 것. 원작은 색이 아니라 **금 테두리**로 가리킨다 (DESIGN.md §1.2) */
@@ -29,6 +34,8 @@ export const vars = createThemeContract({
     edge: null,
     face: null,
     text: null,
+    /** 금 띠 안 점선 · 꺼진 쪽 점 · 개수 화살표의 꺼진 박자. `edge`의 알파판이다 */
+    trace: null,
   },
 
   /** 글자. 창이 밝으므로 글자는 어둡다 */
@@ -115,6 +122,9 @@ export const vars = createThemeContract({
    */
   cmd: { fight: null, bag: null, party: null, run: null },
 
+  /** 배틀 PP 글자 네 단 — `pl_batt_obj` 72번 팔레트 실측 (`battle_subscreen.c:1066`). `ppTone`이 고른다 */
+  pp: { normal: null, half: null, quarter: null, out: null },
+
   /** 상성 (PARITY §2.22). 「굉장함」·「별로」·「효과 없음」 */
   match: { superEff: null, resisted: null, immune: null },
 
@@ -185,10 +195,60 @@ export const vars = createThemeContract({
    * 무늬이지 핀테크 앱의 카드 목업이 아니다 (DESIGN.md §0)
    */
   card: {
+    // ⚠️ 아래 다섯 + `badgeOn` · `badgeOff`는 옛 카드 값이다. P8(트레이너)이 끝나 grep이 0건이면
+    // 걷어 낸다 (SYSTEM §1.4)
     faceTop: null, faceBottom: null,
     edge: null,
     text: null, textDim: null,
     badgeOn: null, badgeOff: null,
+    /** 롬 `card.png`의 테두리 3px. 여섯 판 공통 */
+    edgeRom: null,
+    /** 카드 글자의 1px 그림자. 원작 2색 글꼴의 그림자 자리다 */
+    inkShadow: null,
+    /** 등급 별 · 블랙 판의 글자 */
+    star: null,
+    /** 등급 줄의 안 받은 별 */
+    starOff: null,
+    /** 서명 칸과 그 줄 */
+    sign: null,
+    signRule: null,
+  },
+
+  /**
+   * 카드 등급 판 여섯 (`trainer_card_*.pal`). 0 노멀(빨강 · 도감 없음) 1 코발트 2 브론즈 3 실버
+   * 4 골드 5 블랙. 구현은 등급마다 `createVar()`로 이 다섯을 받는다
+   */
+  cardRank: {
+    r0: { face: null, band: null, photo: null, mark: null, backLow: null },
+    r1: { face: null, band: null, photo: null, mark: null, backLow: null },
+    r2: { face: null, band: null, photo: null, mark: null, backLow: null },
+    r3: { face: null, band: null, photo: null, mark: null, backLow: null },
+    r4: { face: null, band: null, photo: null, mark: null, backLow: null },
+    r5: { face: null, band: null, photo: null, mark: null, backLow: null },
+  },
+
+  /** 배지 케이스 (`case_platinum.pal`). 틀과 트레이 · 홈 */
+  caseTray: {
+    frame: null, frameLit: null, frameDim: null, frameDeep: null,
+    tray: null, well: null, wellLit: null, wellEdge: null,
+  },
+
+  /**
+   * 요약의 쪽 색 (BDSP `sum_wd_left_01_body_01~04`).
+   *
+   * ⚠️ **탭 표식과 원 빛에만 쓴다** (결정). 판을 이 색으로 칠하지 않는다
+   */
+  page: { info: null, memo: null, skills: null, moves: null },
+
+  /** 능력 육각형 (`sum_pl_chart_01_stats`) */
+  chart: { edge: null, face: null, spoke: null },
+
+  /** 도감 — 분포 하늘(아침·낮·밤)과 크기 비교 풀밭 (BDSP `dex_deco_habitat_02_BG_*` · `dex_bg_compare_height_01`) */
+  dex: {
+    skyMorningTop: null, skyMorningBottom: null,
+    skyDayTop: null, skyDayBottom: null,
+    skyNightTop: null, skyNightBottom: null,
+    ground: null,
   },
 
   /**
@@ -208,7 +268,11 @@ export const vars = createThemeContract({
    *
    * 원작 지도도 마을과 도시를 다른 색 점으로 찍는다
    */
-  map: { town: null, city: null, locked: null },
+  map: {
+    town: null, city: null, locked: null,
+    /** 가이드맵 바깥 여백 · 로딩 전 바탕. `townMap.png` (0,0) 실측 */
+    sea: null,
+  },
 
   /** 화면 뒤를 덮는 것. 창이 밝으므로 옅게만 깐다 */
   scrim: {

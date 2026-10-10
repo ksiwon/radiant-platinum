@@ -49,8 +49,8 @@ describe('포켓몬 아이콘', () => {
     expect(offset(pokeIcon(ICONS, 387, 32).backgroundPosition as string)).toEqual([3 * 32, 16 * 32])
   })
 
-  it('어떤 크기로 그려도 시트 안의 같은 칸을 가리킨다', () => {
-    for (const px of [40, 64, 96]) {
+  it('어떤 정수배로 그려도 시트 안의 같은 칸을 가리킨다', () => {
+    for (const px of [32, 64, 96]) {
       const at = pokeIcon(ICONS, 387, px)
       const [x, y] = offset(at.backgroundPosition as string)
       const [w, h] = size(at.backgroundSize as string)
@@ -62,9 +62,9 @@ describe('포켓몬 아이콘', () => {
 
   it('없는 번호는 자리만 잡는다', () => {
     // 540칸뿐이다. 시트 밖을 가리키면 **빈 칸이 아니라 다른 포켓몬**이 뜬다
-    expect(pokeIcon(ICONS, 900, 40).backgroundImage).toBeUndefined()
-    expect(pokeIcon(undefined, 25, 40).backgroundImage).toBeUndefined()
-    expect(pokeIcon(undefined, 25, 40).width).toBe(40)
+    expect(pokeIcon(ICONS, 900, 64).backgroundImage).toBeUndefined()
+    expect(pokeIcon(undefined, 25, 64).backgroundImage).toBeUndefined()
+    expect(pokeIcon(undefined, 25, 64).width).toBe(64)
   })
 
   /**

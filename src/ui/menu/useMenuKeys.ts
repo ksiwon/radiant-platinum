@@ -43,6 +43,11 @@ interface MenuKeys {
    * (`start_menu.c`의 `Menu_New(…, PAD_BUTTON_B | PAD_BUTTON_X)`). 시작 메뉴만 건다
    */
   menu?: Handler
+  /**
+   * Shift — 원작 SELECT 자리 (SYSTEM 4.22). 쓰는 곳은 셋이다: 가방 줄 옮기기, 도감 분포 시간대, 도감 울음
+   * 다이얼 칸 들어가기. 도감의 Z는 어디서나 울음이다. 화면이 이 갈래를 안 걸면 키는 그대로 지나간다
+   */
+  select?: Handler
 }
 
 const CODES: Record<string, keyof MenuKeys> = {
@@ -54,6 +59,8 @@ const CODES: Record<string, keyof MenuKeys> = {
   KeyX: 'cancel', Backspace: 'cancel', Escape: 'cancel',
   KeyQ: 'pageUp', KeyE: 'pageDown',
   Tab: 'tab',
+  // SELECT 자리 — 왼쪽 · 오른쪽 Shift가 같은 키다
+  ShiftLeft: 'select', ShiftRight: 'select',
 }
 
 // ⚠️ **등록 키는 여기 안 적는다.** 필드에서 등록한 도구를 쓰는 키와 같아야
@@ -73,7 +80,7 @@ for (const code of BINDINGS.menu) if (!(code in CODES)) CODES[code] = 'menu'
  * 상점에서 Z를 누르고 있는 동안 계속 사지고, X를 누르고 있으면 겹친 메뉴가 끝까지
  * 벗겨진다. 반복을 받는 것은 방향과 페이지 넘김뿐이다
  */
-const ONCE: ReadonlySet<keyof MenuKeys> = new Set<keyof MenuKeys>(['confirm', 'cancel', 'tab', 'register', 'menu'])
+const ONCE: ReadonlySet<keyof MenuKeys> = new Set<keyof MenuKeys>(['confirm', 'cancel', 'tab', 'register', 'menu', 'select'])
 
 /**
  * 사람 키를 잠근다 — 잡는 법 강습 동안 화면은 손이 보내는 **만든 키**(`isTrusted` 거짓)만 받는다

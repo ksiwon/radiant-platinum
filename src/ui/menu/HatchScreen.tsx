@@ -271,7 +271,7 @@ export function HatchScreen() {
   if (slot < 0) return null
 
   return (
-    <MenuScreen title="알" foot={stage === 'ask' ? '↑↓ 고르기 · Z 결정 · X 아니오' : ''}>
+    <MenuScreen title="알" cinematic foot={stage === 'ask' ? '↑↓ 고르기 · Z 결정 · X 아니오' : ''}>
       <div className={own.stage}>
         <div className={own.cinematicSpace} aria-hidden />
         <div className={own.line} style={{ whiteSpace: 'pre-line' }}>{line}</div>

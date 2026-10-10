@@ -161,6 +161,27 @@ DPPt 쪽은 화면 한 장이 **타일셋 + 타일맵 + 팔레트** 셋으로 �
 COPYRIGHT.md §5). 여기서 가져오는 것은 색 몇 개와 자리 몇 개뿐이고, 그 값만
 `theme/day.css.ts`에 적힌다.
 
+### 1.8 BDSP 요약 · 도감 · 지도 실측과 롬 실측
+
+색 값은 `theme/day.css.ts`에 한 번만 적힌다. 여기는 **출처**다.
+
+| 토큰 | 값 | 출처 |
+|---|---|---|
+| `window.shade` | `rgba(63,110,150,0.14)` | `window.rule`의 RGB에 알파만 바꿈 (그림 밑 그늘 타원) |
+| `pick.trace` | `rgba(215,179,25,0.45)` | `pick.edge`의 알파판 |
+| `page.info · memo · skills · moves` | `#32c96a · #84e4f2 · #7796fe · #f4948d` | BDSP `sum_wd_left_01_body_01~04`. 탭 표식과 원 빛에만 쓴다 |
+| `chart.edge · face · spoke` | `#637bd7 · #ebebeb · #b5d9f7` | `sum_pl_chart_01_stats` |
+| `dex.sky*` | 아침 `#a4d7e9 #b9e9f9` · 낮 `#70d4f1 #8be6ff` · 밤 `#5250ab #6469c1` | `dex_deco_habitat_02_BG_01~03` |
+| `dex.ground` | `#b9db7e` | `dex_bg_compare_height_01` |
+| `map.sea` | `#18a5bd` | `townMap.png` (0,0) |
+| `pp.normal · half · quarter · out` | `#394239 · #8c6b10 · #b54200 · #940021` | `pl_batt_obj` 72번 팔레트 색 3~8 (`battle_subscreen.c:1066`). 단은 `GetPPTextColor`가 고른다 |
+
+**글자색 `{COLOR n}`은 화면마다 다르다.** 필드 · 설정은 1 빨강 `#ef2110` · 2 초록 `#29d618`이고, 요약 · 파티는 1 파랑 `#0073ff` · 2 빨강이다.
+그래서 `emphasis` 토큰을 전역으로 바꾸지 않는다 — 화면이 어느 팔레트인지가 값을 정한다.
+
+**움직임 실측.** 대기 다이얼은 16 VBlank마다 한 걸음, 128 VBlank에 한 바퀴(≈2.14s)다.
+시작 메뉴 아이콘은 필드 태스크가 30Hz로 돌린다. 부화 띠는 192줄 중 위 32줄 · 아래 48줄이다.
+
 ---
 
 ## 2. 어디서 가져오나
@@ -200,6 +221,28 @@ export const head = style({ borderBottom: RULE, color: vars.ink.strong })
 `no-restricted-syntax`). 문서에만 적힌 규칙은 지켜지지 않는다는 것을 이미 한 번
 확인했다.
 
+### 2.1 처방 조각 (`theme/window.css.ts`)
+
+화면은 같은 모양을 손으로 다시 적지 않고 아래를 펼치거나 클래스로 붙인다.
+
+| 이름 | 무엇 |
+|---|---|
+| `pickBand` (y · x) | 고정 목록(스크롤 없는 10줄 이하)의 금 띠 하나. `transform`으로 `TIME.slide` 미끄러진다. 스크롤 목록은 줄이 즉시 옮겨 간다 |
+| `pickHalo` | 줄이 아닌 물건(배지 · 격자 원 · 필름 · 지도 커서)의 금 고리. `outline`이다 |
+| `pickEdgeOnly` | 몸통은 두고 테두리만 금. 모양 있는 판은 `--rim`으로 같은 색을 내보낸다 |
+| `TYPE_PLATE` | 9° 판. **배틀 명령 구역만** 쓴다 |
+| `POPOVER` · `popover` · `popoverSide` | 뜨는 창 살갗과 꼭지(`NIB` 8). 갈래 창 · 예/아니오 · 엿보기 · 더보기 · 타이틀 확인 창이 한 벌이다 |
+| `EXP_VARS` | 경험치 막대의 `--lit` · `--body` |
+| `KEYCAP` · `KEYCAP_DARK` | 키캡. 어두운 판 위는 `scrim.deep` 바탕에 `ink.onDark` 글 |
+| `HOLE_MASK` | 덮개와 창 얼굴에 직사각 구멍을 낸다 (`mask-composite: exclude`, `--hole-*`) |
+| `scrimSide` · `dockIn` · `fadeOut` · `riseIn` | 옆 덮개 · 붙는 창 열림 · 닫힘 · 덮는 창 열림(6px) |
+
+메뉴 틀(`menu/menuChrome.css.ts`)이 더하는 것: `centerWindow` · `screenHole` · `overlayHole` · `stageSplit` · `sectionHead` · `ledger*` · `choices*`.
+숫자 상수(`theme/scale.ts`)가 더하는 것: `LINE.rowTall · dock`, `ICON`, `PIXEL`, `RAIL`, `NIB`, `HUD`, `TIME.close · slide · page`, `frames(n)`.
+
+**도트는 정수배만 확대한다.** `ui/common/pixelSprite`가 칸 상자 · 시트 · 위치를 한 배율로 정하고, 아이콘 넷(`itemIcon` · `pokeIcon` · `bagArt` · `menuIcon`)이 그것을 거친다.
+줄이는 것은 박스 필름 썸네일(`wallThumb`)과 배지 줄(`BadgeRail`, 원본이 칸보다 크다)뿐이다.
+
 ---
 
 ## 3. 창이 몇 벌인가 — 한 벌이다
@@ -219,6 +262,22 @@ export const head = style({ borderBottom: RULE, color: vars.ink.strong })
 예외는 전부 **물건을 그린 것**이거나 게임이 아닌 것이고, 그래도 **값은
 `ui/theme/`에서 온다.** 그 밖에 예외를 늘리지 않는다 — 여덟 벌이 됐던 것이
 그렇게 시작했다.
+
+### 층 다섯
+
+| 층 | 무엇 | 틀 |
+|---|---|---|
+| 붙는 창 | 시작 메뉴 · 필드 예/아니오 | `RAIL` · `scrimSide` |
+| 덮는 창 | 대부분의 화면 | `MenuScreen` |
+| 가운데 창 | 이름 짓기 · 메일 · 열매 태그 | `MenuScreen variant="center"` |
+| 뜨는 창 | 갈래 · 예/아니오 · 엿보기 | `POPOVER` |
+| 연출 | 진화 · 부화 · 교환 · 전당 · PC 전당 | `MenuScreen cinematic` (창 얼굴 없음) · `bare`(머리 · 바닥 없음) |
+
+층은 **제목 글자가 아니라 속성**으로 가른다.
+
+물건을 그린 예외의 값: `vars.card`(옛 값은 `faceTop` 등. 새 값은 `edgeRom` · `inkShadow` · `star` · `sign`),
+`vars.cardRank.r0~r5`(등급 판 여섯, `trainer_card_*.pal`), `vars.caseTray`(배지 케이스, `case_platinum.pal`). 판은 롬 실측 색이고 광택 · 대각 그러데이션은 없다.
+원작 카드 잉크는 `#4a4a4a`지만 빨강 판 위에서 대비가 2.56:1이라 `ink.strong`을 쓴다.
 
 ### 창은 3D 위에 선다 — 자리를 잡아야 그렇게 된다
 
@@ -298,6 +357,11 @@ export const head = style({ borderBottom: RULE, color: vars.ink.strong })
 
 ⚠️ **한자 글꼴은 순서가 곧 나라다.** 폴백 목록에서 일본어 글꼴을 한국어 글꼴보다
 앞에 두면 **한자만** 일본 자형으로 간다. 같은 코드포인트라 눈으로만 갈린다.
+
+### ♂♀ 와 숫자
+
+- Pretendard 서브셋에는 ♂ ♀ ▲ ▼가 없다. ♂♀는 `GenderMark`가 **Galmuri11**로 찍고, ▲▼는 CSS 세모다. 어두운 판 위의 성별은 성별 색 없이 `ink.onDark`다(`state.male`의 대비가 3.87:1).
+- **게임 숫자에 mono를 쓰지 않는다.** HP · PP · 값 · 동전 · 개수 · 가격은 Pretendard에 `tabular-nums`다 (`fonts.css.ts`의 금지와 같다).
 
 ---
 

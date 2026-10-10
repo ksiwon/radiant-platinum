@@ -15,7 +15,13 @@ import {
 } from './hpDrain'
 
 const CSS_SOURCE = new URL('./battleScreen.css.ts', import.meta.url)
-const SCREEN_SOURCE = new URL('./BattleScreen.tsx', import.meta.url)
+// 체력판 그리기는 `HudPlates.tsx`로 나갔다 (SYSTEM 4.15). 두 파일을 한 덩어리로 읽는다 — 어느 쪽에서 쓰든
+// 게이지를 미는 임자가 하나라는 것이 이 시험이 잠그는 것이다
+const SCREEN_SOURCES = [
+  new URL('./HudPlates.tsx', import.meta.url),
+  new URL('./BattleScreen.tsx', import.meta.url),
+]
+const readScreen = (): string => SCREEN_SOURCES.map((at) => readFileSync(at, 'utf8')).join('\n')
 
 /** 20/20 → 0/20. 48프레임 = 800ms다 (`playback.drainFrames`) */
 const KO: Drain = { from: 1, to: 0, at: 10, secs: 0.8 }
@@ -149,7 +155,7 @@ describe('제품이 CSS 벽시계로 안 돌아간다', () => {
   })
 
   it('카드가 시계에 붙은 훅을 쓴다', () => {
-    const screen = readFileSync(SCREEN_SOURCE, 'utf8')
+    const screen = readScreen()
     expect(screen).toContain("from './hpDrain'")
     expect(screen).toMatch(/useDrain\(ratio, drainMs[,)]/)
     // `--drain` CSS 변수는 더 이상 쓰이지 않는다
@@ -159,7 +165,7 @@ describe('제품이 CSS 벽시계로 안 돌아간다', () => {
   it('폭을 쓰는 임자가 하나다 — style로도 같이 그리지 않는다', () => {
     // ⚠️ 둘이 쓰면 사건이 접히는 프레임에 목표 폭으로 한 번 튕긴다
     // (실측 자취 `0.9838 → 0 → 0.9016`)
-    const screen = readFileSync(SCREEN_SOURCE, 'utf8')
+    const screen = readScreen()
     const bar = screen.slice(screen.indexOf('ref={bar}'))
     expect(bar.slice(0, bar.indexOf('/>'))).not.toContain('width')
   })

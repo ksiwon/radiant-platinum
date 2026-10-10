@@ -26,20 +26,32 @@ export const frame = style({
   pointerEvents: 'none',
 })
 
-export const box = style({
-  position: 'relative',
+/**
+ * 대사창의 살갗과 글 — **창 틀을 밖으로 꺼낸 처방**이다 (SYSTEM §2.1).
+ *
+ * 필드 대사창과 `common/MessageWindow`(리포트 · 진화 · 부화 · 교환 · 슬롯 · 이름 짓기 물음)가 같은
+ * 두 줄 창을 쓴다 — Galmuri11 19 / 30. 위치(`fixed` · 아래 가운데)는 이 처방에 없고 쓰는 쪽이 정한다
+ */
+export const DIALOG_BOX = {
   ...SKIN,
   padding: `${GAP.base + 2}px ${GAP.loose + 2}px ${GAP.base + 2}px ${GAP.wide + 4}px`,
   fontSize: TEXT.list + 2,
   lineHeight: `${LINE.message}px`,
   // 두 줄 고정. 한 줄짜리 글도 창이 안 줄어든다 — 원작과 같다
   minHeight: LINE.message * 2,
-})
+} as const
 
-export const line = style({
+export const DIALOG_LINE = {
   whiteSpace: 'pre',
   height: LINE.message,
+} as const
+
+export const box = style({
+  position: 'relative',
+  ...DIALOG_BOX,
 })
+
+export const line = style(DIALOG_LINE)
 
 export const run = style({
   verticalAlign: 'baseline',
@@ -50,15 +62,17 @@ const blink = keyframes({
   '55%, 100%': { opacity: 0.25, transform: 'translateY(2px)' },
 })
 
-/** 다음을 기다리는 표시. 원작도 오른쪽 아래에서 깜빡인다 */
-export const arrow = style({
+/** 다음을 기다리는 표시의 처방. 원작도 오른쪽 아래에서 깜빡인다 */
+export const DIALOG_ARROW = {
   position: 'absolute',
   right: 10,
   bottom: 4,
   fontSize: TEXT.tiny,
   color: vars.ink.dim,
   animation: `${blink} ${TIME.blink} steps(1, end) infinite`,
-})
+} as const
+
+export const arrow = style(DIALOG_ARROW)
 
 export { menu }
 

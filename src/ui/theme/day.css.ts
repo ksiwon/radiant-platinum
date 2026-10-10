@@ -20,6 +20,8 @@ export const dayTheme = createTheme(vars, {
     // 창 안에 깔린 1px 가로 결. 원본은 아틀라스에 구워져 있고 우리는 반복
     // 그러데이션으로 깐다 — 아주 옅어야 글자를 안 방해한다
     grain: 'rgba(63, 110, 150, 0.075)',
+    // `rule`과 RGB가 같고 알파만 바꾼 것. 그림 밑 그늘 타원 (bag.md)
+    shade: 'rgba(63, 110, 150, 0.14)',
   },
 
   // 고른 것의 금 테두리. 같은 아틀라스에서 잰 값
@@ -27,6 +29,8 @@ export const dayTheme = createTheme(vars, {
     edge: '#d7b319',
     face: 'rgba(247, 224, 138, 0.55)',
     text: '#231c05',
+    // `edge`의 알파판. 금 띠 안 점선 · 꺼진 쪽 점 (bag.md)
+    trace: 'rgba(215, 179, 25, 0.45)',
   },
 
   // 창이 밝으므로 글자는 어둡다. 창 바닥색(#c3dae2)에 대해 4.5:1을 넘긴다
@@ -94,6 +98,9 @@ export const dayTheme = createTheme(vars, {
 
   cmd: { fight: '#e2574c', bag: '#e0a83a', party: '#4fa96b', run: '#4a8fd0' },
 
+  // `pl_batt_obj` 72번 팔레트 색 3~8 실측 (docs/orders/MENU_MEASURE_20261010.md)
+  pp: { normal: '#394239', half: '#8c6b10', quarter: '#b54200', out: '#940021' },
+
   match: { superEff: '#b06f00', resisted: '#3d6c8e', immune: '#a8322a' },
 
   ball: { top: '#e8554e', band: '#1b1f27', bottom: '#f4f6fa' },
@@ -120,6 +127,44 @@ export const dayTheme = createTheme(vars, {
     edge: '#7bb1e7',
     text: '#f2f7ff', textDim: '#b8cbe4',
     badgeOn: '#f7d24a', badgeOff: 'rgba(242, 247, 255, 0.26)',
+    // 롬 `card.png` 실측 (trainer.md §5.2). 원작 잉크 `#4a4a4a`는 빨강 판 위에서 대비가 2.56:1이라
+    // 쓰지 않고 `ink.strong`으로 둔다 — 원작 값은 DESIGN.md에 적어 둔다
+    edgeRom: '#737373',
+    inkShadow: 'rgba(255, 255, 255, 0.45)',
+    star: '#ffff73',
+    starOff: 'rgba(16, 28, 40, 0.16)',
+    sign: '#ffffff',
+    signRule: '#efeff7',
+  },
+
+  // `trainer_card_*.pal`을 `card.png` 색 빈도로 잰 값 (trainer.md §5.2)
+  cardRank: {
+    r0: { face: '#de6363', band: '#ef9c9c', photo: '#e77b7b', mark: '#f7d6ad', backLow: '#efb563' },
+    r1: { face: '#5294e7', band: '#84b5ef', photo: '#6ba5e7', mark: '#a5d6f7', backLow: '#73bdef' },
+    r2: { face: '#d69463', band: '#e7bd9c', photo: '#dea57b', mark: '#f7ceb5', backLow: '#efb58c' },
+    r3: { face: '#a5bdbd', band: '#c6d6d6', photo: '#b5cece', mark: '#e7efef', backLow: '#ced6d6' },
+    r4: { face: '#deb529', band: '#efce8c', photo: '#efc652', mark: '#f7deb5', backLow: '#efce84' },
+    r5: { face: '#4a4a4a', band: '#848484', photo: '#636363', mark: '#bdbdbd', backLow: '#848484' },
+  },
+
+  // `case_platinum.pal` 실측 (trainer.md §5.2)
+  caseTray: {
+    frame: '#efe79c', frameLit: '#ffffe7', frameDim: '#bdb584', frameDeep: '#ad9c5a',
+    tray: '#737373', well: '#636363', wellLit: '#848484', wellEdge: '#a5a5a5',
+  },
+
+  // BDSP `sum_wd_left_01_body_01~04`. 탭 표식과 원 빛에만 쓴다 (summary.md)
+  page: { info: '#32c96a', memo: '#84e4f2', skills: '#7796fe', moves: '#f4948d' },
+
+  // BDSP `sum_pl_chart_01_stats`
+  chart: { edge: '#637bd7', face: '#ebebeb', spoke: '#b5d9f7' },
+
+  // BDSP `dex_deco_habitat_02_BG_01~03` · `dex_bg_compare_height_01`
+  dex: {
+    skyMorningTop: '#a4d7e9', skyMorningBottom: '#b9e9f9',
+    skyDayTop: '#70d4f1', skyDayBottom: '#8be6ff',
+    skyNightTop: '#5250ab', skyNightBottom: '#6469c1',
+    ground: '#b9db7e',
   },
 
   emphasis: {
@@ -127,7 +172,8 @@ export const dayTheme = createTheme(vars, {
     oneOnDark: '#ffd76a', twoOnDark: '#9fd8ff',
   },
 
-  map: { town: '#4aa3ff', city: '#ff6b5c', locked: '#6a7362' },
+  // `sea`는 `townMap.png` (0,0) 실측이다
+  map: { town: '#4aa3ff', city: '#ff6b5c', locked: '#6a7362', sea: '#18a5bd' },
 
   // 간판 나무. `data/signposts.png`가 그 위에 얹히므로 그림의 나무색에 맞춘다
   sign: {

@@ -18,7 +18,9 @@
 import { style, styleVariants } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 import { EDGE, GAP, RADIUS, SCREEN, TEXT } from '../theme/scale'
-import { RULE, WINDOW, scrim, scrimLight } from '../theme/window.css'
+import {
+  HOLE_MASK, PICKED, RULE, WINDOW, WINDOW_SMALL, riseIn, scrim, scrimLight,
+} from '../theme/window.css'
 
 export const OVERLAY_Z = 400
 
@@ -43,7 +45,7 @@ export const cinematicOverlay = style([scrimLight, { zIndex: OVERLAY_Z, colorSch
  * `grid-template-rows: auto 1fr auto`였는데 가방처럼 자식이 넷인 화면에서
  * 1fr이 주머니 줄에 걸려, 주머니 이름표가 창 높이의 3분의 2를 차지했다
  */
-export const screen = style({
+export const screen = style([riseIn, {
   ...WINDOW,
   position: 'relative',
   width: `min(${SCREEN.width}px, 100%)`,
@@ -51,6 +53,67 @@ export const screen = style({
   display: 'flex',
   flexDirection: 'column',
   overflow: 'hidden',
+}])
+
+/**
+ * 가운데 창 (SYSTEM §0 L1 · `variant: 'center'`) — 덮는 창의 **작은 꼴**이다. 이름 짓기 · 메일 · 열매 태그.
+ *
+ * 크기는 내용에 맞추고 `SCREEN`을 넘지 않는다. 폭은 `MenuScreen`의 `width`가 인라인으로 줄 수 있다.
+ * 머리 · 바닥 · 본문의 틀은 덮는 창과 같다
+ */
+export const centerWindow = style([riseIn, {
+  ...WINDOW,
+  position: 'relative',
+  width: 'max-content',
+  maxWidth: `min(${String(SCREEN.width)}px, 100%)`,
+  maxHeight: `min(${String(SCREEN.height)}px, 100%)`,
+  display: 'flex',
+  flexDirection: 'column',
+  overflow: 'hidden',
+}])
+
+/**
+ * 3D 구멍이 뚫린 창 (`MonViewport`, SYSTEM §2.4). 창 얼굴을 `::before` 층 하나로 옮겨 그리고 **그 층에만**
+ * `HOLE_MASK`를 건다 — 자식 글자는 가려지지 않는다. 구멍은 `--hole-x/y/w/h`(창 기준 px)다.
+ *
+ * 창의 테두리는 그대로다(구멍은 늘 안쪽이다). 층이 창 안쪽(`inset: 0`)에 서므로 창이 6px 올라오며 열릴 때
+ * 구멍도 같이 오른다 — 3D가 어긋나지 않는다
+ */
+export const screenHole = style({
+  isolation: 'isolate',
+  background: 'none',
+  backgroundColor: 'transparent',
+  selectors: {
+    '&::before': {
+      content: '""',
+      position: 'absolute',
+      inset: 0,
+      zIndex: -1,
+      pointerEvents: 'none',
+      background: WINDOW.background,
+      backgroundColor: WINDOW.backgroundColor,
+      ...HOLE_MASK,
+    },
+  },
+})
+
+/**
+ * 3D 구멍이 뚫린 덮개 — 덮개도 구멍만큼 뚫려야 3D가 비친다. 구멍은 **화면 기준** px
+ * (`--hole-vx/vy` · `--hole-w/h`)이다 — 덮개는 화면 전체를 덮기 때문이다
+ */
+export const overlayHole = style({
+  background: 'transparent',
+  selectors: {
+    '&::before': {
+      content: '""',
+      position: 'fixed',
+      inset: 0,
+      pointerEvents: 'none',
+      background: vars.scrim.over,
+      ...HOLE_MASK,
+      maskPosition: '0 0, var(--hole-vx, 0px) var(--hole-vy, 0px)',
+    },
+  },
 })
 
 /**
@@ -66,6 +129,8 @@ export const screen = style({
  * 걷어 내면 그 화면이 그대로 나온다
  */
 export const cinematicScreen = style([screen, {
+  // 연출에는 열림 움직임이 없다 — 3D가 제 박자로 선다
+  animation: 'none',
   background: 'none',
   backgroundColor: 'transparent',
   border: 'none',
@@ -97,6 +162,14 @@ export const crest = style({
   minWidth: 0,
 })
 
+/** 머리 왼쪽 아이콘 칸 — 크기는 `menuIcon`이 인라인으로 준다 (32). 도트라 보간을 끈다 */
+export const headIcon = style({
+  flex: '0 0 auto',
+  display: 'inline-flex',
+  alignItems: 'center',
+  imageRendering: 'pixelated',
+})
+
 export const crestText = style({
   fontSize: TEXT.title,
   fontWeight: 700,
@@ -117,7 +190,7 @@ export const headNote = style({
  * 왼쪽이 고르는 것, 오른쪽이 그것에 대한 것. 가르는 것은 판이 아니라
  * **세로선 하나**다
  */
-export const stage = style({
+export const stageSplit = style({
   flex: '1 1 auto',
   minHeight: 0,
   display: 'grid',
@@ -128,6 +201,9 @@ export const stage = style({
     '(max-width: 760px)': { gridTemplateColumns: '1fr' },
   },
 })
+
+/** 옛 이름. 화면이 `stageSplit`으로 옮기면 지운다 (골라서 쓰는 틀이라 이름을 바꿨다) */
+export const stage = stageSplit
 
 /**
  * 한 칸 전체를 쓰는 본문 (트레이너 카드·파티처럼 오른쪽 상세 칸이 없는 화면).
@@ -175,7 +251,6 @@ export const count = style({
   marginLeft: 'auto',
   flex: '0 0 auto',
   fontVariantNumeric: 'tabular-nums',
-  fontFamily: vars.font.mono,
   fontSize: TEXT.small,
 })
 
@@ -189,7 +264,6 @@ export const countNear = style({
   flex: '0 0 auto',
   marginLeft: -3,
   fontVariantNumeric: 'tabular-nums',
-  fontFamily: vars.font.mono,
   fontSize: TEXT.small,
   color: vars.ink.dim,
 })
@@ -281,7 +355,7 @@ export const detailText = style({
  * 같은 것이고, 그게 웹앱의 말투다. 남은 폭을 실선으로 채우는 쪽이 게임 창에
  * 가깝고, 그 선이 아래 내용의 범위를 알려 준다
  */
-export const detailHead = style({
+export const sectionHead = style({
   display: 'flex',
   alignItems: 'center',
   gap: GAP.small,
@@ -297,7 +371,37 @@ export const detailHead = style({
   },
 })
 
+/** 옛 이름. `sectionHead`의 다시 내보내기다 */
+export const detailHead = sectionHead
+
+/**
+ * 이름 ··· 오른쪽 숫자 (`ledger`). 가방 · 배틀 가방 · 상점의 장부 줄이다.
+ *
+ * 이름과 숫자 사이를 점선(`ledgerLead`)이 잇는다 — 값처럼 자리가 맞아야 하는 숫자(`ledgerCount`)는 tabular다
+ */
+export const ledger = style({
+  display: 'flex',
+  alignItems: 'baseline',
+  gap: GAP.tight,
+  minWidth: 0,
+})
+
+export const ledgerLead = style({
+  flex: '1 1 auto',
+  minWidth: GAP.base,
+  alignSelf: 'center',
+  borderBottom: `${String(EDGE.rule)}px dotted ${vars.window.rule}`,
+})
+
+export const ledgerCount = style({
+  flex: '0 0 auto',
+  fontVariantNumeric: 'tabular-nums',
+  textAlign: 'right',
+})
+
 export const foot = style({
+  // DOM에서는 `message`가 foot 뒤에 오지만 보이는 자리는 message(1) → foot(2)다
+  order: 2,
   flex: '0 0 auto',
   display: 'flex',
   alignItems: 'center',
@@ -395,3 +499,43 @@ export const empty = style({
   fontSize: TEXT.small,
   color: vars.ink.faint,
 })
+
+/**
+ * 갈래 메뉴 (`GetContextMenuEntriesForPartyMon`).
+ *
+ * 원작은 **오른쪽 아래 구석에 창 하나**로 뜬다. 판 위에 겹친다 — 판 여섯이
+ * 화면을 다 쓰므로 겹치는 것 말고는 놓을 자리가 없고, 원작도 그렇게 한다.
+ * 가리는 것은 오른쪽 아래 판 하나뿐이고 고르는 마리는 왼쪽에 남는다
+ */
+export const choices = style({
+  ...WINDOW_SMALL,
+  position: 'absolute',
+  right: GAP.base,
+  bottom: GAP.base,
+  zIndex: 2,
+  minWidth: 240,
+  maxWidth: 360,
+  padding: `${GAP.small}px ${GAP.base}px ${GAP.base}px`,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 1,
+})
+
+export const choiceAsk = style({
+  fontSize: TEXT.base,
+  fontWeight: 600,
+  whiteSpace: 'pre-line',
+  lineHeight: 1.5,
+  marginBottom: GAP.small,
+})
+
+export const choice = style({
+  padding: `5px ${GAP.small + 2}px`,
+  borderRadius: RADIUS.cell,
+  fontSize: TEXT.base,
+})
+
+export const choiceOn = style([choice, {
+  ...PICKED,
+  fontWeight: 600,
+}])

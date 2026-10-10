@@ -185,7 +185,7 @@ export function TradeScreen() {
   if (!trade || !ready) return null
 
   return (
-    <MenuScreen title="교환" foot="">
+    <MenuScreen title="교환" cinematic foot="">
       <div className={own.stage}>
         <div className={own.cinematicSpace} aria-hidden />
         <div className={own.line}>{lineFor(ready, step)}</div>

@@ -525,7 +525,7 @@ export function EvolutionScreen() {
   }
 
   return (
-    <MenuScreen title="진화" foot={running ? 'X 그만둔다' : 'Z 넘기기'}>
+    <MenuScreen title="진화" cinematic foot={running ? 'X 그만둔다' : 'Z 넘기기'}>
       <div className={own.stage}>
         <EvolutionFrame running={stage.kind === 'changing'} />
         {/* 롬 글은 한 쪽 안에서 줄을 바꾼다(`\n`) — 줄마다 끊어 놓는다 */}
