@@ -55,7 +55,7 @@ describe('기술 떠올리기 머리', () => {
   })
 
   it('바닥은 명사형이다', () => {
-    expect(reminderFoot(true)).toBe('↑↓ 잊을 기술 · Z 결정 · X 뒤로')
+    expect(reminderFoot(true)).toBe('↑↓ 잊을 기술 · Z 결정 · X 닫기')
     expect(reminderFoot(false)).toBe('↑↓ 고르기 · Z 가르친다 · X 그만둔다')
   })
 })
