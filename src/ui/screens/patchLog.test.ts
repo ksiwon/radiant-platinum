@@ -40,7 +40,7 @@ describe('patchLog', () => {
 
   it('지금 판은 NOTES[0]을 따른다 — 그래야 새 판에서 점이 다시 켜진다', () => {
     expect(VERSION).toBe(NOTES[0].v)
-    expect(VERSION).toBe('v1.0.0')
+    expect(VERSION).toBe('v1.1.0')
   })
 
   it('타이틀의 판 표시는 package.json에서 오고, 패치노트는 그 판을 앞지르지 않는다', () => {
