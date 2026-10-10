@@ -745,8 +745,8 @@ export function loadTmMoves(): Promise<readonly number[] | null> {
 }
 
 /**
- * 대사 뱅크를 받되 없으면 `null`. 굽는 쪽이 아직 안 실은 뱅크(기술 되살리기 645 · P0b ⑥)를 읽는 자리다 —
- * 던지면 그 화면의 물음이 통째로 빈다. 받는 쪽이 `null`을 견디고 글 없이 선다
+ * 대사 뱅크를 받되 못 받으면 `null`. 기술 되살리기(645)처럼 화면 하나가 통째로 기대는 뱅크를 읽는 자리다 —
+ * 던지면 그 화면이 통째로 무너진다. 받는 쪽이 `null`을 견디고 글 없이 선다
  */
 export function loadDialogueBankOrNull(locale: DataLocale, bank: number): Promise<string[] | null> {
   return loadDialogueBank(locale, bank).catch(() => null)

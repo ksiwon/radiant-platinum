@@ -94,9 +94,6 @@ const EN_ONLY: readonly (keyof typeof UI_BANK)[] = [
   'speciesNamesWithArticles', 'trainerClassNamesWithArticles',
 ]
 
-/** 굽는 쪽(P0b)이 아직 안 실은 뱅크. 싣고 나면 지운다 (위 시험이 알려 준다) */
-const NOT_SHIPPED_YET: readonly (keyof typeof UI_BANK)[] = ['moveReminder']
-
 describe('메뉴 글', () => {
   for (const [key, name] of Object.entries(NAMED) as [keyof typeof UI_BANK, string][]) {
     it(`${key}가 ${name} 뱅크를 가리킨다`, () => {
@@ -113,22 +110,7 @@ describe('메뉴 글', () => {
         .banks.map((b) => b.index),
     )
     for (const [key, bank] of Object.entries(UI_BANK)) {
-      // ⚠️ 기술 되살리기(645)는 굽는 쪽(P0b ⑥)이 아직 안 실었다 — `loadDialogueBankOrNull`이 그 빈자리를 견딘다.
-      // 싣는 날 아래 한 줄(`NOT_SHIPPED_YET`)을 지운다: 지우지 않으면 이 시험이 「이제 실렸다」고 알려 준다
-      if (NOT_SHIPPED_YET.includes(key as keyof typeof UI_BANK)) continue
       expect(shipped.has(bank), key).toBe(true)
-    }
-  })
-
-  it('아직 안 실린 뱅크가 실렸으면 그 면제를 지운다', () => {
-    const index = resolve(__dirname, '../../public/data/dialogue/index.json')
-    if (!existsSync(index)) return
-    const shipped = new Set(
-      (JSON.parse(readFileSync(index, 'utf8')) as { banks: { index: number }[] })
-        .banks.map((b) => b.index),
-    )
-    for (const key of NOT_SHIPPED_YET) {
-      expect(shipped.has(UI_BANK[key]), `${key}가 실렸다 — NOT_SHIPPED_YET에서 지운다`).toBe(false)
     }
   })
 
