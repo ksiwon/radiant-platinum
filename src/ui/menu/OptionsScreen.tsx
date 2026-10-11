@@ -58,8 +58,8 @@ import * as own from './optionsScreen.css'
  */
 export function resetText(language: Language): { help: string; prompt: string } {
   const kept = pickLang(language,
-    // 「한 벌」이 두 줄로 갈리지 않게 붙인다( )
-    '지우기 전에 세이브 파일로 받고, 타이틀 「백업에서 되찾기」에 한 벌을 남깁니다',
+    // 「한 벌」이 두 줄로 갈리지 않게 붙인다
+    '지우기 전에 세이브 파일로 받고, 타이틀 「백업에서 되찾기」에 한\u00a0벌을 남깁니다',
     'It is first saved as a file, and a copy is kept under 「백업에서 되찾기」 on the title screen.',
     '消す前にセーブファイルとして保存し、タイトルの「백업에서 되찾기」に一つ残します',
   )
