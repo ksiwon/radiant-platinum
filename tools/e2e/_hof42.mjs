@@ -63,13 +63,16 @@ try {
   await page.waitForFunction(() => document.documentElement.dataset.menu === 'credits', null, { timeout: 30_000 })
   const skippable = await page.evaluate(() => document.body.innerText.includes('넘기기'))
   log('크레딧', { skippable })
-  // 두루마리를 몇 장 찍고 Z로 넘긴다 — 만든 사람 화면을 찍고 한 번 더 Z. 타이틀은 통째로 다시 켜진다
+  // 두루마리를 몇 장 찍고 Z로 넘긴다(「The End」 · 한 번 더 Z) — 만든 사람 화면을 찍고 한 번 더 Z. 타이틀은 통째로 다시 켜진다
   let prev = 0
   for (const at of [4, 30, 60]) {
     await page.waitForTimeout((at - prev) * 1000)
     prev = at
     await page.screenshot({ path: resolve(ROOT, `shots/hof42-credits-${String(at).padStart(3, '0')}s.png`) }).catch(() => {})
   }
+  // 한 번은 3D 장면을 건너뛰어 「The End」로, 그 페이드인(30틱)이 끝난 뒤의 한 번이 끝낸다 (PARITY §8.12)
+  await page.keyboard.press('KeyZ')
+  await page.waitForTimeout(2500)
   await page.keyboard.press('KeyZ')
   await page.waitForSelector('[data-credits="maker"]', { timeout: 10_000 })
   await page.waitForTimeout(1000)
