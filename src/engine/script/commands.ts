@@ -6000,6 +6000,30 @@ on('TryGetRandomMassageGirlAccessory', (ctx) => {
   return false
 })
 
+/**
+ * 볼 씰 이름 (`ScrCmd_BufferBallSealName` · `…Plural` · `scrcmd_strings.c:441` · `:565`). 번호에서 **1을 뺀다**(`ballSeal -= 1`).
+ * 롬 뱅크(12 · 13)가 안 구워져 있으면 빈 칸이다 — 우리가 지어 채우지 않는다
+ */
+on('BufferBallSealName', (ctx) => {
+  const slot = ctx.readByte()
+  const seal = ctx.readVar() - 1
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.sealName(seal) ?? '')
+  return false
+})
+on('BufferBallSealNamePlural', (ctx) => {
+  const slot = ctx.readByte()
+  const seal = ctx.readVar() - 1
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.sealNamePlural(seal) ?? '')
+  return false
+})
+/** 콘테스트 배경 이름 (`ScrCmd_BufferContestBackdropName` · `scrcmd.c:5953`) — 원작은 한 프레임 쉰다 */
+on('BufferContestBackdropName', (ctx) => {
+  const slot = ctx.readByte()
+  const backdrop = ctx.readVar()
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.backdropName(backdrop) ?? '')
+  return true
+})
+
 /** 장식 이름을 칸에 채운다 (`ScrCmd_BufferAccessoryName`) */
 on('BufferAccessoryName', (ctx) => {
   const slot = ctx.readByte()

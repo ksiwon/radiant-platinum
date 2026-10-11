@@ -21,6 +21,7 @@ const NAMED = [
   'ScrCmd_0A6', 'DressUpPhotoHasData', 'ShowDressUpPhoto', 'SetDressUpPhotoTitle',
   'CheckHasRoomForGoodsInPC', 'SendGoodToPC', 'GiveTrap', 'GiveSphere', 'DoGroupConnectionAction',
   'SetClearInCatchingShowFlag', 'MoveCatchingShowMonsToPCBoxes', 'PokeMartSeal', 'GiveOrTakeSeal', 'AddContestBackdrop',
+  'BufferBallSealName', 'BufferBallSealNamePlural', 'BufferContestBackdropName',
 ] as const
 
 maybe('전수 점검이 이름을 붙인 명령', () => {

@@ -670,6 +670,11 @@ export interface FieldServices {
      * `BufferAccessoryNameWithArticle`은 콘테스트 계통이라 안 만든다 (§9)
      */
     accessory: (accessory: number) => string
+    /** 볼 씰 이름 — 단수 · 복수 (`TEXT_BANK_BALL_SEAL_NAMES` · `_PLURAL`). 번호는 **0부터**다 (명령이 1을 뺀다) */
+    sealName: (seal: number) => string
+    sealNamePlural: (seal: number) => string
+    /** 콘테스트 배경 이름 (`TEXT_BANK_CONTEST_BACKDROP_NAMES`) */
+    backdropName: (backdrop: number) => string
   }
   /** 보관 시스템. 스크립트가 박스 안을 들여다보는 자리가 몇 군데 있다 */
   boxes?: {

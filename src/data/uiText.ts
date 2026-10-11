@@ -115,6 +115,10 @@ export const UI_BANK = {
    */
   itemNamesWithArticles: 393,
   accessoryNamesWithArticles: 387,
+  /** `TEXT_BANK_BALL_SEAL_NAMES` · `_PLURAL` · `TEXT_BANK_CONTEST_BACKDROP_NAMES` — 씰 · 배경 이름 칸 */
+  ballSealNames: 12,
+  ballSealNamesPlural: 13,
+  backdropNames: 388,
   itemNamesPlural: 394,
   speciesNamesWithArticles: 413,
   trainerClassNamesWithArticles: 620,

@@ -301,6 +301,10 @@ let natureNames: readonly string[] = []
 /** 나무열매 64 (`TEXT_BANK_BERRY_NAMES`). 차례가 도구 번호 − `FIRST_BERRY_ITEM`이다 */
 let berryNames: readonly string[] = []
 let accessoryNames: readonly string[] = []
+/** 볼 씰 이름(단수 · 복수)과 콘테스트 배경 이름 */
+let sealNames: readonly string[] = []
+let sealNamesPlural: readonly string[] = []
+let backdropNames: readonly string[] = []
 /** 트레이너 이름 928 · 분류 105 */
 let trainerNames: readonly string[] = []
 let trainerClassNames: readonly string[] = []
@@ -715,6 +719,12 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   void loadDialogueBank(locale, UI_BANK.accessoryNames)
     .then((bank) => { accessoryNames = bank })
     .catch(() => { /* 장식 이름만 빈다 */ })
+  void loadDialogueBank(locale, UI_BANK.ballSealNames)
+    .then((bank) => { sealNames = bank }).catch(() => { /* 씰 이름만 빈다 */ })
+  void loadDialogueBank(locale, UI_BANK.ballSealNamesPlural)
+    .then((bank) => { sealNamesPlural = bank }).catch(() => { /* 복수 이름만 빈다 */ })
+  void loadDialogueBank(locale, UI_BANK.backdropNames)
+    .then((bank) => { backdropNames = bank }).catch(() => { /* 배경 이름만 빈다 */ })
   // 아래 넷은 미국 롬에만 있다. 못 받는 것이 정상이라 조용히 넘긴다
   void loadDialogueBank(locale, UI_BANK.itemNamesWithArticles)
     .then((bank) => { itemArticleNames = bank }).catch(() => { /* 맨 이름표로 */ })
@@ -1222,6 +1232,9 @@ const services: FieldServices = {
     // ⚠️ 도구 표가 아니라 **열매 이름 뱅크**다 — 「체리열매」가 아니라 「체리」
     berry: (item) => berryNames[item - FIRST_BERRY_ITEM] ?? '',
     accessory: (accessory) => accessoryNames[accessory] ?? '',
+    sealName: (seal) => sealNames[seal] ?? '',
+    sealNamePlural: (seal) => sealNamesPlural[seal] ?? '',
+    backdropName: (backdrop) => backdropNames[backdrop] ?? '',
     pocket: (pocket) => pocketNames[pocket] ?? '',
     species: (species) => speciesNames[species] ?? '',
     type: (type) => typeNames[type] ?? '',
