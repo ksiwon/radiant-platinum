@@ -312,7 +312,7 @@ suite('인물', () => {
     const { glb } = await exportModel(env, encodePng, {
       maxSize: 256, keepClips: false, recolor: spec.paint, ...(spec.drop ? { drop: spec.drop } : {}),
     })
-    const wearOf = async (g: Uint8Array): Promise<{ width: number, height: number, pixels: Uint8Array }> => {
+    const wearOf = async (g: Uint8Array): Promise<{ width: number, height: number, pixels: Uint8Array | Uint8ClampedArray }> => {
       const dv = new DataView(g.buffer, g.byteOffset, g.byteLength)
       const n = dv.getUint32(12, true)
       const j = JSON.parse(new TextDecoder().decode(g.subarray(20, 20 + n))) as {
