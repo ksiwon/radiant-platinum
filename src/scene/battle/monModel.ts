@@ -144,7 +144,12 @@ function clipFor(clips: readonly AnimationClip[], want: MotionName): AnimationCl
  * 몸은 `null` — 그 길이는 그 동작의 길이가 아니다
  */
 export function motionClipSeconds(body: Pick<MonBody, 'clips'>, want: MotionName): number | null {
-  return body.clips.find((c) => MOTION[want].test(c.name))?.duration ?? null
+  return motionClip(body, want)?.duration ?? null
+}
+
+/** 그 동작의 클립 그 자체. 대신 트는 것으로 안 떨어진다 — 없으면 `null` */
+export function motionClip(body: Pick<MonBody, 'clips'>, want: MotionName): AnimationClip | null {
+  return body.clips.find((c) => MOTION[want].test(c.name)) ?? null
 }
 
 export interface Loaded {

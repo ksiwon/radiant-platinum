@@ -58,6 +58,22 @@ export function canvasRect(hole: DomBox, canvas: { w: number, h: number }, dpr: 
 /** 구도 — 키가 구멍 높이의 78%, 발이 아래 12%에 온다 (SYSTEM §2.4 「구도」) */
 export const FIT = { heightFrac: 0.78, feetFrac: 0.12, widthFrac: 0.9, fov: 30 } as const
 
+/**
+ * 울음 동작이 구도를 넓히는 한도 (대기 키 · 폭에 곱한다). 몸이 설 때마다 우는데 구도를 대기 자세로만 재면, 울음 중에
+ * 커지는 부위가 구멍 밖으로 튄다 — 로토무는 꼬리 번개가 대기 0.05배에서 1.33배로, 팔이 2배로 커져 몸 한 귀퉁이만
+ * 잡힌 판이 찍혔다. 그렇다고 울음의 끝값을 다 담으면 그런 몸이 대기 내내 작아진다 — 1.3배에서 자른다
+ */
+export const MOTION_ROOM = 1.3
+
+/** 대기 크기와 울음 동작 중 가장 큰 크기로 구도에 쓸 크기 */
+export function framedSize(
+  rest: { height: number, width: number }, motion: { height: number, width: number } | null,
+): { height: number, width: number } {
+  if (motion === null) return rest
+  const grow = (a: number, b: number): number => Math.min(Math.max(a, b), a * MOTION_ROOM)
+  return { height: grow(rest.height, motion.height), width: grow(rest.width, motion.width) }
+}
+
 interface FitInput {
   /** 몸의 키 (발 = 0) · 가로 폭(x · z 중 큰 쪽) */
   height: number

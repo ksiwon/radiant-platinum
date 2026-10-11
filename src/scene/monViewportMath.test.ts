@@ -2,8 +2,8 @@
 import { describe, expect, it } from 'vitest'
 import { WINDOW } from '../ui/theme/window.css'
 import {
-  FACE_STOPS, FIT, canvasRect, faceColorAt, fitCamera, holeRect, neutralTone, precompensate, snapRect,
-  swayAngle,
+  FACE_STOPS, FIT, MOTION_ROOM, canvasRect, faceColorAt, fitCamera, framedSize, holeRect, neutralTone, precompensate,
+  snapRect, swayAngle,
 } from './monViewportMath'
 
 const box = (left: number, top: number, width: number, height: number) => ({ left, top, width, height })
@@ -105,6 +105,20 @@ describe('fitCamera — 키 78% · 발 아래 12%', () => {
 
   it('aspect가 0이어도 던지지 않는다', () => {
     expect(Number.isFinite(fitCamera({ height: 1, width: 1, aspect: 0 }).distance)).toBe(true)
+  })
+})
+
+describe('framedSize — 울음 동작이 넓히는 구도', () => {
+  it('울음이 없으면 대기 크기 그대로다', () => {
+    expect(framedSize({ height: 0.3, width: 0.14 }, null)).toEqual({ height: 0.3, width: 0.14 })
+  })
+  it('울음 중에 더 크면 그만큼 넓히고, 대기보다 작아지지는 않는다', () => {
+    expect(framedSize({ height: 1, width: 1 }, { height: 1.1, width: 0.5 })).toEqual({ height: 1.1, width: 1 })
+  })
+  it('로토무처럼 꼬리가 몇 배로 커져도 1.3배에서 자른다', () => {
+    const f = framedSize({ height: 0.31, width: 0.14 }, { height: 0.55, width: 1.2 })
+    expect(f.height).toBeCloseTo(0.31 * MOTION_ROOM, 6)
+    expect(f.width).toBeCloseTo(0.14 * MOTION_ROOM, 6)
   })
 })
 
