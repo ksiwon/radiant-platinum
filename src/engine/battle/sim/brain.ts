@@ -117,6 +117,8 @@ export class TrainerBrain {
   private foeProtectChain = 0
   /** 키 → 나온 뒤 우리 쪽이 쓴 기술 번호들 (`IfCanUseLastResort`) */
   private readonly used = new Map<string, Set<number>>()
+  /** 키 → 쌓아 둔 비축 횟수. sim은 `-start|…|stockpile2`로 알리고 `-end|…|Stockpile0`으로 끝낸다 */
+  private readonly stockpile = new Map<string, number>()
   /** 내가 방어·판별을 연속으로 쓴 횟수 */
   private protectChain = 0
   /** 키 → 그 개체가 등판한 턴 번호 */
@@ -167,12 +169,18 @@ export class TrainerBrain {
         case 'switch':
           this.entered.set(e.actor.name, this.turn)
           this.used.delete(e.actor.name)
+          this.stockpile.delete(e.actor.name)
           // 교체하면 그 자리에 붙어 있던 지식은 의미가 없어진다
           if (e.actor.side === this.foeSide) {
             this.foeLast = null
             this.foeProtectChain = 0
           } else this.protectChain = 0
           break
+        case 'volatile': {
+          const m = /^stockpile(\d)$/.exec(e.effect.id)
+          if (m) this.stockpile.set(e.actor.name, e.start ? Number(m[1]) : 0)
+          break
+        }
         case 'ability':
           if (e.ability !== null) this.revealed.set(e.actor.name, e.ability)
           break
@@ -336,7 +344,7 @@ export class TrainerBrain {
     request: BattleRequest, view: BattleView, at: number,
     self: AiMon, foe: AiMon, foeKey: string, mySeen: ViewMon,
     moves: readonly AiMove[], activeKeys: readonly string[],
-  ): Pick<AiTurn, 'foeLast' | 'foeKnownEffects' | 'foeTurn' | 'foeProtectChain' | 'turnCount'
+  ): Pick<AiTurn, 'foeLast' | 'foeKnownEffects' | 'foeTurn' | 'foeProtectChain' | 'turnCount' | 'stockpile'
   | 'lastResort' | 'partyStatused' | 'partyDealsMore'> {
     const used = this.used.get(mySeen.key)
     const usedKnown = moves.filter((m) => m.effect !== LAST_RESORT_EFFECT && used?.has(m.id)).length
@@ -344,6 +352,7 @@ export class TrainerBrain {
       foeLast: this.foeLast,
       foeKnownEffects: this.foeEffects,
       foeTurn: this.turnsOut(foeKey),
+      stockpile: this.stockpile.get(mySeen.key) ?? 0,
       foeProtectChain: this.foeProtectChain,
       // `totalTurns`는 첫 턴이 0이다 — 사건의 `turn`은 1부터 센다
       turnCount: Math.max(0, this.turn - 1),

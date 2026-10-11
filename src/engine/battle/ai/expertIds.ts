@@ -251,6 +251,7 @@ export const AB = {
   ICE_BODY: 115,
   SOLID_ROCK: 116,
   RECKLESS: 120,
+  ROCK_HEAD: 69,
 } as const
 
 /** 도구 (`items.txt`) */

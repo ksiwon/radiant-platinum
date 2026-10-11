@@ -3,12 +3,11 @@
 // 플래티넘 트레이너 928명 중 289명이 이 플래그를 갖고 있다. 관장·사천왕·라이벌은
 // 전부 여기 들어간다.
 //
-// ⚠️ **부분 이식이다.** 원작 스크립트의 EXPERT 분기표는 효과 177가지를 루틴 136개로
-// 보내는데, 그 대부분은 우리가 아직 안 들고 있는 상태(골로피 횟수, 도구 소지,
-// 예약된 미래예지)를 봐야 한다. 여기서는 **실제로 자주 걸리는
-// 루틴부터** 옮겼다 — `sim/brain.test.ts`가 928명의 실제 파티를 훑어 적용률을
-// 재고(실측 43.4% · 1,305/3,004 · 원작 분기표가 닿는 51.8%), 그 값이
-// 떨어지면 실패한다. 안 옮긴 효과는 점수를 안 건드린다.
+// 분기표(`Expert_Main` 1623)의 효과 177개를 **전부** 옮겼다 — 앞쪽 절반(능력 올리기·깎기, 회복,
+// 날씨, 벽, 방어, 유턴 …)은 이 파일에, 나머지 74개는 `expertMore.ts`에 있다.
+// `sim/brain.test.ts`가 928명의 실제 파티를 훑어 적용률을 재고(실측 51.8% · 1,555/3,004 =
+// 분기표가 닿는 범위 전부), 그 값이 떨어지면 실패한다. 분기표에 없는 효과(공격기 대부분)는
+// 원작도 점수를 안 건드린다.
 //
 // 옮긴 것이 **실제로 이기는 수를 고르는가**는 다른 질문이고 `ai/strength.test.ts`가
 // 잰다 — 난천의 편성끼리 붙여 무작위·탐욕 상대로 40판씩.
@@ -21,9 +20,9 @@ import { isDamageScored } from './damage'
 import { ABILITY, EFFECT } from './rom'
 import { TYPE } from './typeChart'
 import {
-  eff, foeKnowsEffect, foeLastPower, hasSuperEffective, isSlower, knowsEffect, lastClass, resisted, skip, statusConfuse,
+  eff, foeKnowsEffect, foeLastPower, hasSuperEffective, isFaster, isSlower, knowsEffect, lastClass, resisted, skip, statusConfuse,
 } from './expertKit'
-import { E, IT } from './expertIds'
+import { AB, E, IT } from './expertIds'
 import { chargeWithInvuln, MORE_HANDLED, scoreExpertMore, synthesisWeather } from './expertMore'
 
 const MOVE_U_TURN = 369
@@ -45,9 +44,10 @@ function highCritical(turn: AiTurn, move: AiMove): number {
 
 /** 반드시 맞는 기술. 상대 회피가 높거나 내 명중이 낮을수록 값어치가 오른다 */
 function bypassAccuracy(turn: AiTurn): number {
-  if (turn.foe.boosts.evasion > 4 || turn.self.boosts.accuracy < -4) return 1
-  if (turn.foe.boosts.evasion > 2 || turn.self.boosts.accuracy < -2) {
-    return skip(turn.random, 100) ? 0 : 1
+  // ⚠️ +5·−5 이상이면 +1을 얹고 **아래 +3·−3 갈래의 굴림까지 흘러내린다** (`Expert_BypassAccuracyMove` 2253)
+  const strong = turn.foe.boosts.evasion > 4 || turn.self.boosts.accuracy < -4
+  if (strong || turn.foe.boosts.evasion > 2 || turn.self.boosts.accuracy < -2) {
+    return (strong ? 1 : 0) + (skip(turn.random, 100) ? 0 : 1)
   }
   return 0
 }
@@ -58,11 +58,10 @@ function drainMove(turn: AiTurn, move: AiMove): number {
   return skip(turn.random, 50) ? 0 : -3
 }
 
-/** 반동 기술. 돌머리·매직가드면 반동이 없으니 값어치가 오른다 */
+/** 반동 기술 (`Expert_RecoilMove` 6286). 돌머리·매직가드면 반동이 없으니 값어치가 오른다 */
 function recoilMove(turn: AiTurn, move: AiMove): number {
   if (resisted(move, turn.foe)) return 0
-  // 돌머리는 우리 특성 표에 없다. 매직가드만 본다
-  return turn.self.ability === ABILITY.MAGIC_GUARD ? 1 : 0
+  return turn.self.ability === AB.ROCK_HEAD || turn.self.ability === ABILITY.MAGIC_GUARD ? 1 : 0
 }
 
 /** 인파이트처럼 자기 방어를 깎는 기술. 체력이 얼마 안 남았으면 안 쓴다 */
@@ -98,6 +97,8 @@ function statusSleep(turn: AiTurn): number {
 /** 파괴광선처럼 다음 턴을 버리는 기술. 체력이 넉넉하면 굳이 안 쓴다 */
 function rechargeTurn(turn: AiTurn, move: AiMove): number {
   if (resisted(move, turn.foe)) return -1
+  // 게으름이면 쉬는 턴이 어차피 오니 쓸 만하다 (`Expert_RechargeTurn` 3041)
+  if (turn.self.ability === ABILITY.TRUANT) return skip(turn.random, 80) ? 0 : 1
   const hp = hpPercent(turn.self)
   return isSlower(turn) ? (hp < 60 ? 0 : -1) : (hp > 40 ? -1 : 0)
 }
@@ -138,8 +139,6 @@ function speedDownOnHit(turn: AiTurn, move: AiMove): number {
 /** 스피드를 깎는 변화기. 이미 내가 빠르면 깎을 이유가 없다 */
 function statusSpeedDown(turn: AiTurn): number {
   if (!isSlower(turn)) return -3
-  const hp = hpPercent(turn.self)
-  if (hp < 60) return -2
   return skip(turn.random, 70) ? 0 : 2
 }
 
@@ -155,6 +154,7 @@ function sunnyDay(turn: AiTurn): number {
   if (turn.weather === 'Hail' || turn.weather === 'RainDance' || turn.weather === 'Sandstorm') {
     return 1
   }
+  if (turn.self.ability === ABILITY.FLOWER_GIFT) return 1
   // 원작은 여기서 "리프가드 + 상태이상"이면 +1을 준다. 리프가드는 상태이상을
   // 막는 특성이라 이미 걸린 뒤에는 소용이 없다 — 원본의 조건이 뒤집혀 있다.
   // 그대로 옮긴다
@@ -183,6 +183,8 @@ function uTurn(turn: AiTurn, move: AiMove): number {
   if (turn.self.bench === 0) return 0
   let delta = 0
   if (hasSuperEffective(turn) && !skip(turn.random, 64)) delta -= 2
+  // 후발 중에 더 센 마리가 없으면 75%로 −2를 얹고 끝낸다. 판 밖(시험)에서는 있다고 친다
+  if (!(turn.partyDealsMore?.() ?? true) && !skip(turn.random, 64)) return delta - 2
 
   const foeHp = hpPercent(turn.foe)
   let plus = false
@@ -196,7 +198,7 @@ function uTurn(turn: AiTurn, move: AiMove): number {
   }
   if (plus && !skip(turn.random, 128)) delta += 1
 
-  if (!isSlower(turn)) return delta + 1
+  if (isFaster(turn)) return delta + 1
   return skip(turn.random, 128) ? delta : delta + 1
 }
 
@@ -234,6 +236,8 @@ function rest(turn: AiTurn): number {
       if (!skip(turn.random, 70)) return -3
     }
   }
+  // 상대가 가로챔을 알면 먼저 20%로 건너뛴다 (`Expert_Rest_CheckForSnatch` 2755)
+  if (foeKnowsEffect(turn, E.STEAL_STATUS_MOVE) && skip(turn.random, 50)) return 0
   return skip(turn.random, 10) ? 0 : 3
 }
 
@@ -345,8 +349,9 @@ function curse(turn: AiTurn): number {
   let delta = 0
   // 자이로볼·트릭룸을 갖고 있으면 느려지는 것이 오히려 이득이다
   const slowIsGood = knownMoves(turn).some((m) => m.effect === EFFECT.TRICK_ROOM || m.effect === 219)
+  // 두 굴림이 **따로** 쌓인다 (`Expert_Curse_HighChanceScorePlus1` 3465 → `FlipCoinScorePlus1`)
   if (slowIsGood && !skip(turn.random, 32)) delta += 1
-  else if (!skip(turn.random, 128)) delta += 1
+  if (!skip(turn.random, 128)) delta += 1
   if (turn.self.boosts.def >= 2) return delta
   if (!skip(turn.random, 128)) delta += 1
   if (turn.self.boosts.def >= 1) return delta
@@ -390,29 +395,33 @@ function chargeTurn(turn: AiTurn, move: AiMove): number {
  * 이게 없으면 AI가 방어만 쓰다 배틀이 안 끝난다
  */
 function protect(turn: AiTurn): number {
-  if (turn.protectChain > 1) return -2
-  const foeSuffering = turn.foe.status === 'tox'
-    || turn.foe.volatiles.has('curse')
-    || turn.foe.volatiles.has('perish3')
-    || turn.foe.volatiles.has('attract')
-    || turn.foe.volatiles.has('leechseed')
-    || turn.foe.volatiles.has('yawn')
-  const selfSuffering = turn.self.status === 'tox'
-    || turn.self.volatiles.has('curse')
-    || turn.self.volatiles.has('perish3')
-    || turn.self.volatiles.has('attract')
-    || turn.self.volatiles.has('leechseed')
-    || turn.self.volatiles.has('yawn')
-  if (selfSuffering) return -2
-
+  const { self, foe, random } = turn
   let delta = 0
-  if (foeSuffering || !skip(turn.random, 85)) delta += 2
-  if (!skip(turn.random, 128)) delta -= 1
+  // 상대가 페인트·그림자꿈을 알면 방어가 뚫린다 (`Expert_Protect` 3499)
+  if ((turn.foeKnownMoves.has(MOVE_FEINT) || turn.foeKnownMoves.has(MOVE_SHADOW_FORCE))
+    && !skip(random, 128)) {
+    delta -= 2
+  }
+  if (turn.protectChain > 1) return delta - 2
+  const suffering = (m: AiMon): boolean => m.status === 'tox' || m.volatiles.has('curse')
+    || [...m.volatiles].some((v) => v.startsWith('perish')) || m.volatiles.has('attract')
+    || m.volatiles.has('leechseed') || m.volatiles.has('yawn')
+  // 록온을 당한 판은 방어가 소용없지만 감점도 없다. 우리 sim의 뷰에는 그 표지가 안 올라와서
+  // 상대 쪽 `lockon`만 본다 — 안 보이면 걸려 있지 않은 것으로 읽는다
+  const lockedOnto = foe.volatiles.has('lockon')
+  if (suffering(self) || foeKnowsEffect(turn, E.RESTORE_HALF_HP)
+    || foeKnowsEffect(turn, E.DEF_UP_DOUBLE_ROLLOUT_POWER)) {
+    return lockedOnto ? delta : delta - 2
+  }
+  if (suffering(foe) || turn.doubles !== undefined || lockedOnto || skip(random, 85)) delta += 2
+  if (!skip(random, 128)) delta -= 1
   if (turn.protectChain === 0) return delta
   delta -= 1
-  return skip(turn.random, 128) ? delta : delta - 1
+  return skip(random, 128) ? delta : delta - 1
 }
 
+const MOVE_FEINT = 364
+const MOVE_SHADOW_FORCE = 467
 const MOVE_PROTECT = 182
 const MOVE_DETECT = 197
 

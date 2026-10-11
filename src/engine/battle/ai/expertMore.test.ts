@@ -11,6 +11,7 @@ import { AB, E, HE, IT, MV } from './expertIds'
 import { EFFECT } from './rom'
 import { TYPE } from './typeChart'
 
+const SWITCH_HIT = 228 // 유턴
 const SLOW = { hp: 200, atk: 100, def: 100, spa: 100, spd: 100, spe: 50 }
 const FAST = { hp: 200, atk: 100, def: 100, spa: 100, spd: 100, spe: 200 }
 
@@ -666,5 +667,67 @@ describe('하늘·땅속 기술 · 되돌아온 효과들', () => {
     const crit = (effect: number) => run(effect, { move: { power: 70, category: 'physical' }, random: 0.99 })
     expect(crit(E.HIGH_CRITICAL_BURN_HIT)).toBe(crit(E.HIGH_CRITICAL))
     expect(crit(E.HIGH_CRITICAL_POISON_HIT)).toBe(crit(E.HIGH_CRITICAL))
+  })
+})
+
+describe('앞서 옮긴 루틴을 스크립트와 다시 맞댄 것', () => {
+  const hit = (effect: number, o: Opts = {}) =>
+    run(effect, { ...o, move: { power: 80, category: 'physical', ...o.move } })
+
+  it('필중기: 회피 +5·명중 −5 이상이면 +1에 +3 갈래의 굴림이 흘러든다', () => {
+    const evasive = mon({ boosts: boosts({ evasion: 5 }) })
+    expect(run(EFFECT.BYPASS_ACCURACY, { foe: evasive })).toBe(2)
+    expect(run(EFFECT.BYPASS_ACCURACY, { foe: evasive, random: 0.1 })).toBe(1)
+    expect(run(EFFECT.BYPASS_ACCURACY, { foe: mon({ boosts: boosts({ evasion: 3 }) }) })).toBe(1)
+  })
+
+  it('반동기: 돌머리도 +1 · 반동 없는 파괴광선: 게으름이면 76%로 +1', () => {
+    expect(hit(EFFECT.RECOIL_QUARTER, { self: mon({ ability: AB.ROCK_HEAD }) })).toBe(1)
+    expect(hit(EFFECT.RECHARGE_AFTER, { self: mon({ ability: 54 }) })).toBe(1)
+    expect(hit(EFFECT.RECHARGE_AFTER, { self: mon({ ability: 54 }), random: 0.1 })).toBe(0)
+  })
+
+  it('쾌청: 플라워기프트 +1 · 스피드 깎기에는 내 체력 조건이 없다', () => {
+    expect(run(EFFECT.WEATHER_SUN, { self: mon({ ability: 122 }) })).toBe(1)
+    expect(run(EFFECT.SPEED_DOWN, { self: mon({ stats: SLOW }, 50), random: 0.99 })).toBe(2)
+    expect(run(EFFECT.SPEED_DOWN)).toBe(-3)
+  })
+
+  it('잠자기: 상대가 가로챔을 알면 먼저 20%를 건너뛴다', () => {
+    const hurt = mon({ stats: SLOW }, 30)
+    expect(run(EFFECT.REST, { self: hurt })).toBe(3)
+    expect(run(EFFECT.REST, { self: hurt, knows: [E.STEAL_STATUS_MOVE], random: 0.1 })).toBe(0)
+  })
+
+  it('유턴: 내가 **더 빠를 때만** 속도 몫 +1이 확정이다 — 같으면 50%', () => {
+    const base = { move: { power: 70, category: 'physical' as const }, turn: { partyDealsMore: () => true } }
+    // 난수 0.1이면 체력 몫은 전부 건너뛰고 속도 갈래만 남는다
+    expect(run(SWITCH_HIT, { ...base, self: mon({ stats: FAST }), random: 0.1 })).toBe(1)
+    expect(run(SWITCH_HIT, { ...base, random: 0.1 })).toBe(0)
+  })
+
+  it('유턴: 후발에 더 센 마리가 없으면 75%로 −2를 얹고 끝낸다', () => {
+    const none = { move: { power: 70, category: 'physical' as const }, turn: { partyDealsMore: () => false } }
+    expect(run(SWITCH_HIT, { ...none })).toBe(-2)
+    expect(run(SWITCH_HIT, { ...none, random: 0.1 })).toBe(0)
+  })
+
+  it('저주: 자이로볼·트릭룸이 있으면 두 굴림이 따로 쌓인다', () => {
+    const trickRoom = [{ ...last(), effect: EFFECT.TRICK_ROOM, slot: 2 }]
+    expect(run(EFFECT.CURSE, { mine: trickRoom })).toBe(2 + 1 + 1)
+    expect(run(EFFECT.CURSE)).toBe(1 + 1 + 1)
+  })
+
+  it('방어: 페인트를 아는 상대 −2 · 연속 2회 넘으면 −2 · 록온에는 감점이 없다', () => {
+    expect(run(EFFECT.PROTECT, { knownIds: [364] })).toBe(-3)
+    expect(run(EFFECT.PROTECT, { turn: { protectChain: 2 } })).toBe(-2)
+    expect(run(EFFECT.PROTECT, { self: mon({ status: 'tox' }) })).toBe(-2)
+    expect(run(EFFECT.PROTECT, { self: mon({ status: 'tox' }), foe: mon({ volatiles: new Set(['lockon']) }) })).toBe(0)
+    expect(run(EFFECT.PROTECT, { knows: [E.RESTORE_HALF_HP] })).toBe(-2)
+  })
+
+  it('방어: 85/256 아래의 난수에서 +2 · 아니면 50%로 −1만 남는다', () => {
+    expect(run(EFFECT.PROTECT, { random: 0.0 })).toBe(2)
+    expect(run(EFFECT.PROTECT)).toBe(-1)
   })
 })

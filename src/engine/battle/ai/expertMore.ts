@@ -806,7 +806,7 @@ function healingWish(turn: AiTurn): number {
 
 /** 토해내기 (4076) */
 function spitUp(turn: AiTurn): number {
-  const count = Math.max(
+  const count = turn.stockpile ?? Math.max(
     0, ...['stockpile1', 'stockpile2', 'stockpile3']
       .map((v, i) => (turn.self.volatiles.has(v) ? i + 1 : 0)),
   )
