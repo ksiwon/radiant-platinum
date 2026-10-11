@@ -178,6 +178,8 @@ export interface BdspMotion {
   update(dt: number, eye: Vector3): void
   /** 믹서를 놓는다 (재질 · 지오메트리는 `disposeTree`의 몫) */
   dispose(): void
+  /** 개발 진단 — 지금 회전 · 클립 노드의 자세 (개발 서버에서 `window.__bdspMotion()`) */
+  probe?(): unknown
 }
 
 /**
@@ -202,7 +204,7 @@ export function liveMotion(root: Object3D, animations: readonly AnimationClip[] 
   let clock = 0
   let sinceNear = NEAR_EVERY
   const q = new Quaternion()
-  return {
+  const api: BdspMotion = {
     update(dt, eye) {
       clock += dt
       sinceNear += dt
@@ -220,8 +222,27 @@ export function liveMotion(root: Object3D, animations: readonly AnimationClip[] 
     dispose() {
       mixer?.stopAllAction()
       for (const a of actions) mixer?.uncacheClip(a.action.getClip())
+      if (import.meta.env.DEV) probes.delete(api)
+    },
+    probe() {
+      return {
+        spin: spinners.slice(0, 4).map((s) => ({ near: s.near, q: s.node.quaternion.toArray() })),
+        clips: actions.slice(0, 4).map((a) => {
+          const node = a.action.getClip().tracks[0]?.name.split('.')[0]
+          const o = node ? root.getObjectByName(node) : undefined
+          return { paused: a.action.paused, at: o ? o.position.toArray() : null }
+        }),
+      }
     },
   }
+  // 개발 서버에서만 — 화면 확인 도구(`pnpm shot --eval`)가 `window.__bdspMotion()`으로 지금 자세를 읽는다
+  if (import.meta.env.DEV) probes.add(api)
+  return api
+}
+
+const probes = new Set<BdspMotion>()
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  ;(window as unknown as { __bdspMotion?: () => unknown }).__bdspMotion = () => [...probes].map((p) => p.probe?.())
 }
 
 /** 클립이 모는 노드의 월드 위치 — 가까운지 가를 자리. 못 찾으면 `null`(늘 민다) */

@@ -32,6 +32,7 @@ import { exportModel } from './model'
 import { bakeAlbedo } from './albedo'
 import { exportArena } from './arena'
 import { exportField, movingOf } from './field'
+import { findRigs, pathHashes } from './rig'
 import { convertBattleFx } from './fx'
 import { className, openBundle, readSerializedFile } from './unityfs'
 import type { UnityValue } from './typetree'
@@ -1029,7 +1030,7 @@ async function convertRooms(ctx: ConvertContext): Promise<Produced> {
     if (!env) missing.push(name)
     else {
       try {
-        const { glb } = await exportArena(env, encodePng, { name, maxSize: ROOM_TEXTURE, motion: true, moving: movingOf })
+        const { glb } = await exportArena(env, encodePng, { name, maxSize: ROOM_TEXTURE, motion: true, moving: movingOf, rigging: { find: findRigs, hashes: pathHashes } })
         put(ctx, out, `models/room/${name}.glb`, glb)
         made.push(name)
       } catch { missing.push(name) }
