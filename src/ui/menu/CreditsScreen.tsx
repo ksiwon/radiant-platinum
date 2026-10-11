@@ -53,7 +53,7 @@ const VIEW_H = 192
  * 만든 사람 화면의 글 — **우리가 쓴 글은 여기뿐이다.** 소개는 만든 사람의 누리집(siwon.it.kr)에 적힌 그대로다.
  *
  * ⚠️ **다른 게임은 타이틀의 「이런 게임은 어떠세요?」(`screens/gameLinks`)와 글자까지 같다.** 한동안 여기만 따로 적어
- * 같은 게임이 두 화면에서 「Pokerhythm」·「PokeRhythm」으로, 소개도 다른 말로 나왔다. 그 파일은 세 저장소가 같은
+ * 같은 게임이 두 화면에서 「Pokerhythm」·「PokeRhythm」으로, 소개도 다른 말로 나왔다. 그 파일은 네 저장소가 같은
  * 내용으로 나눠 가져서 이쪽에 맞추지 않는다 — 어긋나면 `creditsScreen.test`가 선다.
  *
  * ⚠️ **고지 줄을 빼지 않는다** — 타이틀 화면과 같은 문장이고(COPYRIGHT §11) 게임을 끝까지 본 사람이 마지막으로 읽는 자리다.
@@ -72,6 +72,7 @@ export const MAKER = {
   games: [
     { title: 'Pokemon Aegis', about: '포켓몬 타워 디펜스 X TFT 게임', label: 'aegis.siwon.it.kr', href: 'https://aegis.siwon.it.kr/' },
     { title: 'PokeRhythm', about: '포켓몬 BGM 리듬게임', label: 'pokerhythm.siwon.it.kr', href: 'https://pokerhythm.siwon.it.kr/' },
+    { title: 'Cosmic Gold', about: '포켓몬 하트골드를 브라우저에서 3D로', label: 'cosmic.siwon.it.kr', href: 'https://cosmic.siwon.it.kr/' },
   ],
   thanks: 'pret 팀의 pokeplatinum 디컴파일 프로젝트',
   notice: [
