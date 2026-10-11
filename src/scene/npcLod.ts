@@ -23,7 +23,7 @@ export const WALK_POSES = 12
 export const LOD_CAPACITY = 128
 
 /** 한 자세의 조각 하나 */
-export interface LodPart {
+interface LodPart {
   geometry: BufferGeometry
   material: Material | Material[]
 }

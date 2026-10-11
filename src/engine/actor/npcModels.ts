@@ -496,7 +496,7 @@ const HERO_IDLE_CLIP_NAMES = ['wait_b', 'stand_b'] as const
 const SPEAK_CLIP_NAMES = ['speak01_b'] as const
 
 /** 말하는 입 클립 정규식. 클립을 읽는 쪽(`actor/clipGait`)도 같은 이름으로 찾는다 */
-export const SPEAK_CLIPS = clipRe(SPEAK_CLIP_NAMES)
+const SPEAK_CLIPS = clipRe(SPEAK_CLIP_NAMES)
 
 /**
  * 주인공 몸에만 더 싣는 **걷기와 뛰기**.
