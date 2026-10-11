@@ -198,8 +198,10 @@ export interface AiTurn {
   lastResort?: boolean
   /** 내가 쌓아 둔 비축 횟수 (`LoadStockpileCount`). 안 주면 `stockpile1~3` 표지로 읽는다 */
   stockpile?: number
-  /** 지금 나온 마리가 쓴 도구 중 되살릴 수 있는 것 (`LoadRecycleItem`). 안 주면 0 — sim이 쓴 도구를 아직 안 알려 준다 */
+  /** 지금 나온 마리가 마지막으로 소모한 도구의 롬 번호 (`battleMons.recycleItem` · `LoadRecycleItem`). 없으면 0 */
   recycleItem?: number
+  /** 상대가 록온·마음의눈을 걸어 둔 채인가 (`MOVE_EFFECT_LOCK_ON` — `battle_script.c` 4343). 안 주면 거짓 */
+  lockedOnto?: boolean
   /** 같은 쪽 후발 주자 중 상태 이상인 마리가 있는가 (`IfPartyMemberStatus`). 안 주면 false */
   partyStatused?: boolean
   /**

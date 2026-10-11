@@ -38,6 +38,7 @@ export interface MoveTable {
 const PROTECT_EFFECT = 111
 const ENDURE_EFFECT = 116 // 버티기 — `LoadProtectChain`이 방어·판별과 같이 센다
 const LAST_RESORT_EFFECT = 246
+const MOVE_RECYCLE = 278
 
 /** 나오자마자 스스로 알리는 트랩 특성 — AI가 진짜 값을 읽는다 (`trainer_ai.c` 1182) */
 const TRAP_ABILITIES: ReadonlySet<number> = new Set([
@@ -119,6 +120,10 @@ export class TrainerBrain {
   private readonly used = new Map<string, Set<number>>()
   /** 키 → 쌓아 둔 비축 횟수. sim은 `-start|…|stockpile2`로 알리고 `-end|…|Stockpile0`으로 끝낸다 */
   private readonly stockpile = new Map<string, number>()
+  /** 키 → 마지막으로 소모한 도구의 롬 번호 (`battleMons.recycleItem`) */
+  private readonly recyclable = new Map<string, number>()
+  /** 록온·마음의눈을 **당한** 쪽의 키 → 건 쪽의 키 (`MOVE_EFFECT_LOCK_ON`은 맞는 쪽에 선다) */
+  private readonly lockedOn = new Map<string, string>()
   /** 내가 방어·판별을 연속으로 쓴 횟수 */
   private protectChain = 0
   /** 키 → 그 개체가 등판한 턴 번호 */
@@ -170,11 +175,31 @@ export class TrainerBrain {
           this.entered.set(e.actor.name, this.turn)
           this.used.delete(e.actor.name)
           this.stockpile.delete(e.actor.name)
+          this.recyclable.delete(e.actor.name)
+          this.dropLock(e.actor.name)
           // 교체하면 그 자리에 붙어 있던 지식은 의미가 없어진다
           if (e.actor.side === this.foeSide) {
             this.foeLast = null
             this.foeProtectChain = 0
           } else this.protectChain = 0
+          break
+        case 'enditem':
+          // 먹었거나 쓴 도구만 되살릴 수 있다 — 빼앗기거나 떨어진 것(`of`·`from`)은 아니다
+          if (e.item.num !== null && !e.silent
+            && (e.how === 'eat' || e.how === 'weaken' || (e.from === null && e.of === null))) {
+            this.recyclable.set(e.actor.name, e.item.num)
+          }
+          break
+        case 'item':
+          // 재활용이 되살리면 기억이 비워진다
+          if (e.actor && e.from?.kind === 'move' && e.from.id === MOVE_RECYCLE) {
+            this.recyclable.delete(e.actor.name)
+          }
+          break
+        case 'activate':
+          if ((e.effect.id === 'lockon' || e.effect.id === 'mindreader') && e.actor && e.of) {
+            this.lockedOn.set(e.of.name, e.actor.name)
+          }
           break
         case 'volatile': {
           const m = /^stockpile(\d)$/.exec(e.effect.id)
@@ -196,6 +221,8 @@ export class TrainerBrain {
             }
             break
           }
+          // 건 쪽이 다음에 움직이면 그 한 방으로 풀린다
+          this.dropLock(undefined, e.actor.name)
           if (e.actor.side !== this.foeSide || e.move === null) break
           this.foeMoves.add(e.move)
           if (data) {
@@ -215,6 +242,13 @@ export class TrainerBrain {
           this.revealed.set(e.actor.name, cause.id)
         }
       }
+    }
+  }
+
+  /** 록온 기록을 푼다 — 맞는 쪽이거나 건 쪽이 사라지거나, 건 쪽이 움직였을 때 */
+  private dropLock(target?: string, locker?: string): void {
+    for (const [t, l] of this.lockedOn) {
+      if (t === target || l === target || l === locker) this.lockedOn.delete(t)
     }
   }
 
@@ -344,7 +378,7 @@ export class TrainerBrain {
     request: BattleRequest, view: BattleView, at: number,
     self: AiMon, foe: AiMon, foeKey: string, mySeen: ViewMon,
     moves: readonly AiMove[], activeKeys: readonly string[],
-  ): Pick<AiTurn, 'foeLast' | 'foeKnownEffects' | 'foeTurn' | 'foeProtectChain' | 'turnCount' | 'stockpile'
+  ): Pick<AiTurn, 'foeLast' | 'foeKnownEffects' | 'foeTurn' | 'foeProtectChain' | 'turnCount' | 'stockpile' | 'recycleItem' | 'lockedOnto'
   | 'lastResort' | 'partyStatused' | 'partyDealsMore'> {
     const used = this.used.get(mySeen.key)
     const usedKnown = moves.filter((m) => m.effect !== LAST_RESORT_EFFECT && used?.has(m.id)).length
@@ -353,6 +387,8 @@ export class TrainerBrain {
       foeKnownEffects: this.foeEffects,
       foeTurn: this.turnsOut(foeKey),
       stockpile: this.stockpile.get(mySeen.key) ?? 0,
+      recycleItem: this.recyclable.get(mySeen.key) ?? 0,
+      lockedOnto: this.lockedOn.has(mySeen.key),
       foeProtectChain: this.foeProtectChain,
       // `totalTurns`는 첫 턴이 0이다 — 사건의 `turn`은 1부터 센다
       turnCount: Math.max(0, this.turn - 1),

@@ -406,9 +406,8 @@ function protect(turn: AiTurn): number {
   const suffering = (m: AiMon): boolean => m.status === 'tox' || m.volatiles.has('curse')
     || [...m.volatiles].some((v) => v.startsWith('perish')) || m.volatiles.has('attract')
     || m.volatiles.has('leechseed') || m.volatiles.has('yawn')
-  // 록온을 당한 판은 방어가 소용없지만 감점도 없다. 우리 sim의 뷰에는 그 표지가 안 올라와서
-  // 상대 쪽 `lockon`만 본다 — 안 보이면 걸려 있지 않은 것으로 읽는다
-  const lockedOnto = foe.volatiles.has('lockon')
+  // 록온·마음의눈을 당했으면 방어가 소용없지만 감점도 없다 (`MOVE_EFFECT_LOCK_ON`)
+  const lockedOnto = turn.lockedOnto === true
   if (suffering(self) || foeKnowsEffect(turn, E.RESTORE_HALF_HP)
     || foeKnowsEffect(turn, E.DEF_UP_DOUBLE_ROLLOUT_POWER)) {
     return lockedOnto ? delta : delta - 2

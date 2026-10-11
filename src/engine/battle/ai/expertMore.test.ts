@@ -722,7 +722,7 @@ describe('앞서 옮긴 루틴을 스크립트와 다시 맞댄 것', () => {
     expect(run(EFFECT.PROTECT, { knownIds: [364] })).toBe(-3)
     expect(run(EFFECT.PROTECT, { turn: { protectChain: 2 } })).toBe(-2)
     expect(run(EFFECT.PROTECT, { self: mon({ status: 'tox' }) })).toBe(-2)
-    expect(run(EFFECT.PROTECT, { self: mon({ status: 'tox' }), foe: mon({ volatiles: new Set(['lockon']) }) })).toBe(0)
+    expect(run(EFFECT.PROTECT, { self: mon({ status: 'tox' }), turn: { lockedOnto: true } })).toBe(0)
     expect(run(EFFECT.PROTECT, { knows: [E.RESTORE_HALF_HP] })).toBe(-2)
   })
 
