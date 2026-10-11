@@ -268,3 +268,257 @@ describe('네 자리의 빠른 차례 (`LoadBattlerSpeedRank`)', () => {
       .toBe(0)
   })
 })
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 갈래별 시나리오 — 원작 라벨마다 하나씩 (`script.s` 6751~7691)
+// ═════════════════════════════════════════════════════════════════════════════
+
+const RAIN_DANCE = 240
+const SUNNY_DAY = 241
+const HAIL = 258
+const SANDSTORM = 201
+const GRAVITY = 356
+const FOLLOW_ME = 266
+const FUTURE_SIGHT = 248
+const SKILL_SWAP = 285
+const THUNDER_WAVE = 86
+const SWAGGER = 207
+const GASTRO_ACID = 380
+const ACUPRESSURE = 367
+const TRICK = 271
+const FLING = 374
+const TOXIC = 92
+const BLIZZARD = 59
+const FIRE_BLAST = 126
+const ITEM_FLAME_ORB = 273
+const ITEM_TOXIC_ORB = 272
+const ITEM_PERSIM_BERRY = 156
+const ITEM_LUM_BERRY = 157
+
+/** 최대 체력의 p%인 개체 */
+function pct(id: number, p: number, patch: Partial<AiMon> = {}): AiMon {
+  const m = mon(id, patch)
+  return { ...m, hp: Math.max(1, Math.round((m.maxHp * p) / 100)) }
+}
+
+describe('날씨 기술 (`TagStrategy_RainDance` · `SunnyDay` · `Hail` · `Sandstorm`)', () => {
+  it('비바라기: 촉촉바디는 상태 이상일 때만 · 건조피부는 늘 +2 — 나와 짝을 따로 센다', () => {
+    const base = { moves: moves(RAIN_DANCE) }
+    const hyd = mon(BIDOOF, { ability: ABILITY.HYDRATION })
+    const dry = mon(BIDOOF, { ability: ABILITY.DRY_SKIN })
+    expect(one(turn({ ...base, self: hyd }))).toBe(0)
+    expect(one(turn({ ...base, self: { ...hyd, status: 'brn' } }))).toBe(2)
+    expect(one(turn({ ...base, self: dry }))).toBe(2)
+    expect(one(turn({ ...base, ally: dry }))).toBe(2)
+    expect(one(turn({ ...base, self: dry, ally: dry }))).toBe(4)
+    expect(one(turn({ ...base, ally: { ...hyd, status: 'par' } }))).toBe(2)
+    expect(one(turn({ ...base, ally: hyd }))).toBe(0)
+  })
+
+  it('쾌청: 잎가드(멀쩡·30% 이상) +2 · 플라워기프트 +2 · 건조피부 −2', () => {
+    const base = { moves: moves(SUNNY_DAY) }
+    const leaf = (p: number, status: AiMon['status'] = 'ok') =>
+      pct(BIDOOF, p, { ability: ABILITY.LEAF_GUARD, status })
+    expect(one(turn({ ...base, self: leaf(100) }))).toBe(2)
+    expect(one(turn({ ...base, self: leaf(29) }))).toBe(0)
+    expect(one(turn({ ...base, self: leaf(100, 'brn') }))).toBe(0)
+    expect(one(turn({ ...base, self: mon(BIDOOF, { ability: ABILITY.FLOWER_GIFT }) }))).toBe(2)
+    expect(one(turn({ ...base, self: mon(BIDOOF, { ability: ABILITY.DRY_SKIN }) }))).toBe(-2)
+    expect(one(turn({ ...base, ally: leaf(100) }))).toBe(2)
+    expect(one(turn({ ...base, ally: mon(BIDOOF, { ability: ABILITY.DRY_SKIN }) }))).toBe(-2)
+    expect(one(turn({ ...base, ally: mon(BIDOOF, { ability: ABILITY.FLOWER_GIFT }) }))).toBe(2)
+  })
+
+  it('쾌청: 솔라파워는 50% 이상 +1에 이어 50%로 −2를 또 굴린다(코드대로) · 절반 아래는 −2만', () => {
+    const sp = (p: number) => pct(BIDOOF, p, { ability: ABILITY.SOLAR_POWER })
+    const base = { moves: moves(SUNNY_DAY) }
+    expect(one(turn({ ...base, self: sp(100), random: 0.99 }))).toBe(-1)
+    expect(one(turn({ ...base, self: sp(100), random: 0.0 }))).toBe(1)
+    expect(one(turn({ ...base, self: sp(40), random: 0.99 }))).toBe(-2)
+    expect(one(turn({ ...base, self: sp(40), random: 0.0 }))).toBe(0)
+    expect(one(turn({ ...base, ally: sp(100), random: 0.99 }))).toBe(-1)
+  })
+
+  it('싸라기눈: 아이스바디·눈숨기·눈보라 중 하나면 그 마리 몫 +2', () => {
+    const base = { moves: moves(HAIL) }
+    const ice = mon(BIDOOF, { ability: ABILITY.ICE_BODY })
+    expect(one(turn(base))).toBe(0)
+    expect(one(turn({ ...base, self: ice }))).toBe(2)
+    expect(one(turn({ ...base, self: mon(BIDOOF, { ability: ABILITY.SNOW_CLOAK }) }))).toBe(2)
+    expect(one(turn({ ...base, moves: moves(HAIL, BLIZZARD) }))).toBe(2)
+    expect(one(turn({ ...base, ally: mon(BIDOOF, { ability: ABILITY.SNOW_CLOAK }) }))).toBe(2)
+    expect(one(turn({ ...base, allyMoves: moves(BLIZZARD) }))).toBe(2)
+    expect(one(turn({ ...base, self: ice, ally: ice }))).toBe(4)
+  })
+
+  it('모래바람: 모래숨기나 바위 타입인 마리마다 +2', () => {
+    const base = { moves: moves(SANDSTORM) }
+    const rock = mon(BIDOOF, { types: [TYPE.ROCK, TYPE.ROCK] })
+    expect(one(turn(base))).toBe(0)
+    expect(one(turn({ ...base, self: mon(BIDOOF, { ability: ABILITY.SAND_VEIL }) }))).toBe(2)
+    expect(one(turn({ ...base, self: mon(BIDOOF, { types: [TYPE.NORMAL, TYPE.ROCK] }) }))).toBe(2)
+    expect(one(turn({ ...base, ally: rock }))).toBe(2)
+    expect(one(turn({ ...base, self: rock, ally: mon(BIDOOF, { ability: ABILITY.SAND_VEIL }) }))).toBe(4)
+  })
+})
+
+describe('중력 · 손가락질 · 미래예지 · 스킬스왑 (`TagStrategy_Gravity` · `FollowMe` · `FutureSight`)', () => {
+  const flyer = mon(BIDOOF, { types: [TYPE.FLYING, TYPE.FLYING] })
+
+  it('중력: 이미 걸렸으면 −30 · 우리 편이 떠 있으면 마리마다 −5', () => {
+    const base = { moves: moves(GRAVITY), random: 0.99 }
+    expect(one({ ...turn(base), field: new Set(['gravity']) })).toBe(-30)
+    expect(one(turn(base))).toBe(0)
+    expect(one(turn({ ...base, self: flyer }))).toBe(-5)
+    expect(one(turn({ ...base, self: flyer, ally: mon(BIDOOF, { ability: ABILITY.LEVITATE }) }))).toBe(-10)
+    expect(one(turn({ ...base, ally: mon(BIDOOF, { volatiles: new Set(['magnetrise']) }) }))).toBe(-5)
+  })
+
+  it('중력: 상대가 떠 있으면 마리마다 75%로 +3', () => {
+    const base = { moves: moves(GRAVITY) }
+    expect(one(turn({ ...base, foe: flyer, random: 0.99 }))).toBe(3)
+    expect(one(turn({ ...base, foe: flyer, random: 0.0 }))).toBe(0)
+    expect(one(turn({ ...base, foe: flyer, foeAlly: flyer, random: 0.99 }))).toBe(6)
+  })
+
+  it('손가락질: 내 체력 × 짝 체력 표 (75%로 적용)', () => {
+    const at = (me: number, ally: number, random = 0.99) =>
+      one(turn({ moves: moves(FOLLOW_ME), self: pct(BIDOOF, me), ally: pct(BIDOOF, ally), random }))
+    expect(at(100, 100)).toBe(-1)
+    expect(at(100, 70)).toBe(1)
+    expect(at(100, 40)).toBe(2)
+    expect(at(100, 20)).toBe(3)
+    expect(at(70, 100)).toBe(-2)
+    expect(at(70, 70)).toBe(-1)
+    expect(at(70, 40)).toBe(1)
+    expect(at(70, 20)).toBe(2)
+    expect(at(40, 100)).toBe(-2)
+    expect(at(40, 70)).toBe(-2)
+    expect(at(40, 40)).toBe(1)
+    expect(at(40, 20)).toBe(2)
+    expect(at(20, 100)).toBe(-5)
+    // 25%는 아무 일도 없다
+    expect(at(100, 20, 0.0)).toBe(0)
+    expect(at(20, 100, 0.0)).toBe(0)
+  })
+
+  it('미래예지: 짝도 가졌고 짝이 먼저 움직이면 −3 · 짝이 안 가졌거나 쓰러졌으면 0', () => {
+    // 데미지 기술이라 앞머리가 먼저 붙는다 — 제일 센 수 +1 (난수 0.99). 그 위의 몫만 본다
+    const base = { moves: moves(FUTURE_SIGHT), random: 0.99, allyMoves: moves(FUTURE_SIGHT) }
+    const head = 1
+    expect(one(turn({ ...base, rank: { self: 3, ally: 0 } }))).toBe(head - 3)
+    expect(one(turn({ ...base, rank: { self: 3, ally: 0 }, allyMoves: [] }))).toBe(head)
+    expect(one(turn({ ...base, rank: { self: 2, ally: 1 } }))).toBe(head - 3)
+    expect(one(turn({ ...base, rank: { self: 1, ally: 0 } }))).toBe(head - 3)
+    // 순서가 갈릴 때는 반반 (`IfRandomLessThan 128`)
+    expect(one(turn({ ...base, rank: { self: 0, ally: 0 } }))).toBe(head - 3)
+    expect(one(turn({ ...base, random: 0.0, rank: { self: 0, ally: 0 } }))).toBe(0)
+    expect(one(turn({ ...base, ally: mon(BIDOOF, { hp: 0 }) }))).toBe(head)
+  })
+
+  it('스킬스왑(상대에게): 내 게으름 계열을 넘기면 +5 · 상대의 좋은 특성을 받으면 +2', () => {
+    const base = { moves: moves(SKILL_SWAP) }
+    expect(one(turn({ ...base, self: mon(BIDOOF, { ability: ABILITY.TRUANT }) }))).toBe(5)
+    expect(one(turn({ ...base, self: mon(BIDOOF, { ability: ABILITY.KLUTZ }) }))).toBe(5)
+    expect(one(turn({ ...base, foe: mon(BIDOOF, { ability: ABILITY.HUGE_POWER }) }))).toBe(2)
+    expect(one(turn(base))).toBe(0)
+  })
+})
+
+describe('짝에게 쓰는 변화기 (`TagStrategy_PartnerStatusMove`)', () => {
+  const toAlly = (id: number, ally: AiMon, extra: Partial<Parameters<typeof turn>[0]> = {}) =>
+    one(turn({ moves: moves(id), targetIsAlly: true, ally, ...extra }))
+
+  it('스킬스왑: 짝이 게으름·슬로스타트면 +10', () => {
+    expect(toAlly(SKILL_SWAP, mon(BIDOOF, { ability: ABILITY.TRUANT }))).toBe(10)
+    expect(toAlly(SKILL_SWAP, mon(BIDOOF, { ability: ABILITY.SLOW_START }))).toBe(10)
+    expect(toAlly(SKILL_SWAP, mon(BIDOOF))).toBe(-30)
+  })
+
+  it('스킬스왑: 복안·노가드를 명중 낮은 기술의 짝에게 +3 · 기술이 없으면 −30', () => {
+    const self = mon(BIDOOF, { ability: ABILITY.COMPOUND_EYES })
+    expect(toAlly(SKILL_SWAP, mon(BIDOOF), { self, allyMoves: moves(FIRE_BLAST) })).toBe(3)
+    expect(toAlly(SKILL_SWAP, mon(BIDOOF), { self, allyMoves: moves(TACKLE) })).toBe(-30)
+    const ng = mon(BIDOOF, { ability: ABILITY.NO_GUARD })
+    expect(toAlly(SKILL_SWAP, mon(BIDOOF), { self: ng, allyMoves: moves(BLIZZARD) })).toBe(3)
+  })
+
+  it('스킬스왑: 부유를 순수 전기 짝에게 주면 +2 · 이미 부유면 −30', () => {
+    const self = mon(BIDOOF, { ability: ABILITY.LEVITATE })
+    const elec = mon(BIDOOF, { types: [TYPE.ELECTRIC, TYPE.ELECTRIC] })
+    expect(toAlly(SKILL_SWAP, elec, { self })).toBe(2)
+    expect(toAlly(SKILL_SWAP, mon(BIDOOF, { ability: ABILITY.LEVITATE }), { self })).toBe(-30)
+    // 전기/다른 타입 — +1 뒤에 복안 갈래로 흘러 −30이 붙는다 (코드대로)
+    expect(toAlly(SKILL_SWAP, mon(BIDOOF, { types: [TYPE.ELECTRIC, TYPE.FLYING] }), { self })).toBe(-29)
+  })
+
+  it('도깨비불: 근성 짝이 멀쩡·81% 이상·불 도구 없음일 때만 +5', () => {
+    const guts = (patch: Partial<AiMon> = {}, p = 100) =>
+      pct(BIDOOF, p, { ability: ABILITY.GUTS, ...patch })
+    expect(toAlly(WILL_O_WISP, guts())).toBe(5)
+    expect(toAlly(WILL_O_WISP, guts({ status: 'par' }))).toBe(-30)
+    expect(toAlly(WILL_O_WISP, guts({ heldItem: ITEM_FLAME_ORB }))).toBe(-30)
+    expect(toAlly(WILL_O_WISP, guts({ heldItem: ITEM_TOXIC_ORB }))).toBe(-30)
+    expect(toAlly(WILL_O_WISP, guts({}, 80))).toBe(-30)
+    expect(toAlly(WILL_O_WISP, guts({ types: [TYPE.FIRE, TYPE.FIRE] }))).toBe(-30)
+  })
+
+  it('전기자석파: 땅 타입은 −30 · 전기엔진·축전이면 전기 흡수 표를 따른다', () => {
+    const ground = mon(BIDOOF, { types: [TYPE.GROUND, TYPE.GROUND], ability: ABILITY.MOTOR_DRIVE })
+    expect(toAlly(THUNDER_WAVE, ground)).toBe(-30)
+    expect(toAlly(THUNDER_WAVE, mon(BIDOOF))).toBe(-30)
+    const volt = (p: number) => pct(BIDOOF, p, { ability: ABILITY.VOLT_ABSORB })
+    expect(toAlly(THUNDER_WAVE, volt(100))).toBe(-10)
+    expect(toAlly(THUNDER_WAVE, volt(40), { random: 0.5 })).toBe(3)
+  })
+
+  it('독: 포이즌힐 짝이 멀쩡하고 91% 이하일 때만 +5 (원작은 주석과 반대로 91% 초과를 막는다)', () => {
+    const ph = (patch: Partial<AiMon> = {}, p = 90) =>
+      pct(BIDOOF, p, { ability: ABILITY.POISON_HEAL, ...patch })
+    expect(toAlly(TOXIC, ph())).toBe(5)
+    expect(toAlly(TOXIC, ph({}, 100))).toBe(-30)
+    expect(toAlly(TOXIC, ph({ status: 'brn' }))).toBe(-30)
+    expect(toAlly(TOXIC, ph({ heldItem: ITEM_TOXIC_ORB }))).toBe(-30)
+    expect(toAlly(TOXIC, mon(BIDOOF))).toBe(-30)
+  })
+
+  it('도우미: 짝이 쓰러졌으면 −30 · 50% 이하 짝이 느리면 점수 0', () => {
+    expect(toAlly(HELPING_HAND, mon(BIDOOF, { hp: 0 }))).toBe(-30)
+    expect(toAlly(HELPING_HAND, pct(BIDOOF, 40), { rank: { self: 0, ally: 2 } })).toBe(0)
+    expect(toAlly(HELPING_HAND, pct(BIDOOF, 40), { rank: { self: 1, ally: 0 }, random: 0.99 })).toBe(2)
+  })
+
+  it('뽐내기: 시몬·리샘열매를 든 짝만 · 공격 +2 미만이면 +3', () => {
+    expect(toAlly(SWAGGER, mon(BIDOOF))).toBe(-30)
+    expect(toAlly(SWAGGER, mon(BIDOOF, { heldItem: ITEM_PERSIM_BERRY }))).toBe(3)
+    const raised = mon(BIDOOF, { heldItem: ITEM_LUM_BERRY, boosts: { ...noBoosts(), atk: 2 } })
+    expect(toAlly(SWAGGER, raised)).toBe(0)
+  })
+
+  it('트릭: 점수를 안 건드린다 · 위액: 게으름이면 +5, 이미 봉인이면 −30', () => {
+    expect(toAlly(TRICK, mon(BIDOOF))).toBe(0)
+    expect(toAlly(GASTRO_ACID, mon(BIDOOF, { ability: ABILITY.TRUANT }))).toBe(5)
+    expect(toAlly(GASTRO_ACID, mon(BIDOOF))).toBe(0)
+    const sealed = mon(BIDOOF, { ability: ABILITY.TRUANT, volatiles: new Set(['gastroacid']) })
+    expect(toAlly(GASTRO_ACID, sealed)).toBe(-30)
+  })
+
+  it('지압: 짝 체력 50% 이하 −1 · +6이 있으면 −30 · 심플이면 +3부터 −10', () => {
+    expect(toAlly(ACUPRESSURE, pct(BIDOOF, 50, { ability: ABILITY.NONE }))).toBe(-1)
+    expect(toAlly(ACUPRESSURE, pct(BIDOOF, 100, { ability: ABILITY.NONE, boosts: { ...noBoosts(), spe: 6 } }))).toBe(-30)
+    const simple = (b: number) =>
+      mon(BIDOOF, { ability: ABILITY.SIMPLE, boosts: { ...noBoosts(), def: b } })
+    expect(toAlly(ACUPRESSURE, simple(3))).toBe(-10)
+    expect(toAlly(ACUPRESSURE, simple(2), { random: 0.99 })).toBe(2)
+    // 91% 이상은 31%만 건너뛰고(<80) 나머지가 +2, 중간 체력은 절반이 먼저 건너뛴다
+    expect(toAlly(ACUPRESSURE, pct(BIDOOF, 100, { ability: ABILITY.NONE }), { random: 0.99 })).toBe(2)
+    expect(toAlly(ACUPRESSURE, pct(BIDOOF, 100, { ability: ABILITY.NONE }), { random: 0.0 })).toBe(0)
+    expect(toAlly(ACUPRESSURE, pct(BIDOOF, 70, { ability: ABILITY.NONE }), { random: 0.4 })).toBe(0)
+    expect(toAlly(ACUPRESSURE, pct(BIDOOF, 70, { ability: ABILITY.NONE }), { random: 0.6 })).toBe(2)
+  })
+
+  it('그 밖의 변화기는 −30 · 내던지기도 위력 1이라 비교가 안 돼 변화기 갈래로 가서 −30이다', () => {
+    expect(toAlly(SWORDS_DANCE, mon(BIDOOF))).toBe(-30)
+    expect(toAlly(FLING, mon(BIDOOF))).toBe(-30)
+  })
+})
