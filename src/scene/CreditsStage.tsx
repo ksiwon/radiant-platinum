@@ -428,7 +428,8 @@ export function CreditsStage() {
     return atlas.scenes.map((meta, i) => {
       const tex = skies[i]!
       const back = new MeshBasicMaterial({ color: new Color(meta.backdrop ?? '#000000'), depthTest: false, depthWrite: false, toneMapped: false, fog: false })
-      const front = new MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false, fog: false })
+      // ⚠️ **알파 블렌드가 아니라 오려내기다** — 블렌드 재질은 불투명한 나무 · 가로등 뒤에 그려져 그 위를 덮는다(깊이를 안 쓰는 판이라). 0번 색의 구멍은 알파 0이다
+      const front = new MeshBasicMaterial({ map: tex, alphaTest: 0.5, depthTest: false, depthWrite: false, toneMapped: false, fog: false })
       return { back, front, w: meta.w, h: meta.h }
     })
   }, [atlas, skies])
