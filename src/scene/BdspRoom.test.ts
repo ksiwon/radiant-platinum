@@ -71,17 +71,17 @@ describe('원작 방과 생김이 다른 BDSP 방 (`MISFIT_ROOMS`)', () => {
 
   it('목록 — 실측으로 생김이 다른 방들', () => {
     expect([...MISFIT_ROOMS].sort()).toEqual([
-      'c01r0601', 'c02gym0101', 'c04gym0101', 'c04r0201', 'c04r0202', 'c04r0203', 'c04r0401', 'c05gym0101', 'c05gym0104', 'c05r0101', 'c07gym0101', 'c07r0101',
-      'c10r0101', 'd31r0201',
+      'c01r0601', 'c02gym0101', 'c04gym0101', 'c04r0201', 'c04r0202', 'c04r0203', 'c04r0401', 'c05gym0101',
+      'c05gym0104', 'c05r0101', 'c05r0801', 'c07gym0101', 'c07r0101', 'c10r0101', 'd31r0201', 'r218r0101',
     ])
   })
 
-  it('맵 110은 같은 행렬의 218번 게이트 방을 빌리지 않는다 — 게이트 제 방은 그대로다', () => {
+  it('맵 110은 같은 행렬의 218번 게이트 방을 빌리지 않는다 — 게이트 제 방도 원작 그림이다(홈 넷이 벽 뒤)', () => {
     const was = world.maps
     world.maps = [header(0, 'R218R0101', 77), header(1, 'C05R0601', 77)]
     const rooms = new Set(['r218r0101'])
     expect(roomFor(1, rooms)).toBeNull()
-    expect(roomFor(0, rooms)).toBe('r218r0101')
+    expect(roomFor(0, rooms)).toBeNull()
     world.maps = was
   })
 
