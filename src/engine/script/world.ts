@@ -18,6 +18,7 @@ import type { EmoteKind } from '../actor/emote'
 import { tickFade } from './fade'
 import { formatMenuEntry, MessageSlots } from './text'
 import type { VarStore } from './vars'
+import { scriptSpy } from './spy'
 import type { LotteryEntry } from '../world/gameCorner'
 import type { HealingKind } from '../world/healingMachine'
 
@@ -1476,6 +1477,7 @@ export class FieldWorld {
     this.boxOpen = true
     this.lastMessage = id
     this.acked = false
+    scriptSpy.message?.(id, this.bank[id] ?? '', this.bank.length)
     this.printer = new MessagePrinter(this.bank[id] ?? '', this.slots)
   }
 
