@@ -152,12 +152,12 @@ const marks = (): { map: number, script: boolean, talk: boolean, scene: string, 
   }
 }
 
-export type Pre =
+type Pre =
   | { clearFlag: number }
   | { setFlag: number }
   | { setVar: number, value?: number, valueOf?: number }
 
-export interface SweepSite {
+interface SweepSite {
   key: string
   kind: string
   script: number
@@ -166,9 +166,9 @@ export interface SweepSite {
   pre: readonly Pre[]
 }
 
-export type RunStatus = 'done' | 'stall' | 'timeout' | 'refused' | 'error' | 'battle'
+type RunStatus = 'done' | 'stall' | 'timeout' | 'refused' | 'error' | 'battle'
 
-export interface RunReport {
+interface RunReport {
   key: string
   kind: string
   round: number
@@ -192,7 +192,7 @@ export interface RunReport {
   visited: Record<string, number[]>
 }
 
-export interface RunOpts {
+interface RunOpts {
   /** 몇 회차인가 — 메뉴에서 0은 첫째 · 1은 둘째 칸을 고른다 */
   round: number
   /** 이만큼 지나면 끊는다 (ms) */
@@ -441,7 +441,7 @@ async function standNear(map: number, tx: number, tz: number): Promise<Placement
   return null
 }
 
-export interface WalkSample {
+interface WalkSample {
   kind: 'npc' | 'sign' | 'trigger'
   /** 기대하는 스크립트의 (파일:진입점). 걸린 것이 이것과 같아야 한다 */
   expect: string | null
@@ -520,7 +520,7 @@ export async function walkSample(
 
 // ── 바깥 손잡이 ──────────────────────────────────────────────────────────────
 
-export const devScriptLog = {
+const devScriptLog = {
   runSite, gotoMap, walkSample, naturalTrace,
   /** 지금 서 있는 맵의 사람 · 간판 · 사건 수 — 걷기 표본이 쓸 칸을 고르는 데 쓴다 */
   eventsOf: (map: number) => ({

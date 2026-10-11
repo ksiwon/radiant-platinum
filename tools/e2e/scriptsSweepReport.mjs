@@ -1,6 +1,6 @@
 // 스크립트 전수 점검 보고 — `.audit/scripts-sweep/part-*.json`을 모아 한 파일로 열리는 HTML 하나를 만든다
 // (`tools/e2e/scriptsSweep.mjs --report`). 외부 자원을 안 쓴다.
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
@@ -100,6 +100,40 @@ export function buildReport(dir) {
     consoleGroups.set(k, at)
   }
 
+  // 브라우저 없는 반쪽(`scriptsSweepHeadless.test.mts`)의 결과 — 있으면 같이 싣는다
+  const headlessFile = resolve(dir, 'headless.json')
+  const headless = existsSync(headlessFile) ? JSON.parse(readFileSync(headlessFile, 'utf8')) : null
+  let headlessHtml = '<p class="dim">아직 안 돌렸다 (<code>SCRIPT_SWEEP_HEADLESS=1 npx vitest run tools/e2e/scriptsSweepHeadless.test.mts</code>).</p>'
+  if (headless !== null) {
+    const sum = headless.summary
+    const nat = new Map()
+    const forced = new Map()
+    const natStall = []
+    const forcedStall = []
+    const natErr = []
+    const forcedErr = []
+    for (const k of headless.keys) {
+      for (const [list, bag, stalls, errs] of [[k.natural, nat, natStall, natErr], [k.forced, forced, forcedStall, forcedErr]]) {
+        for (const r of list) {
+          for (const name of Object.keys(r.unimpl)) { const s = bag.get(name) ?? new Set(); s.add(k.key); bag.set(name, s) }
+          if (r.status === 'stall') stalls.push([k.key, k.fileName, r.variant, r.stalledAt])
+          if (r.errors.length > 0) errs.push([k.key, k.fileName, r.variant, r.errors[0]])
+        }
+      }
+    }
+    const coverageRows = Object.values(headless.coverage).filter((c) => c.reachable - c.visited > 0)
+      .sort((a, b) => (b.reachable - b.visited) - (a.reachable - a.visited)).slice(0, 15)
+      .map((c) => [esc(c.name), String(c.reachable), String(c.visited), `${((c.visited / c.reachable) * 100).toFixed(1)}%`])
+    headlessHtml = `<p>시작 자리 ${sum.sitesRun} · 판 ${sum.runs} (분기를 뒤집은 판 포함) · 정적으로 닿는 명령 ${sum.reachableCommands} 중 ${sum.visitedCommands}를 밟음(${((sum.visitedCommands / sum.reachableCommands) * 100).toFixed(1)}%) · 정적 미구현 자리 ${sum.staticUnimplSites}(${sum.staticUnimplKinds}종) · 빈 대사 ${sum.staticEmptyMessages} · 표에 없는 opcode ${sum.staticOffTable}.</p>
+<p class="dim">바깥 일감은 전부 「끝났다」로 답하는 판이다 — 배틀 · 화면이 쥐는 자리는 브라우저 판이 잰다. 분기를 뒤집은 판은 현실에 없는 상태일 수 있어 오류 · 멈춤을 갈라 적는다.</p>
+<p>자연 판: 멈춤 ${natStall.length} · 오류 ${natErr.length}. 뒤집은 판: 멈춤 ${forcedStall.length} · 오류 ${forcedErr.length}.</p>
+${table(['스크립트', '파일', '판', '마지막 명령'], natStall.map((r) => [`<code>${esc(r[0])}</code>`, esc(r[1]), esc(r[2]), `<code>${esc(r[3] ?? '')}</code>`]))}
+<h3>정적 미구현 명령</h3>
+${table(['명령', '자리', '자연 판에서 닿은 스크립트', '뒤집은 판', '파일'], headless.unimpl.map((u) => [`<code>${esc(u.name)}</code>`, String(u.sites), String((nat.get(u.name) ?? new Set()).size), String((forced.get(u.name) ?? new Set()).size), `<span class="dim">${u.files.slice(0, 4).map(esc).join(', ')}</span>`]))}
+<h3>덜 밟힌 파일 (정적으로 닿는데 안 밟힌 명령이 많은 차례)</h3>
+${table(['파일', '닿음', '밟음', '덮음'], coverageRows)}`
+  }
+
   const excluded = new Map()
   for (const e of list.excluded) excluded.set(e.why, [...(excluded.get(e.why) ?? []), `${String(e.map)} ${e.name}`])
 
@@ -161,11 +195,14 @@ ${table(['어디', '메모'], [...refused.map(({ m, s, r }) => [where({ m, s, r 
 <h2>7. 브라우저 콘솔 오류</h2>
 ${table(['메시지', '수', '처음 맵'], [...consoleGroups].map(([k, e]) => [`<code>${esc(k)}</code>`, String(e.n), String(e.where)]))}
 
-<h2>8. 범위 밖 맵 (${list.excluded.length})</h2>
+<h2>8. 브라우저 없는 반쪽 — 정적 닿는 곳과 VM 몰기</h2>
+${headlessHtml}
+
+<h2>9. 범위 밖 맵 (${list.excluded.length})</h2>
 <p class="dim">맵 헤더가 가리키는 스크립트 파일의 이름으로 갈랐다 — 이름 추정이 아니라 <code>maps.json</code>의 <code>scripts</code> 칸 → <code>scripts.json</code>의 파일 이름이다.</p>
 ${table(['까닭', '맵'], [...excluded].map(([k, v]) => [esc(k), `<span class="dim">${v.map(esc).join(' · ')}</span>`]))}
 
-<h2>9. 이 점검이 못 재는 것</h2>
+<h2>10. 이 점검이 못 재는 것</h2>
 <ul>
 <li>스크립트 <b>안쪽 분기</b>의 완전한 덮음 — 선택지 첫째 · (메뉴가 있었던 판만) 둘째 두 회차와 시작 조건만 바꿨다. 앞 스크립트가 세우는 변수에 걸린 가지는 안 밟혔을 수 있다.</li>
 <li>배틀은 열지 않고 이긴 것으로 돌렸다 — 배틀 화면 · 진 뒤 갈래는 <code>story</code> · <code>journey</code>의 몫.</li>

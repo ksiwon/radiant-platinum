@@ -8,7 +8,7 @@
 // 불러야 해서, 무언가를 끌어오면 그 순환이 첫 청크에 번진다.
 
 /** 스크립트 한 판의 시작 */
-export interface SpyStart {
+interface SpyStart {
   /** 맵 이벤트가 들고 있던 번호 (공용 구역이면 2000 이상) */
   script: number
   file: number
@@ -23,7 +23,7 @@ export interface SpyStart {
   kind?: 'init' | 'call'
 }
 
-export interface ScriptSpy {
+interface ScriptSpy {
   start?: (info: SpyStart) => void
   /** 판이 끝났다 (`finish`) — 정상 종료와 오류 종료 둘 다. 초기화 판은 `kind: 'init'`로 부른다 */
   end?: (kind?: 'init') => void
