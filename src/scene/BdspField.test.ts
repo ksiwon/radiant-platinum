@@ -69,6 +69,7 @@ describe('뗀 지역 쥐기', () => {
     lights: {} as BdspLights,
     low: null,
     variants: [],
+    motion: { update() {}, dispose() {} },
   })
   afterEach(() => { for (const n of heldFields()) takeField(n) })
 

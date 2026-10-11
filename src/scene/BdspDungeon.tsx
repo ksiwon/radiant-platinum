@@ -33,6 +33,7 @@ import { disposeTree } from './disposeTree'
 import { fieldFade, type FieldFade } from './fieldFade'
 import { useBdspMark } from './bdspReady'
 import { liveWater, lowestGround } from './BdspField'
+import { liveMotion, liveMotionMaterials, type BdspMotion } from './bdspMotion'
 import { setDungeonLow } from './OuterFloor'
 import { holdBdspDoors } from './DoorAnimations'
 import { holdBdspSigns } from './ObjectProps'
@@ -600,6 +601,8 @@ export function BdspDungeon({ name }: { name: string }) {
   const [failed, setFailed] = useState(false)
   const fade = useRef<FieldFade | null>(null)
   const lights = useRef<BdspLights | null>(null)
+  const motion = useRef<BdspMotion | null>(null)
+  const eye = useRef(new Vector3())
   const tick = useRef(0)
   const cam = useRef(new Vector3())
   const aim = useRef(new Vector3())
@@ -612,6 +615,7 @@ export function BdspDungeon({ name }: { name: string }) {
     // ⚠️ **눈이 실제로 어디 있나로 가른다** (`firstPersonView`) — 설정 값을 보면 컷신 동안 3인칭 카메라가 천장에 막힌다
     const first = firstPersonView()
     for (const c of firstOnly.current) c.visible = first
+    motion.current?.update(dt, camera.getWorldPosition(eye.current))
     if (!fade.current) return
     if (scene && devices.current.map !== world.mapId) {
       for (const m of devices.current.hidden) m.visible = true
@@ -659,6 +663,9 @@ export function BdspDungeon({ name }: { name: string }) {
         root.position.set(origin.x, DUNGEON_LIFT[name] ?? 0, origin.z)
         devices.current = { map: world.mapId, hidden: hideDevices(root, world.mapId) }
         liveWater(root)
+        // 흐르는 그림 · 바람 흔들림 (`bdspMotion`) — 물 뒤 · 흐림 앞
+        liveMotionMaterials(root)
+        motion.current = liveMotion(root)
         // ⚠️ **흐림이 먼저다** — `BdspField`와 같은 까닭이다
         fade.current = fieldFade(root)
         lights.current = bdspLights(root)
@@ -682,6 +689,8 @@ export function BdspDungeon({ name }: { name: string }) {
       alive = false
       setDungeonLow(null)
       for (const r of release) r()
+      motion.current?.dispose()
+      motion.current = null
       if (built) disposeTree(built)
     }
   }, [name])

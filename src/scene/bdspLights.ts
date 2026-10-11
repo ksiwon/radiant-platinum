@@ -44,7 +44,12 @@ export function glowShare(darkness: number, emitOn: number): number {
   return Math.min(1, Math.max(0, (darkness - emitOn) / RAMP))
 }
 
-interface Glowing { material: MeshStandardMaterial, glow: number, emitOn: number }
+/** 발광을 맞출 수 있는 재질 — 표준 재질과 그것을 노드 재질로 옮긴 것(`bdspMotion`이 흐르는 화면을 옮긴다) */
+type Emissive = Material & { emissiveIntensity: number }
+const emissive = (m: Material): m is Emissive =>
+  m instanceof MeshStandardMaterial || (m as { isMeshStandardNodeMaterial?: boolean }).isMeshStandardNodeMaterial === true
+
+interface Glowing { material: Emissive, glow: number, emitOn: number }
 
 /** 바탕이 검정인 더하기 판 — 발광이 있을 때만 그린다. 발광이 없는 판이면 `glowing`이 `null`이고 늘 안 그린다 */
 interface Dim { material: Material, glowing: Glowing | null }
@@ -82,7 +87,7 @@ export function bdspLights(root: Object3D): BdspLights {
           adding.push(m)
         }
       }
-      if (!seen.has(m) && typeof extras.glow === 'number' && m instanceof MeshStandardMaterial) {
+      if (!seen.has(m) && typeof extras.glow === 'number' && emissive(m)) {
         glowing.push({ material: m, glow: extras.glow, emitOn: extras.emitOn ?? 0 })
         m.emissiveIntensity = 0
       }

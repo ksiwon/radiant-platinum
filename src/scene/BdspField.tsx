@@ -16,7 +16,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import {
   AdditiveBlending, Box3, CircleGeometry, Fog, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3,
-  type Group, type Material, type Object3D,
+  type AnimationClip, type Group, type Material, type Object3D,
 } from 'three'
 import { MeshStandardNodeMaterial, type Node } from 'three/webgpu'
 import {
@@ -33,6 +33,7 @@ import { useBdspMark } from './bdspReady'
 import { beginAsyncPipelines, settleAsyncPipelines } from './asyncPipelines'
 import { holdBdspDoors } from './DoorAnimations'
 import { holdBdspSigns } from './ObjectProps'
+import { liveMotion, liveMotionMaterials, type BdspMotion } from './bdspMotion'
 import { applyVariants, variantNodes, type VariantNode } from './fieldVariants'
 import { fieldScripts } from '../engine/script/field'
 import { DAY } from './fx/sky'
@@ -357,6 +358,8 @@ interface Built {
   low: number | null
   /** 이야기가 갈아 끼우는 물체 (`fieldVariants`) — 224번도로 `R224b` */
   variants: VariantNode[]
+  /** 풍차 회전 · 석탄 더미 클립 (`bdspMotion`) */
+  motion: BdspMotion
 }
 
 /** 이야기 깃발 하나를 읽는다 — 판 표식(`fieldVariants`)이 쓴다 */
@@ -390,9 +393,9 @@ export function heldFields(): string[] {
   return [...held.keys()]
 }
 
-function dropBuilt(b: Built): void { disposeTree(b.scene) }
+function dropBuilt(b: Built): void { b.motion.dispose(); disposeTree(b.scene) }
 
-function build(scene: Group): Built {
+function build(scene: Group, animations: readonly AnimationClip[] = []): Built {
   scene.traverse((o) => {
     if (!(o instanceof Mesh)) return
     o.receiveShadow = true
@@ -409,13 +412,15 @@ function build(scene: Group): Built {
   })
   liveWater(scene)
   liveFoliage(scene)
+  // 흐르는 그림 · 바람 흔들림 — 물 · 풀 **뒤**에 (`liveMotionMaterials`). 흐림(`fieldFade`) · 빛(`bdspLights`)보다 먼저라 그쪽이 새 재질을 본다
+  liveMotionMaterials(scene)
   // ⚠️ **판은 `lowestGround`보다 먼저 맞춘다** — 접어 둔 땅(`R224b`의 땅)이 안개 바닥 높이를 끌어내리지 않게
   const variants = variantNodes(scene)
   applyVariants(variants, storyFlag)
   // ⚠️ **흐림이 먼저다.** `fieldFade`가 건물 재질을 복제해 갈아 끼우므로, 빛을 먼저 펴면 발광을 맞추는 쪽이 버려진 재질을 쥔다
   const fade = fieldFade(scene)
   const lights = bdspLights(scene)
-  return { scene, fade, lights, low: lowestGround(scene), variants }
+  return { scene, fade, lights, low: lowestGround(scene), variants, motion: liveMotion(scene, animations) }
 }
 
 function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
@@ -429,6 +434,7 @@ function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
   const tick = useRef(0)
   const cam = useRef(new Vector3())
   const aim = useRef(new Vector3())
+  const eye = useRef(new Vector3())
   useBdspMark(name, built !== null && warm, failed)
   useFrame(({ camera }, dt) => {
     const b = built
@@ -445,6 +451,8 @@ function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
       b.fade.aim(cam.current, aim.current, !firstPersonView())
     }
     b.fade.step(dt)
+    // 풍차 · 석탄 더미 — 가까운 것만 민다 (`bdspMotion`)
+    b.motion.update(dt, camera.getWorldPosition(eye.current))
   })
   useEffect(() => {
     let alive = true
@@ -466,7 +474,7 @@ function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
         const url = await provider.objectUrl(path)
         const gltf = await loader.loadAsync(url).finally(() => { provider.releaseObjectUrl(path) })
         if (!alive) { disposeTree(gltf.scene); return }
-        const b = build(gltf.scene)
+        const b = build(gltf.scene, gltf.animations)
         mine = b
         // ⚠️ **제 파이프라인은 비동기로 굽는다** (`asyncPipelines`). 덮개가 걷힌 뒤에 서는 지역이 첫 프레임에 동기로 구우면 GPU
         // 프로세스가 수 초 멎는다 — 먼 지역이 안개 속에서 한두 프레임 늦게 보이는 편이 낫다.
