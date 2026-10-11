@@ -421,9 +421,12 @@ describe('말하는 입', () => {
       ...new Quaternion().toArray(), ...new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), a).toArray(),
     ])
 
-  it('`speak01_b`만 집고 회전 트랙만 남긴다', () => {
-    const speak = new AnimationClip('speak01_b', 1, [rot('Jaw.quaternion', 0.5), new VectorKeyframeTrack('Jaw.scale', [0, 1], [1, 1, 1, 2, 2, 2])])
-    expect(pickSpeakClip([new AnimationClip('wait_b', 1, []), speak])?.tracks.map((t) => t.name)).toEqual(['Jaw.quaternion'])
+  it('`speak01_b`만 집고 입 뼈의 회전 트랙만 남긴다 — 몸 · 팔 트랙은 버린다', () => {
+    const speak = new AnimationClip('speak01_b', 1, [
+      rot('Jaw.quaternion', 0.5), rot('LowerLip.quaternion', 0.2), rot('LArm.quaternion', 1), rot('Spine2.quaternion', 1),
+      new VectorKeyframeTrack('Jaw.scale', [0, 1], [1, 1, 1, 2, 2, 2]),
+    ])
+    expect(pickSpeakClip([new AnimationClip('wait_b', 1, []), speak])?.tracks.map((t) => t.name)).toEqual(['Jaw.quaternion', 'LowerLip.quaternion'])
     expect(pickSpeakClip([new AnimationClip('wait_b', 1, [])])).toBeNull()
   })
 

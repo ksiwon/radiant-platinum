@@ -484,11 +484,12 @@ const clipRe = (names: readonly string[]): RegExp => new RegExp(`^(${names.join(
 const HERO_IDLE_CLIP_NAMES = ['wait_b', 'stand_b'] as const
 
 /**
- * 트레이너 몸에서 실을 **말하는 입** 클립 — `speak01_b` 1.33초, 턱 · 입술만 움직인다.
+ * 트레이너 몸에서 실을 **말하는 입** 클립 — `speak01_b` 1.33초.
  *
  * 등신 124벌 중 26벌에만 있다 (`raw/AssetAssistant/Characters/persons/battle` 클립 이름을 다 훑은 값 — 트레이너 `tr0001` ·
  * `tr0002` · `tr1062`~`tr1097`의 일부 · `tr2003`~`tr2011`). 없는 몸에는 이 정규식이 아무것도 안 걸러 오므로 모든 등신
- * 트레이너에 같은 규칙을 건다. 말을 거는 동안 상대의 입만 움직인다 (`scene/NpcModels`)
+ * 트레이너에 같은 규칙을 건다. ⚠️ 클립은 몸 전체 트랙을 담고 있다 — 읽는 쪽(`pickSpeakClip`)이 입 뼈 회전만 쓴다.
+ * 말을 거는 동안 상대의 입만 움직인다 (`scene/NpcModels`)
  *
  * ⚠️ **굽는 쪽 둘이 이것을 같이 본다** (`HERO_IDLE_CLIP_NAMES`와 같은 이유)
  */

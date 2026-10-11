@@ -587,12 +587,20 @@ export class GaitPlayer {
 }
 
 
+/** 말할 때 움직이는 뼈 이름 — 윗턱 · 아랫턱 · 입술(옆 · 위 · 아래) · 이 · 혀 */
+const MOUTH_BONE = /Jaw|Lip|Teeth|Tongue/
+
 /** 클립 목록에서 말하는 입(`speak01_b`)을 고른다. 없으면 `null` — 26벌에만 있다 (`engine/actor/npcModels`의 `SPEAK_CLIPS`) */
 export function pickSpeakClip(clips: readonly AnimationClip[]): AnimationClip | null {
   const hit = clips.find((c) => c.name === 'speak01_b')
   if (!hit) return null
-  // 회전만 남긴다 — 이동 클립과 같은 까닭이다 (`trimGaitClip`: 크기 · 자리 트랙은 우리가 맞춰 둔 값을 덮는다)
-  const keep = hit.tracks.filter((t) => splitTrack(t).prop === 'quaternion')
+  // ⚠️ **턱 · 입술 · 이 · 혀의 회전만 남긴다.** 구운 `speak01_b`는 입만 움직이는 클립이 아니다 — 트랙 390~513개에
+  // 허리 · 척추 · 팔 · 다리 · 머리카락 · 눈꺼풀이 다 들어 있다 (`tr0002_00`을 구워 열어 센 값). 그대로 걸면 말하는 동안 몸 전체가
+  // 배틀 자세로 덮인다. 회전만 남기는 것도 이동 클립과 같은 까닭이다 (`trimGaitClip`: 크기 · 자리 트랙은 우리가 맞춰 둔 값을 덮는다)
+  const keep = hit.tracks.filter((t) => {
+    const { bone, prop } = splitTrack(t)
+    return prop === 'quaternion' && MOUTH_BONE.test(bone)
+  })
   return new AnimationClip(hit.name, hit.duration, keep)
 }
 
