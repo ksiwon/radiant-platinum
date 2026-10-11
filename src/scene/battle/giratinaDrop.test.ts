@@ -11,7 +11,7 @@ describe('기라티나 등장', () => {
     expect(giratinaDropAt(28)).toMatchObject({ visible: true, lift: 1 })
     expect(GIRATINA_LAND_FRAMES).toBe(62)
     expect(giratinaDropAt(61).landed).toBe(false)
-    expect(giratinaDropAt(62)).toMatchObject({ lift: 0, landed: true, shadow: true })
+    expect(giratinaDropAt(62)).toMatchObject({ lift: 0, landed: true, shadow: false })
   })
 
   it('낙하는 등속이다 — 프레임마다 4/136, 이징 없음', () => {

@@ -32,7 +32,9 @@ interface GiratinaDrop {
   visible: boolean
   /** 시작 높이에 대한 남은 높이의 몫 — 1 = 화면 밖 시작점, 0 = 착지. 등속이다 */
   lift: number
-  /** 그림자를 깔아도 되는가 — 낙하 동안은 0이다 */
+  /** 그림자를 깔아도 되는가 — 이 배틀 내내 0이다. 원작은 `MON_SPRITE_SHADOW_SIZE`를
+   *  0으로 놓고(`battle_display.c` 282) 착지 뒤에도 다시 안 켠다 — 그 파일에서 크기를
+   *  쓰는 곳이 거기 하나다 */
   shadow: boolean
   /** 착지했는가 */
   landed: boolean
@@ -49,7 +51,7 @@ export function giratinaDropAt(frames: number): GiratinaDrop {
   return {
     visible: f >= GIRATINA_WAIT_FRAMES,
     lift: 1 - fall,
-    shadow: landed,
+    shadow: false,
     landed,
     dark: GIRATINA_DARK * (1 - bright),
   }
