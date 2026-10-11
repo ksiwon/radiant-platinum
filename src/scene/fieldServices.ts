@@ -221,6 +221,7 @@ import { berryPatchServices } from './berryPatches'
 import { safariServices } from './safari'
 import { vsSeekerServices } from './vsSeeker'
 import { addAccessory, canFitAccessory, removeAccessory } from '../engine/world/fashionCase'
+import { countSeal, giveOrTakeSeal } from '../engine/world/sealCase'
 import type { FieldServices } from '../engine/script/world'
 import type { MartTable, Trainer } from '../data/schema'
 
@@ -1203,6 +1204,16 @@ const services: FieldServices = {
   safari: safariServices,
 
   vsSeeker: vsSeekerServices,
+
+  // 씰케이스 (PARITY §4.11). 리포트가 곧 케이스다
+  seals: {
+    count: (id) => countSeal(useSaveStore.getState().sealCase, id),
+    giveOrTake: (id, quantity) => {
+      const put = giveOrTakeSeal(useSaveStore.getState().sealCase, id, quantity)
+      if (put.ok) useSaveStore.setState({ sealCase: [...put.seals] })
+      return put.ok
+    },
+  },
 
   // 장식 케이스 (PARITY §7.16). 리포트가 곧 케이스라 따로 둘 상태가 없다
   fashionCase: {

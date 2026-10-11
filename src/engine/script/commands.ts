@@ -46,6 +46,7 @@ import { fossilAtThreshold, fossilCount, speciesFromFossil } from '../world/foss
 import {
   AMITY_GIFT_COUNT, amityFound, amityGiftId, amityGiftIsAccessory, VAR_AMITY_STEPS,
 } from '../world/amity'
+import { SUNYSHORE_SEAL_STOCKS } from '../world/sealTables'
 import { FLAG_FREED_GALACTIC_HQ } from '../world/lakeGuardianUnits'
 import { trainerEncounterBgm } from '../world/trainerEncounterBgm'
 import { rematchTrainerID, VsSeekerResult } from '../world/vsSeeker'
@@ -6452,19 +6453,22 @@ on('SetClearInCatchingShowFlag', (ctx) => {
 })
 on('MoveCatchingShowMonsToPCBoxes', () => false)
 
-// 「쉬운 길」(사용자 2026-10-11) — 씰 · 콘테스트 배경은 담는 계통이 없다(PARITY §9.1 · §4.11). 가게는 열리지 않고 주고받은 것은
-// 쌓이지 않는다. 스크립트는 제 대사로 끝까지 간다. 이름 칸을 채우는 `BufferBallSealName` · `BufferContestBackdropName`은 롬 뱅크(12 · 13 · 388)가
-// 안 구워져 있어 그대로 건너뛴다 (`tools/e2e/scriptsSweepTriage.mjs`)
+// 「쉬운 길」(사용자 2026-10-11) — 씰은 케이스에 쌓고 시장이 판다(`engine/world/sealCase` · `ShopScreen`의 씰 갈래). 캡슐(볼에 붙이는 판)은 없다.
+// 콘테스트 배경은 담는 계통이 없다(§9.1) — 건네도 쌓이지 않고 스크립트는 제 대사로 끝까지 간다. 이름 칸을 채우는 명령은 롬 뱅크(12 · 13 · 388)에서 읽는다
 
-/** 해님시티 씰 가게 (`ScrCmd_PokeMartSeal` · `scrcmd_shop.c:115`) — 열지 않는다 */
-on('PokeMartSeal', (ctx) => {
-  ctx.readVar()
-  return false
-})
-/** 씰 케이스에 더하거나 뺀다 (`ScrCmd_GiveOrTakeSeal` · `scrcmd.c:2563`) — 케이스가 없다 */
+/**
+ * 해님시티 씰 가게 (`ScrCmd_PokeMartSeal` · `scrcmd_shop.c:115`) — 요일 번호(월 0 ~ 일 6)로 그날의 일곱 종을 연다
+ * (`SunyshoreMarketDailyStocks`). 닫힐 때까지 선다
+ */
+on('PokeMartSeal', openShop((ctx) => SUNYSHORE_SEAL_STOCKS[ctx.readVar()] ?? [], 'seal'))
+/**
+ * 씰 케이스에 더하거나 뺀다 (`ScrCmd_GiveOrTakeSeal` · `scrcmd.c:2563`). 번호는 1부터, 장수는 부호 있는 16비트다.
+ * ⚠️ 못 하면(99장 넘김 · 모자란 빼기) 원작도 아무것도 안 한다 — 결과를 변수로 안 준다
+ */
 on('GiveOrTakeSeal', (ctx) => {
-  ctx.readVar()
-  ctx.readVar()
+  const id = ctx.readVar()
+  const quantity = (ctx.readVar() << 16) >> 16
+  ctx.host.world.services.seals?.giveOrTake(id, quantity)
   return false
 })
 /** 콘테스트 배경을 장식 케이스에 (`ScrCmd_AddContestBackdrop` · `scrcmd.c:5120`) — 담지 않는다 */
@@ -6599,15 +6603,16 @@ on('GetPartyMonContestStat', (ctx) => {
 })
 
 /**
- * 씰케이스 (`ScrCmd_CountUniqueSealsInSealCase` · `ScrCmd_CountSealOccurence`). 씰은 접었다(PARITY §4.11) — 늘 0장이다.
+ * 씰케이스 (`ScrCmd_CountUniqueSealsInSealCase` · `ScrCmd_CountSealOccurence`).
  *
- * 0이면 PC의 「볼캡슐」이 「씰이 없다」로 닫히고(`CommonScript_BallCapsules`), 신수마을 동쪽 집은 99장 상한에 안 걸려
- * 열 장을 건넨다는 대사로 간다. ⚠️ 건네는 `GiveOrTakeSeal`은 담을 데가 없다
+ * `CountSealOccurence`는 케이스에 든 장수다 — 신수마을 동쪽 집이 99장 상한(`GoToIfEq … 99`)과 89장(`GoToIfLe … 89`)을 이것으로 가른다.
+ * ⚠️ **`CountUniqueSealsInSealCase`는 일부러 0이다.** 0이어야 PC의 「볼캡슐」이 「씰이 없다」로 닫힌다(`CommonScript_BallCapsules`).
+ * 씰이 있으면 캡슐 편집기(`OpenSealCapsuleEditor`)로 가는데 그 화면이 없다 — 캡슐이 생기는 날 이 한 줄을 케이스의 종류 수로 바꾼다
  */
 on('CountUniqueSealsInSealCase', answers(0))
 on('CountSealOccurence', (ctx) => {
-  ctx.readVar()
-  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  const id = ctx.readVar()
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.seals?.count(id) ?? 0)
   return false
 })
 

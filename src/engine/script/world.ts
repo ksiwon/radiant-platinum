@@ -142,9 +142,9 @@ const UNNAMED: NameSource = {
  * 상점이 무엇으로 값을 받는가 (`enum MartType`).
  *
  * 원작은 갈래가 넷인데(일반·프런티어·장식·씰) 우리에게 살아 있는 것은
- * **돈과 BP** 둘이다 — 장식은 §12.1에서 돈으로 팔고 씰은 §9다
+ * **돈 · BP · 씰** 셋이다 — 장식은 §12.1에서 돈으로 판다. `seal`은 돈으로 사되 재고 칸이 씰 번호다 (`ShopScreen`)
  */
-export type ShopCurrency = 'money' | 'bp'
+export type ShopCurrency = 'money' | 'bp' | 'seal'
 
 export interface FieldServices {
   /**
@@ -675,6 +675,13 @@ export interface FieldServices {
     sealNamePlural: (seal: number) => string
     /** 콘테스트 배경 이름 (`TEXT_BANK_CONTEST_BACKDROP_NAMES`) */
     backdropName: (backdrop: number) => string
+  }
+  /** 씰케이스 (PARITY §4.11) — 리포트가 곧 케이스라 따로 둘 상태가 없다 */
+  seals?: {
+    /** 그 씰이 몇 장인가 (`SealCase_CountSealOccurrenceAnywhere`) */
+    count: (id: number) => number
+    /** 더하거나 뺀다. 못 하면 거짓이고 아무것도 안 한다 (`GiveOrTakeSeal`) */
+    giveOrTake: (id: number, quantity: number) => boolean
   }
   /** 보관 시스템. 스크립트가 박스 안을 들여다보는 자리가 몇 군데 있다 */
   boxes?: {

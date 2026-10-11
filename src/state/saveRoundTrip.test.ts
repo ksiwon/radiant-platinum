@@ -38,6 +38,7 @@ import { slatherTree } from '../engine/world/honeyTree'
 import { berryGrowth, plantBerry, waterPatch } from '../engine/world/berryPatches'
 import { startSafari } from '../engine/world/safari'
 import { addAccessory } from '../engine/world/fashionCase'
+import { giveOrTakeSeal } from '../engine/world/sealCase'
 import { unlockGreeting } from '../engine/world/easyChat'
 import { addRecord } from '../engine/world/gameRecords'
 import { updateRadarRecords } from '../engine/world/pokeRadar'
@@ -259,6 +260,7 @@ function fillRichState(): void {
     berryPatches: patches,
     safari: { ...s3.safari, ...startSafari(), caught: 3, tram: s3.safari.tram },
     fashionCase: addAccessory(addAccessory(s3.fashionCase, 0, 3), 90, 1),
+    sealCase: giveOrTakeSeal(giveOrTakeSeal(s3.sealCase, 1, 5).seals, 80, 99).seals as number[],
     easyChatUnlocks: unlockGreeting(s3.easyChatUnlocks, 5),
     // 파티에서 떼어 우편함으로 옮긴 편지 한 장
     mailbox: toMailbox(s3.mailbox, writeMail(7, {

@@ -54,6 +54,8 @@ import {
 import { BERRY_KINDS, MULCH_KINDS } from '../../engine/world/berryInit'
 import { SAFARI_BALLS, SAFARI_STEPS, TRAM_STOP } from '../../engine/world/safari'
 import { NON_UNIQUE_WORDS, UNIQUE_WORDS } from '../../engine/world/fashionCase'
+import { newSealCase } from '../../engine/world/sealCase'
+import { MAX_SEALS_PER_TYPE, SEAL_KINDS } from '../../engine/world/sealTables'
 import { POCKET_COUNT } from '../../data/schema'
 import type { SaveData } from '../saveStore'
 
@@ -684,6 +686,13 @@ const saveSchema = z.object({
     nonUnique: z.array(int(0, 0xffffffff)).length(NON_UNIQUE_WORDS),
     unique: z.array(int(0, 0xffffffff)).length(UNIQUE_WORDS),
   }),
+  /**
+   * 씰케이스 (PARITY §4.11) — 종류마다 가진 장수. 번호 − 1이 색인이다 (`engine/world/sealCase`).
+   *
+   * ⚠️ **없으면 빈 케이스로 읽는다** (`default`) — `SAVE_VERSION`을 올리지 않고 칸 하나를 덧붙였다. 옛 리포트에 씰이 있었을 리가 없다.
+   * 캡슐은 없고 케이스에 든 것이 전부다
+   */
+  sealCase: z.array(int(0, MAX_SEALS_PER_TYPE)).length(SEAL_KINDS).default(() => newSealCase()),
   /**
    * 시원이 여태 몇 개까지 줬는가 (SIWON.md §5).
    *

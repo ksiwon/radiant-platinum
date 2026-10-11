@@ -282,6 +282,8 @@ export const MART_TEXT = {
   confirm: 5, bpConfirm: 35, tmConfirm: 27, bpTmConfirm: 36,
   /** 「네 여기 있습니다 … {0}\n{1} 포켓에 넣었다」 — 칸 1이 주머니 이름이다 (`Shop_SelectConfirmPurchase`) */
   thanks: 6,
+  /** 씰 가게의 같은 줄 둘 — 「네 여기 있습니다 … {0}」 · 「그 이상은 가질 수 없다」 (`Shop_SelectConfirmPurchase` · `Shop_SelectPurchaseMenu`의 씰 갈래) */
+  sealThanks: 13, sealNoRoom: 14,
   /** 「그 이상은\n가지고 다닐 수 없어요!」 — 개수를 고른 뒤 칸이 모자라면 */
   noRoom: 7,
   /** 「프레미어볼 1개를\n서비스로 드리겠습니다!」 (`Shop_FinishPurchase`) */

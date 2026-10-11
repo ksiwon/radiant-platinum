@@ -24,6 +24,7 @@ import { worldState } from '../../state/worldState'
 import { useMenuStore } from '../../state/menuStore'
 import { fillMenuText, loadUiText } from '../../data/uiText'
 import { totalAccessories } from '../../engine/world/fashionCase'
+import { totalSeals } from '../../engine/world/sealCase'
 import { berryPatchAhead } from '../../scene/berryPatches'
 import { beginEscapeRope, beginSweetScent } from '../../scene/fieldMoveTask'
 import { withObject } from '../korean'
@@ -53,9 +54,9 @@ function bikeRefusalLine(where: { bank: 'bag' | 'common', line: number }): strin
 
 function bagMessageLine(what: keyof typeof BAG_MESSAGE_LINE): string {
   const save = useSaveStore.getState()
-  // 실(볼 장식)은 계통이 없어 0장이다. 벽지(콘테스트 배경)도 콘테스트가 범위 밖이라 0장이다
+  // 씰은 케이스에 든 총 장수다. 벽지(콘테스트 배경)는 콘테스트가 범위 밖이라 0장이다
   const values = what === 'coins' ? [String(save.coins)]
-    : what === 'seals' ? ['0']
+    : what === 'seals' ? [String(totalSeals(save.sealCase))]
       : what === 'fashion' ? [String(totalAccessories(save.fashionCase)), '0']
         : [String(save.battlePoints)]
   return fillMenuText(bagText?.[BAG_MESSAGE_LINE[what]] ?? '', values)
