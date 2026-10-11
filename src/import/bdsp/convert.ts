@@ -1029,7 +1029,7 @@ async function convertRooms(ctx: ConvertContext): Promise<Produced> {
     if (!env) missing.push(name)
     else {
       try {
-        const { glb } = await exportArena(env, encodePng, { name, maxSize: ROOM_TEXTURE })
+        const { glb } = await exportArena(env, encodePng, { name, maxSize: ROOM_TEXTURE, motion: true })
         put(ctx, out, `models/room/${name}.glb`, glb)
         made.push(name)
       } catch { missing.push(name) }

@@ -13,6 +13,8 @@
 // ⚠️ **굽는 쪽은 이것 하나다.** 개발 산출물(`pnpm extract:fields` → `tools/spike/bdspGroups.mjs`)도 이 파일을 돌린다 — 두 굽는 쪽이 갈릴 자리를 안 만든다
 import { UNITY_PLANE } from './unityBuiltin'
 import { bakeLooks, lanes, worldOf, type ImageShare, type Mat4 } from './arena'
+import { swingWeights, SWING_ATTRIBUTE } from './motion'
+import { buildAnimations } from './model'
 import {
   ARRAY_BUFFER, ELEMENT_BUFFER, FLOAT, GlbBuffer, UINT, USHORT, verifyGlb, writeGlb, type Gltf,
 } from './glb'
@@ -99,6 +101,27 @@ const ROOT_VARIANTS: readonly RootVariant[] = [
   { area: 'area008', root: 'R224b', base: 'R224', id: 'r224b' },
 ]
 
+/**
+ * **혼자 움직이는 물체** — 풍차 · 기계 · 지구본(DOTween 회전)과 석탄 더미(Mecanim 클립 — `P_T_004_Coal`)
+ * (docs/orders/GAPS_20261011.md A). 합치거나 인스턴싱하지 않고 **노드 둘**로 싣는다: 닻(부모의 월드 행렬 · 정지)과 몸(제 로컬 TRS ·
+ * 움직이는 쪽). 움직임 값이 부모 공간의 값이라 월드 행렬로 한 노드에 구우면 값이 안 맞는다.
+ *
+ * **자동으로 도는 것만 싣는다.** 클립을 가진 소품 중 `playOnAwake`가 Idle(0.04초)인 것 — 에스컬레이터 `up`/`down` · 도개교 `Up`/`Down`(9.97초) ·
+ * 배 `Start`/`Move01`/`Stop` · 사파리 열차 · 기계 `ON`/`OFF` — 은 스크립트가 부를 때 도는 것이라 안 싣는다(`FieldEventEntity.clips`).
+ * 번들에서 스스로 도는 것은 이 둘뿐이다: DOTween `autoPlay` 46개(풍차 27 · 기계 18 · 지구본 1)와 `Animator` + 컨트롤러 클립(석탄 20)
+ */
+interface Moving {
+  /** 부모의 월드 행렬(유니티). 월드로 도는 것(`Rotate`)은 `null` — 몸의 로컬이 곧 월드다 */
+  parent: Mat4 | null
+  /** 제 로컬 행렬(유니티) */
+  local: Mat4
+  /** DOTween 회전 — 시작 오일러(도 · 유니티 ZXY) · 한 바퀴 동안 더하는 오일러 · 초 */
+  spin?: { euler: number[], add: number[], secs: number }
+  /** Mecanim 컨트롤러의 클립 PathID — glTF 애니메이션으로 싣는다 */
+  clip?: number
+  name: string
+}
+
 /** 판 표식 — 노드 `extras`로 실린다 */
 interface VariantMark { variant: string, mode: 'show' | 'hide' }
 
@@ -178,6 +201,8 @@ interface Group {
   seam?: readonly [number, number]
   /** 판 표식 (`ROOT_VARIANTS`) — 있으면 노드 `extras`에 싣는다 */
   mark?: VariantMark
+  /** 혼자 움직이는 물체 — 한 자리에 한 벌, 노드 둘로 싣는다 */
+  moving?: Moving
 }
 
 /**
@@ -554,6 +579,101 @@ function placeFlipped(m: Mat4, pos: Float32Array, i: number): [number, number, n
   ]
 }
 
+/** 사원수(유니티 로컬) → 오일러(도 · ZXY: `Ry·Rx·Rz`). x는 ±90도 안쪽 가지다 — 유니티 `eulerAngles`와 같다 */
+export function eulerOf(q: readonly number[]): number[] {
+  const [x, y, z, w] = q as [number, number, number, number]
+  const r12 = 2 * (y * z - x * w)
+  const sx = Math.max(-1, Math.min(1, -r12))
+  const rad = 180 / Math.PI
+  if (Math.abs(sx) > 0.999999) {
+    // 짐벌 락 — z를 0으로 두고 y에 몰아 준다
+    const r20 = 2 * (x * z - y * w), r00 = 1 - 2 * (y * y + z * z)
+    return [Math.asin(sx) * rad, Math.atan2(-r20, r00) * rad, 0]
+  }
+  const r02 = 2 * (x * z + y * w), r22 = 1 - 2 * (x * x + y * y)
+  const r10 = 2 * (x * y + z * w), r11 = 1 - 2 * (x * x + z * z)
+  return [Math.asin(sx) * rad, Math.atan2(r02, r22) * rad, Math.atan2(r10, r11) * rad]
+}
+
+/** DOTween 열거 `AnimationType` — 3 Rotate(월드) · 4 LocalRotate */
+const DOTWEEN_ROTATE = 3
+const DOTWEEN_LOCAL_ROTATE = 4
+/** DOTween `Ease.Linear` */
+const DOTWEEN_LINEAR = 1
+
+/**
+ * 이 물체가 혼자 도는가 — 자식 없는 잎 물체만(자식이 있으면 움직임이 갈라 서므로 정적으로 둔다). 아니면 `null`.
+ *
+ * DOTween은 `autoPlay` · 무한(`loops` −1) · 한 방향 되풀이(`loopType` 0 Restart) · 선형 · **상대**(`isRelative`)인 회전만 읽는다 —
+ * 번들의 46개가 전부 그렇다. 상대 회전은 시작 오일러에 `endValueV3`를 더해 가는 것이다(DOTween `QuaternionPlugin`)
+ */
+export function movingOf(env: Environment, go: Props, transformPid: number, cache: Map<number, Mat4>): Moving | null {
+  const t = env.read(transformPid) as Props | null
+  if (!t || ((t.m_Children as unknown[] | undefined)?.length ?? 0) > 0) return null
+  let spin: Moving['spin']
+  let world = false
+  let clip: number | undefined
+  for (const c of (go.m_Component as UnityValue[] | undefined) ?? []) {
+    const holder = (Array.isArray(c) ? c[1] : c) as Props
+    const ptr = (holder.component ?? holder) as Props
+    const pid = num(ptr.m_PathID)
+    const type = env.entryOf(pid)?.type
+    if (type === 'MonoBehaviour') {
+      const mb = env.read(pid) as Props | null
+      const kind = num(mb?.animationType, -1)
+      if (!mb || (kind !== DOTWEEN_ROTATE && kind !== DOTWEEN_LOCAL_ROTATE)) continue
+      const end = (mb.endValueV3 ?? {}) as Props
+      const secs = num(mb.duration)
+      if (!(secs > 0) || num(mb.loops) !== -1 || num(mb.loopType) !== 0 || num(mb.easeType) !== DOTWEEN_LINEAR
+        || num(mb.isRelative) !== 1 || num(mb.autoPlay) !== 1 || num(mb.delay) !== 0 || num(mb.isFrom) !== 0) continue
+      spin = { euler: [], add: [num(end.x), num(end.y), num(end.z)], secs }
+      world = kind === DOTWEEN_ROTATE
+    } else if (type === 'Animator') {
+      const a = env.read(pid) as Props | null
+      const ref = a?.m_Controller as Props | undefined
+      if (!ref || num(ref.m_FileID) !== 0 || num(ref.m_PathID) === 0) continue
+      const ctrl = env.read(num(ref.m_PathID)) as Props | null
+      for (const k of (ctrl?.m_AnimationClips as Props[] | undefined) ?? []) {
+        if (num(k.m_FileID) === 0 && num(k.m_PathID) !== 0 && clip === undefined) clip = num(k.m_PathID)
+      }
+    }
+  }
+  if (!spin && clip === undefined) return null
+  const father = num((t.m_Father as Props | undefined)?.m_PathID)
+  const worldM = worldOf(env, transformPid, cache)
+  const parent = world || father === 0 ? null : worldOf(env, father, cache)
+  // 로컬 = 부모⁻¹ · 월드 — 부모가 없으면(또는 월드로 도는 것이면) 월드가 로컬이다. 행렬 곱 없이 속성에서 바로 짓는다
+  const local = world || father === 0 ? worldM : localFrom(t)
+  if (spin) {
+    const q = (t.m_LocalRotation ?? {}) as Props
+    const lq = world ? decomposeQuat(worldM) : [num(q.x), num(q.y), num(q.z), num(q.w, 1)]
+    spin.euler = eulerOf(lq)
+  }
+  const goName = typeof go.m_Name === 'string' ? go.m_Name : 'move'
+  return { parent, local, ...(spin ? { spin } : {}), ...(clip !== undefined ? { clip } : {}), name: goName }
+}
+
+/** 행렬의 회전(사원수 x · y · z · w) */
+function decomposeQuat(m: Mat4): number[] {
+  const d = decompose(m)
+  return d.r
+}
+
+/** `Transform`의 로컬 행렬(유니티) */
+function localFrom(t: Props): Mat4 {
+  const p = (t.m_LocalPosition ?? {}) as Props
+  const q = (t.m_LocalRotation ?? {}) as Props
+  const s = (t.m_LocalScale ?? {}) as Props
+  const x = num(q.x), y = num(q.y), z = num(q.z), w = num(q.w, 1)
+  const sx = num(s.x, 1), sy = num(s.y, 1), sz = num(s.z, 1)
+  const m = new Float64Array(16)
+  m[0] = (1 - 2 * (y * y + z * z)) * sx; m[1] = 2 * (x * y - z * w) * sy; m[2] = 2 * (x * z + y * w) * sz; m[3] = num(p.x)
+  m[4] = 2 * (x * y + z * w) * sx; m[5] = (1 - 2 * (x * x + z * z)) * sy; m[6] = 2 * (y * z - x * w) * sz; m[7] = num(p.y)
+  m[8] = 2 * (x * z - y * w) * sx; m[9] = 2 * (y * z + x * w) * sy; m[10] = (1 - 2 * (x * x + y * y)) * sz; m[11] = num(p.z)
+  m[15] = 1
+  return m
+}
+
 export async function exportField(
   env: Environment,
   encodePng: (rgba: Uint8Array, width: number, height: number) => Promise<Uint8Array>,
@@ -572,8 +692,8 @@ export async function exportField(
   if (filters.length === 0) throw new FieldError('MeshFilter가 없다')
 
   const buf = new GlbBuffer()
-  const { images, textures, materials, samplers, slotOf, uvOf, materialName } =
-    await bakeLooks(env, encodePng, buf, { maxSize: options.maxSize ?? null, lights: true, share: options.share })
+  const { images, textures, materials, samplers, slotOf, uvOf, materialName, swing } =
+    await bakeLooks(env, encodePng, buf, { maxSize: options.maxSize ?? null, lights: true, share: options.share, motion: true })
 
   // ── 메시 · 재질 조합마다 세울 자리를 모은다 ──
   const cache = new Map<number, Mat4>()
@@ -714,6 +834,14 @@ export async function exportField(
       })
       continue
     }
+    // 혼자 움직이는 물체(풍차 · 석탄 더미)는 합치지 않고 한 벌씩 따로 싣는다 (`Moving`)
+    const move = movingOf(env, go, transformPid, cache)
+    if (move && !seam) {
+      groups.set(`move:${String(transformPid)}`, { meshPid, mesh: got.mesh, wide: got.wide, slots, worlds: [world], moving: move })
+      placed++
+      placedTriangles += triangleCount
+      continue
+    }
     const g = groups.get(key)
     if (g) g.worlds.push(world)
     else groups.set(key, { meshPid, mesh: got.mesh, wide: got.wide, slots, worlds: [world], ...(seam ? { seam } : {}) })
@@ -791,6 +919,8 @@ export async function exportField(
     if (holes.length > 0) holeIndex = new HoleIndex(holes)
   }
   let carved = 0
+  /** 움직이는 몸 노드 번호 → 그 물체 (아래에서 클립을 노드에 잇는다) */
+  const bodyOf = new Map<number, Moving>()
 
   for (const g of ordered) {
     let n = g.mesh.vertexCount
@@ -838,6 +968,8 @@ export async function exportField(
     const aPos = buf.add(pos, 'VEC3', FLOAT, ARRAY_BUFFER, true)
     const aNrm = buf.add(nrm, 'VEC3', FLOAT, ARRAY_BUFFER)
     const uvAccessor = new Map<string, number>()
+    // 바람 흔들림 가중치 — 흔드는 재질이 하나라도 있으면 메시당 한 번 (`swingWeights`). 정점 색이 없으면 흔들지 않는다
+    let aSwing: number | null | undefined
     const primitives: Record<string, unknown>[] = []
     for (let s = 0; s < subs.length; s++) {
       const tri = subs[s]!
@@ -869,6 +1001,13 @@ export async function exportField(
         mode: 4,
       }
       if (slot >= 0) prim.material = slot
+      if (swing.has(slot)) {
+        if (aSwing === undefined) {
+          const w = n !== g.mesh.vertexCount ? null : swingWeights(g.mesh.attributes.get(CHANNEL.color), g.mesh.dimensions.get(CHANNEL.color), n)
+          aSwing = w ? buf.add(w, 'SCALAR', FLOAT, ARRAY_BUFFER) : null
+        }
+        if (aSwing !== null) (prim.attributes as Record<string, number>)[SWING_ATTRIBUTE] = aSwing
+      }
       primitives.push(prim)
     }
     if (primitives.length === 0) continue
@@ -884,6 +1023,22 @@ export async function exportField(
       if (w[11]! > highZ) highZ = w[11]!
     }
     const extras = g.mark ? { extras: { ...g.mark } } : {}
+    if (g.moving) {
+      // 닻(부모 월드 · 정지) → 몸(제 로컬 TRS · 움직임). 로컬도 x를 뒤집는다 (`flipped`)
+      const mv = g.moving
+      const d = decompose(flipped(mv.local))
+      const body: Record<string, unknown> = {
+        name: mv.name, mesh, translation: d.t, rotation: d.r, scale: d.s,
+        ...(mv.spin ? { extras: { spin: mv.spin } } : {}),
+      }
+      const at = nodes.length
+      if (mv.parent) {
+        nodes.push({ name: `${mv.name}/anchor`, matrix: columnMajor(flipped(mv.parent)), children: [at + 1] })
+        bodyOf.set(at + 1, mv)
+      } else bodyOf.set(at, mv)
+      nodes.push(body)
+      continue
+    }
     if (worlds.length === 1) {
       nodes.push({ mesh, matrix: columnMajor(worlds[0]!), ...extras })
       continue
@@ -909,11 +1064,21 @@ export async function exportField(
     })
   }
 
+  // 석탄 더미의 Mecanim 클립 — 물체마다 제 몸 노드(경로 해시 0 = 애니메이터가 붙은 물체 자신)에 잇는다
+  const animations: Record<string, unknown>[] = []
+  for (const [node, mv] of bodyOf) {
+    if (mv.clip === undefined) continue
+    const made = buildAnimations(env, buf, new Map([[0, node]]), null, false, new Set([mv.clip]))
+    for (const a of made.animations) animations.push({ ...a, name: mv.name })
+  }
+  const kids = new Set<number>()
+  for (const n of nodes) for (const c of (n.children as number[] | undefined) ?? []) kids.add(c)
+
   const gltf = {
     asset: { version: '2.0', generator: 'radiant-platinum bdsp field' },
     extensionsUsed: instanced > 0 ? ['EXT_mesh_gpu_instancing'] : undefined,
     scene: 0,
-    scenes: [{ nodes: nodes.map((_, i) => i) }],
+    scenes: [{ nodes: nodes.map((_, i) => i).filter((i) => !kids.has(i)) }],
     nodes,
     meshes,
     materials,
@@ -925,6 +1090,7 @@ export async function exportField(
   } as Gltf & { extensionsUsed?: string[] }
   if (!gltf.extensionsUsed) delete gltf.extensionsUsed
   if (samplers.length > 0) gltf.samplers = samplers
+  if (animations.length > 0) gltf.animations = animations
   const glb = writeGlb(gltf, buf.bytes())
   return {
     glb,

@@ -15,6 +15,7 @@ import {
   verifyGlb, writeGlb, type Gltf,
 } from './glb'
 import { meshFrom, CHANNEL, type MeshData } from './mesh'
+import { motionExtras, swingWeights, SWING_ATTRIBUTE } from './motion'
 import { readTexture, resize, resizePremultiplied, resource, type Texture } from './texture'
 import type { Environment } from './environment'
 import type { UnityValue } from './typetree'
@@ -127,6 +128,12 @@ function alphaOf(kind: string): Record<string, unknown> {
   return { alphaMode: 'MASK', alphaCutoff: 0.5 }
 }
 
+/** 재질 `extras` — 빛(`add` · `glow` · `emitOn`) 다음에 움직임(`texVel` …)을 잇는다. 둘 다 없으면 빈 객체(펼치면 아무것도 안 싣는다) */
+function extrasOf(base: Record<string, unknown>, moving: Record<string, unknown> | null): { extras?: Record<string, unknown> } {
+  const merged = { ...base, ...moving }
+  return Object.keys(merged).length > 0 ? { extras: merged } : {}
+}
+
 /** 번들의 재질을 glTF 재질 · 그림으로 — 무대와 야외(`field.ts`)가 같이 쓴다 */
 interface Looks {
   images: Record<string, unknown>[]
@@ -143,6 +150,8 @@ interface Looks {
   transformed: boolean
   /** 나무열매 잎(`blend`) 재질 슬롯 → [`_Color`, `_LayerColor`] (선형) — 정점 색 `COLOR_0`이 이 둘을 정점 알파로 섞는다 */
   blend: Map<number, [number[], number[]]>
+  /** 바람에 흔들리는 재질의 glTF 재질 번호 (`motion` 옵션일 때만) — 그 재질을 쓰는 조각에 정점 가중치 `_SWING`을 싣는다 */
+  swing: Set<number>
 }
 
 /**
@@ -189,6 +198,8 @@ interface LookOptions {
   share?: ImageShare
   /** 나무열매 나무 — 재질 색을 입힌다 (`plantKind`). 노드 쪽 `bdspArena.py`의 `groups`와 같다 */
   plant?: boolean
+  /** 흐름 · 흔들림 값을 `extras`로 싣는다 (`motion.ts`). 야외 · 던전 · 방이 켠다 — 무대 · 나무열매 · 기믹은 안 켠다 */
+  motion?: boolean
 }
 
 /** 감마 값 → 선형. 재질에 박힌 색은 감마다 (`albedo.ts`의 레이어 색과 같은 자리) */
@@ -289,6 +300,8 @@ export async function bakeLooks(
   const maxSize = options.maxSize ?? null
   const lights = options.lights ?? false
   const plant = options.plant ?? false
+  const motion = options.motion ?? false
+  const swing = new Set<number>()
   /** 그림 한 장을 glTF 그림으로 — 공용 자리가 있으면 거기 두고 주소만, 없으면 glb 안에 싣는다 */
   const image = async (px: Uint8Array, w: number, h: number, name: string): Promise<Record<string, unknown>> => {
     if (options.share) return { uri: await options.share(px, w, h), name }
@@ -491,6 +504,7 @@ export async function bakeLooks(
     // 실어서 이 재질들의 밤 창이 안 켜졌다. 더하는 재질(입구 빛)은 아래 그림 없는 길이 맡는다.
     // ⚠️ **높이 안개 판(`_DEPTHDENSITY` — `HeightFog_01`)은 빛이 아니다** — 안개 빛깔을 발광으로 들고 있어 켜면 밤에 안개 판이 스스로 빛난다. 전처럼 안 켠다
     const glow = lights && look && !add && !look.keywords.includes('_DEPTHDENSITY') ? await glowOf(look) : null
+    const moving = motion ? motionExtras(look, lay) : null
     materials.push({
       name: m.name,
       pbrMetallicRoughness: {
@@ -504,9 +518,11 @@ export async function bakeLooks(
       },
       ...alphaOf(renderType.get(m.name) ?? 'Opaque'),
       doubleSided: true,
-      ...(lights && add ? { alphaMode: 'BLEND', extras: { add: true } } : {}),
-      ...(glow ? { emissiveTexture: { index: glow.index }, emissiveFactor: glow.factor, extras: glow.extras } : {}),
+      ...(lights && add ? { alphaMode: 'BLEND' } : {}),
+      ...(glow ? { emissiveTexture: { index: glow.index }, emissiveFactor: glow.factor } : {}),
+      ...extrasOf({ ...(lights && add ? { add: true } : {}), ...(glow ? glow.extras : {}) }, moving),
     })
+    if (moving?.swing) swing.add(materials.length - 1)
     slotOf.set(m.name, materials.length - 1)
     // ⚠️ **재질이 적어 둔 UV 배율을 먹여야 한다.** 무대 바닥이 배율 (11, 11)로
     // 되풀이하는 그림이다 — 안 먹이면 타일 121장이 한 장으로 늘어난다
@@ -567,11 +583,14 @@ export async function bakeLooks(
       }
       if (Object.keys(extras).length > 0) plain.extras = extras
     }
+    const moving = motion ? motionExtras(looks.get(mat), false) : null
+    if (moving) plain.extras = { ...(plain.extras as Record<string, unknown> | undefined), ...moving }
+    if (moving?.swing) swing.add(materials.length)
     materials.push(plain)
     slotOf.set(mat, materials.length - 1)
   }
 
-  return { images, textures, materials, samplers, slotOf, uvOf, materialName, transformed, blend }
+  return { images, textures, materials, samplers, slotOf, uvOf, materialName, transformed, blend, swing }
 }
 
 // ── 내보내기 ─────────────────────────────────────────────────────────────────
@@ -598,6 +617,8 @@ interface ArenaOptions {
   premultiplied?: boolean
   /** 나무열매 나무 — 재질 색을 입힌다 (`bakeLooks`의 `plant`). 잎은 정점 색 `COLOR_0`을 싣는다 */
   plant?: boolean
+  /** 흐름 · 흔들림 값을 싣는다 (`bakeLooks`의 `motion`) — 방이 켠다 */
+  motion?: boolean
 }
 
 interface ArenaStat {
@@ -621,6 +642,8 @@ interface Part {
   indices: Uint32Array
   /** 정점 색 `COLOR_0` (RGBA · 선형) — 나무열매 잎만 */
   colors?: Float32Array
+  /** 바람 흔들림 가중치 `_SWING` — 흔드는 재질이고 정점 색 채널이 있을 때만 */
+  swing?: Float32Array
 }
 
 /** 정점당 `want`개 값으로 편다. 없거나 개수가 안 맞으면 `fallback`으로 채운다 */
@@ -667,8 +690,8 @@ export async function exportArena(
 
   // 재질 이름 → RenderType. 짐작하지 않고 번들이 적어 둔 것을 읽는다
   const buf = new GlbBuffer()
-  const { images, textures, materials, samplers, slotOf, uvOf, materialName, transformed, blend } =
-    await bakeLooks(env, encodePng, buf, { maxSize: options.maxSize ?? null, premultiplied: options.premultiplied ?? false, plant: options.plant ?? false })
+  const { images, textures, materials, samplers, slotOf, uvOf, materialName, transformed, blend, swing } =
+    await bakeLooks(env, encodePng, buf, { maxSize: options.maxSize ?? null, premultiplied: options.premultiplied ?? false, plant: options.plant ?? false, motion: options.motion ?? false })
 
   const cache = new Map<number, Mat4>()
   /** 묶음 이름 → (재질 슬롯 → 그 재질로 그리는 조각들). `groups`가 아니면 묶음은 `name` 하나다 */
@@ -805,7 +828,9 @@ export async function exportArena(
           colors[i * 4 + 3] = 1
         }
       }
-      const part: Part = { positions: verts, normals, uvs, indices, ...(colors ? { colors } : {}) }
+      // 바람 흔들림 — 가중치는 정점 색 R × A (`swingWeights`). 정점 색이 없는 메시는 흔들지 않는다
+      const weights = swing.has(slot) ? swingWeights(mesh.attributes.get(CHANNEL.color), mesh.dimensions.get(CHANNEL.color), n) : null
+      const part: Part = { positions: verts, normals, uvs, indices, ...(colors ? { colors } : {}), ...(weights ? { swing: weights } : {}) }
       if (list) list.push(part)
       else bySlot.set(slot, [part])
     }
@@ -840,10 +865,12 @@ export async function exportArena(
       const tex = new Float32Array(count * 2)
       const idx = new Uint32Array(idxCount)
       const col = chunks.every((c) => c.colors) ? new Float32Array(count * 4) : null
+      const wind = chunks.every((c) => c.swing) ? new Float32Array(count) : null
       let base = 0
       let atI = 0
       for (const c of chunks) {
         if (col && c.colors) col.set(c.colors, base * 4)
+        if (wind && c.swing) wind.set(c.swing, base)
         pos.set(c.positions, base * 3)
         nrm.set(c.normals, base * 3)
         tex.set(c.uvs, base * 2)
@@ -867,6 +894,7 @@ export async function exportArena(
         mode: 4,
       }
       if (col) (prim.attributes as Record<string, number>).COLOR_0 = buf.add(col, 'VEC4', FLOAT, ARRAY_BUFFER)
+      if (wind) (prim.attributes as Record<string, number>)[SWING_ATTRIBUTE] = buf.add(wind, 'SCALAR', FLOAT, ARRAY_BUFFER)
       if (slot >= 0) prim.material = slot
       primitives.push(prim)
       draws++

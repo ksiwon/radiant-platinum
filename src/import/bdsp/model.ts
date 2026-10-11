@@ -301,13 +301,16 @@ function entityClipNames(env: Environment): Map<number, string> {
   return out
 }
 
-function buildAnimations(
+export function buildAnimations(
   env: Environment, buf: GlbBuffer, nodeOfHash: Map<number, number>, keep: RegExp | null, entityNames = false,
+  /** 이 PathID의 클립만 — 야외 소품(`field.ts`)이 제 클립 하나만 싣는다 */
+  only: ReadonlySet<number> | null = null,
 ): { animations: Record<string, unknown>[], stat: AnimStat } {
   const animations: Record<string, unknown>[] = []
   const stat: AnimStat = { clips: 0, channels: 0, unresolved: 0, keys: 0, skipped: 0 }
   const named = entityNames ? entityClipNames(env) : new Map<number, string>()
   for (const e of env.ofType('AnimationClip')) {
+    if (only && !only.has(e.object.pathId)) continue
     const clip = env.readEntry(e) as Props | null
     if (!clip) continue
     const name = named.get(e.object.pathId) ?? (clip.m_Name as string | undefined) ?? ''

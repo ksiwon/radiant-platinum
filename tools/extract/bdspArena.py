@@ -236,6 +236,43 @@ def flipbook_cell(columns: float, rows: float, start: float) -> dict | None:
     return {"offset": [col / columns, (rows - 1 - from_bottom) / rows], "scale": [1 / columns, 1 / rows]}
 
 
+def motion_extras(floats: dict, colors: dict, layered: bool) -> dict | None:
+    """재질이 적어 둔 흐름 · 흔들림 값 — 브라우저 변환기 `motion.ts`의 `motionExtras`와 **같은 JSON**이다 (키 순서까지).
+
+    `_TexVelocity`의 채널 대응(xy = `_MainTex` · zw = `_LayerTex`)은 추측이다 — 셰이더가 Switch 바이너리라 못 읽는다
+    """
+    def color(key: str):
+        c = colors.get(key)
+        return [c.get("r", 0.0), c.get("g", 0.0), c.get("b", 0.0), c.get("a", 0.0)] if c else None
+
+    def anything(v) -> bool:
+        return any(x != 0 for x in v)
+
+    out: dict = {}
+    vel = color("_TexVelocity")
+    if vel:
+        main, layer = [vel[0], vel[1]], [vel[2], vel[3]]
+        pick = (layer if anything(layer) else main) if layered else (main if anything(main) else layer)
+        if anything(pick):
+            out["texVel"] = pick
+    speed = floats.get("_ScrollSpeed")
+    if isinstance(speed, (int, float)) and speed != 0:
+        out["scroll"] = [0, speed]
+    h, v = floats.get("_PatternH", 1.0), floats.get("_PatternV", 1.0)
+    every = floats.get("_SwitchingTime")
+    if isinstance(every, (int, float)) and every > 0 and floats.get("_AutoSwitch", 0.0) > 0 and h >= 1 and v >= 1 and h * v > 1:
+        out["frames"] = {"h": int(h), "v": int(v), "start": int(floats.get("_StartFrameIndex", 0.0)), "every": every}
+    if floats.get("_SwingEnable", 0.0) > 0:
+        scale = color("_SwingScale") or [0.0, 0.0, 0.0, 0.0]
+        wind = color("_WindDirection") or [1.0, 0.0, 0.0, 0.0]
+        out["swing"] = {
+            "power": floats.get("_SwingPower", 1.0), "speed": floats.get("_SwingSpeed", 1.0),
+            "dist": floats.get("_SwingDistribution", 1.0), "uv": floats.get("_SwingUV", 0.0),
+            "scale": scale[:3], "dir": wind[:3],
+        }
+    return out or None
+
+
 def top_group(transform) -> str:
     """뿌리 바로 아래 자식의 이름 — 나무열매 `kinoNNN`의 `Miki`(줄기) · `Hana`(꽃) · `Mi`(열매)"""
     chain = []
@@ -247,8 +284,9 @@ def top_group(transform) -> str:
 
 
 def export(bundle: Path, out: Path, far: float | None, max_size: int | None = None, groups: bool = False,
-           plant: bool = False) -> dict:
-    """`groups` 뿌리 바로 아래 자식마다 노드를 따로 둔다 · `plant` 나무열매 색 입히기 (`arena.ts`의 `plant`와 같다 — 둘은 따로 켠다)"""
+           plant: bool = False, motion: bool = False) -> dict:
+    """`groups` 뿌리 바로 아래 자식마다 노드를 따로 둔다 · `plant` 나무열매 색 입히기 (`arena.ts`의 `plant`와 같다 — 둘은 따로 켠다) ·
+    `motion` 흐름 · 흔들림 값을 `extras`로 싣는다 (`arena.ts`의 `motion` — 방이 켠다)"""
     env = UnityPy.load(str(bundle))
     filters = [o.read() for o in env.objects if o.type.name == "MeshFilter"]
     if not filters:
@@ -329,6 +367,8 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
     #: 재질 슬롯 → (`_Color`, `_LayerColor`) — `blend` 재질의 정점 색 `COLOR_0`이 이 둘을 정점 알파로 섞는다
     blend_of: dict[int, tuple[np.ndarray, np.ndarray]] = {}
     transformed = False
+    #: 바람에 흔들리는 재질 슬롯 — 그 재질을 쓰는 조각에 정점 가중치 `_SWING`을 싣는다 (`motion`)
+    swing_slots: set[int] = set()
     for name, png, sp in sorted(baked, key=lambda b: b[0]):
         images.append({
             "bufferView": buf.view(png.read_bytes()), "mimeType": "image/png", "name": name,
@@ -364,12 +404,16 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
             pbr["baseColorFactor"] = tint
         pbr["metallicFactor"] = 0.0
         pbr["roughnessFactor"] = 0.9
+        moving = motion_extras(floats, colors, lay) if motion else None
         materials.append({
             "name": name,
             "pbrMetallicRoughness": pbr,
             **alpha_of(name),
             "doubleSided": True,
+            **({"extras": moving} if moving else {}),
         })
+        if moving and "swing" in moving:
+            swing_slots.add(len(materials) - 1)
         by_name[name] = len(materials) - 1
     for d in (albedo, layer_dir):
         if d.is_dir():
@@ -420,6 +464,11 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         glow = colors.get("_EmissionColor")
         if glow and floats.get("_EmissionColorIntensity", 0.0) > 0:
             mat["emissiveFactor"] = [glow["r"], glow["g"], glow["b"]]
+        moving = motion_extras(floats, colors, False) if motion else None
+        if moving:
+            mat["extras"] = moving
+            if "swing" in moving:
+                swing_slots.add(len(materials))
         materials.append(mat)
         by_name[name] = len(materials) - 1
 
@@ -469,7 +518,11 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         normals = np.where(length > 1e-9, normals / np.maximum(length, 1e-9), [0.0, 1.0, 0.0])
         uv_raw = lanes(handler.m_UV0, n, 2, [0.0, 0.0]).astype(np.float32)
         # 정점 색의 알파 — 잎(`blend`)이 `_Color` ↔ `_LayerColor`를 이 값으로 섞는다. 8비트라 255로 나눈다. 없으면 흰 정점 색(알파 1)이다
-        vertex_alpha = (lanes(handler.m_Colors, n, 4, [255.0] * 4)[:, 3] / 255.0).astype(np.float32)
+        vertex_color = lanes(handler.m_Colors, n, 4, [255.0] * 4)
+        vertex_alpha = (vertex_color[:, 3] / 255.0).astype(np.float32)
+        # 바람 흔들림 가중치 `_SWING` = 정점 색 R × A (`motion.ts`의 `swingWeights`와 같다). 정점 색 채널이 없으면 흔들지 않는다 · float32로
+        has_color = handler.m_Colors is not None and np.asarray(handler.m_Colors).size >= n * 4
+        wind_all = ((vertex_color[:, 0] / 255.0).astype(np.float32) * vertex_alpha).astype(np.float32) if has_color else None
         # X 뒤집기 (머리말)
         verts[:, 0] *= -1
         normals[:, 0] *= -1
@@ -501,23 +554,26 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
                 one = np.float32(1)
                 rgb = base[None, :] * (one - vertex_alpha)[:, None] + top[None, :] * vertex_alpha[:, None]
                 col = np.concatenate([rgb, np.ones((n, 1), np.float32)], axis=1).astype(np.float32)
+            wind = wind_all if slot in swing_slots else None
             parts.setdefault((top_group(transform) if groups else bundle.name, slot), []).append((
-                verts.astype(np.float32), normals.astype(np.float32), uv, tri, col,
+                verts.astype(np.float32), normals.astype(np.float32), uv, tri, col, wind,
             ))
 
     meshes: dict[str, list[dict]] = {}
     total_v = total_t = 0
     for (group, slot), chunks in sorted(parts.items()):
         primitives = meshes.setdefault(group, [])
-        pos, nrm, tex, idx, cols = [], [], [], [], []
+        pos, nrm, tex, idx, cols, winds = [], [], [], [], [], []
         base = 0
-        for v, nn, u, t, cc in chunks:
+        for v, nn, u, t, cc, ww in chunks:
             pos.append(v)
             nrm.append(nn)
             tex.append(u)
             idx.append(t + base)
             if cc is not None:
                 cols.append(cc)
+            if ww is not None:
+                winds.append(ww)
             base += v.shape[0]
         pos = np.concatenate(pos)
         nrm = np.concatenate(nrm)
@@ -542,6 +598,9 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         }
         if cols:
             prim["attributes"]["COLOR_0"] = buf.add(np.concatenate(cols), "VEC4", FLOAT, ARRAY)
+        # 모든 조각에 가중치가 있을 때만 싣는다 (`arena.ts`의 `wind`와 같다)
+        if winds and len(winds) == len(chunks):
+            prim["attributes"]["_SWING"] = buf.add(np.concatenate(winds), "SCALAR", FLOAT, ARRAY)
         if slot >= 0:
             prim["material"] = slot
         primitives.append(prim)
@@ -657,7 +716,7 @@ def bake_rooms(names: list[str]) -> int:
     print(f"방 {len(names)}벌")
     total = 0
     for name in names:
-        stat = export(ROOMS / name, ROOM_OUT / f"{name}.glb", None, ROOM_TEXTURE)
+        stat = export(ROOMS / name, ROOM_OUT / f"{name}.glb", None, ROOM_TEXTURE, motion=True)
         total += stat["바이트"]
         print(f"  {name}  삼각형 {stat['삼각형']:>7,} · 재질 {stat['재질']:>2} · {stat['바이트'] / 1e6:.1f}MB")
     # 목차는 **구운 것 전부**다 — 한 벌만 다시 구워도 목차가 줄지 않게 폴더를 센다
