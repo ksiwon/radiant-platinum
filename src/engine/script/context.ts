@@ -17,6 +17,7 @@
 import type { ScriptCommand } from '../../data/schema'
 import type { VarStore } from './vars'
 import type { FieldWorld } from './world'
+import { scriptSpy } from './spy'
 
 /** 원작의 스택 크기. 넘치면 `Call`이 조용히 무시된다 */
 const STACK_SIZE = 20
@@ -225,7 +226,9 @@ export class ScriptContext {
       if (this.at + 2 > this.view.byteLength) {
         throw new ScriptError(`0x${this.at.toString(16)}: 파일 끝을 넘어갔다`, this)
       }
+      const opAt = this.at
       const opcode = this.readHalfWord()
+      scriptSpy.opcode?.(opcode, this.file, opAt)
       const handler = this.host.commands.get(opcode)
       if (handler === undefined) {
         throw new ScriptError(`opcode 0x${opcode.toString(16)}에 핸들러가 없다`, this)

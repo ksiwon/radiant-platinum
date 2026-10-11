@@ -66,6 +66,7 @@ import { frontierStock } from '../bag/frontierMart'
 import { badgeCount } from '../bag/mart'
 import { SHARDS } from '../bag/shards'
 import { learnableTutorMoves, shardCostOf, tutorMovesAt } from '../world/tutorMoves'
+import { scriptSpy } from './spy'
 import {
   COMM_CLUB_RET, GBA_CARTRIDGE_NONE, SCRIPT_UNION_ROOM_ATTENDANT,
 } from '../world/comm'
@@ -5534,6 +5535,7 @@ on('BufferFloorNumber', (ctx) => {
 function skipper(cmd: ScriptCommand): CommandFn {
   const fixed = widths(cmd.args)
   return (ctx) => {
+    scriptSpy.unimplemented?.(cmd.name, ctx.file, ctx.pointer)
     const values = fixed.map((size) => read(ctx, size))
     // 값에 달린 여벌 인자. 재는 규칙은 `context`가 혼자 든다 —
     // 감사 도구도 같은 함수를 쓴다 (`operandWidth`)
