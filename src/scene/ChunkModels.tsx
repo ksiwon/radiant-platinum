@@ -58,6 +58,7 @@ import { AnimatedProp, hasPropAnim, usePropAnimSet } from './AnimatedProp'
 import { ShipDrift } from './ShipDrift'
 import { isShipProp } from '../engine/world/boatCutscene'
 import { loadPropAnimSet } from './propAnim'
+import { ALWAYS_ASYNC } from './asyncPipelines'
 
 /** 한 청크가 몇 타일인가. 모델이 그 절반씩 양쪽으로 뻗는다 */
 const CHUNK_TILES = 32
@@ -1532,6 +1533,10 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet, ds
             propPriority(strip, materials.length)
             materials.push(strip)
           }
+          // ⚠️ **소품은 지형이 선 뒤에 따로 붙는다** — 워프 덮개의 비동기 창(`terrainLanded`)이 그것을 안 기다려서, 창이 닫힌
+          // 뒤에 붙는 소품은 동기로 구워져 멎었다(리그 로비 실측: 창 닫힌 뒤 동기 15건 중 소품 5 · 한 건에 230~410ms).
+          // 늘 비동기로 굽게 해 둔다 — 창 안이면 창이 기다리고, 창 밖이면 구워질 때까지 몇 프레임 안 보일 뿐이다
+          for (const m of materials) m.userData[ALWAYS_ASYNC] = true
           return [{
             // ⚠️ **y를 빼면 안 된다.** 깨어진 세계는 열 층이 같은 x·z 위에 세로로
             // 쌓여 있어서, 높이가 없으면 다른 층의 같은 소품이 같은 열쇠가 된다 —
