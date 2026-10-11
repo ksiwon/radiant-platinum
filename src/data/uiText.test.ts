@@ -77,6 +77,7 @@ const NAMED: Record<keyof typeof UI_BANK, string> = {
   credits: 'unk_0548',
   mail: 'mail',
   mailbox: 'mailbox',
+  capsuleEditor: 'unk_0008',
   easyChat: 'easy_chat',
   easyChatGroups: 'easy_chat_groups',
   trainerWords: 'trainer_words',

@@ -6605,11 +6605,26 @@ on('GetPartyMonContestStat', (ctx) => {
 /**
  * 씰케이스 (`ScrCmd_CountUniqueSealsInSealCase` · `ScrCmd_CountSealOccurence`).
  *
- * `CountSealOccurence`는 케이스에 든 장수다 — 신수마을 동쪽 집이 99장 상한(`GoToIfEq … 99`)과 89장(`GoToIfLe … 89`)을 이것으로 가른다.
- * ⚠️ **`CountUniqueSealsInSealCase`는 일부러 0이다.** 0이어야 PC의 「볼캡슐」이 「씰이 없다」로 닫힌다(`CommonScript_BallCapsules`).
- * 씰이 있으면 캡슐 편집기(`OpenSealCapsuleEditor`)로 가는데 그 화면이 없다 — 캡슐이 생기는 날 이 한 줄을 케이스의 종류 수로 바꾼다
+ * `CountSealOccurence`는 **케이스 + 캡슐 위** 장수다 (`SealCase_CountSealOccurrenceAnywhere`) — 신수마을 동쪽 집이 99장 상한(`GoToIfEq … 99`)과
+ * 89장(`GoToIfLe … 89`)을 이것으로 가른다.
+ * `CountUniqueSealsInSealCase`는 어디에든 있는 씰의 종류 수다. 0이면 PC의 「볼캡슐」이 「씰이 없다」로 닫히고(`CommonScript_BallCapsules`),
+ * 아니면 캡슐 편집기(`OpenSealCapsuleEditor`)로 간다
  */
-on('CountUniqueSealsInSealCase', answers(0))
+on('CountUniqueSealsInSealCase', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.seals?.unique() ?? 0)
+  return false
+})
+/**
+ * PC의 볼캡슐 편집기 (`ScrCmd_OpenSealCapsuleEditor` → `sub_020980DC`). 필드 밖 앱이라 닫힐 때까지 선다.
+ * 화면이 안 붙어 있으면 그냥 지나간다
+ */
+on('OpenSealCapsuleEditor', (ctx) => {
+  const open = ctx.host.world.services.openCapsuleEditor
+  if (!open) return false
+  open()
+  ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
+  return true
+})
 on('CountSealOccurence', (ctx) => {
   const id = ctx.readVar()
   ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.seals?.count(id) ?? 0)

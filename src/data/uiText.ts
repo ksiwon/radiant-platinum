@@ -142,6 +142,8 @@ export const UI_BANK = {
   mail: 409,
   /** `TEXT_BANK_MAILBOX` — 우편함의 열두 줄 */
   mailbox: 408,
+  /** `TEXT_BANK_UNK_0008` — 볼캡슐 편집기의 글 열일곱 (`ov76_0223B870`) */
+  capsuleEditor: 8,
   /** `TEXT_BANK_EASY_CHAT` — 낱말 고르기 화면의 열세 줄. 끝 둘이 모드 이름이다 */
   easyChat: 437,
   /** `TEXT_BANK_EASY_CHAT_GROUPS` — 무리 이름 열넷. 앞 열둘이 무리고 뒤 둘은 「???」·「되돌아간다」 */
@@ -419,6 +421,31 @@ export const PARTY_GIVE = {
   /** 백금옥을 기라티나가 아닌 마리에게 (`PartyMenu_Text_MonCannotHoldItem`) */
   cannotHold: 203,
 } as const
+
+/**
+ * 볼캡슐 편집기 (`unk_0008` 뱅크 · `overlay076`). 0~6이 단추 일곱이고 7~16이 말 열이다
+ */
+export const CAPSULE_TEXT = {
+  edit: 0, quit: 1, set: 2, remove: 3, shift: 4, confirm: 5, cancel: 6,
+  /** "캡슐을 고르십시오" */
+  choose: 7,
+  /** "어떻게 하겠습니까?" */
+  ask: 8,
+  /** "캡슐을 뗐다" */
+  removed: 9,
+  /** "어느 캡슐과 바꾸겠습니까?" */
+  shiftWith: 10,
+  switched: 11,
+  finished: 12,
+  confirming: 13,
+  /** "캡슐 디자인을 바꾸지 않고 그만둘까요?" */
+  quitAsk: 14,
+  noRoom: 15,
+  noSeals: 16,
+} as const
+
+/** 파티 화면의 캡슐 말 (`PartyMenu_Text_BallCapsuleWasSet` 129 · `TwoCapsulsesCantBeSet` 130) */
+export const PARTY_CAPSULE = { wasSet: 129, two: 130 } as const
 
 /**
  * 메일박스 (`mailbox` 뱅크 · `unk_020722AC.c`).

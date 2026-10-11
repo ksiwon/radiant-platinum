@@ -2,8 +2,8 @@
 //
 // 볼에 붙이는 씰의 개수 표다. 해님시티 시장이 팔고(`SunyshoreMarket*`) 신수마을 동쪽 집이 안농 모양 씰을 건넨다.
 //
-// ⚠️ **캡슐(볼에 붙이는 판)은 안 만든다.** 원작은 씰이 「케이스에 든 것」과 「캡슐에 붙은 것」으로 갈리고 한 종류를 합쳐 99장까지다
-// (`SealCase_CountSealOccurrenceAnywhere`) — 캡슐이 없으니 케이스에 든 것이 전부다. 그래서 `GiveOrTakeSeal`의 상한 검사는 케이스 개수만 본다.
+// ⚠️ **씰은 「케이스에 든 것」과 「캡슐에 붙은 것」으로 갈리고 한 종류를 합쳐 99장까지다** (`SealCase_CountSealOccurrenceAnywhere`).
+// 캡슐 쪽 장수는 `ballCapsule`이 세므로 상한 검사는 그 수(`inUse`)를 받아 더한다.
 // ⚠️ **번호는 1부터다.** 칸 배열의 색인은 번호 − 1이다 (`sealCase->seals.count[sealId - 1]`).
 import { MAX_SEALS_PER_TYPE, SEAL_KINDS } from './sealTables'
 
@@ -33,17 +33,17 @@ export function totalSeals(seals: SealCase): number {
 /**
  * 더하거나 뺄 수 있는가 (`SealCase_CheckSealCount`). 음수는 가진 만큼까지, 양수는 99장 상한까지다
  */
-export function canGiveOrTake(seals: SealCase, id: number, quantity: number): boolean {
+export function canGiveOrTake(seals: SealCase, id: number, quantity: number, inUse = 0): boolean {
   if (id < 1 || id > SEAL_KINDS) return false
   const have = countSeal(seals, id)
-  return quantity < 0 ? have + quantity >= 0 : have + quantity <= MAX_SEALS_PER_TYPE
+  return quantity < 0 ? have + quantity >= 0 : have + inUse + quantity <= MAX_SEALS_PER_TYPE
 }
 
 /**
  * 더하거나 뺀다 (`GiveOrTakeSeal`). 못 하면 **그대로** 돌려준다 — 원작이 0을 돌려주고 아무것도 안 한다
  */
-export function giveOrTakeSeal(seals: SealCase, id: number, quantity: number): { seals: SealCase, ok: boolean } {
-  if (!canGiveOrTake(seals, id, quantity)) return { seals, ok: false }
+export function giveOrTakeSeal(seals: SealCase, id: number, quantity: number, inUse = 0): { seals: SealCase, ok: boolean } {
+  if (!canGiveOrTake(seals, id, quantity, inUse)) return { seals, ok: false }
   const next = [...seals]
   next[id - 1] = countSeal(seals, id) + quantity
   return { seals: next, ok: true }

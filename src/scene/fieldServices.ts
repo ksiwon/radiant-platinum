@@ -221,7 +221,8 @@ import { berryPatchServices } from './berryPatches'
 import { safariServices } from './safari'
 import { vsSeekerServices } from './vsSeeker'
 import { addAccessory, canFitAccessory, removeAccessory } from '../engine/world/fashionCase'
-import { countSeal, giveOrTakeSeal } from '../engine/world/sealCase'
+import { giveOrTakeSeal } from '../engine/world/sealCase'
+import { sealsAnywhere, sealsInUse, uniqueSealsAnywhere } from '../engine/world/ballCapsule'
 import type { FieldServices } from '../engine/script/world'
 import type { MartTable, Trainer } from '../data/schema'
 
@@ -1207,9 +1208,11 @@ const services: FieldServices = {
 
   // 씰케이스 (PARITY §4.11). 리포트가 곧 케이스다
   seals: {
-    count: (id) => countSeal(useSaveStore.getState().sealCase, id),
+    count: (id) => sealsAnywhere(useSaveStore.getState().sealCase, useSaveStore.getState().capsules, id),
+    unique: () => uniqueSealsAnywhere(useSaveStore.getState().sealCase, useSaveStore.getState().capsules),
     giveOrTake: (id, quantity) => {
-      const put = giveOrTakeSeal(useSaveStore.getState().sealCase, id, quantity)
+      const at = useSaveStore.getState()
+      const put = giveOrTakeSeal(at.sealCase, id, quantity, sealsInUse(at.capsules, id))
       if (put.ok) useSaveStore.setState({ sealCase: [...put.seals] })
       return put.ok
     },
@@ -1535,6 +1538,9 @@ const services: FieldServices = {
   menuOpen: () => useMenuStore.getState().stack.length > 0,
 
   openShop: (stock, currency, onPurchase) => { useMenuStore.getState().openShop(stock, currency ?? 'money', onPurchase) },
+
+  /** PC의 볼캡슐 편집기 (`OpenSealCapsuleEditor`) */
+  openCapsuleEditor: () => { useMenuStore.getState().open('capsule') },
 
   /** 보관 시스템 다섯 갈래 (`OpenPokemonStorage`) */
   openStorage: (mode) => {

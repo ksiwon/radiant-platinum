@@ -30,6 +30,7 @@ import {
 } from '../../data/gameData'
 import { fillMenuText, loadUiText, MART_TEXT, MONEY_WINDOW_TEXT, SELL_TEXT, UI_BANK, YES_NO } from '../../data/uiText'
 import { canGiveOrTake, countSeal, giveOrTakeSeal } from '../../engine/world/sealCase'
+import { sealsInUse } from '../../engine/world/ballCapsule'
 import { SEAL_PRICE } from '../../engine/world/sealTables'
 import { ITEM_TABLE } from '../../import/platinum/itemTable'
 import {
@@ -346,7 +347,7 @@ export function ShopScreen() {
     if (tab === 'sell') { setStep({ kind: 'confirm', n, yes: true }); return }
     // 씰은 한 종류 99장까지다 (`SealCase_CheckSealCount`) — 넘으면 씰 전용 줄(롬 14)이다
     const fits = isSeal
-      ? canGiveOrTake(useSaveStore.getState().sealCase, itemRow.item, n)
+      ? canGiveOrTake(useSaveStore.getState().sealCase, itemRow.item, n, sealsInUse(useSaveStore.getState().capsules, itemRow.item))
       : canFit(useSaveStore.getState().bag, pocketOf(itemRow.item), itemRow.item, n)
     if (!fits) {
       setStep({ kind: 'finish', line: say(isSeal ? MART_TEXT.sealNoRoom : MART_TEXT.noRoom, []), item: itemRow.item, count: 0 })
@@ -374,7 +375,7 @@ export function ShopScreen() {
     }
     const stored = isSeal
       ? ((): boolean => {
-        const put = giveOrTakeSeal(useSaveStore.getState().sealCase, itemRow.item, n)
+        const put = giveOrTakeSeal(useSaveStore.getState().sealCase, itemRow.item, n, sealsInUse(useSaveStore.getState().capsules, itemRow.item))
         if (put.ok) useSaveStore.setState({ sealCase: [...put.seals] })
         return put.ok
       })()

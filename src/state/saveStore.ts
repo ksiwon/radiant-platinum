@@ -41,6 +41,7 @@ import { newBerryPatches, type BerryPatch } from '../engine/world/berryPatches'
 import { newSafari, TRAM_START, type SafariState } from '../engine/world/safari'
 import { newFashionCase, type FashionCase } from '../engine/world/fashionCase'
 import { newSealCase } from '../engine/world/sealCase'
+import { newCapsules, type BallSeal } from '../engine/world/ballCapsule'
 import { newMailbox, type Mail } from '../engine/world/mail'
 import { newEasyChatUnlocks, type EasyChatUnlocks } from '../engine/world/easyChat'
 import { newFactoryRecords, type FactoryRecords } from '../engine/frontier/records'
@@ -308,6 +309,8 @@ export interface SaveData {
   fashionCase: FashionCase
   /** 씰케이스 — 종류마다 장수 (PARITY §4.11 · `engine/world/sealCase`) */
   sealCase: number[]
+  /** 볼캡슐 열둘 (PARITY §4.11 · `engine/world/ballCapsule`) */
+  capsules: BallSeal[][]
   /**
    * 시원이 여태 몇 개까지 줬는가 (SIWON.md §5).
    *
@@ -505,6 +508,7 @@ export function createNewSave(): SaveData {
     safari: { ...newSafari(), caught: 0, tram: TRAM_START },
     fashionCase: newFashionCase(),
     sealCase: newSealCase(),
+    capsules: newCapsules(),
     siwonGiven: 0,
     siwonMet: false,
     mailbox: newMailbox(),
@@ -819,6 +823,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     safari: s.safari,
     fashionCase: s.fashionCase,
     sealCase: s.sealCase,
+    capsules: s.capsules,
     siwonGiven: s.siwonGiven,
     siwonMet: s.siwonMet,
     mailbox: s.mailbox,

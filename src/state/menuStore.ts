@@ -16,6 +16,8 @@ import type { PartyItemUse } from '../engine/bag/fieldUse'
 export type MenuScreen =
   | 'start' | 'bag' | 'party' | 'pokedex' | 'trainerCard' | 'save' | 'options' | 'shop'
   | 'fly' | 'box'
+  // PC의 「볼캡슐」 (PARITY §4.11). 스크립트가 `OpenSealCapsuleEditor`로 열고 닫힐 때까지 선다
+  | 'capsule'
   // 모험노트. 가방의 열쇠도구에서 연다 (`ItemUseFunc_Journal`).
   // 이어하기에서는 **저절로 펼쳐진다** (`Journal_CheckOpenOnContinue`) — 그때만
   // `journalAt`이 지난번 쪽을 가리킨다

@@ -39,6 +39,7 @@ import { berryGrowth, plantBerry, waterPatch } from '../engine/world/berryPatche
 import { startSafari } from '../engine/world/safari'
 import { addAccessory } from '../engine/world/fashionCase'
 import { giveOrTakeSeal } from '../engine/world/sealCase'
+import { attachCapsule, newCapsules, placeSeal } from '../engine/world/ballCapsule'
 import { unlockGreeting } from '../engine/world/easyChat'
 import { addRecord } from '../engine/world/gameRecords'
 import { updateRadarRecords } from '../engine/world/pokeRadar'
@@ -253,6 +254,7 @@ function fillRichState(): void {
   const patches = [...s3.berryPatches]
   patches[0] = waterPatch(plantBerry(patches[0]!, growth, 5))
   patches[127] = { ...plantBerry(patches[127]!, growth, 5), isGrowing: true }
+  const capsuled = placeSeal(giveOrTakeSeal(giveOrTakeSeal(s3.sealCase, 1, 5).seals, 80, 99).seals as number[], newCapsules(), 2, 0, 80)!
   useSaveStore.setState({
     factory,
     honeyTrees: slatherTree(s3.honeyTrees, 4, false, { keep: 0.5, group: 0.3, slot: 0.7, shakes: 0.2 }),
@@ -260,7 +262,10 @@ function fillRichState(): void {
     berryPatches: patches,
     safari: { ...s3.safari, ...startSafari(), caught: 3, tram: s3.safari.tram },
     fashionCase: addAccessory(addAccessory(s3.fashionCase, 0, 3), 90, 1),
-    sealCase: giveOrTakeSeal(giveOrTakeSeal(s3.sealCase, 1, 5).seals, 80, 99).seals as number[],
+    sealCase: capsuled.seals,
+    // 씰 한 장을 둘째 캡슐에 붙이고 그 캡슐을 첫 마리에게 단다
+    capsules: capsuled.capsules,
+    party: attachCapsule(useSaveStore.getState().party, capsuled.capsules, 2, 0) ?? useSaveStore.getState().party,
     easyChatUnlocks: unlockGreeting(s3.easyChatUnlocks, 5),
     // 파티에서 떼어 우편함으로 옮긴 편지 한 장
     mailbox: toMailbox(s3.mailbox, writeMail(7, {

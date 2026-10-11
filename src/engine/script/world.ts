@@ -680,6 +680,8 @@ export interface FieldServices {
   seals?: {
     /** 그 씰이 몇 장인가 (`SealCase_CountSealOccurrenceAnywhere`) */
     count: (id: number) => number
+    /** 어디에든 한 장이라도 있는 씰의 종류 수 (`SealCase_CountUniqueSeals`) */
+    unique: () => number
     /** 더하거나 뺀다. 못 하면 거짓이고 아무것도 안 한다 (`GiveOrTakeSeal`) */
     giveOrTake: (id: number, quantity: number) => boolean
   }
@@ -890,6 +892,8 @@ export interface FieldServices {
    * · 4 비교한다. 어느 갈래로 들어왔는지가 화면의 첫 손짓을 정한다
    */
   openStorage?: (mode: number) => void
+  /** PC의 볼캡슐 편집기를 연다 (`OpenSealCapsuleEditor`). 닫힐 때까지 메뉴가 떠 있다 */
+  openCapsuleEditor?: () => void
   /** 박스에 남은 자리 수 (`GetPCBoxesFreeSlotCount`) */
   boxFreeSlots?: () => number
   /** 파티에서 싸울 수 있는 수 + 박스에 든 수 (`CountAliveMonsAndBoxMons`) */

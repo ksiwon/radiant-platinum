@@ -55,6 +55,7 @@ import { BERRY_KINDS, MULCH_KINDS } from '../../engine/world/berryInit'
 import { SAFARI_BALLS, SAFARI_STEPS, TRAM_STOP } from '../../engine/world/safari'
 import { NON_UNIQUE_WORDS, UNIQUE_WORDS } from '../../engine/world/fashionCase'
 import { newSealCase } from '../../engine/world/sealCase'
+import { newCapsules, SEALS_PER_CAPSULE, TOTAL_CAPSULES } from '../../engine/world/ballCapsule'
 import { MAX_SEALS_PER_TYPE, SEAL_KINDS } from '../../engine/world/sealTables'
 import { POCKET_COUNT } from '../../data/schema'
 import type { SaveData } from '../saveStore'
@@ -157,6 +158,11 @@ const mailSchema = z.object({
     .length(MAIL_LINES),
 })
 
+/** 볼 씰 한 장 (`BallSeal`) — 종류 0은 빈 칸 */
+const ballSealSchema = z.object({ type: int(0, SEAL_KINDS), x: int(0, 255), y: int(0, 255) })
+/** 캡슐 하나 — 칸 여덟 (`BallCapsule`) */
+const capsuleSchema = z.array(ballSealSchema).length(SEALS_PER_CAPSULE)
+
 const monSchema = z.object({
   species: int(1, 493),
   pid: int(0, 0xffffffff),
@@ -195,6 +201,12 @@ const monSchema = z.object({
    * 우편함으로 옮기는 것은 이 칸을 비우고 그쪽에 넣는 일이다
    */
   mail: mailSchema.nullable(),
+  /**
+   * 붙인 볼캡슐 (PARITY §4.11) — 번호(1~12)와 붙일 때의 사본 (`MON_DATA_BALL_CAPSULE_ID` · `MON_DATA_BALL_CAPSULE`).
+   *
+   * ⚠️ **없으면 안 붙은 것이다.** 옛 리포트에는 이 칸이 없으므로 선택이다
+   */
+  capsule: z.object({ id: int(1, TOTAL_CAPSULES), seals: capsuleSchema }).optional(),
 })
 
 /** 팩토리 형 표의 한 자리와 개체값 (`engine/frontier/factory`의 `DrawnSet`) */
@@ -693,6 +705,8 @@ const saveSchema = z.object({
    * 캡슐은 없고 케이스에 든 것이 전부다
    */
   sealCase: z.array(int(0, MAX_SEALS_PER_TYPE)).length(SEAL_KINDS).default(() => newSealCase()),
+  /** 볼캡슐 열둘 (PARITY §4.11 · `engine/world/ballCapsule`). 옛 리포트에는 없어 빈 캡슐로 읽는다 (`default`) */
+  capsules: z.array(capsuleSchema).length(TOTAL_CAPSULES).default(() => newCapsules()),
   /**
    * 시원이 여태 몇 개까지 줬는가 (SIWON.md §5).
    *

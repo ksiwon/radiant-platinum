@@ -27,6 +27,9 @@ function main() {
   const rows = [...body[1].matchAll(/\{([^}]*)\}/g)].map((m) => m[1].split(',').map((v) => Number(v.trim())))
   if (rows.length !== max) throw new Error(`줄이 ${rows.length}개다 — ${max}이어야 한다`)
   const price = rows.slice(1).map((r) => r[5])
+  // 터지는 입자 — 넷째가 `ball.bin`의 멤버 번호(`sub_02098188`), 다섯째가 「한 자리에 고정」 깃발(`sub_020981AC`)
+  const fxRes = rows.slice(1).map((r) => r[3])
+  const fxFixed = rows.slice(1).map((r) => r[4])
 
   // 재고 — 요일마다 일곱
   const stocks = []
@@ -56,6 +59,12 @@ export const MAX_SEALS_PER_TYPE = 99
 
 /** 씰 한 장의 값 — 차례가 씰 번호 − 1이다 (\`Unk_020F64D0\`의 여섯째 칸) */
 export const SEAL_PRICE: readonly number[] = [${price.join(', ')}]
+
+/** 씰마다 터지는 입자 — \`ball.bin\`의 멤버 번호 (\`sub_02098188\`, 넷째 칸) */
+export const SEAL_FX_RES: readonly number[] = [${fxRes.join(', ')}]
+
+/** 입자 시차를 위치로 가르지 않고 늘 같게 두는 씰인가 (\`sub_020981AC\`, 다섯째 칸) */
+export const SEAL_FX_FIXED: readonly number[] = [${fxFixed.join(', ')}]
 
 /** 해님시티 시장의 요일별 씰 가게 — 월요일부터 일곱 날, 날마다 일곱 종 (\`SunyshoreMarketStock*\`) */
 export const SUNYSHORE_SEAL_STOCKS: readonly (readonly number[])[] = [
