@@ -32,6 +32,14 @@ export interface MotionValues {
   swing?: { power: number, speed: number, dist: number, uv: number, scale: readonly number[], dir: readonly number[] }
 }
 
+/**
+ * 개발 · 측정용 끄개 — 주소에 `?nomotion`이 있으면 맵 움직임(흐름 · 흔들림 · 회전 · 클립 · 파티클 표식)을 전부 안 세운다. 같은 판에서 켠 쪽과 끈 쪽의
+ * 프레임 시간 · 그리기 호출 · 파이프라인 수를 맞대려는 것이다 (docs/orders/GAPS_20261011.md 성능 규칙)
+ */
+export function motionDisabled(): boolean {
+  try { return typeof location !== 'undefined' && new URLSearchParams(location.search).has('nomotion') } catch { return false }
+}
+
 /** 바람 진폭 곱수 (추측 — 머리말) */
 export const WIND_GAIN = 2
 
@@ -129,6 +137,7 @@ export function motionMaterial(was: Material): MeshStandardNodeMaterial | null {
  * ⚠️ 물 · 풀 갈아 끼우기(`liveWater` · `liveFoliage`) **뒤**에 부른다 — 물은 제 노드 재질이라 `userData`가 없어 안 걸리고, 풀은 이미 노드 재질이라 그대로 쓴다
  */
 export function liveMotionMaterials(root: Object3D): number {
+  if (motionDisabled()) return 0
   const swapped = new Map<Material, MeshStandardNodeMaterial | null>()
   root.traverse((o) => {
     if (!(o instanceof Mesh)) return
@@ -188,6 +197,7 @@ export interface BdspMotion {
  * (원작이 컨트롤러에서 되풀이하는지 번들에서 못 읽었다)
  */
 export function liveMotion(root: Object3D, animations: readonly AnimationClip[] = []): BdspMotion {
+  if (motionDisabled()) return { update() {}, dispose() {} }
   root.updateMatrixWorld(true)
   const spinners: { node: Object3D, spin: Spin, at: Vector3, near: boolean }[] = []
   root.traverse((o) => {

@@ -12,6 +12,7 @@ import { Euler, Quaternion, Vector3, type Object3D } from 'three'
 import { assets } from '../data/providers/assetProvider'
 import { worldState } from '../state/worldState'
 import { BdspEffect } from './battle/fx/BdspEffect'
+import { motionDisabled } from './bdspMotion'
 
 /** 이 거리(칸) 안의 표식만 세운다 — 안개 끝 안쪽이다 */
 export const FX_REACH = 70
@@ -74,7 +75,7 @@ export function FieldFx({ root, hidden = false }: { root: Object3D, hidden?: boo
   useEffect(() => {
     let alive = true
     void fieldEffectNames().then((n) => { if (alive) setNames(n) })
-    all.current = markersOf(root)
+    all.current = motionDisabled() ? [] : markersOf(root)
     since.current = PICK_EVERY
     return () => { alive = false }
   }, [root])
