@@ -8,7 +8,7 @@
 import { MAX_SEALS_PER_TYPE, SEAL_KINDS } from './sealTables'
 
 /** 리포트에 담기는 모양 — 종류마다 가진 장수 */
-export type SealCase = readonly number[]
+type SealCase = readonly number[]
 
 /** 빈 케이스 */
 export function newSealCase(): number[] {
