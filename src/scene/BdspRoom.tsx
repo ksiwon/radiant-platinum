@@ -32,6 +32,7 @@ import { disposeTree } from './disposeTree'
 import { useBdspMark } from './bdspReady'
 import { liveWater } from './BdspField'
 import { liveMotion, liveMotionMaterials, type BdspMotion } from './bdspMotion'
+import { FieldFx } from './FieldFx'
 import { holdBdspDoors } from './DoorAnimations'
 import { holdBdspSigns } from './ObjectProps'
 import { shellRoom } from './roomShell'
@@ -318,5 +319,5 @@ export function BdspRoom({ name, mapId }: { name: string, mapId: number }) {
     for (const d of lens.doors) d.mesh.visible = eliteDoorShown(npcActors.list, d.x, d.z)
   })
 
-  return scene ? <primitive object={scene} /> : null
+  return scene ? <><primitive object={scene} /><FieldFx root={scene} /></> : null
 }

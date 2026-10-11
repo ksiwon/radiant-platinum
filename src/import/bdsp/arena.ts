@@ -15,7 +15,7 @@ import {
   verifyGlb, writeGlb, type Gltf,
 } from './glb'
 import { meshFrom, CHANNEL, type MeshData } from './mesh'
-import { motionExtras, swingWeights, SWING_ATTRIBUTE } from './motion'
+import { FX_NODE_PREFIX, motionExtras, swingWeights, SWING_ATTRIBUTE } from './motion'
 import { buildAnimations } from './model'
 import { columnMajor, flipped } from './matrix'
 import type { Moving } from './field'
@@ -1039,6 +1039,23 @@ export async function exportArena(
     bodyOf.set(nodes.length, mv)
     nodes.push(body)
   })
+  // 파티클 표식 — `FieldEffect`가 달린 켜진 물체의 자리 (`motion.ts`의 `FX_NODE_PREFIX`). 방(`motion`)만 싣는다
+  if (options.motion) {
+    for (const e of env.ofType('MonoBehaviour')) {
+      const mb = env.readEntry(e) as Props | null
+      if (!mb || typeof mb._effectId !== 'number') continue
+      const go = env.read(num((mb.m_GameObject as Props | undefined)?.m_PathID)) as Props | null
+      if (!go || go.m_IsActive === false || go.m_IsActive === 0 || mb.m_Enabled === false || mb.m_Enabled === 0) continue
+      let transformPid = 0
+      for (const c of (go.m_Component as UnityValue[] | undefined) ?? []) {
+        const holder = (Array.isArray(c) ? c[1] : c) as Props
+        const pid = num(((holder.component ?? holder) as Props).m_PathID)
+        if (env.entryOf(pid)?.type === 'Transform') transformPid = pid
+      }
+      if (transformPid === 0) continue
+      nodes.push({ name: `${FX_NODE_PREFIX}${String(mb._effectId)}`, matrix: columnMajor(flipped(worldOf(env, transformPid, cache))), extras: { fx: mb._effectId } })
+    }
+  }
   const animations: Record<string, unknown>[] = []
   // 뼈대 소품 — 닻 → 마디 …, 껍데기는 뿌리 마디에 스킨으로 단다. 클립은 자식 경로의 CRC32로 마디를 찾는다 (`rig.ts`)
   const skins: Record<string, unknown>[] = []

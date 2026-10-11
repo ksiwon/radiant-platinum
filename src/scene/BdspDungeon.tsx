@@ -34,6 +34,7 @@ import { fieldFade, type FieldFade } from './fieldFade'
 import { useBdspMark } from './bdspReady'
 import { liveWater, lowestGround } from './BdspField'
 import { liveMotion, liveMotionMaterials, type BdspMotion } from './bdspMotion'
+import { FieldFx } from './FieldFx'
 import { setDungeonLow } from './OuterFloor'
 import { holdBdspDoors } from './DoorAnimations'
 import { holdBdspSigns } from './ObjectProps'
@@ -694,5 +695,5 @@ export function BdspDungeon({ name }: { name: string }) {
       if (built) disposeTree(built)
     }
   }, [name])
-  return scene ? <primitive object={scene} /> : null
+  return scene ? <><primitive object={scene} /><FieldFx root={scene} /></> : null
 }

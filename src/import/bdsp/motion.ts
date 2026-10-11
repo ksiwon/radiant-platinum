@@ -62,6 +62,13 @@ export function motionExtras(look: Source | undefined, layered: boolean): Record
   return Object.keys(out).length > 0 ? out : null
 }
 
+/**
+ * **지역 · 방에 서는 파티클 표식** — `FieldEffect` 컴포넌트(`_effectId`)가 달린 물체의 자리. 폭포 · 분수 · 횃불 · 워프존 · 기계 불빛 …(번들 502개 · 66종).
+ * `effectdatabase`의 `FieldEffectData[id]`가 프리팹을 가리키고(`import/bdsp/fx.ts`가 `data/fx/index.json`의 `fieldEffects`로 싣는다), 실행 쪽
+ * (`scene/FieldFx`)이 가까운 것만 세운다. 표식은 메시 없는 노드이고 `extras.fx`가 번호다 — 노드 쪽(`bdspArena.py`)과 같다
+ */
+export const FX_NODE_PREFIX = 'fx:'
+
 /** 흔들림 가중치 속성 이름 — glTF 사용자 속성은 `_`로 시작한다. three가 소문자(`_swing`)로 싣는다 */
 export const SWING_ATTRIBUTE = '_SWING'
 

@@ -34,6 +34,7 @@ import { beginAsyncPipelines, settleAsyncPipelines } from './asyncPipelines'
 import { holdBdspDoors } from './DoorAnimations'
 import { holdBdspSigns } from './ObjectProps'
 import { liveMotion, liveMotionMaterials, type BdspMotion } from './bdspMotion'
+import { FieldFx } from './FieldFx'
 import { applyVariants, variantNodes, type VariantNode } from './fieldVariants'
 import { fieldScripts } from '../engine/script/field'
 import { DAY } from './fx/sky'
@@ -498,7 +499,7 @@ function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
       if (mine) holdField(name, mine)
     }
   }, [name])
-  return built ? <primitive object={built.scene} visible={!hidden} /> : null
+  return built ? <><primitive object={built.scene} visible={!hidden} /><FieldFx root={built.scene} hidden={hidden} /></> : null
 }
 
 // ── 안개 바닥 ────────────────────────────────────────────────────────────────────────────────────────────

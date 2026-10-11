@@ -925,6 +925,24 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
                           "children": [len(nodes) + 1]})
         body_of[len(nodes)] = mv
         nodes.append(body)
+    # 파티클 표식 — `FieldEffect`(`_effectId`)가 달린 켜진 물체의 자리. `motion.ts`의 `FX_NODE_PREFIX`와 `arena.ts`와 같다 (방만)
+    if motion:
+        by_id = {o.path_id: o for o in env.objects}
+        for o in env.objects:
+            if o.type.name != "MonoBehaviour":
+                continue
+            try:
+                mb = o.read_typetree()
+            except Exception:
+                continue
+            if not isinstance(mb.get("_effectId"), int) or isinstance(mb.get("_effectId"), bool):
+                continue
+            go_obj = by_id.get(mb["m_GameObject"]["m_PathID"])
+            go = go_obj.read() if go_obj is not None else None
+            if go is None or not go.m_IsActive or mb.get("m_Enabled") == 0:
+                continue
+            nodes.append({"name": f"fx:{mb['_effectId']}", "matrix": column_major(flipped(world_of(go.m_Transform.read(), cache))),
+                          "extras": {"fx": mb["_effectId"]}})
     animations: list[dict] = []
     skins: list[dict] = []
     for r, rig in enumerate(rigs):

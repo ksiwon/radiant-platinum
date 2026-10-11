@@ -14,7 +14,7 @@
 import { UNITY_PLANE } from './unityBuiltin'
 import { bakeLooks, lanes, worldOf, type ImageShare, type Mat4 } from './arena'
 import { columnMajor, decompose, flipped } from './matrix'
-import { swingWeights, SWING_ATTRIBUTE } from './motion'
+import { FX_NODE_PREFIX, swingWeights, SWING_ATTRIBUTE } from './motion'
 import { buildAnimations } from './model'
 import {
   ARRAY_BUFFER, ELEMENT_BUFFER, FLOAT, GlbBuffer, UINT, USHORT, verifyGlb, writeGlb, type Gltf,
@@ -1002,6 +1002,24 @@ export async function exportField(
     })
   }
 
+  // 파티클 표식 — `FieldEffect`가 달린 켜진 물체의 자리 (`motion.ts`의 `FX_NODE_PREFIX`). 꺼 둔 물체 · 꺼진 부모 밑은 안 세운다
+  let effects = 0
+  for (const e of env.ofType('MonoBehaviour')) {
+    const mb = env.readEntry(e) as Props | null
+    if (!mb || typeof mb._effectId !== 'number') continue
+    const go = env.read(num((mb.m_GameObject as Props | undefined)?.m_PathID)) as Props | null
+    if (!go || !flag(go.m_IsActive) || !flag(mb.m_Enabled, true)) continue
+    let transformPid = 0
+    for (const c of (go.m_Component as UnityValue[] | undefined) ?? []) {
+      const holder = (Array.isArray(c) ? c[1] : c) as Props
+      const pid = num(((holder.component ?? holder) as Props).m_PathID)
+      if (env.entryOf(pid)?.type === 'Transform') transformPid = pid
+    }
+    if (transformPid === 0 || inactiveAncestor(transformPid, name, parentMemo)) continue
+    nodes.push({ name: `${FX_NODE_PREFIX}${String(mb._effectId)}`, matrix: columnMajor(flipped(worldOf(env, transformPid, cache))), extras: { fx: mb._effectId } })
+    effects++
+  }
+  void effects
   // 석탄 더미의 Mecanim 클립 — 물체마다 제 몸 노드(경로 해시 0 = 애니메이터가 붙은 물체 자신)에 잇는다
   const animations: Record<string, unknown>[] = []
   for (const [node, mv] of bodyOf) {

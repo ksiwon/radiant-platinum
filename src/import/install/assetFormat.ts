@@ -399,6 +399,10 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    */
   berryPlants: 2,
   /**
+   * 5 — **지역 · 방에 서는 파티클이 붙는다** (`import/bdsp/fx.ts`의 `FIELD_EFFECT_PREFAB` — `effectdatabase`의 `FieldEffectData`에서 폭포 · 분수 · 횃불 ·
+   * 워프존 · 기계 불빛 · 해변 물결 · 배 항적 `ef_f_bg_*` · `ef_f_ship_*` 프리팹과 `index.json`의 `fieldEffects` 번호표). 맵 glb의 표식 노드(`fx:<번호>` —
+   * `fields` 7 · `rooms` 3 · `dungeons` 4)와 짝이다. ⚠️ **4는 안 쓴다**(`GROUP_ACCEPTS`에 없다) — 옛 판은 번호표가 없어 표식이 이름을 못 찾는다
+   *
    * 4 — **진화 · 부화 이펙트 원본과 알 모델이 붙는다** (메뉴 개편). 필드 프리팹 `ef_f_evolution_*` 아홉(`index.json`의 `evolution`) ·
    * `sd9120_*` 열일곱(`hatch`)과 알 모델 `data/fx/model/ew121_egg00.glb`(`eggModel`). 없으면 진화 · 부화 무대가 지금의 도형 알과
    * DS 입자로 선다 — ⚠️ **필수 그룹이라**(`required.ts`) 이미 깐 사람은 이 그룹만 새로 굽는다. 3판은 `GROUP_ACCEPTS`에 안 넣는다
@@ -419,7 +423,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * `ee101~113` · 내보내기 `ee4xx`, 기술 1~467의 시퀀스와 그것이 부르는 프리팹 · 그림. ⚠️ **필수 그룹이라**(`required.ts`)
    * 이미 깐 사람은 이 그룹만 새로 굽는다
    */
-  battleFx: 4,
+  battleFx: 5,
   /**
    * 1 — **바위깨기 · 풀베기 · 괴력 바위 · 꿀나무 · 눈덩이가 BDSP 입체다** (`models/gimmick/obj0001~0006_00.glb` · `index.json`,
    * 다섯 벌 415KB — `import/bdsp/convert.ts`의 `convertGimmicks` · 노드 쪽 `bdspArena.py --gimmicks`). 꿀나무는 뼈 넷과 흔들림

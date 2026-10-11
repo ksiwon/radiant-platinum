@@ -16,6 +16,7 @@ import {
 } from './pcParts'
 import { assets } from '../data/providers/assetProvider'
 import { cameraSystem } from '../engine/actor/camera'
+import { bakedFxPrefabs } from './WorldFx'
 
 interface Props {
   /**
@@ -31,6 +32,17 @@ const start = new Vector3()
 const end = new Vector3()
 const direction = new Vector3()
 const turn = new Quaternion()
+
+/**
+ * 비전기술의 BDSP 파티클 프리팹 (`data/fx`의 `ef_f_waza_*` — `import/bdsp/fx.ts`의 `FIELD_ACTION_PREFAB`). 구워져 있으면 도형 고리 · 조각 대신 이것이 선다.
+ * 파도타기 · 폭포오르기는 BDSP에 필드 프리팹이 없다(타는 몸이 연출이다) — 도형 그대로다
+ */
+export const ACTION_PREFABS: Readonly<Partial<Record<FieldActionFxKind, string>>> = {
+  cut: 'ef_f_waza_cut',
+  rockSmash: 'ef_f_waza_rocksmash',
+  strength: 'ef_f_waza_strength',
+  rockClimb: 'ef_f_waza_rockclimb',
+}
 
 const FIELD_COLORS: Readonly<Record<FieldActionFxKind, string>> = {
   cut: '#8df06c',
@@ -120,6 +132,14 @@ export function FieldActionEffects({ bodyRef }: Props) {
   const actionRingRef = useRef<Mesh>(null)
   const actionParticlesRef = useRef<Group>(null)
   const lastActionRef = useRef<FieldActionFxKind | null>(null)
+  /** 구워 둔 BDSP 프리팹 이름들 — 비전기술 연출이 이것으로 서는가 */
+  const bakedRef = useRef<ReadonlySet<string>>(new Set())
+  const where = useMemo(() => ({ pos: new Vector3() }), [])
+  useEffect(() => {
+    let alive = true
+    void bakedFxPrefabs().then((s) => { if (alive) bakedRef.current = s })
+    return () => { alive = false }
+  }, [])
   const actionMaterial = useMemo(
     () =>
       new MeshStandardMaterial({
@@ -337,8 +357,17 @@ export function FieldActionEffects({ bodyRef }: Props) {
       }
     }
     const kind = fx.kind
-    if (actionRef.current) actionRef.current.visible = kind !== null
-    if (kind === null) return
+    const prefab = kind === null ? undefined : ACTION_PREFABS[kind]
+    const bdsp = prefab !== undefined && bakedRef.current.has(prefab)
+    // BDSP 프리팹이 있으면 도형 연출은 접는다
+    if (actionRef.current) actionRef.current.visible = kind !== null && !bdsp
+    if (kind === null) { lastActionRef.current = null; return }
+    if (bdsp && lastActionRef.current !== kind && actionRef.current) {
+      // 주인공 앞 (도형 연출이 서던 자리) — 월드 자리와 바라보는 방향으로 한 번 터뜨린다
+      actionRef.current.getWorldPosition(where.pos)
+      worldState.fxRequests.push({ name: prefab ?? '', x: where.pos.x, y: where.pos.y, z: where.pos.z, yaw: worldState.player.facing })
+    }
+    if (bdsp) { lastActionRef.current = kind; return }
     if (lastActionRef.current !== kind) {
       actionMaterial.color.set(FIELD_COLORS[kind])
       actionMaterial.emissive.set(FIELD_COLORS[kind])
