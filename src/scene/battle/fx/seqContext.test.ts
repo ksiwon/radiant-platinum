@@ -130,3 +130,21 @@ describe('mergePose — 한 몸에 두 역할이 걸릴 때', () => {
     expect(mergePose({ ...base, motion: null }, { ...base, motion: null }).motion).toBeNull()
   })
 })
+
+describe('특수 자리 (`*SpecialPos`)', () => {
+  const spots: Record<string, [number, number]> = { p1a: [-1, 3], p1b: [1, 3], p2a: [-1, -3], p2b: [1, -3] }
+  const ctx = roleContext(['p1a', 'p2a'], (slot) => spots[slot]!, () => undefined)
+
+  it('0은 쓴 쪽 진영의 가운데 · 1은 맞는 쪽 진영의 가운데 · 2는 필드 가운데', () => {
+    expect(ctx.special?.(0)?.pos).toEqual([0, 0, 3])
+    expect(ctx.special?.(1)?.pos).toEqual([0, 0, -3])
+    expect(ctx.special?.(2)?.pos).toEqual([0, 0, 0])
+    expect(ctx.special?.(9)).toBeNull()
+  })
+
+  it('상대가 쓰면 0과 1이 뒤바뀐다', () => {
+    const foe = roleContext(['p2a', 'p1a'], (slot) => spots[slot]!, () => undefined)
+    expect(foe.special?.(0)?.pos).toEqual([0, 0, -3])
+    expect(foe.special?.(1)?.pos).toEqual([0, 0, 3])
+  })
+})

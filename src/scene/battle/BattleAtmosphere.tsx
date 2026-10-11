@@ -14,9 +14,10 @@ import type { BattleView, ViewMon } from '../../engine/battle/view'
 import type { SideId, SlotId } from '../../engine/battle/events'
 import { battleClock } from '../../engine/battle/presentationClock'
 import { CAMERA } from '../../engine/battle/shots'
-import { ballOpen } from './stageRefs'
+import { ballOpen, slotRig } from './stageRefs'
 import { BdspEffect } from './fx/BdspEffect'
 import { fxIndex, shinySeqPlan } from './fx/moveSeq'
+import { cloneDoll, loadSubstituteDoll } from './fx/ballModel'
 import { BdspSequence } from './fx/BdspSequence'
 import type { SeqPlan } from '../../engine/battle/fx/sequence'
 
@@ -201,21 +202,44 @@ function StatusAura({ mon, slot, position }: { mon: ViewMon; slot: SlotId; posit
         얼음 · 화상 · 독 여섯 줄뿐이고, 씨뿌리기는 턴 끝 틱에만 새싹(`ew073_turn`)이 돋았다 진다. 늘 돌던 노란 고리 · 덩굴 고리는
         지어낸 것이라 걷었다 — 걸린 순간 · 틱의 연출은 `StatusVfx`가 낸다
       */}
-      {substitute && (
-        <group position={[0.62, 0.25, 0.28]} scale={0.42}>
-          <mesh position={[0, 0.55, 0]} castShadow>
-            <sphereGeometry args={[0.58, 14, 10]} />
-            <meshStandardMaterial color="#78b86f" roughness={0.82} />
-          </mesh>
-          <mesh position={[0, 0.05, 0]} castShadow>
-            <capsuleGeometry args={[0.36, 0.42, 5, 10]} />
-            <meshStandardMaterial color="#68a85f" roughness={0.85} />
-          </mesh>
-          <mesh position={[-0.2, 0.65, 0.48]}><sphereGeometry args={[0.06, 8, 6]} /><meshBasicMaterial color="#17231a" /></mesh>
-          <mesh position={[0.2, 0.65, 0.48]}><sphereGeometry args={[0.06, 8, 6]} /><meshBasicMaterial color="#17231a" /></mesh>
-        </group>
-      )}
+      {substitute && <SubstituteDoll slot={slot} />}
       {mon.shiny && bdspShiny === false && <ShinySparkles />}
+    </group>
+  )
+}
+
+/**
+ * 대타 인형 — BDSP 원본 모델(`Characters/objects/ob0301_00`, 초록 인형). 몸 곁에 서고 몸과 같은 쪽을 본다.
+ * 모델을 못 받은 판(묶음 5판 아래)만 옛 도형 인형으로 선다
+ */
+function SubstituteDoll({ slot }: { slot: SlotId }) {
+  const [model, setModel] = useState<Group | null | undefined>(undefined)
+  useEffect(() => {
+    let alive = true
+    void loadSubstituteDoll().then((m) => { if (alive) setModel(m === null ? null : cloneDoll(m)) })
+    return () => { alive = false }
+  }, [])
+  const host = useRef<Group>(null)
+  // 몸이 보는 쪽 — 몸이 서 있는 동안 반 초마다 읽는 값(`slotRig`)을 그대로 쓴다
+  useFrame(() => { if (host.current) host.current.rotation.y = slotRig[slot]?.yaw ?? 0 })
+  if (model === undefined) return null
+  if (model === null) {
+    return (
+      <group position={[0.62, 0.25, 0.28]} scale={0.42}>
+        <mesh position={[0, 0.55, 0]} castShadow>
+          <sphereGeometry args={[0.58, 14, 10]} />
+          <meshStandardMaterial color="#78b86f" roughness={0.82} />
+        </mesh>
+        <mesh position={[0, 0.05, 0]} castShadow>
+          <capsuleGeometry args={[0.36, 0.42, 5, 10]} />
+          <meshStandardMaterial color="#68a85f" roughness={0.85} />
+        </mesh>
+      </group>
+    )
+  }
+  return (
+    <group position={[0.62, 0, 0.28]}>
+      <group ref={host}><primitive object={model} /></group>
     </group>
   )
 }

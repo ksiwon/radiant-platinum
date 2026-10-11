@@ -40,6 +40,7 @@ import {
 } from './moveElements'
 import { SplParticles } from './SplParticles'
 import { StatusVfx } from './StatusVfx'
+import { DS_BODY_FX_FRAMES, DsBodyFx } from './DsBodyFx'
 import { patchBareAnim } from '../../engine/battle/moveAnimFuncs'
 import { moveAnimFrames } from '../../engine/battle/moveLength'
 import { preloadSplPack, splFileFor, splPackReader, SPL_WAZA } from './splPack'
@@ -114,6 +115,8 @@ interface Shot {
    * 몸 동작(달림 · 눌림 · 떨림 · 사라짐 · 물들임)과 소리만 낸다. 그것은 도형과 상관없이 아래 무대가 건다
    */
   bare: boolean
+  /** 기술 번호 — 전용 몸 연출(`DsBodyFx`)을 고른다 */
+  move: number | null
   /**
    * 이 기술이 내는 소리 — 원작 대본의 소리를 BDSP 시퀀스의 소리 칸에 짝지은 것(시작에서 몇 초 뒤 · `moveSoundTimes`).
    * 자리는 쓴 쪽 기준이라 내 쪽이면 뒤집는다(`statusPan`)
@@ -630,12 +633,13 @@ export function MoveVfx({
     const also = cast.spread.filter((s) => s !== at && s !== cast.by)
     const target = spotAt(at)
     const kind = archetypeFor(move)
-    const anim = anims?.[cast.move ?? 0] ?? null
+    const anim = cast.move === null ? (anims?.[0] ?? null) : patchBareAnim(cast.move, anims?.[cast.move] ?? null, cast.magnitude ?? null)
     const seq = seqFor(anim, cast.move, cast.by.startsWith('p1'), doubles)
     // 판 도중 배운 기술처럼 미리 못 받은 것은 이번엔 DS로 가고 다음부터 BDSP다
     if (seq === null && cast.move !== null) void preloadMoveSeqs([cast.move])
     setShot({
       seq,
+      move: cast.move,
       bare: seq === null && cuesOf(anim) === null && moveSeqIsEmpty(cast.move),
       sounds: moveSoundTimes(anim?.sounds ?? [], seq === null ? null : seq.sounds),
       kind,
@@ -717,6 +721,12 @@ function MoveShot({ shot, setShot, spotAt }: {
           setShot((now) => (now === null || now.seed === seq ? null : now))
         }}
       />
+      {shot.bare && shot.move !== null && DS_BODY_FX_FRAMES[shot.move] !== undefined && (
+        <DsBodyFx
+          key={`d${String(shot.seed)}`}
+          shot={{ move: shot.move, by: shot.by, at: shot.at, startedAt: shot.startedAt, from: shot.from, to: shot.to }}
+        />
+      )}
       {shot.cues !== null && shot.place !== null && (
         <SplParticles
           cues={shot.cues}

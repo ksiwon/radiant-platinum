@@ -20,6 +20,8 @@ interface FxIndex {
   ballModel?: BallMeta & { files: Record<string, string> }
   /** 종 → 내보내기 착지 갈래 (`MoveType`, 0이 아닌 것만) */
   moveType?: Record<string, number>
+  /** 대타 인형 모델 (`import/bdsp/fx.ts` — 5판부터) */
+  substituteDoll?: string
   prefabs?: string[]
   missingPrefabs?: string[]
   /** 구운 시퀀스 이름 전부 */

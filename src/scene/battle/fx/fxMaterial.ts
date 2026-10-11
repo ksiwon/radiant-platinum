@@ -45,10 +45,11 @@ const LINEAR = true
 /**
  * **화면을 읽는 기능**(깊이 페이드 · 색 버퍼 왜곡)을 켜는가. 깊이 · 프레임버퍼를 복사해 읽으므로(`viewportDepthTexture` ·
  * `viewportSharedTexture`) 이 기능이 있는 재질이 그려지는 프레임마다 복사가 든다.
- * ⚠️ **GPU 확인 전에는 끈다.** 작업트리에서 브라우저가 막힌 채 쓴 코드다 — 켜고 `fxshot`으로 컴파일 · 그림 · 프레임 시간을 잰 뒤 켠다.
- * 꺼져 있으면 깊이 페이드는 안 하고(입자가 그대로 선다) 색 버퍼 왜곡 재질은 안 그린다(전과 같다)
+ * 실측(2026-10-12, WebGPU · 챔피언전, 소프트 입자 7 · 색 버퍼 왜곡 5인 `공간절단` 460 등 네 기술): 켜고 끈 프레임 시간이 소음 안이다
+ * (평균 16.7~24.6ms 대 16.7~20.7ms, 최악 한두 번의 튐은 두 번째 돌림에서 안 나왔다). 셰이더 컴파일 오류 · 흰 판 · 검은 판 없음.
+ * 끄면 깊이 페이드는 안 하고(입자가 그대로 선다) 색 버퍼 왜곡 재질은 안 그린다(전과 같다)
  */
-export const FX_SCREEN = false
+export const FX_SCREEN = true
 
 /** 유니티 `BlendMode` → three */
 const FACTOR: readonly (BlendingSrcFactor & BlendingDstFactor)[] = [

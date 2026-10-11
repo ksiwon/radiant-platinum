@@ -394,6 +394,9 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * DS 입자로 선다 — ⚠️ **필수 그룹이라**(`required.ts`) 이미 깐 사람은 이 그룹만 새로 굽는다. 3판은 `GROUP_ACCEPTS`에 안 넣는다
    * (낡은 판으로 두면 새 연출이 영영 안 생긴다)
    *
+   * 5 — **대타 인형 모델이 붙는다** (`data/fx/model/substitute_doll.glb` · `index.json`의 `substituteDoll` — `Characters/objects/ob0301_00`,
+   * 뼈 스물의 정지한 스킨 모델 152KB). 없으면 대타가 우리가 지은 초록 덩이로 선다
+   *
    * 3 — **상태 이상 · 능력 변화 시퀀스와 날씨 이펙트가 붙는다.** `es001~012`(잠듦 · 독 · 화상 · 얼음 · 마비 · 혼란 · 헤롱헤롱 ·
    * 능력 오름 · 내림 · 회복 · PP 회복 · 번쩍임)와 그 프리팹 · `WeatherData`의 날씨 넷(`et001_rain01` · `et002_hail01` ·
    * `et003_sandstorm01` · `et004_sunny01` — `index.json`의 `status` · `weather`). 2판도 그대로 쓴다(`GROUP_ACCEPTS`) — 없으면
@@ -409,7 +412,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * `ee101~113` · 내보내기 `ee4xx`, 기술 1~467의 시퀀스와 그것이 부르는 프리팹 · 그림. ⚠️ **필수 그룹이라**(`required.ts`)
    * 이미 깐 사람은 이 그룹만 새로 굽는다
    */
-  battleFx: 4,
+  battleFx: 5,
   /**
    * 1 — **바위깨기 · 풀베기 · 괴력 바위 · 꿀나무 · 눈덩이가 BDSP 입체다** (`models/gimmick/obj0001~0006_00.glb` · `index.json`,
    * 다섯 벌 415KB — `import/bdsp/convert.ts`의 `convertGimmicks` · 노드 쪽 `bdspArena.py --gimmicks`). 꿀나무는 뼈 넷과 흔들림

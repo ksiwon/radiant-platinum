@@ -6,7 +6,7 @@ import type { SeqAnchor, Role, SeqContext, bodyAt } from '../../../engine/battle
 import { slotAnchor } from './seqAnchors'
 
 type RoleSlots = readonly [string | null, string | null]
-type RoleContext = Pick<SeqContext, 'anchor' | 'home' | 'mine' | 'rest'>
+type RoleContext = Pick<SeqContext, 'anchor' | 'home' | 'mine' | 'rest' | 'special'>
 
 /**
  * @param spotAt 그 자리의 발판 (x, z)
@@ -34,6 +34,27 @@ export function roleContext(
       if (slot) return slot.startsWith('p1')
       const other = roles[role === 0 ? 1 : 0]
       return other ? !other.startsWith('p1') : role === 0
+    },
+    // 특수 자리 (`SeqContext.special`) — 0 쓴 쪽 진영의 가운데 · 1 맞는 쪽 진영의 가운데 · 2 필드 가운데. 진영 가운데는 두 자리의 중점이다
+    special: (pos: number): SeqAnchor | null => {
+      const sideOf = (slot: string): 'p1' | 'p2' => (slot.startsWith('p1') ? 'p1' : 'p2')
+      const own = roles[0] ? sideOf(roles[0]) : roles[1] ? (sideOf(roles[1]) === 'p1' ? 'p2' : 'p1') : 'p1'
+      const mid = (side: 'p1' | 'p2'): [number, number] => {
+        const a = spotAt(`${side}a`)
+        const b = spotAt(`${side}b`)
+        return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+      }
+      const foe = own === 'p1' ? 'p2' : 'p1'
+      // 진영이 보는 쪽 — 그 진영 몸의 yaw (몸 로케이터 0번 `Origin`에서 읽는다). 없으면 반대 진영의 반대
+      const yawOf = (side: 'p1' | 'p2'): number => slotAnchor(`${side}a`, 0, spotAt(`${side}a`)).yaw
+      if (pos === 0) { const [x, z] = mid(own); return { pos: [x, 0, z], yaw: yawOf(own) } }
+      if (pos === 1) { const [x, z] = mid(foe); return { pos: [x, 0, z], yaw: yawOf(foe) } }
+      if (pos === 2) {
+        const [ax, az] = mid(own)
+        const [bx, bz] = mid(foe)
+        return { pos: [(ax + bx) / 2, 0, (az + bz) / 2], yaw: yawOf(own) }
+      }
+      return null
     },
     rest: (role: Role, node: number): SeqAnchor | null => {
       const slot = roles[role]

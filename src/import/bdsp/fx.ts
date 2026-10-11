@@ -45,6 +45,11 @@ const EVOLUTION_PREFAB = /^ef_f_evolution_/
 const HATCH_PREFAB = /^sd9120_/
 /** 알 모델 — `MeshFilter` 하나 · 정점 689 · 재질 하나. 정적 메시라 무대 변환기(`exportArena`)로 굽는다 */
 const EGG_MODEL = 'Effects/effmodel/ew121_egg00'
+/**
+ * 대타 인형 — 폴더 이름이 `ob0301_00_migawariningyou`이고 재질 그림이 초록 인형 얼굴이다(실측: 256² · 눈 · 코 · 이파리 무늬). 뼈 스물에
+ * 클립이 열여덟(볼 클립 이름 그대로 · 길이 0)이라 **정지한 인형**이다. 기술 `ew164`는 빈 시퀀스고 인형은 몸 교체 쪽 자료다
+ */
+const SUBSTITUTE_DOLL = 'Characters/objects/ob0301_00'
 const MASTERDATAS = 'Battle/battle_masterdatas'
 /** 프리팹 2,030벌이 셰이더를 · 1,932벌이 그림을 이 둘에서 끌어 온다 (스크래치 `census.pkl`의 바깥 참조 집계) */
 const SHARED_BUNDLES = ['Effects/fxparticle', 'Effects/effect_common']
@@ -1223,6 +1228,12 @@ export async function convertBattleFx(ctx: ConvertContext): Promise<Produced> {
   if (egg.stat.problems.length > 0) throw new Error(`알 모델을 못 이었습니다 (${egg.stat.problems.slice(0, 3).join(' · ')})`)
   emit('model/ew121_egg00.glb', egg.glb)
 
+  // 대타 인형 — 정지한 스킨 모델 하나. 클립은 길이 0이라 싣지 않는다
+  const dollBytes = await read(SUBSTITUTE_DOLL)
+  if (!dollBytes) throw new Error(`BDSP ${SUBSTITUTE_DOLL}이 없습니다`)
+  const doll = await exportModel(openEnvironment([dollBytes]), encodePng, { maxSize: FX_TEXTURE })
+  emit('model/substitute_doll.glb', doll.glb)
+
   emit('tex/index.json', textOf(Object.fromEntries([...textures.info].sort(([a], [b]) => a.localeCompare(b)))))
   emit('index.json', textOf({
     balls,
@@ -1235,6 +1246,7 @@ export async function convertBattleFx(ctx: ConvertContext): Promise<Produced> {
     evolution: evolutionNames.sort(),
     hatch: hatchNames.sort(),
     eggModel: 'model/ew121_egg00.glb',
+    substituteDoll: 'model/substitute_doll.glb',
     ballModel: { ...ballTable, files: ballFiles },
     moveType,
     sequences: bakedSequences,
