@@ -13,7 +13,7 @@
 // `PokemonInfo.BattleScale`과 맞아떨어진다. 한 번 더 곱하면 네 배가 된다.
 import {
   AnimationMixer,
-  BackSide,
+  FrontSide,
   LoadingManager,
   LoopOnce,
   LoopRepeat,
@@ -258,8 +258,10 @@ export function loadMonModel(
 
 /**
  * **테두리 짝**을 그리는 법 — 변환기가 재질 `extras.role`로 적어 둔다(`import/bdsp/albedo`의 `rimPairs` · 로토무뿐).
- * 마스크는 색 없이 깊이만 쓰고, 하늘색 껍질은 뒷면만 깊이 검사를 받아 그린다 — 마스크 실루엣 안에서는 껍질 뒷면이
- * 마스크 앞면보다 멀어 가려지고, 그 바깥 테두리만 남는다. 몸통 → 마스크 → 껍질 차례라야 해서 `renderOrder`를 준다.
+ * 마스크는 색 없이 깊이만 쓰고, 하늘색 껍질은 깊이 검사를 받아 그린다. ⚠️ 두 껍데기는 **안쪽을 보는 면**이다(479 실측:
+ * 면 감기 · 법선이 바깥을 보는 삼각형 0%) — 앞면만 그리면 **먼 쪽 반구**가 선다. 마스크 실루엣 안에서는 껍질의 먼 쪽이
+ * 마스크의 먼 쪽보다 멀어 가려지고, 그 바깥 테두리만 남는다. 뒷면(`BackSide`)으로 돌리면 가까운 반구가 서서 몸을 통째로
+ * 덮는다. 몸통 → 마스크 → 껍질 차례라야 해서 `renderOrder`를 준다.
  * 복제(`makeBody` · 배틀의 `ownMaterials`)는 재질 값과 `renderOrder`를 그대로 옮긴다
  */
 export function rimLook(root: Object3D): void {
@@ -274,7 +276,7 @@ export function rimLook(root: Object3D): void {
         m.transparent = false
         mesh.renderOrder = 1
       } else if (role === 'rim') {
-        m.side = BackSide
+        m.side = FrontSide
         m.depthWrite = false
         m.transparent = false
         mesh.renderOrder = 2
