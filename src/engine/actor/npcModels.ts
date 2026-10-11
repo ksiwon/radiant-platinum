@@ -236,9 +236,10 @@ export const NPC_MODEL_ALIAS: Readonly<Record<string, string>> = {
  * 눈으로 덮으면 근거가 약해진다 — `npcModels.test`가 이 줄을 지킨다
  */
 export const NPC_MODEL_BUNDLE: Readonly<Record<string, string>> = {
-  // 남자 점원. BDSP에 점원은 여자 하나뿐이라(`clerk`) 점원을 **다 여자로
-  // 통일한다** — 자리가 같은 `TEALA`·`CASHIER_F`와 같은 몸이 된다
-  CASHIER_M: 'fc2024_00',
+  // 남자 점원. BDSP의 점원(`clerk`)은 여자 하나뿐이라 남자 점원 스무 명이 여자 몸으로 섰다. BDSP에 이미 있는 남자 몸 중
+  // 제복 입은 일꾼인 작업원(`worker`)을 쓴다 — 모자(`hat`)와 작업복(`wear`) 재질이 있는 남자 어른이다.
+  // 새 몸을 짓지 않는 가장 싼 길이다 (사용자 결정 2026-10-11)
+  CASHIER_M: 'fc0040_00',
   // 체육관 안내원. 갈색 머리·둥근 색안경·베이지 조끼에 보라 소매까지 같다
   GYM_GUIDE: 'fc2014_00',
   // 갤럭시단 무리. 원작은 넷·셋이 **그림 한 장**인데 그 자리에 단원을
