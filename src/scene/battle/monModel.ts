@@ -13,6 +13,7 @@
 // `PokemonInfo.BattleScale`과 맞아떨어진다. 한 번 더 곱하면 네 배가 된다.
 import {
   AnimationMixer,
+  FrontSide,
   LoadingManager,
   LoopOnce,
   LoopRepeat,
@@ -23,6 +24,7 @@ import {
   type Group,
   type Material,
   type Mesh,
+  type Object3D,
   type MeshStandardMaterial,
   type Texture,
 } from 'three'
@@ -144,7 +146,12 @@ function clipFor(clips: readonly AnimationClip[], want: MotionName): AnimationCl
  * 몸은 `null` — 그 길이는 그 동작의 길이가 아니다
  */
 export function motionClipSeconds(body: Pick<MonBody, 'clips'>, want: MotionName): number | null {
-  return body.clips.find((c) => MOTION[want].test(c.name))?.duration ?? null
+  return motionClip(body, want)?.duration ?? null
+}
+
+/** 그 동작의 클립 그 자체. 대신 트는 것으로 안 떨어진다 — 없으면 `null` */
+export function motionClip(body: Pick<MonBody, 'clips'>, want: MotionName): AnimationClip | null {
+  return body.clips.find((c) => MOTION[want].test(c.name)) ?? null
 }
 
 export interface Loaded {
@@ -235,6 +242,7 @@ export function loadMonModel(
           // 셰이더가 갈린다 (`scene/unifySkeleton`). 이 장면은 `cache`가 들고
           // 여럿이 복제해 쓰므로 여기가 「복제 전」의 자리다
           unifySkeletons(gltf.scene)
+          rimLook(gltf.scene)
           const shiny = appearance.shiny && !exactEntry ? variants.shiny[resolvedKey] : undefined
           const maps = shiny ? await loadMaps(shiny.textures) : undefined
           return { scene: gltf.scene, clips: gltf.animations, entry, maps }
@@ -246,6 +254,35 @@ export function loadMonModel(
     cache.set(appearanceKey, got)
   }
   return got
+}
+
+/**
+ * **테두리 짝**을 그리는 법 — 변환기가 재질 `extras.role`로 적어 둔다(`import/bdsp/albedo`의 `rimPairs` · 로토무뿐).
+ * 마스크는 색 없이 깊이만 쓰고, 하늘색 껍질은 깊이 검사를 받아 그린다. ⚠️ 두 껍데기는 **안쪽을 보는 면**이다(479 실측:
+ * 면 감기 · 법선이 바깥을 보는 삼각형 0%) — 앞면만 그리면 **먼 쪽 반구**가 선다. 마스크 실루엣 안에서는 껍질의 먼 쪽이
+ * 마스크의 먼 쪽보다 멀어 가려지고, 그 바깥 테두리만 남는다. 뒷면(`BackSide`)으로 돌리면 가까운 반구가 서서 몸을 통째로
+ * 덮는다. 몸통 → 마스크 → 껍질 차례라야 해서 `renderOrder`를 준다.
+ * 복제(`makeBody` · 배틀의 `ownMaterials`)는 재질 값과 `renderOrder`를 그대로 옮긴다
+ */
+export function rimLook(root: Object3D): void {
+  root.traverse((o) => {
+    const mesh = o as Mesh
+    if (!mesh.isMesh) return
+    for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+      const role = (m.userData as { role?: unknown }).role
+      if (role === 'rimMask') {
+        m.colorWrite = false
+        m.depthWrite = true
+        m.transparent = false
+        mesh.renderOrder = 1
+      } else if (role === 'rim') {
+        m.side = FrontSide
+        m.depthWrite = false
+        m.transparent = false
+        mesh.renderOrder = 2
+      }
+    }
+  })
 }
 
 /**

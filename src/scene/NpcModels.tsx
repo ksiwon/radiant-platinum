@@ -17,7 +17,7 @@
 // 사람을 한 번은 돌려야 한다** — 안 돌리면 팔을 벌린 T 자세로 선다.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Group, type AnimationClip, type Object3D } from 'three'
+import { Group, type AnimationClip, type Mesh, type Object3D } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
@@ -42,6 +42,7 @@ import { world } from '../engine/map/world'
 import { fieldScripts } from '../engine/script/field'
 import { groundYAt } from './distortion'
 import { addWhenWarm } from './warmPipelines'
+import { ALWAYS_ASYNC } from './asyncPipelines'
 import { unifySkeletons } from './unifySkeleton'
 import { assets, onProviderSwap, type AssetPath } from '../data/providers/assetProvider'
 
@@ -389,6 +390,14 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
           // 실측으로 리그 로비의 제일 긴 프레임이 1,233ms였다.
           // 씬 밖에서 미리 구우면 병렬 갈래로 가서 **0ms**다
           const mine = slot
+          // ⚠️ **WebGPU에서는 `addWhenWarm`이 미리 굽지 않고 바로 붙인다**(`warmPipelines`). 워프 덮개의 비동기 창이 닫힌
+          // 뒤에 붙는 사람은 그 프레임에 동기로 구워져 멎었다 — 리그 로비 실측: 창 닫힌 뒤 동기 15건 중 사람 10(눈 · 얼굴 ·
+          // 입 · 옷마다 하나), 한 건에 230~410ms. 늘 비동기로 굽게 해 둔다(`ALWAYS_ASYNC`) — 구워질 때까지 몇 프레임 안 보일 뿐이다
+          slot.outer.traverse((o) => {
+            const mesh = o as Mesh
+            if (!mesh.isMesh) return
+            for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) m.userData[ALWAYS_ASYNC] = true
+          })
           addWhenWarm(gl, root, cam, group, slot.outer, () => !mine.dropped)
         }
         slots.set(actor, slot)

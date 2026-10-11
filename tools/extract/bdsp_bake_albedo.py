@@ -294,7 +294,7 @@ def color_overrides(env, color_index: int | None = None) -> dict[int, dict[int, 
 
 
 def effect_albedo(name, colors, slots, uvs, spec: dict, outdir: Path,
-                  max_size: int | None) -> bool:
+                  max_size: int | None, rim: bool = False) -> bool:
     """불꽃·연기·오라처럼 **색이 재질에 적혀 있는** 조각을 albedo로 굽는다.
 
     ⚠️ **이걸 안 하면 하얀 덩어리가 붙는다.** BDSP의 불·연기는 색 텍스처가
@@ -344,7 +344,59 @@ def effect_albedo(name, colors, slots, uvs, spec: dict, outdir: Path,
     img.save(outdir / f"{name}_albedo.png")
     # 불빛은 뒤가 비쳐야 한다. 원판은 가산인데 glTF에 없어서 반투명으로 얹는다
     spec[name] = {"uv": st, "wrap": wrap, "alpha": "BLEND", "double": True}
+    # 마스크와 짝인 껍질(로토무 오라)은 불투명한 한 색이다 — 마스크 바깥 테두리로만 선다 (`rim_pairs`)
+    if rim and shape_tex is None:
+        spec[name].update({"alpha": "OPAQUE", "double": False, "role": "rim"})
     return True
+
+
+def rim_mask(name, spec: dict, outdir: Path) -> None:
+    """테두리 짝의 마스크 — 색은 안 쓰므로 한 점이다. 깊이만 쓰게 하는 것은 `monModel`이다"""
+    Image.fromarray(np.array([[[0, 0, 0, 255]]], np.uint8), "RGBA").save(outdir / f"{name}_albedo.png")
+    spec[name] = {"uv": (1.0, 1.0, 0.0, 0.0), "wrap": (10497, 10497), "alpha": "OPAQUE", "double": False,
+                  "role": "rimMask"}
+
+
+def rim_pairs(env, main_props: tuple[str, ...], carved: set[str]) -> tuple[set[str], set[str]]:
+    """**모양 그림 없는 껍질과 그 짝 마스크** (껍질 이름들, 마스크 이름들) — 로토무(`pm0479`) 여섯 판뿐이다.
+
+    원판은 마스크(`FireMask`, `_ZWrite` 1 · `_ZTest` 4, 폭 ±0.065)가 깊이만 쓰고, 하늘색 껍질(`FireCore`, 폭 ±0.07,
+    `_ZTest` 8 · `_Stencil` 1)이 마스크 자리를 비켜 그려 **주황 몸통 둘레의 테두리**만 남긴다. 우리는 스텐실 대신
+    깊이로 같은 꼴을 낸다 — 마스크는 깊이만(`rimMask`), 껍질은 뒷면만(`rim`). 자세한 표는 브라우저 쪽에 있다.
+
+    ⚠️ **브라우저 변환기와 같아야 한다** (`src/import/bdsp/albedo.ts`의 `rimPairs`)
+    """
+    shapeless: list[str] = []
+    names: set[str] = set()
+    for obj in env.objects:
+        if obj.type.name != "Material":
+            continue
+        d = obj.read_typetree()
+        name = d.get("m_Name", "")
+        names.add(name)
+        props = d.get("m_SavedProperties", {})
+        tex = dict(prop_pairs(props.get("m_TexEnvs", [])))
+
+        def has(prop: str) -> bool:
+            v = tex.get(prop)
+            return isinstance(v, dict) and v.get("m_Texture", {}).get("m_PathID", 0) != 0
+
+        if "_BaseColor" not in dict(prop_pairs(props.get("m_Colors", []))) or name in carved:
+            continue
+        if any(has(p) for p in main_props) or any(has(p) for p in ("_Blend0Tex", "_LerpTex", "_Mask0Tex")):
+            continue
+        shapeless.append(name)
+    cores: set[str] = set()
+    masks: set[str] = set()
+    for core in shapeless:
+        at = core.rfind("Core")
+        if at < 0:
+            continue
+        mask = core[:at] + "Mask" + core[at + 4:]
+        if mask in names:
+            cores.add(core)
+            masks.add(mask)
+    return cores, masks
 
 
 def carved_shells(env, main_props: tuple[str, ...]) -> set[str]:
@@ -474,6 +526,7 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
     textures = {o.path_id: o for o in env.objects if o.type.name == "Texture2D"}
     overrides = color_overrides(env, color_index)
     carved = carved_shells(env, main_props)
+    rim_cores, rim_masks = rim_pairs(env, main_props, carved)
     if overrides:
         print(f"  ColorVariation: 머티리얼 {len(overrides)}개에 채널 색 오버라이드 적용")
 
@@ -518,7 +571,10 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
             if name in carved:
                 print(f"  {name}: 깎개가 깊이로 깎는 껍데기 — 통째로 뺌")
                 continue
-            if effect_albedo(key, colors, slots, uvs, spec, outdir, max_size):
+            if name in rim_masks:
+                rim_mask(key, spec, outdir)
+                continue
+            if effect_albedo(key, colors, slots, uvs, spec, outdir, max_size, name in rim_cores):
                 continue
             print(f"  {name}: {'·'.join(main_props)} 없음 — 건너뜀")
             continue

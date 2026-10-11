@@ -2,7 +2,7 @@
 import { Vector3 } from 'three'
 import { worldState } from '../../state/worldState'
 import {
-  activeZone, Behavior, isDeepMud, isDeepMudWithGrass, isMud, isMudWithGrass, isOnWater,
+  activeZone, Behavior, type CollisionGrid, isDeepMud, isDeepMudWithGrass, isMud, isMudWithGrass, isOnWater,
 } from '../map/zone'
 import { mudEncounter, rollsOnMudPress } from '../battle/encounter'
 import { MapGrid } from '../map/grid'
@@ -27,6 +27,7 @@ import { DIR, DIR_STEP } from '../script/movement'
 import { fieldMoveBridge, TILE_BEHAVIOR_WATERFALL } from '../script/fieldMoves'
 import { cutInFrame } from '../battle/encounterCutIn'
 import { scriptCameraActive } from './camera'
+import { SIGHT_STEP_LIMIT } from './sight'
 
 /**
  * 걷기·달리기 속도 (타일/초).
@@ -216,6 +217,11 @@ function blocked(x: number, z: number, y = worldState.player.position.y): boolea
       // (`PlayerAvatar_CheckDistortionMapObjectCollision`). B2F 서쪽 벽의 난천이 여기서 걸린다
       return solidNpcAtHeight(cx, cz, y) !== null
     }
+    // ⚠️ **단차가 먼저다** (`GetVerticalDirection` → `TerrainCollisionManager_WillPlayerCollide`). 원작은 격자 · 장치를
+    // 보기 전에 갈 칸 한가운데의 바닥(지금 높이에 가까운 판 · 판이 없으면 0)과 지금 높이의 차가 20(1.25칸) 이상이면
+    // 막는다. 시선(`sight`)에는 옮겨 두고 걸음에는 안 옮겨서, 격자가 열려 있는 단차를 허공 위로 걸어 건넜다 —
+    // 물가 체육관 3번 방 윗단 사이의 틈(판이 없다)이 그 자리다. 턱 · 자전거 점프대는 이 판정보다 먼저 돈다
+    if (stepTooHigh(grid, cx, cz, y)) return true
     // 그 맵에만 있는 장치가 먼저다 (`DynamicMapFeatures_CheckCollision`) —
     // 들판시티의 물바닥처럼 **같은 칸이 물 높이에 따라 열리고 닫히는** 자리는
     // 격자에 안 적혀 있다. 안 보는 칸이면 null이 와서 아래로 내려간다
@@ -244,6 +250,12 @@ function blocked(x: number, z: number, y = worldState.player.position.y): boolea
     shut(x - RADIUS, z + RADIUS) ||
     shut(x + RADIUS, z + RADIUS)
   )
+}
+
+/** 갈 칸 한가운데의 바닥이 지금 높이와 1.25칸 넘게 다른가 (`GetVerticalDirection`) */
+export function stepTooHigh(grid: Pick<CollisionGrid, 'heightAtWorld'>, x: number, z: number, y: number): boolean {
+  const floor = grid.heightAtWorld(Math.floor(x) + 0.5, Math.floor(z) + 0.5, y) ?? 0
+  return Math.abs(floor - y) >= SIGHT_STEP_LIMIT
 }
 
 /**

@@ -260,6 +260,12 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    */
   npcModels: 18,
   /**
+   * 7 — **로토무 오라가 테두리로 선다.** 원판은 깊이만 쓰는 마스크(`FireMask`)와 그 바깥을 그리는 하늘색 껍질(`FireCore`)의 짝인데,
+   * 마스크를 버리고 껍질을 불투명으로 세워 몸 전체가 하늘색 덩어리였다. 마스크 조각을 남기고 두 재질에 `extras.role`을 적는다
+   * (`import/bdsp/albedo.ts`의 `rimPairs` · 그리는 법은 `scene/battle/monModel`의 `rimLook`). 같은 판에서 브라우저 변환기가
+   * 불꽃 · 연기 · 오라 재질 색(54종 233조각)을 노드처럼 **감마로** 읽는다 — 그동안 설치본에서만 더 밝게 구워졌다.
+   * ⚠️ **옛 판(4~6)을 안 받는다**(`GROUP_ACCEPTS`에 없다) — 이미 깐 사람도 이 그룹을 다시 굽는다(사용자 결정 10-11)
+   *
    * 5 — ASTC 그림을 개발 추출기와 같은 규칙으로 푼다 (`npcModels` 16과 같은 고침). ⚠️ 4도 그대로 쓴다(`GROUP_ACCEPTS`)
    *
    * 2 — 재질을 못 찾은 **껍데기 하나만** 버린다. 종을 통째로 버리지 않는다.
@@ -286,7 +292,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 4 — **눈·입이 제 칸을 읽는다** (`_ColorBaseU`). 옛 판은 왼눈이 반쯤 감긴 칸 · 입이 옆 칸을 읽어 얼굴이 일그러지고
    * 슬퍼 보였다(눈 609 · 입 149 재질). glb의 UV 바이트와 구운 눈 그림이 달라진다
    */
-  monModels: 6,
+  monModels: 7,
   /**
    * 3 — 암컷 몸에도 쓰러짐 동작(`ba41_down01`)을 싣는다 (`monModels` 6과 같은 고침). ⚠️ 1 · 2도 그대로 쓴다(`GROUP_ACCEPTS`)
    *
@@ -435,8 +441,8 @@ const GROUP_ACCEPTS: Readonly<Record<string, readonly number[]>> = {
   distortion: [1],
   // ASTC 반올림 (`GROUP_FORMAT.npcModels` 16) — 1~2/255 차이라 다시 굽게 하지 않는다
   npcModels: [15],
-  // 쓰러짐 동작 (`GROUP_FORMAT.monModels` 6 · `monVariants` 3) — 없으면 맞은 자세로 쓰러진다
-  monModels: [4, 5],
+  // 쓰러짐 동작 (`GROUP_FORMAT.monModels` 6 · `monVariants` 3) — 없으면 맞은 자세로 쓰러진다.
+  // ⚠️ `monModels`는 7부터 옛 판을 안 받는다 — 로토무 덩어리와 설치본의 밝은 불꽃 · 연기(54종)를 다시 굽게 한다
   monVariants: [1, 2],
   // 상태 이상 · 날씨 (`GROUP_FORMAT.battleFx` 3) — 없으면 그 연출이 DS 입자로 선다
   battleFx: [2],

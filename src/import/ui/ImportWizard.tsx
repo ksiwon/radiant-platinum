@@ -42,6 +42,7 @@ import { describeWipe, wipeSiteData } from '../install/wipe'
 import { opfsAvailable, opfsPackStore, OPFS_ASSETS, OPFS_ROOT } from '../../data/providers/packStore'
 import { activateInstall } from '../../app/boot'
 import { Hint, HintCaveat, HintTree } from '../../ui/common/Hint'
+import { ScrollPane } from './ScrollPane'
 import { explainInstallError, type ExplainedError } from './installErrors'
 import * as css from './importWizard.css'
 
@@ -731,7 +732,7 @@ export function ImportWizard({ onClose, onReady, why, from = 'title' }: {
 
 
         <div className={css.split}>
-          <div className={css.facts}>
+          <ScrollPane pane={css.facts} inner={css.factsScroll}>
             {/* ⚠️ **이 네 사실은 접지 않는다** (IMPORT.md §4 표) — 서버로 안 보낸다,
                 다시 안 고른다, 사이트 데이터를 지우면 사라진다, 브라우저·기기·주소마다 따로다 */}
             <div className={css.body}>
@@ -750,10 +751,10 @@ export function ImportWizard({ onClose, onReady, why, from = 'title' }: {
               {'설치한 뒤 그 파일로 진행 상태를 되돌립니다.'}
             </div>
 
-          </div>
+          </ScrollPane>
 
           <div className={css.main}>
-            <div className={css.scroll}>
+            <ScrollPane pane={css.scroll} inner={css.scrollInner}>
               <h2 className={css.title}>에셋 설치</h2>
 
 
@@ -992,7 +993,7 @@ export function ImportWizard({ onClose, onReady, why, from = 'title' }: {
                 )}
               </section>
 
-            </div>
+            </ScrollPane>
 
             <div className={css.actions}>
             {/* ── 4. 설치 ─────────────────────────────────────────────── */}

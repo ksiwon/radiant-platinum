@@ -12,7 +12,8 @@
 //   뒷배경     판 메시 하나. 세로 그러데이션이고 색은 **창 얼굴에서 따온다** — 구멍의 자리에 해당하는 얼굴 색을
 //              구멍 요소의 CSS 변수에서 읽고(3D 쪽에 hex가 없다), 렌더러가 마지막에 거는 톤 매핑을 미리 거슬러
 //              둔다(`precompensate`). 그래서 구멍 가장자리에 이음매가 안 선다
-//   구도       대기 0프레임에서 `Box3`를 한 번 잰다. 키가 구멍 높이의 78% · 발이 아래 12% (`fitCamera`)
+//   구도       대기 0프레임에서 `Box3`를 잰다. 울음 동작이 넓히는 만큼 1.3배까지 더한다(`framedSize`).
+//              키가 구멍 높이의 78% · 발이 아래 12% (`fitCamera`)
 //   움직임     `wait` 되풀이. 종이 바뀌면 `cry` 한 번. y축 ±20°를 8s에 흔든다 (움직임을 줄이는 설정이면 안 흔든다)
 //   그림자     발밑에 원판 하나 (그림자 맵은 안 쓴다)
 //
@@ -23,12 +24,12 @@ import {
   Box3, Color, DirectionalLight, Float32BufferAttribute, HemisphereLight, Mesh, MeshBasicMaterial,
   PerspectiveCamera, PlaneGeometry, Scene, SRGBColorSpace, Group, Vector3, type AnimationAction, type Texture,
 } from 'three'
-import { loadMonModel, motionClipSeconds, play, type MonBody } from './battle/monModel'
+import { loadMonModel, motionClip, motionClipSeconds, play, type MonBody } from './battle/monModel'
 import { useMonBody } from './monBody'
 import { makeBlobShadow, TIME_LOOKS } from './fx/sky'
 import { setViewportFrame, type ViewportFrame } from './monViewportPass'
 import {
-  FIT, faceColorAt, fitCamera, precompensate, swayAngle, type Rgb, type Rect,
+  FIT, faceColorAt, fitCamera, framedSize, precompensate, swayAngle, type Rgb, type Rect,
 } from './monViewportMath'
 import { specKey, useMonViewportStore, type MonViewportSpec } from '../state/monViewportStore'
 
@@ -59,7 +60,40 @@ function standBody(body: MonBody): Measure {
   const cx = (box.min.x + box.max.x) / 2
   const cz = (box.min.z + box.max.z) / 2
   body.root.position.set(-cx, -box.min.y, -cz)
-  return { height: size.y, width: Math.max(size.x, size.z) }
+  return framedSize({ height: size.y, width: Math.max(size.x, size.z) }, cryReach(body))
+}
+
+/** 울음 동작을 이 간격(초)으로 짚어 잰다 */
+const CRY_SAMPLE_S = 0.1
+
+/**
+ * 울음 동작 동안 몸이 닿는 키와 폭 — 발과 가운데는 대기 자세에 맞춰 옮겨 둔 뒤다(`standBody`). 잰 뒤에는 대기 0프레임으로
+ * 되돌린다. 울음 동작이 없거나 움직임을 줄이는 설정이면(`cryOnce`가 안 운다) `null`
+ */
+function cryReach(body: MonBody): { height: number, width: number } | null {
+  const clip = motionClip(body, 'cry')
+  if (clip === null || prefersReducedMotion()) return null
+  const rest = body.action
+  const cry = body.mixer.clipAction(clip)
+  rest?.setEffectiveWeight(0)
+  cry.reset().play()
+  let height = 0
+  let half = 0
+  const box = new Box3()
+  for (let t = 0; t <= clip.duration; t += CRY_SAMPLE_S) {
+    cry.time = t
+    body.mixer.update(0)
+    body.root.updateMatrixWorld(true)
+    box.setFromObject(body.root, true)
+    if (box.isEmpty()) continue
+    height = Math.max(height, box.max.y)
+    half = Math.max(half, -box.min.x, box.max.x, -box.min.z, box.max.z)
+  }
+  cry.stop()
+  rest?.setEffectiveWeight(1)
+  body.mixer.update(0)
+  body.root.updateMatrixWorld(true)
+  return height > 0 ? { height, width: half * 2 } : null
 }
 
 function toGender(g: MonViewportSpec['gender']): 'male' | 'female' | 'genderless' {

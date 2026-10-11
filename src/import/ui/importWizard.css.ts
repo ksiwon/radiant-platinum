@@ -12,6 +12,7 @@ import { style } from '@vanilla-extract/css'
 import { vars } from '../../ui/theme/contract.css'
 import { EDGE, GAP, RADIUS, TEXT } from '../../ui/theme/scale'
 import { BAR_FILL, BAR_TRACK, RULE, WINDOW } from '../../ui/theme/window.css'
+import { scrollList } from '../../ui/common/parts.css'
 
 export const wrap = style({
   position: 'fixed',
@@ -177,10 +178,19 @@ export const split = style({
 /** 왼쪽 — 「이 기기 안에서만」의 사실 넷. 접지 않는다 (IMPORT.md §4). 모자라면 이 칸만 스크롤한다 */
 export const facts = style({
   minHeight: 0,
-  overflowY: 'auto',
-  paddingRight: GAP.base,
   borderRight: RULE,
-  scrollbarWidth: 'thin',
+})
+export const factsScroll = style([scrollList, {
+  flex: '1 1 auto',
+  minHeight: 0,
+  paddingRight: GAP.base + 6,
+}])
+
+/** `ScrollPane`의 바깥 — 칸 자리를 잡고 손잡이 홈(오른쪽 6px)을 그 안에 세운다 */
+export const scrollPane = style({
+  position: 'relative',
+  display: 'flex',
+  flexDirection: 'column',
 })
 
 /** 오른쪽 — 위는 스크롤하는 준비물, 아래는 늘 보이는 설치 줄 */
@@ -195,12 +205,15 @@ export const main = style({
 export const scroll = style({
   flex: '1 1 auto',
   minHeight: 0,
-  overflowY: 'auto',
+})
+export const scrollInner = style([scrollList, {
+  flex: '1 1 auto',
+  minHeight: 0,
   display: 'flex',
   flexDirection: 'column',
   gap: GAP.wide,
-  scrollbarWidth: 'thin',
-})
+  paddingRight: GAP.base + 6,
+}])
 
 /** 설치 줄 — 준비물과 같은 구획 안이라 눈이 안 움직인다. 길어지면 이 줄만 스크롤한다 */
 export const actions = style({

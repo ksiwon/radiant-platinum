@@ -15,6 +15,8 @@ import { pkmnDiet } from './tools/distribution/pkmnDiet.mjs'
 
 const PUBLIC_DIR = resolve(import.meta.dirname, 'public')
 const AUDIT_DIR = resolve(import.meta.dirname, '.audit')
+/** 에이전트 작업 트리가 생기는 자리 — 감시에서 뺀다(`server.watch`). 슬래시로 맞춰 둔다 */
+const CLAUDE_DIR = resolve(import.meta.dirname, '.claude').split('\\').join('/')
 
 /**
  * vitest가 이 설정을 읽고 있는가.
@@ -270,9 +272,12 @@ export default defineConfig({
    * 통째로 다시 읽어서** 돌던 판이 죽는다: 실측(2026-09-24 journey 15판) — 작업 트리가 생긴 직후
    * `Execution context was destroyed`로 끝났다. 시험 실행도 같은 자리의 시험 파일을 주워 가므로 위
    * `exclude`에 같이 넣는다
+   *
+   * ⚠️ **이 서버 뿌리 아래의 `.claude/`만** 안 본다. 어디든 `.claude`가 낀 경로를 다 빼면 작업 트리 안에서 띄운 서버는 제 경로에
+   * `.claude`가 들어 있어 **모든 변경을 놓친다** — 실측(10-11): 작업 트리 서버가 고친 `monModel.ts`를 끝까지 옛것으로 냈다
    */
   server: {
-    watch: { ignored: ['**/.claude/**'] },
+    watch: { ignored: (path: string) => path.split('\\').join('/').startsWith(`${CLAUDE_DIR}/`) },
   },
   plugins: [
     // ⚠️ `pkmnDiet`이 먼저다 — `enforce: 'pre'`로 `resolveId`를 먼저 잡아야
