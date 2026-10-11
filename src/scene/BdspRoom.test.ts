@@ -7,6 +7,7 @@ import type { NpcActor } from '../engine/actor/npcs'
 import {
   deviceMaterials, ELITE_FOUR_DOOR_GFX, eliteDoorShown, hideDevices, MISFIT_ROOMS, placementOf, ROOM_ALIAS, roomFor,
 } from './BdspRoom'
+import { ROOM_CLOSED_CELLS } from './roomClosed'
 import { roomBundles } from '../import/bdsp/convert'
 import { DATA, withData, withModels } from '../data/romData.testkit'
 
@@ -60,7 +61,7 @@ describe('BDSP가 건물에 붙여 둔 방 (`ROOM_ALIAS`)', () => {
   })
 
   it('별칭이 가리키는 방은 구운 방 목록에 든다', () => {
-    const rooms = new Set(['c05r0901', 't01r0301', 't02fs0101', 'c01r0302'])
+    const rooms = new Set(['c05r0901', 't01r0301', 't02fs0101', 'c01r0302', 'c05r0301'])
     expect([...new Set(Object.values(ROOM_ALIAS))].filter((r) => !rooms.has(r))).toEqual([])
   })
 })
@@ -101,16 +102,16 @@ describe('원작 방과 생김이 다른 BDSP 방 (`MISFIT_ROOMS`)', () => {
   it('목록 — 실측으로 생김이 다른 방들', () => {
     expect([...MISFIT_ROOMS].sort()).toEqual([
       'c01r0601', 'c02gym0101', 'c04gym0101', 'c04r0201', 'c04r0202', 'c04r0203', 'c04r0401', 'c05gym0101',
-      'c05gym0104', 'c05r0101', 'c05r0801', 'c07gym0101', 'c07r0101', 'c10r0101', 'd31r0201', 'r218r0101',
+      'c05gym0104', 'c05r0101', 'c05r0801', 'c07gym0101', 'c07r0101', 'c10r0101', 'd31r0201',
     ])
   })
 
-  it('맵 110은 같은 행렬의 218번 게이트 방을 빌리지 않는다 — 게이트 제 방도 원작 그림이다(홈 넷이 벽 뒤)', () => {
+  it('맵 110은 같은 행렬의 218번 게이트 방을 빌리지 않는다 — 홈에 사람이 서 있다. 제 게이트는 BDSP 방이다', () => {
     const was = world.maps
     world.maps = [header(0, 'R218R0101', 77), header(1, 'C05R0601', 77)]
     const rooms = new Set(['r218r0101'])
     expect(roomFor(1, rooms)).toBeNull()
-    expect(roomFor(0, rooms)).toBeNull()
+    expect(roomFor(0, rooms)).toBe('r218r0101')
     world.maps = was
   })
 
@@ -231,7 +232,10 @@ withData('maps.json', 'events.json', 'matrices/interiors.json', 'matrices/interi
             queue.push([nx, nz])
           }
         }
+        const closed = new Set((ROOM_CLOSED_CELLS[h.matrix] ?? []).map(([x, z]) => `${String(x)},${String(z)}`))
         for (const [x, z] of queue) {
+          if (closed.has(`${String(x)},${String(z)}`)) continue // 막힌 홈 (`roomClosed`)
+          if (ev.warps.some((w) => w.x === x && w.z === z)) continue // 문 칸은 벽 두께 속이다 (위 문 시험이 센다)
           walked++
           if (!inside(x, z)) bad.push(`${name}→${room} 걸음칸 (${String(x)}, ${String(z)})`)
         }
@@ -239,6 +243,61 @@ withData('maps.json', 'events.json', 'matrices/interiors.json', 'matrices/interi
       }
       expect(walked).toBeGreaterThan(300)
       expect(bad).toEqual([])
+    })
+  })
+})
+
+withData('maps.json', 'events.json', 'matrices/interiors.json', 'matrices/interiors.bin')('관문 홈 막기 (`ROOM_CLOSED_CELLS`)', () => {
+  withModels('room/index.json', 'room/r218r0101.glb', 'room/c05r0301.glb')('방', () => {
+    it('막는 칸에는 BDSP 방이 서는 맵의 사람 · 워프 · 표지판 · 트리거가 하나도 없다 — 원작 맵 110의 사람 하나만 홈에 선다', () => {
+      const maps = (JSON.parse(readFileSync(resolve(DATA, 'maps.json'), 'utf8')) as { maps: MapHeader[] }).maps
+      const events = (JSON.parse(readFileSync(resolve(DATA, 'events.json'), 'utf8')) as { events: EventFile[] }).events
+      const rooms = new Set((JSON.parse(readFileSync(resolve(DATA, '../models/room/index.json'), 'utf8')) as { rooms: string[] }).rooms)
+      world.maps = maps
+      const standing: string[] = []
+      let users = 0
+      for (const [matrix, cells] of Object.entries(ROOM_CLOSED_CELLS)) {
+        const closed = new Set(cells.map(([x, z]) => `${String(x)},${String(z)}`))
+        for (const h of maps.filter((m) => m.matrix === Number(matrix))) {
+          const ev = events[h.events]!
+          const here = [...ev.npcs, ...ev.warps, ...ev.signs, ...ev.triggers].filter((e) => closed.has(`${String(e.x)},${String(e.z)}`))
+          if (roomFor(h.id, rooms) === null) { standing.push(...here.map((e) => `${h.name}(${String(e.x)},${String(e.z)})`)); continue }
+          users++
+          expect(here, h.name).toEqual([])
+        }
+      }
+      expect(users).toBe(10)
+      expect(standing).toEqual(['C05R0601(9,4)'])
+    })
+
+    it('문에서 걸어 닿는 칸 중 BDSP 바닥 상자 밖은 전부 막혀 있다', () => {
+      const maps = (JSON.parse(readFileSync(resolve(DATA, 'maps.json'), 'utf8')) as { maps: MapHeader[] }).maps
+      const events = (JSON.parse(readFileSync(resolve(DATA, 'events.json'), 'utf8')) as { events: EventFile[] }).events
+      const meta = (JSON.parse(readFileSync(resolve(DATA, 'matrices/interiors.json'), 'utf8')) as { matrices: Record<string, TileMeta> }).matrices
+      const bin = readFileSync(resolve(DATA, 'matrices/interiors.bin'))
+      for (const [matrix, room] of [[258, 'r218r0101'], [257, 'c05r0301']] as const) {
+        const mx = meta[String(matrix)]!
+        const tile = (x: number, z: number): number => bin.readUInt16LE(mx.byteOffset + (z * mx.tileWidth + x) * 2)
+        const floors = roomParts(room).filter((p) => /_Floor_/.test(p.mat))
+        const x0 = Math.min(...floors.map((p) => p.min[0]!)), x1 = Math.max(...floors.map((p) => p.max[0]!))
+        const z0 = Math.min(...floors.map((p) => p.min[2]!)), z1 = Math.max(...floors.map((p) => p.max[2]!))
+        const closed = new Set(ROOM_CLOSED_CELLS[matrix]!.map(([x, z]) => `${String(x)},${String(z)}`))
+        const warps = new Set<string>()
+        for (const h of maps.filter((m) => m.matrix === matrix)) for (const w of events[h.events]!.warps) warps.add(`${String(w.x)},${String(w.z)}`)
+        const seen = new Set<string>(warps)
+        const queue = [...warps].map((k) => k.split(',').map(Number) as [number, number])
+        for (let i = 0; i < queue.length; i++) {
+          for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+            const nx = queue[i]![0] + dx, nz = queue[i]![1] + dz, k = `${String(nx)},${String(nz)}`
+            if (seen.has(k) || tile(nx, nz) & 0x8000) continue
+            seen.add(k); queue.push([nx, nz])
+          }
+        }
+        const open = queue.filter(([x, z]) => !warps.has(`${String(x)},${String(z)}`)
+          && (x + 0.5 < x0 - 0.3 || x + 0.5 > x1 + 0.3 || z + 0.5 < z0 - 0.3 || z + 0.5 > z1 + 0.3)
+          && !closed.has(`${String(x)},${String(z)}`))
+        expect(open, `${room} 행렬 ${String(matrix)}`).toEqual([])
+      }
     })
   })
 })

@@ -4,6 +4,8 @@
 // 실내는 첫 워프 때 한 번만 받는다 — 269개를 이어 붙여 1.33MB이고 압축하면 20KB대라
 // 행렬마다 따로 두는 것(파일 500개 + 문 열 때마다 왕복)보다 낫다.
 import { MapGrid, type MatrixMeta } from '../engine/map/grid'
+import { IMPASSABLE } from '../engine/map/zone'
+import { ROOM_CLOSED_CELLS } from './roomClosed'
 import { sealFloor, type FloorCover } from '../engine/map/floorSeal'
 import { CANALAVE_GYM_MAP } from '../engine/world/canalaveGym'
 import { ETERNA_GYM_MAP } from '../engine/world/eternaGym'
@@ -213,6 +215,8 @@ export async function gridFor(matrixId: number): Promise<MapGrid> {
   // 세울 뿐) 문제가 없다. 사본을 뜨면 실내 269개가 두 벌이 된다
   const tiles = new Uint16Array(interiorBlob!, meta.byteOffset, count)
   seal(meta, tiles)
+  // BDSP 방이 벽으로 지은 홈 (`roomClosed`) — 멱등이다
+  for (const [x, z] of ROOM_CLOSED_CELLS[matrixId] ?? []) tiles[z * meta.tileWidth + x]! |= IMPASSABLE
   const grid = new MapGrid(meta, tiles)
   grids.set(matrixId, grid)
   return grid
