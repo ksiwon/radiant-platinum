@@ -324,14 +324,22 @@ describe('BDSP 흐림 — 나무', () => {
     }
   })
 
-  it('사본으로 선 건물은 나무가 아니다 — 안 줄인다 (연고시티 관문)', () => {
+  it('사본으로 선 건물은 나무처럼 안 줄인다 — 가리는 한 채만 따로 세워 흐리고, 걷히면 인스턴스로 돌린다 (연고시티 관문 · 떡잎마을 집)', () => {
     for (const names of [['M_C_001_BarrierGate_01'], ['M_C_001_BarrierGate_01', 'M_C_001_WindowOuter_01'], ['M_T_007_House_01']]) {
       const { root, mesh } = tree()
       mesh.material = names.map((name) => new MeshStandardMaterial({ name }))
       const fade = fieldFade(root)
       fade.aim(EYE, AIM, true)
-      for (let i = 0; i < 30; i++) fade.step(FRAME)
-      expect(scaleOf(mesh), names.join()).toBe(1)
+      for (let i = 0; i < 120; i++) fade.step(FRAME)
+      const proxy = mesh.children[0] as Mesh
+      expect(proxy, names.join()).toBeInstanceOf(Mesh)
+      expect(((Array.isArray(proxy.material) ? proxy.material[0] : proxy.material) as MeshStandardMaterial).opacity).toBe(GHOST)
+      // 인스턴스는 감춰 둔다 — 같은 자리에 두 벌이 겹치지 않게
+      expect(scaleOf(mesh)).toBe(0)
+      fade.aim(new Vector3(40, 9, 40), AIM, true)
+      for (let i = 0; i < 240; i++) fade.step(FRAME)
+      expect(mesh.children, names.join()).toHaveLength(0)
+      expect(scaleOf(mesh)).toBe(1)
     }
     expect(isBuilding([new MeshStandardMaterial({ name: 'M_C_001_Tree_05' })])).toBe(false)
     expect(isBuilding([new MeshStandardMaterial({ name: 'M_C_001_Rock_01' })])).toBe(false)
