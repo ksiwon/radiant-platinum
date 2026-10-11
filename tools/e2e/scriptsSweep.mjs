@@ -149,7 +149,7 @@ function pickSamples(m) {
 /** 돌면 페이지가 게임을 떠나는 스크립트 (파일:진입점) — 명예의 전당 `ClearGame` */
 const SKIP_KEYS = new Map([
   ['198:0', '게임을 끝내는 스크립트(ClearGame) — 크레딧으로 넘어간다'],
-  ['201:12', '파이트에리어 라이벌 태그전 — 돌면 페이지가 타이틀로 떠난다 (감싸기에서 빠진 길 · 원인 미조사)'],
+  ['201:12', '파이트에리어 BlackBelt1(201:12) — 돌면 페이지가 타이틀로 떠났다. 배틀 마스크 스텁을 넣기 전의 관찰이라 다시 돌려 확인해야 한다 (라이벌 태그전 201:13은 `tagBattleCheck.mjs`로 이김·짐 둘 다 안 떠난다)'],
 ])
 const OPTS = { timeoutMs: 120_000, stallMs: 15_000, stopAtEnd: true }
 const seenKeys = new Set()
