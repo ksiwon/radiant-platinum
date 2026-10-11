@@ -11,6 +11,8 @@ import { worldState } from '../state/worldState'
 import { BdspEffect } from './battle/fx/BdspEffect'
 
 const MAX_LIVE = 6
+/** 이만큼(초)이 지나야 끝난 것으로 친다 */
+const MIN_LIFE = 0.5
 
 let baked: Promise<ReadonlySet<string>> | null = null
 /** 구워 둔 프리팹 이름들 (`data/fx/index.json`의 `prefabs`) — 없는 설치본이면 빈 집합 */
@@ -36,7 +38,8 @@ export function WorldFx() {
   useFrame(() => {
     const q = worldState.fxRequests
     if (q.length === 0) return
-    const take = q.splice(0, q.length).filter((r) => have.has(r.name))
+    const all = q.splice(0, q.length)
+    const take = all.filter((r) => have.has(r.name))
     if (take.length === 0) return
     setLive((was) => [...was, ...take.map((r) => ({ id: next++, name: r.name, pos: [r.x, r.y, r.z] as [number, number, number], yaw: r.yaw }))].slice(-MAX_LIVE))
   })
@@ -49,5 +52,10 @@ function Once({ live, onDone }: { live: Live, onDone: () => void }) {
   // 시계는 세워진 때부터 센다 — 배틀 시계는 필드에서 안 흐른다
   const start = useRef(performance.now())
   const clock = (): number => (performance.now() - start.current) / 1000
-  return <BdspEffect name={live.name} position={live.pos} rotation={[0, live.yaw, 0]} seed={live.id} clock={clock} onDone={onDone} />
+  // ⚠️ **`loop`로 세우고 첫 반 초의 `onDone`은 무시한다** — `BdspEffect`는 `play()` 앞에서 `done`일 수 있어(준비된 첫 프레임) 한 번짜리로 세우면 그 자리에서 끝난다.
+  // 실제로 끝나면(반 초 뒤 첫 `done`) 내린다. 되풀이로 다시 시작하는 것은 내려가기 전 한 프레임이라 안 보인다
+  // 개발 확인용: 주소에 `?fxhold`가 있으면 안 내린다(화면 확인 도구가 찍는 순간에 서 있게)
+  const hold = typeof location !== 'undefined' && location.search.includes('fxhold')
+  const done = (): void => { if (!hold && clock() >= MIN_LIFE) onDone() }
+  return <BdspEffect name={live.name} position={live.pos} rotation={[0, live.yaw, 0]} seed={live.id} clock={clock} loop onDone={done} />
 }
