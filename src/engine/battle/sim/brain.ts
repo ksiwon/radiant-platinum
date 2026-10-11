@@ -19,6 +19,7 @@ import { legalActions, TARGET_FOE_A, TARGET_FOE_B } from '../choice'
 import type { BattleEvent, BattleRequest, SideId, SlotId } from '../events'
 import { trainerPolicy } from '../ai/policy'
 import { AI_FLAG, BDSP_TOP_FLAGS } from '../ai/score'
+import { allDamage } from '../ai/damage'
 import { ABILITY } from '../ai/rom'
 import { speedRank, type SpeedMon } from '../ai/speed'
 import { postKoSwitchIn, shouldSwitch, type BenchMon } from '../ai/switching'
@@ -35,6 +36,8 @@ export interface MoveTable {
 
 /** 방어·판별의 기술 효과 번호. 연속 사용 횟수를 세는 데만 쓴다 */
 const PROTECT_EFFECT = 111
+const ENDURE_EFFECT = 116 // 버티기 — `LoadProtectChain`이 방어·판별과 같이 센다
+const LAST_RESORT_EFFECT = 246
 
 /** 나오자마자 스스로 알리는 트랩 특성 — AI가 진짜 값을 읽는다 (`trainer_ai.c` 1182) */
 const TRAP_ABILITIES: ReadonlySet<number> = new Set([
@@ -52,7 +55,7 @@ interface BrainOptions {
    * 안 주면 도구 보정만 안 붙고 나머지는 그대로 돈다 (야생전에는 AI가 없다)
    */
   item?: (id: number) => { holdEffect?: number, effectParam?: number,
-    naturalGiftPower?: number, naturalGiftType?: number } | undefined
+    naturalGiftPower?: number, naturalGiftType?: number, flingPower?: number } | undefined
   random: () => number
   /**
    * 자료 값 위에 까는 바닥. 안 주면 `BDSP_TOP_FLAGS`다.
@@ -87,13 +90,33 @@ interface BrainOptions {
   sideTeam?: SideMon[]
 }
 
+/** 기술 자료 한 줄을 AI가 보는 한 칸으로. 칸 번호는 없다(0) — 상대가 **쓴** 기술이라서다 */
+function aiMoveOf(id: number, data: Move): AiMove {
+  return {
+    slot: 0,
+    id,
+    effect: data.effect,
+    power: data.power,
+    type: data.type,
+    category: data.category,
+    accuracy: data.accuracy,
+    priority: data.priority,
+  }
+}
+
 export class TrainerBrain {
   private readonly options: BrainOptions
   /** 드러난 특성. 키 → 롬 특성 번호 */
   private readonly revealed = new Map<string, number>()
   /** 상대가 실제로 써 보인 기술 */
   private readonly foeMoves = new Set<number>()
-  private foeLast: Move | null = null
+  private foeLast: AiMove | null = null
+  /** 상대가 써 보인 기술의 효과 번호 (`IfMoveEffectKnown AI_BATTLER_DEFENDER`) */
+  private readonly foeEffects = new Set<number>()
+  /** 상대의 방어·판별·버티기 연속 횟수 (`LoadProtectChain AI_BATTLER_DEFENDER`) */
+  private foeProtectChain = 0
+  /** 키 → 나온 뒤 우리 쪽이 쓴 기술 번호들 (`IfCanUseLastResort`) */
+  private readonly used = new Map<string, Set<number>>()
   /** 내가 방어·판별을 연속으로 쓴 횟수 */
   private protectChain = 0
   /** 키 → 그 개체가 등판한 턴 번호 */
@@ -143,9 +166,12 @@ export class TrainerBrain {
           break
         case 'switch':
           this.entered.set(e.actor.name, this.turn)
+          this.used.delete(e.actor.name)
           // 교체하면 그 자리에 붙어 있던 지식은 의미가 없어진다
-          if (e.actor.side === this.foeSide) this.foeLast = null
-          else this.protectChain = 0
+          if (e.actor.side === this.foeSide) {
+            this.foeLast = null
+            this.foeProtectChain = 0
+          } else this.protectChain = 0
           break
         case 'ability':
           if (e.ability !== null) this.revealed.set(e.actor.name, e.ability)
@@ -155,11 +181,21 @@ export class TrainerBrain {
           if (e.actor.side === this.options.side) {
             // 방어를 이어 쓰면 원작에서도 성공률이 반씩 준다. AI는 그걸 세고 있다
             this.protectChain = data?.effect === PROTECT_EFFECT ? this.protectChain + 1 : 0
+            if (e.move !== null) {
+              const set = this.used.get(e.actor.name) ?? new Set<number>()
+              set.add(e.move)
+              this.used.set(e.actor.name, set)
+            }
             break
           }
           if (e.actor.side !== this.foeSide || e.move === null) break
           this.foeMoves.add(e.move)
-          this.foeLast = data
+          if (data) {
+            this.foeEffects.add(data.effect)
+            this.foeProtectChain = data.effect === PROTECT_EFFECT || data.effect === ENDURE_EFFECT
+              ? this.foeProtectChain + 1 : 0
+          }
+          this.foeLast = data ? aiMoveOf(e.move, data) : null
           break
         }
         default:
@@ -225,7 +261,7 @@ export class TrainerBrain {
    * 그대로 타입 번호로 쓰면 없는 타입이 된다
    */
   private itemFacts(id: number): Pick<AiMon,
-  'itemEffect' | 'itemParam' | 'naturalGiftPower' | 'naturalGiftType'> {
+  'itemEffect' | 'itemParam' | 'naturalGiftPower' | 'naturalGiftType' | 'flingPower'> {
     const it = id > 0 ? this.options.item?.(id) : undefined
     const ngType = it?.naturalGiftType ?? 31
     return {
@@ -233,6 +269,7 @@ export class TrainerBrain {
       itemParam: it?.effectParam ?? 0,
       naturalGiftPower: it?.naturalGiftPower ?? 0,
       naturalGiftType: ngType === 31 ? -1 : ngType,
+      flingPower: it?.flingPower ?? 0,
     }
   }
 
@@ -280,6 +317,7 @@ export class TrainerBrain {
         category: data.category,
         accuracy: data.accuracy,
         priority: data.priority,
+        ...(a.pp === undefined ? {} : { pp: a.pp }),
       })
     }
     return out
@@ -288,6 +326,36 @@ export class TrainerBrain {
   /** 같은 쪽 마리 전부 (`BrainOptions.sideTeam`) */
   private get side(): SideMon[] {
     return this.options.sideTeam ?? this.options.team
+  }
+
+  /**
+   * EXPERT 나머지 루틴이 보는 상태 (`ai/expertMore`). 원작이 배틀 구조체에서 읽는 것을
+   * 사건에서 모아 둔 값이다 — 못 모으는 것은 안 넣는다(`AiTurn`의 해당 칸 설명)
+   */
+  private extras(
+    request: BattleRequest, view: BattleView, at: number,
+    self: AiMon, foe: AiMon, foeKey: string, mySeen: ViewMon,
+    moves: readonly AiMove[], activeKeys: readonly string[],
+  ): Pick<AiTurn, 'foeLast' | 'foeKnownEffects' | 'foeTurn' | 'foeProtectChain' | 'turnCount'
+  | 'lastResort' | 'partyStatused' | 'partyDealsMore'> {
+    const used = this.used.get(mySeen.key)
+    const usedKnown = moves.filter((m) => m.effect !== LAST_RESORT_EFFECT && used?.has(m.id)).length
+    return {
+      foeLast: this.foeLast,
+      foeKnownEffects: this.foeEffects,
+      foeTurn: this.turnsOut(foeKey),
+      foeProtectChain: this.foeProtectChain,
+      // `totalTurns`는 첫 턴이 0이다 — 사건의 `turn`은 1부터 센다
+      turnCount: Math.max(0, this.turn - 1),
+      lastResort: moves.length > 1 && usedKnown >= moves.length - 1,
+      partyStatused: this.options.team.some((m) => !activeKeys.includes(m.key)
+        && m.mon.hp > 0 && m.mon.status !== 'ok'),
+      partyDealsMore: () => {
+        const mine = Math.max(0, ...allDamage(moves, self, foe, view.weather, 100))
+        return this.benchOf(this.choices(request, view, at)).some((b) =>
+          Math.max(0, ...allDamage(b.moves, b.mon, foe, view.weather, 100)) > mine)
+      },
+    }
   }
 
   /**
@@ -326,9 +394,10 @@ export class TrainerBrain {
       if (!foeSeen || !foe) return []
       const moves = this.toAiMoves(actions)
       if (!moves || !moves.length) return []
+      const foeAi = this.toAiMon(foe, foeSeen, view, false)
       out.push({
         self,
-        foe: this.toAiMon(foe, foeSeen, view, false),
+        foe: foeAi,
         moves,
         all,
         weather: view.weather,
@@ -338,6 +407,7 @@ export class TrainerBrain {
         foeLastMoveCategory: this.foeLast?.category ?? null,
         protectChain: this.protectChain,
         random: this.options.random,
+        ...this.extras(request, view, at, self, foeAi, foeSeen.key, mySeen, all, [mySeen.key]),
       })
     }
     return out
@@ -389,11 +459,12 @@ export class TrainerBrain {
         foeAlly,
         speedRank: rank,
       }
+      // 짝을 겨눈 벌에서도 맞는 쪽 자리로 읽는다 — 특성은 `LoadBattlerAbility
+      // AI_BATTLER_DEFENDER`의 규칙(드러났거나 찍은 값)이다
+      const foeAi = this.toAiMon(defMon, defSeen, view, false)
       out.push({
         self,
-        // 짝을 겨눈 벌에서도 맞는 쪽 자리로 읽는다 — 특성은 `LoadBattlerAbility
-        // AI_BATTLER_DEFENDER`의 규칙(드러났거나 찍은 값)이다
-        foe: this.toAiMon(defMon, defSeen, view, false),
+        foe: foeAi,
         moves,
         all: moves,
         weather: view.weather,
@@ -404,6 +475,8 @@ export class TrainerBrain {
         protectChain: this.protectChain,
         random: this.options.random,
         doubles,
+        ...this.extras(request, view, at, self, foeAi, defSeen.key, mySeen, moves,
+          allySeen ? [mySeen.key, allySeen.key] : [mySeen.key]),
       })
     }
     const foeAt = (i: number) => {

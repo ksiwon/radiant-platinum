@@ -41,6 +41,11 @@ export interface AiMon {
    */
   naturalGiftPower: number
   naturalGiftType: number
+  /**
+   * 지닌 도구를 내던졌을 때의 위력 (`items.json`의 `flingPower` · `LoadFlingPower`).
+   * 도구가 없거나 못 던지는 것이면 0. 안 주면 0이다
+   */
+  flingPower?: number
   /** 헥토그램. 안다리걸기·풀묶기가 본다 (`species.json`의 `weightHg`) */
   weightHg: number
   gender: Gender
@@ -124,6 +129,8 @@ export interface AiMove {
   category: 'physical' | 'special' | 'status'
   accuracy: number
   priority: number
+  /** 이 칸의 남은 PP (`LoadCurrentMovePP`). 안 주면 모른다 */
+  pp?: number
 }
 
 /** 한 번의 판단에 필요한 전부 */
@@ -168,6 +175,36 @@ export interface AiTurn {
   random: () => number
   /** 더블의 네 자리 (`AiDoubles`). 싱글은 없다 */
   doubles?: AiDoubles
+  /**
+   * 상대가 직전에 쓴 기술 (`movePrevByBattler[defender]`). 없으면 null. 안 주면
+   * `foeLastMoveCategory`만으로 위력 유무를 읽는다 (없음·변화기는 위력 0)
+   */
+  foeLast?: AiMove | null
+  /**
+   * 상대가 써 보인 기술들의 **효과 번호** (`IfMoveEffectKnown AI_BATTLER_DEFENDER`).
+   * `foeKnownMoves`와 같은 칸을 효과로 푼 것이다
+   */
+  foeKnownEffects?: ReadonlySet<number>
+  /** 한 판 내내 센 턴 수 (`LoadTurnCount` — `totalTurns`, 첫 턴이 0). 안 주면 `turn`이다 */
+  turnCount?: number
+  /** 상대가 나온 뒤 지난 턴 (`LoadBattlerTurnCount AI_BATTLER_DEFENDER`) */
+  foeTurn?: number
+  /** 상대의 방어·판별·버티기 연속 횟수 (`LoadProtectChain AI_BATTLER_DEFENDER`) */
+  foeProtectChain?: number
+  /**
+   * 마지막 발악을 쓸 수 있는가 (`IfCanUseLastResort` — 나온 뒤 다른 기술을 다 써 봤고
+   * 기술이 둘 이상). 안 주면 false
+   */
+  lastResort?: boolean
+  /** 지금 나온 마리가 쓴 도구 중 되살릴 수 있는 것 (`LoadRecycleItem`). 안 주면 0 — sim이 쓴 도구를 아직 안 알려 준다 */
+  recycleItem?: number
+  /** 같은 쪽 후발 주자 중 상태 이상인 마리가 있는가 (`IfPartyMemberStatus`). 안 주면 false */
+  partyStatused?: boolean
+  /**
+   * 후발 주자 중 지금 나온 마리보다 **더 센 수**를 가진 마리가 있는가
+   * (`IfPartyMemberDealsMoreDamage`). 비싸서 부를 때만 센다. 안 주면 false
+   */
+  partyDealsMore?: () => boolean
 }
 
 /** 랭크 → 배수. 4세대는 능력치와 명중/회피의 표가 다르다 */

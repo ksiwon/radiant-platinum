@@ -16,41 +16,15 @@
 // 원작 주석의 확률(`~80.5%` 등)은 문턱값 `n/256`을 사람이 읽기 좋게 옮긴 것이다.
 // 여기서는 문턱값을 그대로 쓴다 — 확률을 다시 적으면 반올림이 끼어든다.
 import type { AiMon, AiMove, AiTurn } from './context'
-import { boosted, hpPercent, knownMoves } from './context'
+import { hpPercent, knownMoves } from './context'
 import { isDamageScored } from './damage'
 import { ABILITY, EFFECT } from './rom'
-import { effectivenessOf, TYPE } from './typeChart'
-
-/** `IfRandomLessThan n`이 분기하는가 (= 점수를 **안** 주는가) */
-function skip(random: () => number, threshold: number): boolean {
-  return Math.floor(random() * 256) < threshold
-}
-
-/** 랭크를 먹인 스피드로 비교한다. 같으면 "느리다" 쪽이 아니다 */
-function isSlower(turn: AiTurn): boolean {
-  const mine = boosted(turn.self.stats.spe, turn.self.boosts.spe)
-  const theirs = boosted(turn.foe.stats.spe, turn.foe.boosts.spe)
-  return mine < theirs
-}
-
-function eff(move: AiMove, foe: AiMon): number {
-  return effectivenessOf(move.type, foe.types)
-}
-
-/** 상대가 반감하거나 아예 안 맞는가. EXPERT 루틴 다수가 이걸로 시작한다 */
-function resisted(move: AiMove, foe: AiMon): boolean {
-  return eff(move, foe) < 1
-}
-
-/** 내 기술칸에 이 효과를 가진 게 있는가 */
-function knowsEffect(turn: AiTurn, effect: number): boolean {
-  return knownMoves(turn).some((m) => m.effect === effect)
-}
-
-/** 내 기술칸에 상대에게 효과가 굉장한 게 있는가 */
-function hasSuperEffective(turn: AiTurn): boolean {
-  return knownMoves(turn).some((m) => isDamageScored(m) && eff(m, turn.foe) >= 2)
-}
+import { TYPE } from './typeChart'
+import {
+  eff, foeKnowsEffect, foeLastPower, hasSuperEffective, isSlower, knowsEffect, lastClass, resisted, skip, statusConfuse,
+} from './expertKit'
+import { E, IT } from './expertIds'
+import { chargeWithInvuln, MORE_HANDLED, scoreExpertMore, synthesisWeather } from './expertMore'
 
 const MOVE_U_TURN = 369
 const MOVE_ICY_WIND = 196
@@ -82,18 +56,6 @@ function bypassAccuracy(turn: AiTurn): number {
 function drainMove(turn: AiTurn, move: AiMove): number {
   if (!resisted(move, turn.foe)) return 0
   return skip(turn.random, 50) ? 0 : -3
-}
-
-/** 혼란. 상대 HP가 적을수록 굳이 혼란시킬 이유가 줄어든다 */
-function statusConfuse(turn: AiTurn): number {
-  const hp = hpPercent(turn.foe)
-  if (hp > 70) return 0
-  let delta = 0
-  if (!skip(turn.random, 128)) delta -= 1
-  if (hp > 50) return delta
-  delta -= 1
-  if (hp > 30) return delta
-  return delta - 1
 }
 
 /** 반동 기술. 돌머리·매직가드면 반동이 없으니 값어치가 오른다 */
@@ -158,7 +120,8 @@ function recovery(turn: AiTurn): number {
   if (hp >= 70) {
     if (!skip(turn.random, 30)) return -3
   }
-  // 상대가 훔치기를 아는지까지는 안 본다 — 4세대 트레이너 중 아무도 안 갖고 있다
+  // 상대가 가로챔을 알면 먼저 56%로 건너뛴다 (`Expert_Recovery_CheckForSnatch` 2238)
+  if (foeKnowsEffect(turn, E.STEAL_STATUS_MOVE) && skip(turn.random, 100)) return 0
   return skip(turn.random, 20) ? 0 : 2
 }
 
@@ -205,7 +168,7 @@ function screen(turn: AiTurn, want: 'physical' | 'special'): number {
   if (hp < 50) return -2
   let delta = 0
   if (hp >= 90 && !skip(turn.random, 128)) delta += 1
-  if (turn.foeLastMoveCategory === want && !skip(turn.random, 64)) delta += 1
+  if (lastClass(turn) === want && !skip(turn.random, 64)) delta += 1
   return delta
 }
 
@@ -313,11 +276,10 @@ function defenseRaise(turn: AiTurn, stat: 'def' | 'spd'): number {
   const hp = hpPercent(turn.self)
   if (hp >= 70 && skip(turn.random, 200)) return delta
   if (hp >= 40) {
-    const last = turn.foeLastMoveCategory
-    if (last === null || last === 'status') {
+    if (foeLastPower(turn) === 0) {
       if (skip(turn.random, 60)) return delta
-    } else {
-      if (last !== (stat === 'def' ? 'special' : 'physical') && skip(turn.random, 60)) return delta
+    } else if (lastClass(turn) !== (stat === 'def' ? 'special' : 'physical') && skip(turn.random, 60)) {
+      return delta
     }
   }
   delta -= 2
@@ -409,27 +371,16 @@ function bindingMove(turn: AiTurn): number {
 }
 
 /**
- * 모으기 기술.
- *
- * 파워풀허브(한 턴에 끝내는 도구)는 아직 도구 데이터가 없어 못 본다.
- * 상대가 방어를 아는지는 써 보인 기술로만 안다
+ * 모으는 턴이 있는 기술 중 **안 맞는 턴이 없는 것** (`Expert_ChargeTurnNoInvuln` 3930) —
+ * 칼바람·불새·로케트박치기·솔라빔. 하늘·땅속·물속은 `expertMore.chargeWithInvuln`이다
  */
-function chargeTurn(turn: AiTurn, move: AiMove, invulnerable: boolean): number {
-  if (!invulnerable) {
-    if (resisted(move, turn.foe)) return -2
-    // 솔라빔은 맑은하늘이면 모으기가 없어진다
-    if (move.effect === 151 && turn.weather === 'SunnyDay') return 2
-    if (turn.foeKnownMoves.has(MOVE_PROTECT) || turn.foeKnownMoves.has(MOVE_DETECT)) return -2
-    return hpPercent(turn.self) > 38 ? 0 : -1
-  }
-  // 하늘로 날거나 땅으로 숨는 기술은 그 턴 동안 안 맞는다 — 계산이 반대다
-  if (turn.foeKnownMoves.has(MOVE_PROTECT) || turn.foeKnownMoves.has(MOVE_DETECT)) return -1
-  let delta = 0
-  if (resisted(move, turn.foe)) delta += 1
-  if (turn.foe.status === 'tox') delta += 1
-  if (turn.foe.volatiles.has('curse') || turn.foe.volatiles.has('leechseed')) delta += 1
-  if (!isSlower(turn) && !skip(turn.random, 80)) delta += 1
-  return delta
+function chargeTurn(turn: AiTurn, move: AiMove): number {
+  if (resisted(move, turn.foe)) return -2
+  // 솔라빔은 맑은하늘이면 모으기가 없어진다
+  if (move.effect === SKIP_CHARGE_TURN_IN_SUN && turn.weather === 'SunnyDay') return 2
+  if (turn.self.heldItem === IT.POWER_HERB) return 2
+  if (foeKnowsProtect(turn)) return -2
+  return hpPercent(turn.self) > 38 ? 0 : -1
 }
 
 /**
@@ -465,6 +416,12 @@ function protect(turn: AiTurn): number {
 const MOVE_PROTECT = 182
 const MOVE_DETECT = 197
 
+/** 상대가 방어 효과의 기술을 써 보였는가 (`IfMoveEffectKnown AI_BATTLER_DEFENDER … PROTECT`) */
+function foeKnowsProtect(turn: AiTurn): boolean {
+  return turn.foeKnownEffects?.has(E.PROTECT)
+    ?? (turn.foeKnownMoves.has(MOVE_PROTECT) || turn.foeKnownMoves.has(MOVE_DETECT))
+}
+
 /**
  * 공격·특공 깎기 (`Expert_StatusAttackDown` 2274 · `StatusSpAttackDown` 2365). 상대 단계가
  * ±0이 아니면 −1, 내 체력이 90% 이하면 −1 더, 상대가 −3 이하면 ~80.5%로 −2.
@@ -479,7 +436,7 @@ function attackLower(turn: AiTurn, stat: 'atk' | 'spa'): number {
   }
   if (hpPercent(turn.foe) <= 70) delta -= 2
   const want = stat === 'atk' ? 'special' : 'physical'
-  if (turn.foeLastMoveCategory === want && !skip(turn.random, 128)) delta -= 2
+  if (lastClass(turn) === want && !skip(turn.random, 128)) delta -= 2
   return delta
 }
 
@@ -526,6 +483,8 @@ function accuracyLower(turn: AiTurn): number {
 export function scoreExpert(turn: AiTurn, move: AiMove): number {
   switch (move.effect) {
     case EFFECT.HIGH_CRITICAL:
+    case E.HIGH_CRITICAL_BURN_HIT:
+    case E.HIGH_CRITICAL_POISON_HIT:
       return highCritical(turn, move)
     case EFFECT.BYPASS_ACCURACY:
       return bypassAccuracy(turn)
@@ -551,10 +510,15 @@ export function scoreExpert(turn: AiTurn, move: AiMove): number {
     case BRICK_BREAK_EFFECT:
       return brickBreak(turn)
     case EFFECT.RESTORE_HALF_HP:
-    case EFFECT.HEAL_HALF_MORE_IN_SUN:
     case EFFECT.HEAL_HALF_REMOVE_FLYING_TYPE:
     case EFFECT.UNUSED_157:
+    case E.SWALLOW:
       return recovery(turn)
+    // 광합성류는 회복기에 날씨 감점이 얹힌다 (`Expert_Synthesis` 2625 — 마지막 줄이 `Expert_Recovery`로 흘러든다)
+    case EFFECT.HEAL_HALF_MORE_IN_SUN:
+    case E.UNUSED_133:
+    case E.UNUSED_134:
+      return synthesisWeather(turn) + recovery(turn)
     case LOWER_SPEED_HIT:
       return speedDownOnHit(turn, move)
     case EFFECT.STATUS_PARALYZE:
@@ -608,6 +572,7 @@ export function scoreExpert(turn: AiTurn, move: AiMove): number {
       return statusSpeedDown(turn)
 
     case EFFECT.HALVE_DEFENSE:
+    case E.FAINT_AND_ATK_SP_ATK_DOWN_2:
       return explosion(turn)
     case EFFECT.CURSE:
       return curse(turn)
@@ -622,15 +587,15 @@ export function scoreExpert(turn: AiTurn, move: AiMove): number {
       return 2
     case CHARGE_TURN_HIGH_CRIT: case CHARGE_TURN_HIGH_CRIT_FLINCH:
     case CHARGE_TURN_DEF_UP: case SKIP_CHARGE_TURN_IN_SUN:
-      return chargeTurn(turn, move, false)
-    case FLY: case DIG: case DIVE: case DOUBLE_DAMAGE_DIG:
-      return chargeTurn(turn, move, true)
+      return chargeTurn(turn, move)
+    case FLY: case DIG: case DIVE:
+      return chargeWithInvuln(turn, move, false)
     // 자이로볼은 원작에서도 점수를 안 건드린다. 그래도 분기표에는 있다
     case GYRO_BALL:
       return 0
 
     default:
-      return 0
+      return scoreExpertMore(turn, move) ?? 0
   }
 }
 
@@ -654,11 +619,12 @@ const SKIP_CHARGE_TURN_IN_SUN = 151 // 솔라빔
 const FLY = 155 // 공중날기
 const DIG = 256 // 구멍파기
 const DIVE = 255 // 다이빙
-const DOUBLE_DAMAGE_DIG = 147 // 땅속에 숨은 상대에게 두 배
 const GYRO_BALL = 219
 
 /** EXPERT가 실제로 판단하는 효과 번호 전부. 적용률 측정이 이걸 쓴다 */
 export const EXPERT_HANDLED: ReadonlySet<number> = new Set([
+  ...MORE_HANDLED, E.SWALLOW, E.UNUSED_133, E.UNUSED_134, E.FAINT_AND_ATK_SP_ATK_DOWN_2,
+  E.HIGH_CRITICAL_BURN_HIT, E.HIGH_CRITICAL_POISON_HIT,
   EFFECT.HIGH_CRITICAL, EFFECT.BYPASS_ACCURACY, EFFECT.RECOVER_HALF_DAMAGE_DEALT,
   EFFECT.STATUS_CONFUSE, EFFECT.RECOIL_QUARTER, DEF_SPD_DOWN_HIT,
   RECOIL_THIRD, RECOIL_BURN_HIT, RECOIL_PARALYZE_HIT, RECOIL_HALF,
@@ -679,5 +645,5 @@ export const EXPERT_HANDLED: ReadonlySet<number> = new Set([
   EFFECT.HALVE_DEFENSE, EFFECT.CURSE, EFFECT.ATK_SPD_UP, BIND_HIT,
   EFFECT.PREVENT_ESCAPE, EFFECT.PROTECT, EFFECT.ALWAYS_FLINCH_FIRST_TURN_ONLY,
   CHARGE_TURN_HIGH_CRIT, CHARGE_TURN_HIGH_CRIT_FLINCH, CHARGE_TURN_DEF_UP,
-  SKIP_CHARGE_TURN_IN_SUN, FLY, DIG, DIVE, DOUBLE_DAMAGE_DIG, GYRO_BALL,
+  SKIP_CHARGE_TURN_IN_SUN, FLY, DIG, DIVE, GYRO_BALL,
 ])
