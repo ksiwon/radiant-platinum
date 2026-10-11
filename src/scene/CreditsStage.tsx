@@ -14,7 +14,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import {
-  BoxGeometry, CanvasTexture, Color, DataTexture, DoubleSide, Group, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, NearestFilter, PlaneGeometry,
+  Box3, BoxGeometry, CanvasTexture, Color, DataTexture, DoubleSide, Group, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, NearestFilter, PlaneGeometry,
   Quaternion, RepeatWrapping, SRGBColorSpace, TextureLoader, Vector3,
   type BufferGeometry, type Material, type PerspectiveCamera, type Texture,
 } from 'three'
@@ -24,6 +24,7 @@ import { splitByNode } from './propAnim'
 import { retireTexture } from './retireTexture'
 import { creditsLive } from './creditsLive'
 import { usePersonModel } from './personModel'
+import { useMonBody } from './monBody'
 import { playerModelPath } from './playerModelPath'
 import { spinBike } from './BikeModel'
 import {
@@ -127,12 +128,50 @@ const SLOTS = 16
 // ───────────────────────────── 날아다니는 것 ─────────────────────────────
 
 /**
- * 스프라이트 입자 풀 — 한 장의 아틀라스 · 한 벌의 재질을 모든 입자가 나눠 쓴다. 입자는 미리 만들어 두고 장면마다 모양과 자리만 갈아 끼운다
- * (장면 0 셋 · 장면 2 둘 · 장면 4 둘 — 최대 넷). 별똥별만 알파가 갈려 재질을 한 벌 복제한다 (같은 셰이더).
+ * 날아다니는 포켓몬은 **3D 몸**이다 (`models/pokemon` — 배틀 · 필드와 같은 것). 원작이 스프라이트로 그린 둥실봉(425) · 갈모매(278) · 어두운 한 마리(둥실라이드 426 — **그림으로 고른
+ * 종이다.** 셀에 종 번호가 없고 풍선 몸에 늘어진 두 팔이 둥실라이드와 맞다)를 **같은 궤적 표**(`engine/world/creditsStage`)로 날린다. 장면에 들어오기 전에 비동기로 받아 둔다(마운트 때).
+ * 별똥별 줄기만 입자다 — 아틀라스 한 장 · 재질 한 벌(알파가 달라 복제본 하나).
  */
-interface PoolItem { mesh: Mesh, kind: number }
+const FLY_PX = 64
 
-const POOL_SIZE = 4
+interface FlyTrack { x: Float32Array, y: Float32Array, rot: Float32Array, scale: Float32Array, steps: number }
+
+function FlyMon({ species, scene, track }: { species: number, scene: number, track: () => FlyTrack }) {
+  const body = useMonBody(species)
+  const outer = useRef<Group>(null)
+  const inner = useRef<Group>(null)
+  const fit = useMemo(() => {
+    if (!body) return null
+    const box = new Box3().setFromObject(body.root)
+    const size = box.getSize(new Vector3()), center = box.getCenter(new Vector3())
+    return { size: Math.max(size.x, size.y, size.z, 1e-3), center }
+  }, [body])
+  useLayoutEffect(() => {
+    if (fit && inner.current) inner.current.position.copy(fit.center).negate()
+  }, [fit])
+
+  useFrame(() => {
+    const v = creditsLive.view
+    const node = outer.current
+    if (!node) return
+    node.visible = fit !== null && v !== null && v.running && v.scene === scene
+    if (!node.visible || !v || !fit) return
+    const t = track()
+    const n = Math.min(t.steps - 1, v.steps)
+    const U = pxUnit(SPRITE_DEPTH)
+    node.position.set((t.x[n]! - BOX_W / 2) * U, (BOX_H / 2 - t.y[n]!) * U, -SPRITE_DEPTH)
+    node.scale.setScalar(((FLY_PX * U) / fit.size) * t.scale[n]!)
+    // 가는 쪽을 본다 — 오른쪽으로 가면 몸 앞(+z)이 화면 오른쪽
+    const dx = t.x[n]! - t.x[Math.max(0, n - 1)]!
+    node.rotation.set(0, dx > 0.001 ? 1.1 : dx < -0.001 ? -1.1 : 0.4, t.rot[n]!)
+  })
+
+  return (
+    <group ref={outer} visible={false}>
+      <group ref={inner}>{body && <primitive object={body.root} />}</group>
+    </group>
+  )
+}
 
 function buildAtlas(art: CreditsArt, images: readonly HTMLImageElement[]): { texture: CanvasTexture, uv: [number, number, number, number][], pad: number } {
   const pad = 1
@@ -418,7 +457,6 @@ export function CreditsStage() {
   const beltGroups = useRef<Group[][][]>([[[], []], [[], []], [[], []]])
   const rigRef = useRef<{ rig: Rig | null, bike: Group | null }>({ rig: null, bike: null })
   const cyclist = useRef<Group>(null)
-  const poolMeshes = useRef<PoolItem[]>([])
   const starMesh = useRef<Mesh>(null)
   const tmp = useMemo(() => ({ m: new Matrix4(), q: new Quaternion(), p: new Vector3(), t: new Vector3() }), [])
 
@@ -512,23 +550,10 @@ export function CreditsStage() {
     return () => { state.bike = null }
   }, [bikeModel])
 
-  // 입자 메시 — 풀을 한 번 만든다
+  // 별똥별 — 줄기 한 장을 입자 하나로 (재질은 알파가 갈려 복제본이다)
   useLayoutEffect(() => {
-    const g = anchor.current
-    if (!g || !sprites) return
-    const items: PoolItem[] = []
-    for (let i = 0; i < POOL_SIZE; i++) {
-      const mesh = new Mesh(sprites.geos[0], sprites.material)
-      mesh.frustumCulled = false
-      mesh.renderOrder = -900
-      mesh.visible = false
-      g.add(mesh)
-      items.push({ mesh, kind: 0 })
-    }
-    poolMeshes.current = items
     const star = starMesh.current
-    if (star) { star.geometry = sprites.geos[3]!; star.material = sprites.streak }
-    return () => { for (const it of items) g.remove(it.mesh); poolMeshes.current = [] }
+    if (star && sprites) { star.geometry = sprites.geos[0]!; star.material = sprites.streak }
   }, [sprites])
 
   const keyLight = useRef<import('three').DirectionalLight>(null)
@@ -636,40 +661,8 @@ export function CreditsStage() {
       }
     }
 
-    // 입자 — 장면마다 모양 · 자리
-    const items = poolMeshes.current
+    // 별똥별 입자
     const U = pxUnit(SPRITE_DEPTH)
-    let used = 0
-    const place = (item: PoolItem, kindIdx: number, x: number, y: number, rot: number, scale: number): void => {
-      item.mesh.geometry = sprites!.geos[kindIdx]!
-      item.mesh.position.set((x - BOX_W / 2) * U, (BOX_H / 2 - y) * U, -SPRITE_DEPTH)
-      item.mesh.rotation.z = rot
-      item.mesh.scale.setScalar(scale * U)
-      item.mesh.visible = true
-    }
-    for (const it of items) it.mesh.visible = false
-    if (sprites && v && v.running) {
-      const step = v.steps
-      if (v.scene === 0) {
-        for (const i of [0, 1, 2] as const) {
-          const t = drifloonTrack(i)
-          const n = Math.min(t.steps - 1, step)
-          place(items[used++]!, 0, t.x[n]!, t.y[n]!, 0, t.scale[n]!)
-        }
-      } else if (v.scene === 2) {
-        const t0 = naturalSchedule().start[2]!
-        for (const i of [0, 1] as const) {
-          const t = wingullTrack(i, t0)
-          const n = Math.min(t.steps - 1, step)
-          place(items[used++]!, 1, t.x[n]!, t.y[n]!, t.rot[n]!, t.scale[n]!)
-        }
-      } else if (v.scene === 4) {
-        const t0 = naturalSchedule().start[4]!
-        const t = nightFlierTrack(t0)
-        const n = Math.min(t.steps - 1, step)
-        place(items[used]!, 2, t.x[n]!, t.y[n]!, t.rot[n]!, t.scale[n]!)
-      }
-    }
     const star = starMesh.current
     if (star) {
       const s = sprites && v && v.running && v.scene === 4 ? shootingStarAt(v.tick) : null
@@ -729,6 +722,13 @@ export function CreditsStage() {
           ])}
         </group>
         <mesh ref={starMesh} renderOrder={-890} visible={false} frustumCulled={false} />
+        {([0, 1, 2] as const).map((i) => (
+          <FlyMon key={`d${String(i)}`} species={425} scene={0} track={() => drifloonTrack(i)} />
+        ))}
+        {([0, 1] as const).map((i) => (
+          <FlyMon key={`w${String(i)}`} species={278} scene={2} track={() => wingullTrack(i, naturalSchedule().start[2]!)} />
+        ))}
+        <FlyMon species={426} scene={4} track={() => nightFlierTrack(naturalSchedule().start[4]!)} />
         <group ref={cyclist} visible={false} position={CYCLIST_AT} rotation={[0, CYCLIST_YAW, 0]}>
           <group ref={wrapper}>{person && <primitive object={person} />}</group>
           <group scale={BDSP_TO_WORLD}>{bikeModel && <primitive object={bikeModel} />}</group>

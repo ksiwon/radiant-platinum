@@ -1,4 +1,4 @@
-// 엔딩 크레딧의 그림 — 회상 사진 28장과 날아다니는 포켓몬 넷 (`overlay099` · DATA.md §2.26)
+// 엔딩 크레딧의 그림 — 회상 사진 28장과 별똥별 줄기 (`overlay099` · DATA.md §2.26)
 //
 // 크레딧 3D 무대(`scene/CreditsStage`)가 쓴다. 배경 세 장(`credits.ts`)과 같은 아카이브 `graphic/ending.narc`에서 나온다.
 //
@@ -19,8 +19,8 @@
 // 색이 아니라 **팔레트 번호 판**으로 굽고(`night-sky.png` — R이 번호 · G가 벌 0 또는 1 · 0번 색은 알파 0) 섞이는 1번 벌 여덟 벌과 안 섞이는 0번 벌(20번 멤버)을
 // `art.json`에 15비트 그대로 싣는다 — 화면이 틱마다 섞어 칠한다. ⚠️ 칸의 위 4비트가 0과 1뿐이다(실측: 160칸 · 608칸).
 //
-// **날아다니는 포켓몬 넷** — 셀 뱅크 1번 · 그림 0번 · 팔레트 15번 (`SpriteSystem_Load…FromOpenNarc(… 0 · 1 · 2 · 15)`):
-// 0 둥실봉 · 1 갈모매 · 2 어두운 한 마리 · 3 별똥별. 셀마다 경계 상자와 함께 굽는다 — 왼쪽 위 `(ox, oy)`가 스프라이트 중심에서 잰 자리다.
+// **별똥별 줄기** — 셀 뱅크 1번 · 그림 0번 · 팔레트 15번 (`SpriteSystem_Load…FromOpenNarc(… 0 · 1 · 2 · 15)`)의 셀 3. 같은 뱅크의 0 둥실봉 · 1 갈모매 ·
+// 2 어두운 한 마리는 스프라이트로 안 굽는다 — 3D 포켓몬 몸으로 날린다(`scene/CreditsStage`). 셀마다 경계 상자와 함께 굽는다 — 왼쪽 위 `(ox, oy)`가 스프라이트 중심에서 잰 자리다.
 import { narcEntry } from './nds'
 import { cellBank, cellBox, drawCell } from './ntrcell'
 import { chars, maybeLz77, palettes, screen, screenCell, TILE } from './ntrgfx'
@@ -144,7 +144,7 @@ export async function convertCreditsArt(ctx: ConvertContext): Promise<Produced> 
     memory: { male: [], female: [] }, night: { male: [], female: [] }, sprites: [],
     nightSky: { file: 'credits/night-sky.png', w: 0, h: 0, palettes: [], fixed: [] },
   }
-  const total = 2 * 10 + 2 * 4 + 4 + 1
+  const total = 2 * 10 + 2 * 4 + 1 + 1
   let done = 0
 
   const bakeSet = async (
@@ -170,17 +170,19 @@ export async function convertCreditsArt(ctx: ConvertContext): Promise<Produced> 
   const pals = palettes(maybeLz77(take(15)))
   const tiles = chars(maybeLz77(take(0))).data
   const bank = cellBank(take(1))
+  // 셀 3(별똥별 줄기)만 입자로 굽는다 — 0 둥실봉 · 1 갈모매 · 2 어두운 한 마리는 3D 몸으로 날린다
   for (const [k, oams] of bank.cells.entries()) {
+    if (k !== 3) continue
     const [ox, oy, w, h] = cellBox(oams)
     const rgba = new Uint8Array(w * h * 4)
     if (drawCell(rgba, w, 0, 0, oams, tiles, pals) === 0) throw new Error(`셀 ${String(k)}이 비었다`)
-    const file = `data/credits/sprite${String(k)}.png`
+    const file = 'data/credits/streak.png'
     out.set(file, await encodePng(rgba, w, h))
     art.sprites.push({ file: file.slice('data/'.length), ox, oy, w, h })
     ctx.onProgress?.(++done, total)
     check(ctx)
   }
-  if (art.sprites.length !== 4) throw new Error(`날아다니는 셀이 ${String(art.sprites.length)}개다 — 넷이라야 한다`)
+  if (art.sprites.length !== 1) throw new Error('별똥별 셀이 없다')
 
   // 밤 하늘 — 번호 판 + 팔레트 여덟 벌
   {

@@ -490,7 +490,7 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: [
       'data/credits.json', 'data/credits.*.json',
       'data/credits0.png', 'data/credits1.png', 'data/credits2.png',
-      'data/credits/{memory,night}-{male,female}{n}.png', 'data/credits/sprite{0~3}.png', 'data/credits/art.json',
+      'data/credits/{memory,night}-{male,female}{n}.png', 'data/credits/streak.png', 'data/credits/art.json',
     ],
     converter: 3,
     convert: convertCredits,
