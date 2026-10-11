@@ -23,7 +23,7 @@ const bdhc = JSON.parse(fs.readFileSync(D('bdhc.json'), 'utf8'))
 const bb = fs.readFileSync(D('bdhc.bin'))
 const dungeons = new Set(JSON.parse(fs.readFileSync(M('dungeon/index.json'), 'utf8')).dungeons.map((d) => d.name))
 const rooms = new Set(JSON.parse(fs.readFileSync(M('room/index.json'), 'utf8')).rooms)
-const LIFT = { d03r0101: 1, d05r0105: -1, d05r0114: 1, d05r0115: 1, d05r0116: 1, d13r0101: 1, d28r0101: 6 }
+const LIFT = { d03r0101: 1, d05r0105: -1, d05r0114: 1, d05r0115: 1, d05r0116: 1, d13r0101: 1, d28r0101: 6, d11r0101: 1, d12r0101: 1, d21r0101: 1, d21r0102: 1, d24r0104: 1, d27r0101: 1, d27r0102: 1 }
 const MIS = new Set(['d31r0201'])
 
 function dungeonFor(here) {
