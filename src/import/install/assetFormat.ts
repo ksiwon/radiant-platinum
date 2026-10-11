@@ -38,6 +38,10 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
   moves: 1,
   marts: 1,
   /**
+   * 7 — **눈 땅 그림이 붙는다** (`import/bdsp/convert.ts`의 `COMMON_RESOURCES`). 눈 땅 재질(`M_C_001_Ground_03` · `…_SnowCover_01`)의 그림은 딴 번들
+   * (`Dpr/common_resources`의 `snow`)에 있어서 번들 하나만 열면 회색 0.9 한 색으로 구워졌다. 지역 14벌 중 키사키(area009)만 바뀐다(10,489,060 → 11,584,172)
+   * — 나머지 13벌은 바이트가 그대로다(area012 실측). ⚠️ **6도 그대로 쓴다**(`GROUP_ACCEPTS`) — 없으면 키사키 눈 땅이 회색일 뿐이다
+   *
    * 6 — **① 그림 있는 재질도 발광을 싣는다** (`import/bdsp/arena.ts`의 `glowOf` — `emissiveTexture` · `emissiveFactor` · `extras.glow` · `extras.emitOn`).
    * 창 · 집 · 센터 · 가로등은 `_MainTex`에 `_EmissionTex`가 물려 있는데 발광은 그림 없는 재질에만 실어서 밤 창이 안 켜졌고, 그림 없는 입구 빛도
    * `emissiveFactor`가 없어(glTF 기본 발광색 검정) 켜져도 검정이었다. 요스가시티(area004)에서 발광 재질 3벌 → 24벌 · 발광 그림 3장 → 13장.
@@ -65,7 +69,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * ⚠️ **이미 깔린 것을 그냥 두면 안 된다.** 옛 지역 glb는 그 재질을 흰 반투명 판으로 들고 있어서 포켓몬센터 · 프렌들리숍 ·
    * 체육관 입구가 하얀 상자로 막힌 채 남는다
    */
-  fields: 6,
+  fields: 7,
   /**
    * 2 — **방 재질의 색 · 층 그림 · TV 칸을 싣는다** (`import/bdsp/arena.ts` · 노드 쪽 `bdspArena.py --rooms`와 같은 바이트).
    *
@@ -90,6 +94,10 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    */
   arenas: 3,
   /**
+   * 4 — **눈 땅 그림이 붙는다** (`fields` 7과 같다 — `Dpr/common_resources`의 `snow`). 던전 138벌 중 천관산 둘(`d05r0104` · `d05r0105`) · 예지의 호수 둘
+   * (`d29r0101` · `d29r0102`)만 바뀐다(글 +112~128KB · 그림 한 장 135KB가 공용 그림 자리에 늘어난다) — 나머지는 바이트가 그대로다(`d27r0101` 실측).
+   * ⚠️ **3도 그대로 쓴다**(`GROUP_ACCEPTS`) — 없으면 눈 땅이 회색일 뿐이다
+   *
    * 3 — **그림 있는 재질도 발광을 싣는다** (`import/bdsp/arena.ts`의 `glowOf` — 던전도 지역과 같은 `exportField`를 쓴다). 던전 번들 138벌을 새로 구워 개발 산출물과
    * 맞대면 glb 합이 117,726,512 → **117,796,924**(+70KB)이고, 던전이 나눠 쓰는 그림 자리(`share`)가 551 → 625개 파일 · 158,601,664 → **160,264,908**바이트(+1.66MB —
    * 발광 그림 73장이 새로 붙는다)다. 입구 빛 `emissiveFactor`도 붙는다 (DATA.md §2.17.6)
@@ -99,7 +107,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 그림 · 기하가 갈리는 것이 대부분이고 재질 JSON이 갈리는 것은 TV 화면 `M_C_001_Video_03` 둘(`d26r0102` · `d31r0201`)이다.
    * 마스크로 섞는 재질(`cascadeMix`)은 던전 · 지역 번들 모두 0벌이라 그 고침과는 상관없다 (재질 2,434 · 1,500 실측)
    */
-  dungeons: 3,
+  dungeons: 4,
   /**
    * 2 — **능력 변화 무늬 묶음(`statChange.bin`)이 붙는다** (`import/platinum/particles.ts`의 `STAT_CHANGE_BG`). 능력이 오르고
    * 내릴 때 몸 실루엣 안에서 흐르는 배경 무늬 넷(`pl_batt_bg.narc` 멤버 열둘)이다. 옛 판에는 그 묶음이 없다
@@ -446,6 +454,9 @@ const GROUP_ACCEPTS: Readonly<Record<string, readonly number[]>> = {
   monVariants: [1, 2],
   // 상태 이상 · 날씨 (`GROUP_FORMAT.battleFx` 3) — 없으면 그 연출이 DS 입자로 선다
   battleFx: [2],
+  // 눈 땅 그림 (`GROUP_FORMAT.fields` 7 · `dungeons` 4) — 없으면 키사키 · 천관산 · 예지의 호수 눈 땅이 회색 한 색이다
+  fields: [6],
+  dungeons: [3],
 }
 
 /** 이 판의 그 그룹을 그대로 써도 되는가 */

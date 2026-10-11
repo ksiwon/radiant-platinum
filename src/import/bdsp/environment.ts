@@ -28,8 +28,13 @@ export class Environment {
   private readonly byPath = new Map<number, Entry>()
   private readonly cache = new Map<number, UnityValue | null>()
 
-  /** 번들 바이트 하나를 연다. 여러 번 불러 겹쳐 쌓는다 */
-  add(bytes: Uint8Array): void {
+  /**
+   * 번들 바이트 하나를 연다. 여러 번 불러 겹쳐 쌓는다.
+   *
+   * `only`가 있으면 그 갈래(`Texture2D` …)의 오브젝트만 얹는다 — **딴 번들의 그림만 빌릴 때** 쓴다. 번들째 얹으면 그 번들의 재질 · 글꼴까지 환경에
+   * 들어와서 굽는 쪽이 쓰지도 않는 재질(공용 번들의 TextMeshPro 글꼴 아틀라스 4096²)을 glb마다 싣는다
+   */
+  add(bytes: Uint8Array, only?: ReadonlySet<string>): void {
     const bundle = openBundle(bytes)
     for (const node of bundle.nodes) {
       // `.resS`는 자료 덩어리지 SerializedFile이 아니다
@@ -39,6 +44,7 @@ export class Environment {
         file = readSerializedFile(bundle.data.subarray(node.offset, node.offset + node.size))
       } catch { continue }
       for (const object of file.objects) {
+        if (only && !only.has(className(object.classId))) continue
         const entry: Entry = { object, file, bundle, type: className(object.classId) }
         const had = this.byPath.get(object.pathId)
         if (had) {
@@ -84,9 +90,10 @@ export class Environment {
 }
 
 /** 번들 바이트 여럿을 한 환경으로 */
-export function openEnvironment(bundles: readonly Uint8Array[]): Environment {
+export function openEnvironment(bundles: readonly Uint8Array[], textureOnly: readonly Uint8Array[] = []): Environment {
   const env = new Environment()
   for (const b of bundles) env.add(b)
+  for (const b of textureOnly) env.add(b, new Set(['Texture2D']))
   if (env.entries.length === 0) throw new EnvironmentError('번들에서 오브젝트를 하나도 못 읽었다')
   return env
 }

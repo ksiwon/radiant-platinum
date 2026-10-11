@@ -47,6 +47,9 @@ const flag = (name) => {
 
 const outDir = resolve(ROOT, flag('out') ?? 'raw/work/browserModels')
 const only = flag('only')?.split(',').filter(Boolean) ?? null
+// `--bundles a,b` — **굽는 것 자체를 줄인다**(`--only`는 쓰는 것만 줄인다). 번들 목록에서 이름이 마지막 칸인 것만 남기고
+// 공용 그림 번들(`Dpr/common_resources`)은 둔다. 변환기가 보는 목록이 이것뿐이라 같은 경로로 굽는다 — 표(index)는 부분이라 쓰지 않는다
+const bundles = flag('bundles')?.split(',').filter(Boolean).map((n) => n.toLowerCase()) ?? null
 
 const specs = BDSP_GROUPS.filter((g) => want.length === 0 || want.includes(g.name))
 if (specs.length === 0) {
@@ -54,7 +57,14 @@ if (specs.length === 0) {
   process.exit(1)
 }
 
-const src = dirSource(AA)
+const full = dirSource(AA)
+const src = bundles === null ? full : {
+  read: (path) => full.read(path),
+  async list() {
+    const all = await full.list()
+    return all.filter((p) => p.toLowerCase() === 'dpr/common_resources' || bundles.includes(p.toLowerCase().split('/').pop()))
+  },
+}
 for (const spec of specs) {
   const started = Date.now()
   let files = 0
@@ -62,6 +72,7 @@ for (const spec of specs) {
   const emit = (path, data) => {
     // `--only`는 굽는 대상을 줄이는 것이 아니라 **쓰는 것**만 줄인다. 표(index)는
     // 늘 나와야 무엇이 빠졌는지 보인다
+    if (bundles !== null && path.endsWith('index.json')) return
     if (only && !only.some((k) => path.includes(k)) && !path.endsWith('.json')) return
     const at = resolve(outDir, path)
     mkdirSync(resolve(at, '..'), { recursive: true })

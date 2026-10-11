@@ -392,7 +392,7 @@ function upFaces(path: string): Float32Array[] {
 }
 
 /** 지나갈 수 있는 칸 한가운데마다 (glb 바닥 − BDHC)를 0.25 단위로 센다 — 가장 많은 차와 그 몫 */
-function liftOf(name: string): { diff: number, share: number, n: number } {
+function liftOf(name: string): { diff: number, share: number, n: number, best: number, within: number } {
   const maps = (read('maps.json') as { maps: MapHeader[] }).maps
   const map = maps.find((m) => m.name.toLowerCase() === name)!
   const meta = (read('matrices/interiors.json') as { matrices: Record<string, MatrixMeta & { byteOffset: number }> }).matrices[String(map.matrix)]!
