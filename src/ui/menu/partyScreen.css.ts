@@ -21,7 +21,7 @@ export { choice, choiceAsk, choiceOn, choices } from './menuChrome.css'
 export { levelPanel, levelRow, levelValue } from './levelPanel.css'
 
 /** 판 하나의 크기 — 원반 · 띠 · 글이 이 안에서 절대 좌표로 선다 */
-const PLATE = { height: 150, disc: 124, ribbonTop: 27, ribbonHeight: 96, textLeft: 150, sprite: 160 } as const
+const PLATE = { height: 150, disc: 124, ribbonTop: 27, ribbonHeight: 96, textLeft: 150, sprite: 100 } as const
 
 /** 오른쪽 줄이 내려간 만큼. 원작이 한 타일(판 높이의 1/6)이고 시안은 24다 */
 const STAGGER = 24
@@ -121,16 +121,20 @@ export const discLead = style({
   boxShadow: `inset 0 0 0 ${String(EDGE.window)}px ${vars.window.faceTop}, inset 0 0 0 ${String(EDGE.window + 1)}px ${vars.panel.edge}`,
 })
 
-/** 그림 상자의 자리 — 원반 가운데에 발이 오게 위로 올린다 */
-const SPRITE_AT = { left: -10, top: -25 } as const
+/**
+ * 그림 상자의 자리 — 원본 (40, 42)가 원반 가운데(판 좌표 70, 71)에 온다. 그 점에서 잰 몸의 끝이 원반 안쪽 반지름(59)에
+ * 가장 많이 드는 자리다 (`(40, 40)`과 같은 95% · 발 쪽 (40, 48)은 85%)
+ */
+const SPRITE_AT = { left: 20, top: 18 } as const
 
 /**
- * 그림. 원작 배틀 그림(80×80)을 **정수 2배**(160)로 그린다 — 1.2배였을 때 도트 폭이 1과 2로 섞였다
- * (`PLATE.sprite`는 원본의 정확히 두 배라 `image-rendering: pixelated`가 고르게 나온다).
+ * 그림. 원작 배틀 그림(80×80)을 **1.25배**(100)로 그린다.
  *
- * ⚠️ **그림은 원반 밖으로 안 나간다**(DECISIONS 「그림은 제 틀을 넘지 않는다」). 큰 몸(토대부기의 나무 · 한카리아스의 날개)이
- * 원반을 넘어 머리 줄 선과 이웃 판까지 닿았다 — 원반과 같은 원으로 잘라 메달처럼 담는다. 원의 가운데는 원반 가운데를
- * 그림 상자 좌표로 옮긴 것이다
+ * ⚠️ **원반 안에 몸이 다 든다.** 2배(160)일 때는 큰 몸(토대부기의 나무 · 한카리아스의 날개)이 원반을 넘어 원으로 잘렸다(사용자
+ * 지적 10-11). 원반 가운데에서 가장 먼 불투명 픽셀까지를 559종 앞모습에서 재면(원본 px) 중앙값 36 · 90% 48.6 · 최대 59.7이고,
+ * 안쪽 반지름 59 안에 드는 몫이 2배(발 쪽 가운데) 22% · 1.5배 75% · **1.25배 95%** · 1배 100%다. 1배는 그림이 절반이라 1.25배로 둔다 —
+ * 정수배가 아니라 도트 폭이 네 칸마다 한 번 굵다(전에는 2배로 피했던 값이다). 남는 5%(가이오가 · 밀로틱 · 펄기아 · 트로피우스 · 후딘 …)만
+ * 원반과 같은 원으로 끝이 잘린다. 원의 가운데는 원반 가운데를 그림 상자 좌표로 옮긴 것이다
  */
 export const sprite = style({
   position: 'absolute',
