@@ -73,9 +73,12 @@ let index: Promise<MonIndex> | null = null
 let variantIndex: Promise<MonVariantIndex> | null = null
 
 function loadMonIndex(): Promise<MonIndex> {
-  index ??= (readJson(assets(), 'models/pokemon/index.json') as Promise<MonIndex>).catch(() => ({
-    pokemon: {},
-  }))
+  // ⚠️ **못 읽은 목차를 굳히지 않는다.** 예전에는 읽기 실패가 `{ pokemon: {} }`로 캐시에 남아, 한 번 헛디디면 493종 전부가
+  // 세션이 끝날 때까지 「모델 없음」(2D)이었다. 던진 채로 두고 다음 부름이 다시 읽게 한다(`loadMonModel`이 두 번 더 시도한다)
+  index ??= (readJson(assets(), 'models/pokemon/index.json') as Promise<MonIndex>).catch((e: unknown) => {
+    index = null
+    throw e
+  })
   return index
 }
 
@@ -91,12 +94,11 @@ function loadMonIndex(): Promise<MonIndex> {
 function loadMonVariantIndex(): Promise<MonVariantIndex> {
   variantIndex ??= (
     readJson(assets(), 'models/pokemon/variants/index.json') as Promise<MonVariantIndex>
-  ).catch(() => ({
-    version: 1,
-    shiny: {},
-    female: {},
-    femaleShiny: {},
-  }))
+  ).catch(() => {
+    // 이번 부름만 빈 목차로 서고, 캐시에는 안 남긴다 — 다음 부름이 다시 읽는다
+    variantIndex = null
+    return { version: 1, shiny: {}, female: {}, femaleShiny: {} }
+  })
   return variantIndex
 }
 
@@ -164,6 +166,9 @@ export interface Loaded {
 const loader = new GLTFLoader(new LoadingManager())
 const textureLoader = new TextureLoader(new LoadingManager())
 const cache = new Map<string, Promise<Loaded | null>>()
+/** 받다 던지면 더 시도하는 횟수와 간격(ms × 차례) */
+const LOAD_RETRIES = 2
+const LOAD_RETRY_MS = 400
 
 // 갈아 끼우면 파싱해 둔 장면은 옛 설치본 것이다
 onProviderSwap(() => {
@@ -223,7 +228,7 @@ export function loadMonModel(
   const appearanceKey = `${key}|${appearance.gender ?? 'genderless'}|${appearance.shiny ? 'shiny' : 'normal'}`
   let got = cache.get(appearanceKey)
   if (!got) {
-    got = Promise.all([loadMonIndex(), loadMonVariantIndex()])
+    const attempt = (): Promise<Loaded | null> => Promise.all([loadMonIndex(), loadMonVariantIndex()])
       .then(async ([idx, variants]) => {
         const resolvedKey = idx.pokemon[key] ? key : String(species)
         const baseEntry = idx.pokemon[resolvedKey]
@@ -250,7 +255,24 @@ export function loadMonModel(
           provider.releaseObjectUrl(path)
         }
       })
-      .catch(() => null)
+    // ⚠️ **받다 실패한 것을 캐시에 굳히지 않는다.** 예전에는 `.catch(() => null)`이 그대로 캐시에 남아, 한 번 헛디디면
+    // (설치본이 다른 일로 바쁠 때 · 주소가 막 놓였을 때 · 판이 바뀌는 순간) 그 종은 **세션이 끝날 때까지 「모델 없음」**이었다.
+    // 도감의 기본 로토무가 가끔 2D로 서던 까닭의 후보다 — 모델이 없는 종(`null`)은 정당한 답이라 그대로 굳히고,
+    // **던진 것**만 짧게 두 번 더 시도한 뒤 캐시에서 빼서 다음 부름이 다시 받게 한다
+    const retried = async (): Promise<Loaded | null> => {
+      for (let tries = 0; ; tries++) {
+        try {
+          return await attempt()
+        } catch {
+          if (tries >= LOAD_RETRIES) {
+            cache.delete(appearanceKey)
+            return null
+          }
+          await new Promise<void>((done) => { setTimeout(done, LOAD_RETRY_MS * (tries + 1)) })
+        }
+      }
+    }
+    got = retried()
     cache.set(appearanceKey, got)
   }
   return got
