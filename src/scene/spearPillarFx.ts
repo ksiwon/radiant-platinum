@@ -6,9 +6,10 @@
 //
 // 화면에는 둘을 쓴다 — 빨강은 비쳐 보이는 한 겹(`screenTint`), 검게 닫는 것은 페이드 덮개(`holdCover`).
 // 사슬 모델은 `SpearPillarChain`이 그린다
-import { chainCover, chainStart, chainTick, type ChainFx } from '../engine/world/spearPillarFx'
+import { CHAIN_KEY, chainCover, chainStart, chainTick, type ChainFx } from '../engine/world/spearPillarFx'
 import { lakeOrbsStart, lakeOrbsTick, type LakeOrbs } from '../engine/world/lakeOrbs'
 import { music } from '../engine/audio/music'
+import { BINDINGS, consumeTapped } from '../engine/input/keys'
 import { facingOfDir } from '../engine/script/field'
 import { worldState } from '../state/worldState'
 import { holdCover, screenTint } from '../engine/script/fade'
@@ -37,6 +38,8 @@ export const spearPillarLive: {
 
 /** 0 — 세운다 (`ov6_0223E6EC`) */
 export function startRedChain(): void {
+  // 걸으며 쌓인 방향 톡을 버린다 — 손잡이는 맥동이 도는 동안 새로 누른 것만 본다
+  chainKeys()
   spearPillarLive.chain = chainStart()
   spearPillarLive.acc = 0
   const who = npcActors.byLocalID.get(CHAIN_OBJECT)
@@ -44,6 +47,16 @@ export function startRedChain(): void {
     const x = who.x + 0.5, z = who.z + 0.5
     spearPillarLive.at = [x, mapWorld.grid?.heightAtWorld(x, z) ?? who.y, z]
   } else spearPillarLive.at = null
+}
+
+/** 십자키 손잡이 — 지난 프레임 뒤에 새로 눌린 방향 (`gSystem.pressedKeys` · `ov6_02240364`) */
+function chainKeys(): number {
+  let keys = 0
+  if (consumeTapped(BINDINGS.up)) keys |= CHAIN_KEY.up
+  if (consumeTapped(BINDINGS.down)) keys |= CHAIN_KEY.down
+  if (consumeTapped(BINDINGS.left)) keys |= CHAIN_KEY.left
+  if (consumeTapped(BINDINGS.right)) keys |= CHAIN_KEY.right
+  return keys
 }
 
 /** 1 — 끝났는가. 끝났으면 거둔다 (`ov6_0223E708` · `ov6_0223E700`). 화면은 검게 덮인 채로 둔다 */
@@ -103,7 +116,12 @@ export function spearPillarFxTick(dt: number): void {
   spearPillarLive.acc += Math.min(dt, 0.25) * 60
   let ticks = Math.floor(spearPillarLive.acc)
   spearPillarLive.acc -= ticks
-  while (ticks-- > 0 && c.state !== 11) chainTick(c)
+  // 눌림은 한 프레임에 한 번 — 이 프레임의 첫 틱만 본다 (`pressedKeys`는 프레임 단위다)
+  let keys = chainKeys()
+  while (ticks-- > 0 && c.state !== 11) {
+    chainTick(c, keys)
+    keys = 0
+  }
   const cover = chainCover(c)
   screenTint.alpha = cover.red
   screenTint.color = RED

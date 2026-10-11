@@ -14,8 +14,10 @@
 //     단계 짝수   (2,14) 1~4 · (3,13) 5~8 · (4,12) 9~10 · (5,11) 11~12
 //     단계마다 7틱을 쉬고(`++wait >= 8`) 한 틱에 1씩 간다 — 둘 다 닿은 **다음** 틱에 끝난다
 //
-// ⚠️ **원작은 이 동안 십자키로 eva · evb를 1씩 민다**(`ov6_02240364` 머리의 `pressedKeys`) — 만들 때 남은 조정 손잡이다.
-// 옮기지 않는다: 보는 사람이 모르는 새 맥동이 틀어진다.
+// **십자키 손잡이** (`ov6_02240364` 머리의 `gSystem.pressedKeys`) — 맥동 틱(`pulseStep`)이 불릴 때마다 먼저 눌린 키를 본다.
+// 위 → eva +1(`% 32`) · 아래 → eva −1(0이면 31) · 오른쪽 → evb +1(`% 32`) · 왼쪽 → evb −1(0이면 31)이고, 그 **뒤에** 단계 목표로
+// 한 틱 1씩 수렴한다(아래 갈래). 키는 눌린 **한 프레임**만 보인다 — 맥동 틱이 안 도는 7틱 쉼에 누르면 원작도 놓친다.
+// 닫는 동안(`state` 4)도 같은 함수라 같이 먹는다
 //
 // ⚠️ **틱은 1/60초로 센다** (COMPLETION_20260928 §0의 갈림길)
 
@@ -32,6 +34,9 @@ export interface ChainFx {
   frames: number
   visible: boolean
 }
+
+/** 십자키 비트 (`PAD_KEY_UP` · `DOWN` · `RIGHT` · `LEFT`) — `chainTick`의 `keys` */
+export const CHAIN_KEY = { up: 1, down: 2, left: 4, right: 8 } as const
 
 /** 사슬의 BCA0 길이 (`demo_tengan_gra` 4번) */
 const CHAIN_FRAMES = 201
@@ -55,8 +60,17 @@ function lowTarget(step: number): number {
   return 6
 }
 
+/** 십자키로 eva · evb를 1씩 민다 (`ov6_02240364` 머리 · 32에서 돈다) */
+function nudge(c: ChainFx, keys: number): void {
+  if (keys & CHAIN_KEY.up) c.eva = (c.eva + 1) % 32
+  if (keys & CHAIN_KEY.down) c.eva = c.eva > 0 ? c.eva - 1 : 31
+  if (keys & CHAIN_KEY.right) c.evb = (c.evb + 1) % 32
+  if (keys & CHAIN_KEY.left) c.evb = c.evb > 0 ? c.evb - 1 : 31
+}
+
 /** 한 틱 밀고 둘 다 닿았는가 (`ov6_02240364`) — 닿은 틱이 아니라 **닿아 있음을 본 틱**에 참이다 */
-function pulseStep(c: ChainFx, odd: boolean, step: number): boolean {
+function pulseStep(c: ChainFx, odd: boolean, step: number, keys: number): boolean {
+  nudge(c, keys)
   let a = false, b = false
   if (step === 0) {
     if (c.evb > 16) c.evb--
@@ -83,13 +97,13 @@ function pulseStep(c: ChainFx, odd: boolean, step: number): boolean {
   return a && b
 }
 
-/** 한 틱 (`ov6_0223E574`의 3 · 4) */
-export function chainTick(c: ChainFx): void {
+/** 한 틱 (`ov6_0223E574`의 3 · 4) — `keys`는 이 틱에 새로 눌린 십자키(`CHAIN_KEY` 비트) */
+export function chainTick(c: ChainFx, keys = 0): void {
   if (c.state === 3) {
     let stepped = false
     if (c.step !== PULSE_STEPS) {
       if (++c.wait >= 8) {
-        stepped = pulseStep(c, c.step % 2 === 1, c.step)
+        stepped = pulseStep(c, c.step % 2 === 1, c.step, keys)
         if (stepped) {
           c.wait = 0
           c.step++
@@ -109,7 +123,7 @@ export function chainTick(c: ChainFx): void {
     }
   } else if (c.state === 4) {
     // 기본 갈래(`param2` 60) — 둘 다 0으로
-    if (pulseStep(c, false, 60)) c.state = 11
+    if (pulseStep(c, false, 60, keys)) c.state = 11
   }
 }
 

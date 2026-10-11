@@ -421,6 +421,12 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 원작 그림(판 · 덩이 · 소품)이 선다
    */
   gimmicks: 1,
+  /**
+   * 2 — **창기둥 붉은 사슬(`redChain`)이 BMA0(`demo_tengan_gra` 5번 · 재질 알파 201프레임)를 싣는다** (`import/platinum/demoModels`의
+   * `DEMO_MODELS`). 옛 판은 BCA0만 있어 사슬 세 겹이 늘 같은 빛으로 선다. ⚠️ **옛 판(1)을 안 받는다**(`GROUP_ACCEPTS`에 없다) —
+   * 이미 깐 사람도 이 그룹을 다시 굽는다(사용자 결정 10-11)
+   */
+  demoModels: 2,
 }
 
 export function groupFormat(name: string): number {
