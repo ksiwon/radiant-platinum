@@ -22,7 +22,7 @@ import { POKEBALL, arenaFiles } from './convert'
 import { verifyGlb } from './glb'
 import { decodePng, encodePng } from '../platinum/png'
 import { SPRITE_NAMES } from '../platinum/spriteTable'
-import { HERO_FIELD_CLIPS, clipFilterFor, fieldClipDonor, modelFor } from '../../engine/actor/npcModels'
+import { HERO_FIELD_CLIPS, NPC_RECOLOR, clipFilterFor, fieldClipDonor, modelFor } from '../../engine/actor/npcModels'
 import { TRAINER_MODELS } from './trainerModels'
 import { bundleDeps } from './bundleDeps'
 import { bdspDir, withLocal } from '../../data/romData.testkit'
@@ -249,16 +249,23 @@ suite('인물', () => {
 
   // ⚠️ **굽는 쪽이 둘이라 여기서 브라우저 쪽을 잡는다.** 노드 추출기(`--clip-filter`)가 하나도 안 실어도
   // 이쪽이 싣거나 그 반대면 개발 서버와 설치본의 트레이너가 갈린다 — 개발 서버에서는 멀쩡히 보이므로 눈으로는 안 걸린다
-  it('등신 트레이너 몸에는 클립이 하나도 안 실린다', async () => {
+  it('등신 트레이너 몸에는 말하는 입 하나만 실린다 — 그것이 없는 몸은 하나도 안 실린다', async () => {
+    // `tr0002_00`은 `speak01_b`를 가진 26벌 중 하나다 (턱 · 입술만, `SPEAK_CLIPS`)
     const env = openEnvironment([bytes(person('battle', 'tr0002_00')!)])
     const { glb, stat } = await exportModel(env, encodePng, {
       maxSize: 256, keepClips: true, clipFilter: clipFilterFor('tr0002_00'),
     })
-    expect(stat.anim.clips).toBe(0)
-    // 걸러진 것이 있어야 한다 — 규칙이 아무것도 안 거르면 0이 나올 리 없다
+    expect(stat.anim.clips).toBe(1)
+    // 걸러진 것이 있어야 한다 — 규칙이 아무것도 안 거르면 1이 나올 리 없다
     expect(stat.anim.skipped).toBeGreaterThan(0)
     expect(verifyGlb(glb)).toEqual([])
-  }, 120_000)
+    // 아지트 조무래기는 그 클립이 없다
+    const none = openEnvironment([bytes(person('battle', 'tr1073_00')!)])
+    const bare = await exportModel(none, encodePng, {
+      maxSize: 256, keepClips: true, clipFilter: clipFilterFor('tr1073_00'),
+    })
+    expect(bare.stat.anim.clips).toBe(0)
+  }, 180_000)
 
   // ⚠️ **여기도 굽는 쪽 둘이다.** 필드 동작은 치비 번들에만 있어서 옮겨 와야
   // 하는데, 옮기는 도구가 한동안 파이썬에만 있었다 — 그러면 개발 서버에서는
@@ -278,8 +285,8 @@ suite('인물', () => {
       maxSize: 256, keepClips: true, clipFilter: clipFilterFor(hero),
       clipsFrom: from, borrowOnly: new Set(HERO_FIELD_CLIPS),
     })
-    // 제 클립은 서 있기 · 걷기 · 뛰기 셋이다 (`wait_b` · `walk_b` · `run_b`) — 배틀 클립은 안 싣는다
-    expect(stat.anim.clips).toBe(3)
+    // 제 클립은 서 있기 둘 · 걷기 · 뛰기 넷이다 (`wait_b` · `stand_b` · `walk_b` · `run_b`) — 배틀 클립은 안 싣는다
+    expect(stat.anim.clips).toBe(4)
     expect(stat.borrow?.borrowed).toBe(HERO_FIELD_CLIPS.length)
     expect(stat.borrow?.channels).toBe(1088)
     // 이름이 겹쳐 버린 뼈가 하나라도 있으면 그 자리가 조용히 안 움직인다
@@ -294,6 +301,42 @@ suite('인물', () => {
     for (const name of HERO_FIELD_CLIPS) {
       expect(clips.some((c) => c.name === name), name).toBe(true)
     }
+  }, 180_000)
+
+  // ⚠️ **마스크가 빈 자리를 칠하는 `_Patch`도 굽는 쪽이 둘이다.** 핸섬의 목 앞 V 안감(롬 그림에서는 흰 셔츠 깃 · 자주 넥타이)이 노드 쪽에서만
+  // 칠해지면 개발 서버에서는 멀쩡하고 설치본에서는 회색 삼각형이 남는다 — 눈으로는 안 걸린다
+  const LOOKER = 'fc1051_00-looker'
+  it.runIf(existsSync(join(__dirname, `../../../public/models/npc/${LOOKER}.glb`)))('핸섬 목 앞 안감이 개발 산출물과 같다 — `_Patch` 두 네모', async () => {
+    const env = openEnvironment([bytes(person('field', 'fc1051_00')!)])
+    const spec = NPC_RECOLOR[LOOKER]!
+    const { glb } = await exportModel(env, encodePng, {
+      maxSize: 256, keepClips: false, recolor: spec.paint, ...(spec.drop ? { drop: spec.drop } : {}),
+    })
+    const wearOf = async (g: Uint8Array): Promise<{ width: number, height: number, pixels: Uint8Array | Uint8ClampedArray }> => {
+      const dv = new DataView(g.buffer, g.byteOffset, g.byteLength)
+      const n = dv.getUint32(12, true)
+      const j = JSON.parse(new TextDecoder().decode(g.subarray(20, 20 + n))) as {
+        materials: { name: string, pbrMetallicRoughness: { baseColorTexture: { index: number } } }[]
+        textures: { source: number }[], images: { bufferView: number }[]
+        bufferViews: { byteOffset: number, byteLength: number }[]
+      }
+      const bin = g.subarray(28 + n)
+      const mat = j.materials.find((m) => m.name === 'wear')!
+      const v = j.bufferViews[j.images[j.textures[mat.pbrMetallicRoughness.baseColorTexture.index]!.source]!.bufferView]!
+      return decodePng(bin.subarray(v.byteOffset, v.byteOffset + v.byteLength))
+    }
+    const mine = await wearOf(glb)
+    const want = await wearOf(new Uint8Array(readFileSync(join(__dirname, `../../../public/models/npc/${LOOKER}.glb`))))
+    expect([mine.width, mine.height]).toEqual([want.width, want.height])
+    const px = (im: typeof mine, x: number, y: number): number[] => [...im.pixels.subarray((y * im.width + x) * 4, (y * im.width + x) * 4 + 3)]
+    // 셔츠 깃 두 줄 · 넥타이 네 줄 — 아래 여덟 행 (마스크가 빈 행)
+    for (const y of [248, 251, 255]) {
+      for (const x of [60, 63, 65, 68, 70, 73]) expect(px(mine, x, y), `(${String(x)},${String(y)})`).toEqual(px(want, x, y))
+    }
+    expect(px(mine, 66, 250)).toEqual([0x84, 0x42, 0x73])
+    expect(px(mine, 61, 250)).toEqual([0xef, 0xef, 0xff])
+    // 네모 밖의 안감(뒤쪽)은 그대로 짙은 회색이다
+    expect(px(mine, 20, 250)[0]).toBeLessThan(0x40)
   }, 180_000)
 
   it('그림 번호가 BDSP 번들로 이어진다', () => {

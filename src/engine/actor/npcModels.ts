@@ -236,9 +236,10 @@ export const NPC_MODEL_ALIAS: Readonly<Record<string, string>> = {
  * 눈으로 덮으면 근거가 약해진다 — `npcModels.test`가 이 줄을 지킨다
  */
 export const NPC_MODEL_BUNDLE: Readonly<Record<string, string>> = {
-  // 남자 점원. BDSP에 점원은 여자 하나뿐이라(`clerk`) 점원을 **다 여자로
-  // 통일한다** — 자리가 같은 `TEALA`·`CASHIER_F`와 같은 몸이 된다
-  CASHIER_M: 'fc2024_00',
+  // 남자 점원. BDSP의 점원(`clerk`)은 여자 하나뿐이라 남자 점원 스무 명이 여자 몸으로 섰다. BDSP에 이미 있는 남자 몸 중
+  // 제복 입은 일꾼인 작업원(`worker`)을 쓴다 — 모자(`hat`)와 작업복(`wear`) 재질이 있는 남자 어른이다.
+  // 새 몸을 짓지 않는 가장 싼 길이다 (사용자 결정 2026-10-11)
+  CASHIER_M: 'fc0040_00',
   // 체육관 안내원. 갈색 머리·둥근 색안경·베이지 조끼에 보라 소매까지 같다
   GYM_GUIDE: 'fc2014_00',
   // 갤럭시단 무리. 원작은 넷·셋이 **그림 한 장**인데 그 자리에 단원을
@@ -332,7 +333,15 @@ export const NPC_RECOLOR: Readonly<Record<string, Recolor>> = {
       wear: {
         _SkinColor: '#d1ab6c',              // → #846b42 낙타색 트렌치코트
         _PrimaryColor: '#5a5a5a',           // → #424242 바지·장갑
-        _SecondaryColor: '#b6b6b6',         // → #424242 구두
+        // ⚠️ **`_SecondaryColor`는 목 앞과 상관없다** — 갬블러의 이 채널은 허리 버클 자리(몸 높이 0.57~0.69)뿐이고(작은 어두운 부분)
+        // 롬 그림의 신발 색은 이 채널이 아니다. 목 앞 V에 비치는 회색 삼각형은 **마스크가 비어 있는**(어느 채널에도 안 속한)
+        // 안감 텍셀이다 — 틴트를 못 받아 밑그림의 짙은 회색(#2b2b2b쯤) 그대로 나왔다. 롬 그림 213에서는 그 자리가 흰 셔츠 깃(#efefff)과
+        // 자주색 넥타이(#844273)다. 채널 셋이 다 다른 부위(코트 · 바지와 장갑 · 버클)에 쓰여 옮길 채널이 없으므로, 그 UV 네모 안의
+        // 빈 텍셀을 색 하나로 덮는다 (`_Patch` — `bdsp_bake_albedo.py` · `albedo.ts`). 네모는 목 앞 띠(몸 x ±0.08, 높이 1.0~1.1)가 쓰는
+        // 텍스처 아래쪽 행(`u` 0.245~0.277, `v` 0~0.03)에서 쟀다 — 뒤쪽 안감(`u` 0.5 · 0.0)은 안 건드린다
+        _SecondaryColor: '#b6b6b6',         // → #424242 허리 버클 자리
+        _Patch0: '#efefff@0.235~0~0.29~0.04',          // 셔츠 깃 (롬 #efefff)
+        _Patch1: '#844273@0.2545~0~0.2685~0.04',       // 넥타이 — 띠 가운데 텍셀 네 줄 (롬 #844273)
       },
       metal: { _SkinColor: '#c36c6c' },     // → #7b4242 벨트 버클
     },
@@ -457,16 +466,11 @@ export function buildOf(bundle: string): 'battle' | 'field' {
   return bundle.startsWith('fc') ? 'field' : 'battle'
 }
 
-/**
- * 이 이름의 클립은 없다 — 아무것도 안 싣는 규칙.
- *
- * ⚠️ **빈 문자열이 아니다.** 노드 쪽 `bdspGlb.py --clip-filter`는 빈 값을 「거르지 않음(전부 싣는다)」으로 읽는다.
- * `^$`는 파이썬 `re`와 자바스크립트에서 같이 아무 이름에도 안 맞는다
- */
-const NO_CLIPS = /^$/
+/** 이름 목록 → `^(a|b)$`. 파이썬 `re`와 자바스크립트에서 같은 뜻이다 */
+const clipRe = (names: readonly string[]): RegExp => new RegExp(`^(${names.join('|')})$`)
 
 /**
- * 등신 몸(`tr*`·`pc*`)에서 실을 클립 — **주인공 둘만 서 있기 `wait_b`를 싣는다.**
+ * 등신 몸(`tr*`·`pc*`)에서 실을 클립 — **주인공 둘만 서 있기 `wait_b` · `stand_b`를 싣는다.**
  *
  * 몸 하나에 여덟이 오는데 배틀 클립(`advent_b` · `wait_b` · `order_b` · `lose01_b`)을 부르는 화면이 없다. 배틀 무대에는
  * 사람이 서지 않고(사용자 결정 2026-10-04) 필드의 등신은 서 있기를 치비 `wait_f`나 절차형 자세로 세운다
@@ -477,15 +481,31 @@ const NO_CLIPS = /^$/
  * ⚠️ **주인공만 `wait_b`가 남는다.** `PlayerModel`이 `pickGaitClips`로 이동 클립을 고를 때 서 있는 동안의
  * 자세(`GaitPlayer`의 `wait`)를 몸의 `wait_b`에서 가져온다. 이것을 빼면 서 있는 주인공이 절차형 쉬는 자세로 떨어진다
  *
+ * ⚠️ **`stand_b`는 NPC가 꿔 간다.** 주인공 몸(`pc0001_00` · `pc0002_00`)의 `stand_b`는 1.5초에 다리가 체중을 옮기는
+ * 필드의 서 있기다. 등신 NPC가 그 몸으로 옮겨(`retargetClip`) 선다 — 절차형 숨쉬기보다 낫다. `wait_b`와 같은 1.5초지만
+ * 배틀 자세(`wait_b`)가 아니다. 주인공 의상 열세 벌 중 `_00`만 싣는다(`NPC_BUNDLE.hero` · `heroine`)
+ *
  * ⚠️ **굽는 쪽 둘이 이것을 같이 본다.** `tools/extract/npcModels.mjs`는
  * `.source`를 파이썬 `re`에 그대로 넘기고(`bdspGlb.py --clip-filter`),
  * `src/import/bdsp/convert.ts`는 이 정규식을 그대로 쓴다. 따로 적으면
  * 개발 서버와 설치본이 다른 클립을 싣는다
  */
-const HERO_IDLE_CLIP_NAMES = ['wait_b'] as const
+const HERO_IDLE_CLIP_NAMES = ['wait_b', 'stand_b'] as const
 
-/** 이름 목록 → `^(a|b)$`. 파이썬 `re`와 자바스크립트에서 같은 뜻이다 */
-const clipRe = (names: readonly string[]): RegExp => new RegExp(`^(${names.join('|')})$`)
+/**
+ * 트레이너 몸에서 실을 **말하는 입** 클립 — `speak01_b` 1.33초.
+ *
+ * 등신 124벌 중 26벌에만 있다 (`raw/AssetAssistant/Characters/persons/battle` 클립 이름을 다 훑은 값 — 트레이너 `tr0001` ·
+ * `tr0002` · `tr1062`~`tr1097`의 일부 · `tr2003`~`tr2011`). 없는 몸에는 이 정규식이 아무것도 안 걸러 오므로 모든 등신
+ * 트레이너에 같은 규칙을 건다. ⚠️ 클립은 몸 전체 트랙을 담고 있다 — 읽는 쪽(`pickSpeakClip`)이 입 뼈 회전만 쓴다.
+ * 말을 거는 동안 상대의 입만 움직인다 (`scene/NpcModels`)
+ *
+ * ⚠️ **굽는 쪽 둘이 이것을 같이 본다** (`HERO_IDLE_CLIP_NAMES`와 같은 이유)
+ */
+const SPEAK_CLIP_NAMES = ['speak01_b'] as const
+
+/** 말하는 입 클립 정규식. 클립을 읽는 쪽(`actor/clipGait`)도 같은 이름으로 찾는다 */
+const SPEAK_CLIPS = clipRe(SPEAK_CLIP_NAMES)
 
 /**
  * 주인공 몸에만 더 싣는 **걷기와 뛰기**.
@@ -517,11 +537,11 @@ export const HERO_GAIT_CLIPS = clipRe(HERO_GAIT_CLIP_NAMES)
  */
 const CHIBI_GAIT_CLIPS = clipRe(['walk_f', 'run_f', 'wait_f'])
 
-/** 이 번들에서 실을 클립. 없으면 `null`이고 그때는 아무것도 안 싣는다 */
+/** 이 번들에서 실을 클립. 등신 트레이너는 말하는 입 하나뿐이고 주인공은 서기 · 걷기 · 뛰기가 더 든다 */
 export function clipFilterFor(bundle: string): RegExp {
   const base = baseBundle(bundle)
   if (buildOf(base) === 'field') return CHIBI_GAIT_CLIPS
-  if (base !== NPC_BUNDLE.hero && base !== NPC_BUNDLE.heroine) return NO_CLIPS
+  if (base !== NPC_BUNDLE.hero && base !== NPC_BUNDLE.heroine) return SPEAK_CLIPS
   return clipRe([...HERO_IDLE_CLIP_NAMES, ...HERO_GAIT_CLIP_NAMES])
 }
 

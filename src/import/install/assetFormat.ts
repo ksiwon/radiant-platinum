@@ -234,6 +234,10 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 주인공이 계속 절차형으로만 낚시한다
    */
   /**
+   * 19 — **등신 NPC가 주인공의 서 있기 `stand_b`를 꿔 서고, 트레이너 26벌이 말하는 입 `speak01_b`를 싣는다**
+   * (`engine/actor/npcModels`의 `clipFilterFor`). 주인공 둘 번들에 `stand_b`(1.5초)가 늘고, 등신 트레이너 몸 중 `speak01_b`를 가진 26벌에
+   * 그 클립이 실린다. 옛 판(18)에는 둘 다 없어서 서 있는 NPC가 절차형 숨쉬기로 서고 말하는 입이 안 움직인다 — 안 받는다
+   *
    * 18 — **등신 몸에 배틀 클립을 안 싣는다** (`engine/actor/npcModels`의 `clipFilterFor`). 배틀 무대에는 사람이 안 서서(사용자 결정 2026-10-04)
    * 등장 · 쉬기 · 지시 · 패배(`advent_b` · `wait_b` · `order_b` · `lose01_b`)를 부르는 화면이 없다. 주인공 둘만 서 있기 `wait_b`와
    * 걷기 · 뛰기를 남긴다(`PlayerModel`이 서 있는 자세를 거기서 가져온다). 새로 구운 108벌 대 옛 `public/models/npc`로 잰 클립 접근자 합계가
@@ -258,7 +262,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 쪽찐 할머니 · `fc2022`의 옷이 통째로 잘려 머리 · 손 · 발만 떠 있었고, 사이클리스트 헬멧 · 안경알이 사라졌다.
    * 파도타기 · 공중날기 포켓몬(`models/pcParts.glb`)의 눈도 알파가 거의 0이라 잘려 있었다
    */
-  npcModels: 18,
+  npcModels: 19,
   /**
    * 7 — **로토무 오라가 테두리로 선다.** 원판은 깊이만 쓰는 마스크(`FireMask`)와 그 바깥을 그리는 하늘색 껍질(`FireCore`)의 짝인데,
    * 마스크를 버리고 껍질을 불투명으로 세워 몸 전체가 하늘색 덩어리였다. 마스크 조각을 남기고 두 재질에 `extras.role`을 적는다
