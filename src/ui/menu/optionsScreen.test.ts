@@ -37,6 +37,8 @@ describe('「처음부터」의 설명', () => {
 
   it('지우기 전에 파일로 받는다는 것을 말한다', () => {
     expect(resetText(0).help).toContain('세이브 파일로 받고')
+    // 「한 / 벌을」로 갈리지 않는다
+    expect(resetText(0).prompt).toContain('한 벌을')
     expect(resetText(1).help).toContain('saved as a file')
     expect(resetText(2).help).toContain('セーブファイルとして保存')
   })
