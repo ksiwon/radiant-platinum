@@ -7,7 +7,7 @@ import type { NpcActor } from '../engine/actor/npcs'
 import {
   deviceMaterials, ELITE_FOUR_DOOR_GFX, eliteDoorShown, hideDevices, MISFIT_ROOMS, placementOf, ROOM_ALIAS, roomFor,
 } from './BdspRoom'
-import { ROOM_CLOSED_CELLS } from './roomClosed'
+import { paintClosed, ROOM_CLOSED_CELLS } from './roomClosed'
 import { roomBundles } from '../import/bdsp/convert'
 import { DATA, withData, withModels } from '../data/romData.testkit'
 
@@ -268,6 +268,29 @@ withData('maps.json', 'events.json', 'matrices/interiors.json', 'matrices/interi
       }
       expect(users).toBe(10)
       expect(standing).toEqual(['C05R0601(9,4)'])
+    })
+
+    it('맵 110은 BDSP 방이 안 서므로 막힌 칸이 0이다 — 방이 서는 맵에서만 막고, 맵을 떠나면 원래대로 되돌린다', () => {
+      const maps = (JSON.parse(readFileSync(resolve(DATA, 'maps.json'), 'utf8')) as { maps: MapHeader[] }).maps
+      const meta = (JSON.parse(readFileSync(resolve(DATA, 'matrices/interiors.json'), 'utf8')) as { matrices: Record<string, TileMeta> }).matrices
+      const bin = readFileSync(resolve(DATA, 'matrices/interiors.bin'))
+      const rooms = new Set((JSON.parse(readFileSync(resolve(DATA, '../models/room/index.json'), 'utf8')) as { rooms: string[] }).rooms)
+      world.maps = maps
+      const mx = meta['258']!
+      const fresh = (): Uint16Array => new Uint16Array(bin.buffer.slice(bin.byteOffset + mx.byteOffset, bin.byteOffset + mx.byteOffset + mx.tileWidth * mx.tileHeight * 2))
+      const closedCount = (t: Uint16Array): number => ROOM_CLOSED_CELLS[258]!.filter(([x, z]) => (t[z * mx.tileWidth + x]! & 0x8000) !== 0).length
+      const was = new Map<string, number>()
+      for (const id of [109, 110]) {
+        const tiles = fresh()
+        const wantClosed = roomFor(id, rooms) !== null
+        expect(closedCount(tiles), String(id)).toBe(0)
+        paintClosed(tiles, mx.tileWidth, 258, wantClosed, was, 0x8000)
+        expect(closedCount(tiles), String(id)).toBe(wantClosed ? ROOM_CLOSED_CELLS[258]!.length : 0)
+        paintClosed(tiles, mx.tileWidth, 258, false, was, 0x8000)
+        expect(tiles).toEqual(fresh())
+      }
+      expect(roomFor(110, rooms)).toBeNull()
+      expect(roomFor(109, rooms)).toBe('r218r0101')
     })
 
     it('문에서 걸어 닿는 칸 중 BDSP 바닥 상자 밖은 전부 막혀 있다', () => {
