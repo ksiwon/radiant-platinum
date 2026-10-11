@@ -33,7 +33,8 @@ import { BODY_FADE_SECONDS, ClockReader, FRAME_SECONDS, battleClock } from '../.
 import { EncounterBurst } from './EncounterBurst'
 import { DistortionArena } from './DistortionArena'
 import { loadMotionTiming, loadMoves, loadSpecies } from '../../data/gameData'
-import { fieldHiddenForBattle, useBattleStore } from '../../state/battleStore'
+import { battleTerrainNow, fieldHiddenForBattle, useBattleStore } from '../../state/battleStore'
+import { Terrain } from '../../engine/battle/terrain'
 import type { ViewMon } from '../../engine/battle/view'
 import { SLOTS, type SlotId } from '../../engine/battle/events'
 import {
@@ -46,7 +47,8 @@ import { recallSeconds } from '../../engine/battle/captureTiming'
 import { bodyColor } from './bodyColor'
 import { loadMonSprite, loadSpriteIndex, spriteFit } from './monSprite'
 import { loadMonModel, makeBody, motionClipSeconds, play, type MonBody, type MotionName } from './monModel'
-import { glow, ownMaterials, releaseMaterials, seqMotionLive } from './seqBody'
+import { darken, glow, ownMaterials, releaseMaterials, seqMotionLive } from './seqBody'
+import { GIRATINA_LAND_SECONDS, giratinaDropAt, giratinaLanding, giratinaStartHeight } from './giratinaDrop'
 import { spriteKey } from '../../engine/pokemon/form'
 import { MoveVfx } from './MoveVfx'
 import { warmFxEffects } from './fx/BdspEffect'
@@ -280,6 +282,8 @@ function Slot({
     // 몸이 바뀌면 시간도 다시 센다 — 안 그러면 새 모델이 앞 모델을 기다린
     // 시간을 첫 프레임에 통째로 소비한다
     stageTime.current.reset()
+    dropAt.current = null
+    if (!mine) giratinaLanding.at = null
     pending.current = null
     // 거두는 몸은 그 몸이 다 사라질 때까지 로케이터를 내준다(`ee610`의 빔이 그 몸을 겨눈다) — 기록은 거두기가 끝나면 지운다
     if (!recall) clearSlotBody(slot)
@@ -346,7 +350,10 @@ function Slot({
   // 몸이 바뀌거나 자리가 내려가면 그 몸이 떼어 낸 재질을 놓는다 (`ownMaterials`)
   useEffect(() => () => { if (model) releaseMaterials(model) }, [model])
   // 자리가 내려가면 몸 기록도 지운다
-  useEffect(() => () => { clearSlotBody(slot) }, [slot])
+  useEffect(() => () => {
+    clearSlotBody(slot)
+    if (!mine) giratinaLanding.at = null
+  }, [slot, mine])
 
   // 이번 커밋에 그린 마리를 적어 둔다. ⚠️ **위 효과보다 뒤에 둔다** — 효과는 적힌 차례로
   // 돌므로, 위에서는 앞 커밋의 마리를 읽고 여기서 이번 마리로 갈아 적는다
@@ -406,6 +413,10 @@ function Slot({
   const standing = useBattleStore((s) => !mine && (s.kind === 'wild' || s.kind === 'safari'))
   const cast = useBattleStore((s) => s.view?.lastMove ?? null)
   const struck = useBattleStore((s) => s.view?.lastHit ?? null)
+  // ⚠️ **깨어진 세계의 기라티나만은 서 있지 않다** (`Task_SetGiratinaEncounter` · `giratinaDrop`) — 28프레임 숨었다가 위에서
+  // 34프레임 등속으로 내려앉고, 착지에 울며 눌린 어둠이 걷힌다. 등판 페이드(`shown`)는 같이 안 건다(몸을 가라앉히면 낙하가 틀어진다)
+  const dropAt = useRef<number | null>(null)
+  const dropHeight = useRef(0)
   useEffect(() => {
     if (cast?.by !== slot) return
     lunge.current = 1
@@ -589,10 +600,25 @@ function Slot({
       lunge.current = 0
       flinch.current = 0
     }
+    // 기라티나 낙하 — 몸이 서는 순간부터 센다. 시작 높이는 그때의 카메라로 잰다(발끝이 화면 위 밖에서 시작 — `giratinaStartHeight`)
+    let drop: ReturnType<typeof giratinaDropAt> | null = null
+    if (standing && want === 1 && battleTerrainNow() === Terrain.GIRATINA) {
+      if (dropAt.current === null) {
+        dropAt.current = battleClock.now()
+        giratinaLanding.at = dropAt.current + GIRATINA_LAND_SECONDS
+        const cam = battleStage.position, look = battleStage.target
+        dropHeight.current = giratinaStartHeight(
+          [cam.x, cam.y, cam.z], [look.x, look.y, look.z], battleStage.fov,
+          [STAGE_ORIGIN.x + spot.x, STAGE_ORIGIN.y + GROUND, STAGE_ORIGIN.z + spot.z],
+        )
+      }
+      drop = giratinaDropAt((battleClock.now() - dropAt.current) / FRAME_SECONDS)
+    }
+    darken(model, drop?.dark ?? 0)
     // 다른 시퀀스(포획 · 기절)의 카메라가 이 몸 곁을 지나는 동안 감춘다 (`PokemonVisibleOther`)
     const seqHide = (seq !== null && !seq.visible) || seqStage.hide[slot] !== undefined
 
-    g.visible = t > 0.01 && caughtScale > 0.01 && !blink && !hidden && !seqHide
+    g.visible = t > 0.01 && caughtScale > 0.01 && !blink && !hidden && !seqHide && (drop?.visible ?? true)
     if (squashX !== 1 || squashY !== 1) {
       g.scale.set(g.scale.x * squashX, g.scale.y * squashY, g.scale.z * squashX)
     }
@@ -606,7 +632,7 @@ function Slot({
     // 등판 · 퇴장의 가라앉음은 시퀀스가 몸을 쥐지 않을 때만 — 쥐었으면(내보내기 · 기절) 시퀀스가 자리를 정하고, 숨은 몸이 땅 밑에
     // 있으면 그 몸의 로케이터를 겨눈 카메라가 0.5m 아래를 본다(실측)
     const sink = seq?.intro || seq?.motion?.name === 'down' ? 0 : (1 - t) * 0.5
-    g.position.y = GROUND + bob * t - sink + (seq ? seq.offset[1] + seq.shake[1] : 0)
+    g.position.y = GROUND + bob * t - sink + (seq ? seq.offset[1] + seq.shake[1] : 0) + (drop ? drop.lift * dropHeight.current : 0)
     glow(model, seq?.glow ?? null)
 
     // 어디를 보는가.
@@ -636,6 +662,10 @@ function Slot({
         ? seq.motion.name === 'attack'
           ? special.current ? 'special' : 'physical'
           : seq.motion.name
+        // 기라티나는 착지에 첫 동작을 튼다 (`PokemonSprite_LoadAnim(…, 0, …)`) — 그 길이만큼 쥔다
+        : drop?.landed === true && giratinaLanding.at !== null
+          && battleClock.now() < giratinaLanding.at + ((model ? motionClipSeconds(model, 'enter') : null) ?? 0.7)
+        ? 'enter'
         // 지는 중에는 동작을 안 갈아 끼운다 — 맞은 자세 그대로 가라앉는다
         : leaving.current
         ? motion.current
@@ -694,7 +724,7 @@ function Slot({
     // 그림자까지 같이 깜빡이면 땅이 번쩍인다
     const s = shade.current
     if (s) {
-      s.visible = t > 0.01 && caughtScale > 0.01 && !seqHide
+      s.visible = t > 0.01 && caughtScale > 0.01 && !seqHide && (drop?.shadow ?? true)
       // 볼 빛 속에 자라나는 몸 · 볼로 줄어드는 몸은 그림자도 같이 (`PokemonScale` · `PokemonIntroMotion`)
       s.scale.setScalar(Math.max(1e-4, t * caughtScale * (seq ? seq.scale[0] : 1)))
     }

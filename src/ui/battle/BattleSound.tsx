@@ -14,7 +14,9 @@ import { SLOTS, type SlotId } from '../../engine/battle/events'
 import { FRAME_SECONDS, battleClock } from '../../engine/battle/presentationClock'
 import { STATUS_ANIMS } from '../../engine/battle/vfx'
 import { ballOpen } from '../../scene/battle/stageRefs'
-import { useBattleStore } from '../../state/battleStore'
+import { giratinaLanding } from '../../scene/battle/giratinaDrop'
+import { Terrain } from '../../engine/battle/terrain'
+import { battleTerrainNow, useBattleStore } from '../../state/battleStore'
 
 /**
  * 지형 번쩍임 둘째 소리까지 (ms). **원작이 스물세 프레임에 낸다** —
@@ -157,7 +159,13 @@ export function BattleSound({ drainMs = 0 }: { drainMs?: number }) {
         }
         // ⚠️ **볼이 열릴 때 난다** (`stageRefs.ballOpen`). 던지는 순간에 같이 내면 볼이
         // 아직 날아가는 중에 「펑」과 울음이 겹치고, 몸이 나오는 순간에는 조용했다
-        if (wildFoe && mon.side === 'p2') {
+        if (wildFoe && mon.side === 'p2' && battleTerrainNow() === Terrain.GIRATINA) {
+          // 깨어진 세계의 기라티나는 내려앉아 **착지에** 운다 (`Task_SetGiratinaEncounter`의 `Species_PlayDelayedCry`) — 등판 소리는 없다
+          later(slot, whenClock((now) => giratinaLanding.at !== null && now >= giratinaLanding.at, () => {
+            delete waiting.current[slot]
+            if (species !== null) void music.playCry(species, { defaultChatot })
+          }))
+        } else if (wildFoe && mon.side === 'p2') {
           later(slot, null)
           out()
         } else {
