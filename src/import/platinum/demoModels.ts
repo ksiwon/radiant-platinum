@@ -39,7 +39,7 @@ interface DemoModel {
 /** 구울 것. 번호는 위 머리말의 원작 자리 그대로다 */
 export const DEMO_MODELS: readonly DemoModel[] = [
   { name: 'portal', narc: TITLE_DEMO, model: 16, anims: [18, 17] },
-  { name: 'redChain', narc: TENGAN, model: 6, anims: [4] },
+  { name: 'redChain', narc: TENGAN, model: 6, anims: [4, 5] },
   { name: 'orbUxie', narc: TENGAN, model: 12, anims: [11] },
   { name: 'orbAzelf', narc: TENGAN, model: 8, anims: [7] },
   { name: 'orbMesprit', narc: TENGAN, model: 10, anims: [9] },
