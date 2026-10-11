@@ -2875,6 +2875,10 @@ three(`GLTFLoader`)도 그대로라 `emissiveIntensity`를 올려도 검정 × �
 짓는데 원작 판이 1(또는 그 이상)에 있어서다. 벌마다 들어 올리는 값은 `DUNGEON_LIFT`가 쥐고 `BdspDungeon.test`가 같은 방법으로 다시 잰다(들어 올린 뒤 닿는 칸의 8할이
 원작 높이 0.5칸 안). 문에서 닿는 칸만 센다 — 청크보다 작은 던전은 나머지가 기본 높이 1의 빈 칸이라 전 칸으로 재면 단마다 다른 것처럼 보인다.
 
+**기하는 빠지지 않는다.** glb를 인스턴스까지 펴서 센 삼각형이 원본 번들의 켜진 `MeshFilter` 메시 삼각형 합과 138벌 중 127벌이 **꼭 같다**(`.audit/probe/mapsGlb.mjs` ↔
+UnityPy로 센 합). 나머지 11벌은 설계된 예외뿐이다 — 꺼 둔 가짜 실내 `RoomInner`를 세우는 것(`d05r0114` · `d05r0115` 312 · `d11r0101` 224 · `d13r0101` 22 · `ACTIVE_IN_PLAY`)과
+유니티 기본 Plane(200삼각형, `m_FileID` ≠ 0이라 번들 안 메시 표에 없다)이다(대습초원 다섯 · `d10r0101` · `d17r0101` 각 200).
+
 **눈 땅 그림은 딴 번들에 있다.** `M_C_001_Ground_03` · `…_SnowCover_01` · `…_SnowSeam_01` · `…_CliffSnow_01`의 `_MainTex` · `_LayerTex`는 `Dpr/common_resources`의 `snow`(512)를
 `PPtr.m_FileID`로 가리킨다. 그 번들을 같이 열지 않으면 그림 없는 회색 0.9 한 색으로 구워진다 — 천관산(`d05r0104` · `d05r0105`) · 예지의 호수(`d29r0101` ·
 `d29r0102`) · 키사키(`area009`). 야외 · 던전을 굽는 쪽(`convert.ts`의 `COMMON_RESOURCES`)이 그 번들을 환경에 얹는다.
