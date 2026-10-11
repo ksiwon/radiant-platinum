@@ -20,7 +20,7 @@ import type { WebGPURenderer } from 'three/webgpu'
 import type { MapGrid } from '../engine/map/grid'
 import { npcActors, type NpcActor } from '../engine/actor/npcs'
 import { npcSprite } from '../engine/actor/sprites'
-import { overworldMon } from '../engine/actor/overworldMon'
+import { overworldMonOfGfx } from '../engine/actor/overworldMon'
 import { DIR_STEP } from '../engine/script/movement'
 import { worldState } from '../state/worldState'
 import { world } from '../engine/map/world'
@@ -151,9 +151,8 @@ export function NpcMonModels({ grid, layer, taken, onStanding }: Props) {
       if (count >= MAX) break
       if (!actor.visible || taken?.has(actor) === true) continue
       if (Math.abs(actor.x - player.x) > RANGE || Math.abs(actor.z - player.z) > RANGE) continue
-      const sprite = npcSprite(actor.gfx)
-      if (sprite === null) continue
-      const ref = overworldMon(sprite.name)
+      // 그림 표에 줄이 없는 번호도 있다(따라다니는 마리 열 종) — 번호로 직접 찾는다
+      const ref = overworldMonOfGfx(actor.gfx, npcSprite(actor.gfx)?.name ?? null)
       if (ref === null) continue
 
       const kind = `${String(ref[0])}/${String(ref[1])}`
@@ -202,7 +201,8 @@ export function NpcMonModels({ grid, layer, taken, onStanding }: Props) {
       )
       // 방향 그림이 없는 마리(한 장짜리 앞모습)는 원작에서 늘 카메라 쪽, 곧 남쪽을 본다.
       // 배치표 방향(대개 북0)을 따르면 기라티나처럼 주인공에게 등을 보인다
-      const step = DIR_STEP[sprite.directional ? actor.dir & 3 : 1]!
+      // 그림 표에 줄이 없는 따라다니는 마리는 걷는 쪽을 본다 (방향 그림이 있는 쪽)
+      const step = DIR_STEP[(npcSprite(actor.gfx)?.directional ?? true) ? actor.dir & 3 : 1]!
       const want = Math.atan2(step.x, step.z)
       // ⚠️ **몸을 즉시 돌려세우지 않는다.** 방향 번호는 네 값뿐이라 그대로 넣으면
       // 90°가 한 프레임에 튄다. 사람 모델과 같은 빠르기로 최단 호를 감는다 (`NpcModels`)
