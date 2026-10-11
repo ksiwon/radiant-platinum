@@ -68,6 +68,8 @@ const harnessOf = (files) => {
 
 /** `--part=N`을 읽어 시작점을 낸다. 파트가 아니면 null */
 export function probePartStart(n, saveFlag) {
+  // ⚠️ **칸 판은 journey가 돈다** (사용자 10-11 · `JOURNEY_CELLS_20261011.md`). 탐침이 `--part`로 돌면 칸 봉투(`cell-N.json`)를 덮는다
+  throw new Error(`--part=${String(n)} — 없어졌다. 칸은 journey로 돈다: pnpm part <1~16> (탐침은 --save로 진단만)`)
   const def = PROBE_PARTS[n]
   if (def === undefined) throw new Error(`--part=${String(n)} — 이 탐침이 도는 파트가 아니다`)
   const start = partStart(n, saveFlag)

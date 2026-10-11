@@ -1,4 +1,5 @@
 // 짧은 재현 — **송별의 샘에서 명예의 전당까지** (지시서 JOURNEY_LEAGUE_20260927)
+// ⚠️ **칸 판에는 안 쓴다** (사용자 10-11) — 그 다리는 `journey.mjs --cell=8~16`이 같은 걸음으로 돈다(`JOURNEY_CELLS_20261011.md`). 이 파일은 `--save`로 도는 진단 탐침으로만 남는다
 //
 //     node tools/e2e/_league.mjs [--headed] [--save=.audit/journey/probe-sendoff.rpsave]
 //                                [--budget=7200] [--leg=j,k,l,m] [--url=http://…]

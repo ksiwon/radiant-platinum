@@ -43,7 +43,10 @@ import { LOAD_SPY, startLoadSpy } from './loadSpy.mjs'
 import { classify, INFRA, SHAPE, SLOW } from './budget.mjs'
 import { missingData, trainersOn } from './route.mjs'
 import { resumableAt, writeSegment } from './segments.mjs'
-import { JOURNEY_PARTS, keepPartEnd, partEnvelope, partStart, PARTS_DIR } from './parts.mjs'
+import { CELLS, CELL_COUNT, keepPartEnd, partEnvelope, partStart, PARTS_DIR } from './parts.mjs'
+// 칸 8~16(깨어진 세계 · 리그 다리)의 걸음 — 예전 탐침 `_dw` · `_league`가 부르던 것을 journey가 그대로 부른다 (사용자 10-11)
+import { MAP as DW_MAP, candiceToAcuity, catchGiratina, coronetToSpear, veilstoneHQ, walkDistortion } from './badgesDW.mjs'
+import { MAP as LEAGUE_MAP, beaconToVictory, eliteFour, sendoffToBeacon, victoryRoad } from './badgesLeague.mjs'
 import { landDrawn, levelLook } from './partChecks.mjs'
 import {
   bindingDigest, dataDigest, describeEnvironment, rosterOf, sealEvidence,
@@ -93,26 +96,35 @@ const FROM = flag('from')
  */
 const ALLOW_HARNESS = args.includes('--allow-harness')
 /**
- * **파트 하나만 돈다** (`--part=1|2|3`, `docs/orders/JOURNEY_PARTS_20261008.md`).
+ * **칸 하나만 돈다** (`--cell=1~16`, `docs/orders/JOURNEY_CELLS_20261011.md`).
  *
- * 앞 파트의 끝 세이브(`.audit/parts/part-(N-1).rpsave`)와 그 옆의 하네스 기억에서
- * 시작해 그 파트의 마지막 구간까지 걷고, 관장을 이긴 마을 센터에서 회복한 뒤
- * ⑬의 끝 리포트를 `part-N.rpsave`로 쓴다. 봉투는 `.audit/parts/part-N.json`이다 —
- * `.audit/journey.json`은 안 덮는다. `--save`를 주면 그 세이브에서 시작하는 진단이다
+ * 앞 칸의 끝 세이브(`.audit/parts/cell-(N-1).rpsave`)와 그 옆의 하네스 기억에서 시작한다.
+ * · 배지 칸(1~7): 그 칸의 마지막 구간까지 걷고, 관장을 이긴 마을 센터에서 회복한다
+ * · 다리 칸(8~16): 깨어진 세계 · 리그 다리 하나를 걷고 그 다리의 도착 판정으로 끝난다
+ * 그 뒤 ⑬의 끝 리포트를 `cell-N.rpsave`로 쓴다. 봉투는 `.audit/parts/cell-N.json`이다 —
+ * `.audit/journey.json`은 안 덮는다. `--save`를 주면 그 세이브에서 시작하는 진단이다.
+ *
+ * ⚠️ 안에서는 예전 이름(`PART`)을 그대로 쓴다 — 칸 표의 한 줄이다
  */
-const PART_N = flag('part') === null ? null : Number(flag('part'))
-const PART = PART_N === null ? null : JOURNEY_PARTS[PART_N] ?? null
-if (PART_N !== null && PART === null) {
-  console.error(`\n--part=${String(flag('part'))} — journey가 도는 파트는 1~3이다\n`)
+if (flag('part') !== null) {
+  console.error('\n--part는 없어졌다 — 칸으로 돈다: --cell=1~16 (docs/orders/JOURNEY_CELLS_20261011.md)\n')
   process.exit(1)
 }
+const PART_N = flag('cell') === null ? null : Number(flag('cell'))
+const PART = PART_N === null ? null : CELLS[PART_N] ?? null
+if (PART_N !== null && PART === null) {
+  console.error(`\n--cell=${String(flag('cell'))} — 칸은 1~${String(CELL_COUNT)}이다\n`)
+  process.exit(1)
+}
+/** 다리 칸인가 — 구간을 안 걷고 다리 하나를 걷는다 */
+const LEG_CELL = PART?.kind === 'leg'
 if (PART !== null && FROM !== null) {
-  console.error('\n--part와 --from은 같이 못 쓴다 — 파트는 앞 파트의 끝 세이브에서 시작한다\n')
+  console.error('\n--cell과 --from은 같이 못 쓴다 — 칸은 앞 칸의 끝 세이브에서 시작한다\n')
   process.exit(1)
 }
 const PART_START = PART === null ? null : partStart(PART_N, flag('save'))
 if (PART_START !== null && !PART_START.ok) {
-  console.error(`\n파트 ${String(PART_N)}을 못 시작한다 — ${PART_START.why.join(' · ')}\n`)
+  console.error(`\n칸 ${String(PART_N)}을 못 시작한다 — ${PART_START.why.join(' · ')}\n`)
   process.exit(1)
 }
 
@@ -1157,12 +1169,13 @@ const resume = PART !== null
   ? (PART_N === 1 ? { ok: false, segment: null, why: '' }
     : {
       ok: true, why: '', notes: [],
-      segment: { id: PART.first, save: PART_START.save, at: PART_START.at, verifiedAt: `파트 ${String(PART_N - 1)} 끝` },
+      // 다리 칸은 구간을 안 걷는다 — 구간 id보다 뒤인 값으로 두어 어느 구간도 「앞이라 건너뛴다」에 안 걸리게 한다
+      segment: { id: LEG_CELL ? '~' : PART.first, save: PART_START.save, at: PART_START.at, verifiedAt: `칸 ${String(PART_N - 1)} 끝` },
     })
   : FROM === null ? { ok: false, segment: null, why: '' }
     : resumableAt(FROM, SHORTCUTS, { allowHarness: ALLOW_HARNESS })
 if (PART !== null) {
-  console.log(`  파트 ${String(PART_N)} — ${PART.what} · 구간 ${PART.first ?? '새 게임'}~${PART.last} · 줄 ${String(PART.cases.length)}개`)
+  console.log(`  칸 ${String(PART_N)} — ${PART.what} · ${LEG_CELL ? `다리 ${PART.leg}` : `구간 ${PART.first ?? '새 게임'}~${PART.last}`} · 줄 ${String(PART.cases.length)}개`)
   if (PART_START.save !== null) console.log(`  시작 세이브 ${PART_START.save} (${String(PART_START.digest)})`)
   for (const w of PART_START.why) console.log(`  ⚠️ 이 판은 **진단**이다 — ${w}`)
 }
@@ -1784,8 +1797,93 @@ try {
           + ` · 파도타기 ${String(PART_START.memory.surf)} · 락클라임 ${String(PART_START.memory.climb)}`)
         api.loadHarnessMemory(PART_START.memory)
       }
-      for (const stop of AFTER_STOPS) {
-        // 파트의 마지막 구간을 넘으면 멈춘다 — 다음 파트의 앞 걸음을 밟지 않는다
+      /**
+       * **산 약은 가방에서 읽는다** (설계서 `JOURNEY_CELLS_20261011.md` §3). 같은 묶음 한가운데(구간 32 · 35 · 45)에서 시작하는 칸은
+       * 앞 구간이 산 기록(`potionBuy`)이 없다 — 그대로 두면 관장 앞에서 약을 안 쓴다. 가방의 좋은상처약 개수를 산 몫으로 친다
+       */
+      if (PART !== null && resume.ok) {
+        const have = ((await api.bagState())?.items ?? []).filter((one) => one.item === SUPER_POTION).reduce((n, one) => n + one.count, 0)
+        if (have > 0) potionBuy = { ok: true, bought: have, from: '가방 (칸 시작)' }
+        log(`  칸 시작 — 가방의 좋은상처약 ${String(have)}개`)
+      }
+      /**
+       * **다리 칸** (칸 8~16) — 예전 탐침 `_dw` · `_league`의 다리 하나를 그대로 걷는다. 구간은 안 걷는다.
+       * 사탕은 단순 레벨업을 빨리 끝내는 정상 행동이다(메모 journey-levels-by-candy · 사용자 10-11) — 칸 표의 값을 다리 앞에서 먹인다
+       * (칸 11은 깨어진 세계에 든 뒤, 칸 13은 시작할 때. 나머지 다리는 걸음 함수가 제 자리에서 먹인다)
+       */
+      let legReached = null
+      if (LEG_CELL) {
+        const legCtx = {
+          log, setWalls,
+          candyUp: (slot, family, level) => candyUp(slot, family, level),
+          screen: () => page.evaluate(() => (document.body.innerText ?? '').replace(/\s+/g, ' ')).catch(() => ''),
+          menuState: () => page.evaluate(async () => {
+            const m = await import('/src/state/menuStore.ts')
+            const st = m.useMenuStore.getState()
+            return { top: st.top, summarySlot: st.summarySlot, choosingMon: st.choosingMon }
+          }).catch(() => null),
+          out: SHOTS,
+        }
+        const feed = async () => {
+          if (PART.candy === null) return
+          const levels = PART.candy.split(',').map(Number)
+          for (let slot = 0; slot < levels.length; slot++) {
+            log(`  사탕 ${String(slot)} → L${String(levels[slot])} · ${JSON.stringify(await candyUp(slot, null, levels[slot]))}`)
+          }
+        }
+        const v = async () => (await api.storyVars()) ?? {}
+        /** 다리 글자 → 걷기 · 도착 판정. 판정은 예전 탐침의 `reached()` 그대로다 */
+        const LEGS = {
+          e: [() => candiceToAcuity(api, legCtx), async () => ((await v()).acuity ?? 0) >= 2],
+          f: [() => veilstoneHQ(api, legCtx), async () => (await v()).freed === true],
+          g: [() => coronetToSpear(api, legCtx), async () => (await api.now()).map === DW_MAP.dw1F],
+          h: [async () => { await feed(); return walkDistortion(api, legCtx) },
+            async () => { const st = await api.distortionState(); return st !== null && st.map === DW_MAP.giratinaRoom }],
+          i: [() => catchGiratina(api, legCtx),
+            async () => (await api.now()).map === DW_MAP.sendoffSpring && (await v()).giratinaCaught === true],
+          j: [async () => { await feed(); return sendoffToBeacon(api, legCtx) }, async () => ((await v()).sunyshore ?? 0) >= 2],
+          k: [() => beaconToVictory(api, legCtx), async () => (await api.now()).map === LEAGUE_MAP.leagueSouthCenter],
+          l: [() => victoryRoad(api, legCtx),
+            async () => (await api.now()).map === LEAGUE_MAP.leagueNorthCenter && ((await v()).rivalLeague ?? 0) >= 1],
+          m: [async () => {
+            const r = await eliteFour(api, legCtx, page)
+            if (r?.ok !== true) return r
+            /**
+             * ⚠️ **타이틀에서 「이어하기」로 다시 든다** — 원작은 전당 뒤 리포트를 쓰고 자리를 떡잎마을 침실로 적는다
+             * (`clear_game.c` · `SetPlayerStartLocation`). 들어선 자리와 클리어 깃발로 그것을 잰다 (예전 `_league` 그대로)
+             */
+            const cont = page.getByRole('button', { name: '이어하기', exact: true })
+            await cont.waitFor({ timeout: 120_000 })
+            await cont.click()
+            await page.waitForFunction(() => location.pathname === '/play', null, { timeout: 120_000 })
+            await page.waitForFunction(() => document.documentElement.dataset.renderer === 'live'
+              && document.documentElement.dataset.restoring === undefined, null, { timeout: 180_000 })
+            await page.waitForTimeout(2000)
+            return r
+          }, async () => {
+            const vv = await v()
+            const hof = await page.evaluate(async () => {
+              const m = await import('/src/state/saveStore.ts')
+              const h = m.useSaveStore.getState().hallOfFame
+              return h === undefined || h === null ? null : { total: h.total ?? h.entries?.length }
+            }).catch(() => null)
+            return vv.gameCompleted === true && hof !== null
+          }],
+        }
+        // 구간 반복문을 안 도니 자전거 여부를 여기서 적는다 — 안 적으면 자전거가 있어도 350이 닫힌 채다
+        await noteBike()
+        const [walk, reached] = LEGS[PART.leg]
+        const t0 = Date.now()
+        const walked = await walk().catch((e) => ({ ok: false, why: String(e?.message ?? e).slice(0, 300) }))
+        legReached = await reached().catch(() => false)
+        const here = await api.now().catch(() => null)
+        add(PART.row, PART.what, legReached ? 'PASS' : 'FAIL',
+          `${legReached ? '닿았다' : '못 닿았다'} · ${String(Math.round((Date.now() - t0) / 60_000))}분 · 맵 ${String(here?.map)}`
+          + ` · ${JSON.stringify(walked ?? null).slice(0, 600)}`)
+        log(`  다리 ${PART.leg} ${legReached ? '닿았다' : '못 닿았다'} — 맵 ${String(here?.map)}`)
+      }
+      for (const stop of (LEG_CELL ? [] : AFTER_STOPS)) {
+        // 칸의 마지막 구간을 넘으면 멈춘다 — 다음 파트의 앞 걸음을 밟지 않는다
         if (PART !== null && stop.id > PART.last) break
         preHealed = false
         await noteBike()
@@ -2423,12 +2521,13 @@ try {
         } else if (here?.map === B3MAP.snowpointGym) {
           await snowpointSlide(api, exitCtx, { goals: [[SNOWPOINT_GYM_DOOR.x, SNOWPOINT_GYM_DOOR.z]], what: '선단 체육관 문' })
         }
-        const healed = await api.healAt(PART.center, Math.min(600_000, Math.max(120_000, api.left())))
+        // 다리 칸의 경계는 다리 끝 그 자리다 — 회복하러 안 간다 (설계서 §1)
+        const healed = LEG_CELL ? { ok: true } : await api.healAt(PART.center, Math.min(600_000, Math.max(120_000, api.left())))
         await api.settle()
         const where = await whereNow()
         const badgesNow = (await readSave()).badges
         partEnd = {
-          healed: healed.ok === true, healWhy: healed.ok ? null : String(healed.why),
+          healed: healed.ok === true, healWhy: healed.ok ? null : String(healed.why), reached: legReached,
           badges: badgesNow,
           memory: api.harnessMemory(),
           at: {
@@ -2436,7 +2535,9 @@ try {
             poketch: poketch.done, badges: badgesNow,
           },
         }
-        log(`  파트 ${String(PART_N)} 경계 — 센터 ${String(PART.center)} ${partEnd.healed ? '나았다' : `못 나았다 (${String(partEnd.healWhy)})`}`
+        log(LEG_CELL
+          ? `  칸 ${String(PART_N)} 경계 — 다리 ${PART.leg} ${legReached ? '닿았다' : '못 닿았다'} · 맵 ${String(partEnd.at.map)}`
+          : `  칸 ${String(PART_N)} 경계 — 센터 ${String(PART.center)} ${partEnd.healed ? '나았다' : `못 나았다 (${String(partEnd.healWhy)})`}`
           + ` · 배지 ${String(partEnd.badges)}/${String(PART.badges)} · 맵 ${String(partEnd.at.map)}`)
       }
       return {
@@ -2890,20 +2991,20 @@ try {
   }
 
   // ── ⑬ 끝 리포트 ──────────────────────────────────────────────────────────
-  const endSave = await writeReport(PART !== null ? `part-${String(PART_N)}.rpsave` : 'end.rpsave')
+  const endSave = await writeReport(PART !== null ? `cell-${String(PART_N)}.rpsave` : 'end.rpsave')
   /** 파트 판의 끝 — 세이브 · 기억 · 다이제스트. 통과는 배지 수 · 회복 · 세이브 셋이다 */
   if (PART !== null) {
     const pe = story.extra?.partEnd ?? null
-    const digest = endSave.ok && pe !== null ? keepPartEnd(PART_N, resolve(SAVES, `part-${String(PART_N)}.rpsave`), pe.memory, pe.at) : null
+    const digest = endSave.ok && pe !== null ? keepPartEnd(PART_N, resolve(SAVES, `cell-${String(PART_N)}.rpsave`), pe.memory, pe.at) : null
     partOut = {
-      n: PART_N, what: PART.what, first: PART.first, last: PART.last,
+      n: PART_N, what: PART.what, first: PART.first ?? null, last: PART.last ?? null, leg: PART.leg ?? null, reached: pe?.reached ?? null,
       startSave: PART_START.save, startSaveDigest: PART_START.digest ?? null,
       startDiagnostic: PART_START.diagnostic, startWhy: PART_START.why,
       endSaveDigest: digest, badges: pe?.badges ?? null, wantBadges: PART.badges,
       healed: pe?.healed ?? false, healWhy: pe?.healWhy ?? '경계에 못 닿았다', at: pe?.at ?? null,
-      ok: digest !== null && pe !== null && pe.healed && pe.badges >= PART.badges,
+      ok: digest !== null && pe !== null && (LEG_CELL ? pe.reached === true : pe.healed && pe.badges >= PART.badges),
     }
-    console.log(`  파트 ${String(PART_N)} 끝 — ${partOut.ok ? '통과' : '못 닿았다'} · 배지 ${String(partOut.badges)}/${String(PART.badges)}`
+    console.log(`  칸 ${String(PART_N)} 끝 — ${partOut.ok ? '통과' : '못 닿았다'} · 배지 ${String(partOut.badges)}/${String(PART.badges)}`
       + ` · 끝 세이브 ${String(digest)}`)
   }
   const endState = await readSave()
@@ -3156,7 +3257,7 @@ if (PART !== null) mkdirSync(PARTS_DIR, { recursive: true })
 writeFileSync(PART !== null ? partEnvelope(PART_N) : resolve(ROOT, '.audit/journey.json'), `${JSON.stringify(sealEvidence({
   dataAtStart,
   suite: 'journey',
-  selection: PART !== null ? `part-${String(PART_N)}` : 'all',
+  selection: PART !== null ? `cell-${String(PART_N)}` : 'all',
   expectedCases: EXPECTED_CASES,
   executedCases: rows.map((r) => r.id),
   startDigest: START_DIGEST,

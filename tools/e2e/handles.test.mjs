@@ -17,14 +17,17 @@ function handleNames() {
   const at = src.indexOf('const handles = () => ({')
   expect(at, '`handles`가 없다').toBeGreaterThan(0)
   const body = src.slice(at + 'const handles = () => ({'.length, src.indexOf('})', at))
-  return new Set(body.replace(/\/\/.*$/gm, '').split(/[,\s]+/).filter((w) => /^[A-Za-z_]\w*$/.test(w)))
+  // 줄임 이름(`runAway,`)과 키 이름(`distortionState: async () => …`)을 다 센다 — 키 꼴을 빼먹어 칸 판의 다리 h가
+  // 부르는 `distortionState`가 「없다」로 잡혔다(있다 · 10-11)
+  return new Set(body.replace(/\/\/.*$/gm, '').split(/[,\s]+/).map((w) => w.replace(/:$/, '')).filter((w) => /^[A-Za-z_]\w*$/.test(w)))
 }
 
 describe('길잡이 한 벌', () => {
   it('걸음 코드가 부르는 api.* 가 전부 handles에 있다', () => {
     const names = handleNames()
     const used = new Set()
-    for (const file of ['journey.mjs', 'badges.mjs']) {
+    // 칸 판이 부르는 걸음 파일도 같이 본다 (`JOURNEY_CELLS_20261011.md`)
+    for (const file of ['journey.mjs', 'badges.mjs', 'badges67.mjs', 'badgesDW.mjs', 'badgesLeague.mjs', 'distortionSolve.mjs']) {
       for (const m of read(file).matchAll(/\bapi\.(\w+)/g)) used.add(m[1])
     }
     expect(used.size).toBeGreaterThan(20)

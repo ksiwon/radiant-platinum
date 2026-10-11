@@ -1,4 +1,5 @@
 // 짧은 재현 — **일곱째 배지 뒤에서 깨어진 세계를 나오기까지** (지시서 JOURNEY_DISTORTION_20260924)
+// ⚠️ **칸 판에는 안 쓴다** (사용자 10-11) — 그 다리는 `journey.mjs --cell=8~16`이 같은 걸음으로 돈다(`JOURNEY_CELLS_20261011.md`). 이 파일은 `--save`로 도는 진단 탐침으로만 남는다
 //
 //     node tools/e2e/_dw.mjs [--headed] [--save=.audit/journey/probe-badge7.rpsave]
 //                            [--budget=7200] [--leg=e,f,g,dw,i] [--url=http://…]

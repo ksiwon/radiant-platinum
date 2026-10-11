@@ -271,6 +271,8 @@ export const SUITES = {
     roster: () => listRoster(JOURNEY_CASES, 'tools/distribution/evidence.mjs'),
     harness: [
       'tools/e2e/journey.mjs', 'tools/e2e/badges.mjs', 'tools/e2e/badges67.mjs',
+      // 칸 8~16의 걸음 — 깨어진 세계 · 리그 다리 (`JOURNEY_CELLS_20261011.md`)
+      'tools/e2e/badgesDW.mjs', 'tools/e2e/badgesLeague.mjs', 'tools/e2e/distortionSolve.mjs',
       // ⚠️ **체육관 풀이도 도구다.** 장막의 샌드백 차례를 내는 탐색이 여기 있고
       // (`observe.veilstonePlan`이 페이지 안에서 부른다), 그것이 바뀌면 「자두
       // 앞에 섰다」의 뜻이 바뀐다 — 목록 밖에 있으면 봉투가 그 변화를 못 잡는다
@@ -280,7 +282,7 @@ export const SUITES = {
       'tools/e2e/canvasShot.mjs', 'tools/e2e/terrainJudge.mjs', 'tools/e2e/stageProbe.mjs',
       // ⚠️ 페이지에 심는 것도 도구다 — 빠지면 계측이 바뀐 판을 봉투가 못 잡는다
       'tools/e2e/perfSpy.mjs',
-      // 파트 표 — 경계 · 결과 줄 · 시작 세이브를 정한다 (`JOURNEY_PARTS_20261008.md`)
+      // 칸 표 — 경계 · 결과 줄 · 시작 세이브를 정한다 (`JOURNEY_CELLS_20261011.md`)
       'tools/e2e/parts.mjs',
       'tools/devServer.mjs', 'tools/gpuFlags.mjs', 'tools/shot/png.mjs',
       'tools/distribution/evidence.mjs',
