@@ -7,7 +7,7 @@
 // 메커니즘은 다시 받을 필요가 없고, 배틀 계산은 이름을 아예 필요로 하지 않는다.
 import {
   bagSpriteSchema,
-  boxWallpapersSchema, creditRowsSchema, creditsSchema, signpostsSchema, unownFontSchema, wallpaperWordsSchema, slotSpritesSchema, itemFileSchema, itemIconsSchema, labelsSchema,
+  boxWallpapersSchema, creditRowsSchema, creditsSchema, creditsArtSchema, signpostsSchema, unownFontSchema, wallpaperWordsSchema, slotSpritesSchema, itemFileSchema, itemIconsSchema, labelsSchema,
   berriesSchema, distortionSchema, pokedexHabitatSchema, pokedexSortSchema,
   frontierSchema,
   dexHeightWeightSchema, martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, npcTradesSchema,
@@ -18,7 +18,7 @@ import {
   scriptFileSchema,
   speciesFileSchema, trainerFileSchema, townMapSchema, poketchMapSchema,
   type BagSprite, type DexHeightWeight,
-  type BoxWallpapers, type CreditRows, type CreditsAtlas, type Signposts, type UnownFont, type SlotSprites, type Item, type ItemIcons, type Labels,
+  type BoxWallpapers, type CreditRows, type CreditsAtlas, type CreditsArt, type Signposts, type UnownFont, type SlotSprites, type Item, type ItemIcons, type Labels,
   type MartTable, type MotionTiming, type Move, type NpcTrades, type PokeIcons, type ScriptFile,
   type Species, type Trainer, type TownMapFile, type PoketchMapFile,
   type PokedexHabitat, type PokedexSort, type Berries, type DistortionData,
@@ -34,7 +34,7 @@ type HiddenItemRow = HiddenItem
 export type { PokedexHabitat, PokedexSort, Berries }
 export type { Berry } from './schema'
 import { assets, onProviderSwap, readJson } from './providers/assetProvider'
-import { pinAtlas } from './providers/atlas'
+import { atlasUrl, pinAtlas } from './providers/atlas'
 import { formSpeciesId } from '../engine/pokemon/form'
 import { withWildHabitats } from '../engine/battle/wildAdditions'
 import {
@@ -359,6 +359,23 @@ export function loadCreditsAtlas(): Promise<CreditsAtlas> {
       return meta
     })
 }
+
+/**
+ * 크레딧 3D 무대의 그림 — 회상 사진 28장 · 날아다니는 포켓몬 넷 (`credits/art.json`). 그림을 다 받아 잡아 둔다.
+ * ⚠️ **옛 설치본에는 없다** (`GROUP_FORMAT.credits` 4) — 못 받으면 부르는 쪽이 사진 장면을 빈 검정으로 둔다
+ */
+export function loadCreditsArt(): Promise<CreditsArt> {
+  return fetchJson('credits/art.json', (v) => creditsArtSchema.parse(v)).then(async (art) => {
+    const files = [
+      ...art.memory.male, ...art.memory.female, ...art.night.male, ...art.night.female, ...art.sprites,
+    ].map((p) => `data/${p.file}`)
+    await Promise.all(files.map((f) => pinAtlas(f)))
+    return art
+  })
+}
+
+/** 크레딧 그림 한 장의 주소 (`loadCreditsArt`가 받아 둔 뒤) */
+export const creditsArtUrl = (file: string): string => atlasUrl(`data/${file}`)
 
 /**
  * 크레딧 두루마리의 배치표 — **그 판의 것** (PARITY §8.12).

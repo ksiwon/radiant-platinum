@@ -55,10 +55,10 @@ const VIEW_W = 256
 const VIEW_H = 192
 
 /** 한 장 — 원작 화면(256×192)에서의 자리와 크기 */
-export interface CreditsPhoto { file: string, x: number, y: number, w: number, h: number }
+interface CreditsPhoto { file: string, x: number, y: number, w: number, h: number }
 
 /** 날아다니는 포켓몬 한 장 — `(ox, oy)`가 스프라이트 중심에서 그림 왼쪽 위까지다 */
-export interface CreditsSprite { file: string, ox: number, oy: number, w: number, h: number }
+interface CreditsSprite { file: string, ox: number, oy: number, w: number, h: number }
 
 export interface CreditsArt {
   memory: { male: CreditsPhoto[], female: CreditsPhoto[] }
