@@ -496,6 +496,12 @@ const EARLY_LEAD_LEVEL = 16
 
 /** 갤럭시단 빌딩 앞 — 쥬피터를 한 번에 이긴 판의 값 (2026-09-22 · 아래 구간 23) */
 const JUPITER_LEAD_LEVEL = 30
+/**
+ * 유채 앞 선두 레벨. 사탕은 새 기술을 거절하므로(`feedCandy` 기본) 선두는 몸통박치기·잎날가르기뿐이고,
+ * 로즈레이드가 광합성으로 되살아나 L26(수풀부기 4기술: 33·110·71·75)으로는 첫 도전·재도전 모두 졌다
+ * (2026-10-11 칸 2 첫 판 `journey-run2`). 쥬피터 몫(L30)을 여기서 미리 올린다
+ */
+const ETERNA_LEAD_LEVEL = JUPITER_LEAD_LEVEL
 const JUPITER_STARAVIA_LEVEL = 30
 /**
  * 빌딩 앞 **셋째** 레벨. 셋째 사탕은 연고 체육관 앞(`THIRD_LEVEL`)뿐이었다 —
@@ -1284,6 +1290,7 @@ try {
   const drive = await Promise.race([
     driveStory(page, {
     log,
+    verbose: flag('verbose') !== null,
     totalMs: Math.max(600_000, BUDGET_MS - (Date.now() - t1)),
     /**
      * **꽃시계가 막는 칸.** 우리 격자(`route.mjs`)는 타일 통행만 알아서 시계
@@ -2220,6 +2227,11 @@ try {
          * 졌다. 사람이 체육관 옆 마트에 들르는 그 걸음이고, 파는 것도 원작이
          * 그 시점에 파는 것뿐이다(배지 하나 = 재고 계단 2)
          */
+        if (stop.map === 67) {
+          const lead = await candyUp(0, null, ETERNA_LEAD_LEVEL)
+          log(`  ${stop.what} 앞 선두 사탕 (L${String(ETERNA_LEAD_LEVEL)}) → ${candyLine(lead)}`)
+          story.candySteps = [...(story.candySteps ?? []), { what: '유채 앞 선두', ...lead }]
+        }
         if (stop.map === 67) {
           const fed = await candyUp(null, STARLY, CANDY_STARLY_LEVEL)
           log(`  ${stop.what} 앞 찌르꼬 사탕 (L${String(CANDY_STARLY_LEVEL)}) → ${candyLine(fed)}`)
