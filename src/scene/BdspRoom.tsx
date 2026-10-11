@@ -34,6 +34,7 @@ import { liveWater } from './BdspField'
 import { holdBdspDoors } from './DoorAnimations'
 import { holdBdspSigns } from './ObjectProps'
 import { shellRoom } from './roomShell'
+import { repaintStains } from './roomStains'
 
 const loader = new GLTFLoader()
 
@@ -265,6 +266,7 @@ export function BdspRoom({ name, mapId }: { name: string, mapId: number }) {
       .then((gltf) => {
         if (!alive) { disposeTree(gltf.scene); return }
         held = gltf.scene
+        repaintStains(gltf.scene, name)
         hideDevices(gltf.scene, mapId)
         liveWater(gltf.scene)
         const at = placementOf(name)
