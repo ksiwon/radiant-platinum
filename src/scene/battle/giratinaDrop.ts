@@ -11,23 +11,23 @@
 // 틱은 1/60초다 (`COMPLETION_20260928` §0)
 
 /** 숨어 기다리는 프레임 */
-export const GIRATINA_WAIT_FRAMES = 28
+const GIRATINA_WAIT_FRAMES = 28
 /** 내려앉는 프레임 — 136px ÷ 4 */
-export const GIRATINA_FALL_FRAMES = 34
+const GIRATINA_FALL_FRAMES = 34
 /** 착지하는 프레임 (기다림 + 낙하) — 울음 · 밝아짐이 여기서 시작한다 */
 export const GIRATINA_LAND_FRAMES = GIRATINA_WAIT_FRAMES + GIRATINA_FALL_FRAMES
 /** 착지까지의 초 */
 export const GIRATINA_LAND_SECONDS = GIRATINA_LAND_FRAMES / 60
 /** 눌린 어둠이 걷히는 프레임 — 검정 8/16 → 0이 프레임마다 1씩 */
-export const GIRATINA_BRIGHTEN_FRAMES = 8
+const GIRATINA_BRIGHTEN_FRAMES = 8
 /** 낙하 내내 몸을 누르는 검정의 몫 (8/16) */
 export const GIRATINA_DARK = 8 / 16
 
 /** 원작 낙하 거리 · 화면 높이 (px) — 월드로 옮길 때 화면 비율로 쓴다 (`v10` · DS 아래 화면 높이 `24 * 8`) */
-export const GIRATINA_DROP_PX = 136
-export const DS_SCREEN_PX = 192
+const GIRATINA_DROP_PX = 136
+const DS_SCREEN_PX = 192
 
-export interface GiratinaDrop {
+interface GiratinaDrop {
   /** 몸이 서 있는가 — 기다리는 동안은 화면 밖이라 안 보인다 */
   visible: boolean
   /** 시작 높이에 대한 남은 높이의 몫 — 1 = 화면 밖 시작점, 0 = 착지. 등속이다 */
