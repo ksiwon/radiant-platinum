@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import struct
 import sys
@@ -236,6 +237,322 @@ def flipbook_cell(columns: float, rows: float, start: float) -> dict | None:
     return {"offset": [col / columns, (rows - 1 - from_bottom) / rows], "scale": [1 / columns, 1 / rows]}
 
 
+def motion_extras(floats: dict, colors: dict, layered: bool) -> dict | None:
+    """재질이 적어 둔 흐름 · 흔들림 값 — 브라우저 변환기 `motion.ts`의 `motionExtras`와 **같은 JSON**이다 (키 순서까지).
+
+    `_TexVelocity`의 채널 대응(xy = `_MainTex` · zw = `_LayerTex`)은 추측이다 — 셰이더가 Switch 바이너리라 못 읽는다
+    """
+    def color(key: str):
+        c = colors.get(key)
+        return [c.get("r", 0.0), c.get("g", 0.0), c.get("b", 0.0), c.get("a", 0.0)] if c else None
+
+    def anything(v) -> bool:
+        return any(x != 0 for x in v)
+
+    out: dict = {}
+    vel = color("_TexVelocity")
+    if vel:
+        main, layer = [vel[0], vel[1]], [vel[2], vel[3]]
+        pick = (layer if anything(layer) else main) if layered else (main if anything(main) else layer)
+        if anything(pick):
+            out["texVel"] = pick
+    speed = floats.get("_ScrollSpeed")
+    if isinstance(speed, (int, float)) and speed != 0:
+        out["scroll"] = [0, speed]
+    h, v = floats.get("_PatternH", 1.0), floats.get("_PatternV", 1.0)
+    every = floats.get("_SwitchingTime")
+    if isinstance(every, (int, float)) and every > 0 and floats.get("_AutoSwitch", 0.0) > 0 and h >= 1 and v >= 1 and h * v > 1:
+        out["frames"] = {"h": int(h), "v": int(v), "start": int(floats.get("_StartFrameIndex", 0.0)), "every": every}
+    if floats.get("_SwingEnable", 0.0) > 0:
+        scale = color("_SwingScale") or [0.0, 0.0, 0.0, 0.0]
+        wind = color("_WindDirection") or [1.0, 0.0, 0.0, 0.0]
+        out["swing"] = {
+            "power": floats.get("_SwingPower", 1.0), "speed": floats.get("_SwingSpeed", 1.0),
+            "dist": floats.get("_SwingDistribution", 1.0), "uv": floats.get("_SwingUV", 0.0),
+            "scale": scale[:3], "dir": wind[:3],
+        }
+    return out or None
+
+
+def flipped(m: np.ndarray) -> np.ndarray:
+    """Unity 월드 행렬 → 원작 좌표(x 뒤집기)의 행렬 `F·W·F` — `matrix.ts`의 `flipped`와 같다."""
+    out = m.copy()
+    out[0, 1:] *= -1
+    out[1:, 0] *= -1
+    return out
+
+
+def column_major(m: np.ndarray) -> list[float]:
+    """glTF 노드 행렬(열 우선) — `matrix.ts`의 `columnMajor`와 같다."""
+    return [float(m[r, c]) for c in range(4) for r in range(4)]
+
+
+def decompose(m: np.ndarray) -> tuple[list[float], list[float], list[float]]:
+    """행 우선 4×4 → 이동 · 회전(사원수 x y z w) · 배율 — `matrix.ts`의 `decompose`와 같다. 밀림은 버린다."""
+    cx, cy, cz = m[:3, 0], m[:3, 1], m[:3, 2]
+    sx, sy, sz = float(np.linalg.norm(cx)), float(np.linalg.norm(cy)), float(np.linalg.norm(cz))
+    det = (cx[0] * (cy[1] * cz[2] - cy[2] * cz[1]) - cy[0] * (cx[1] * cz[2] - cx[2] * cz[1])
+           + cz[0] * (cx[1] * cy[2] - cx[2] * cy[1]))
+    if det < 0:
+        sx = -sx
+    r00, r10, r20 = cx[0] / sx, cx[1] / sx, cx[2] / sx
+    r01, r11, r21 = cy[0] / sy, cy[1] / sy, cy[2] / sy
+    r02, r12, r22 = cz[0] / sz, cz[1] / sz, cz[2] / sz
+    trace = r00 + r11 + r22
+    if trace > 0:
+        k = 0.5 / math.sqrt(trace + 1)
+        w, x, y, z = 0.25 / k, (r21 - r12) * k, (r02 - r20) * k, (r10 - r01) * k
+    elif r00 > r11 and r00 > r22:
+        k = 2 * math.sqrt(1 + r00 - r11 - r22)
+        w, x, y, z = (r21 - r12) / k, 0.25 * k, (r01 + r10) / k, (r02 + r20) / k
+    elif r11 > r22:
+        k = 2 * math.sqrt(1 + r11 - r00 - r22)
+        w, x, y, z = (r02 - r20) / k, (r01 + r10) / k, 0.25 * k, (r12 + r21) / k
+    else:
+        k = 2 * math.sqrt(1 + r22 - r00 - r11)
+        w, x, y, z = (r10 - r01) / k, (r02 + r20) / k, (r12 + r21) / k, 0.25 * k
+    length = math.sqrt(x * x + y * y + z * z + w * w) or 1.0
+    return [float(m[0, 3]), float(m[1, 3]), float(m[2, 3])], [x / length, y / length, z / length, w / length], [sx, sy, sz]
+
+
+def euler_of(q: list[float]) -> list[float]:
+    """사원수(유니티 로컬) → 오일러(도 · ZXY: `Ry·Rx·Rz`). x는 ±90도 안쪽 — `field.ts`의 `eulerOf`와 같다."""
+    x, y, z, w = q
+    r12 = 2 * (y * z - x * w)
+    sx = max(-1.0, min(1.0, -r12))
+    rad = 180 / math.pi
+    if abs(sx) > 0.999999:
+        r20, r00 = 2 * (x * z - y * w), 1 - 2 * (y * y + z * z)
+        return [math.asin(sx) * rad, math.atan2(-r20, r00) * rad, 0.0]
+    r02, r22 = 2 * (x * z + y * w), 1 - 2 * (x * x + y * y)
+    r10, r11 = 2 * (x * y + z * w), 1 - 2 * (x * x + z * z)
+    return [math.asin(sx) * rad, math.atan2(r02, r22) * rad, math.atan2(r10, r11) * rad]
+
+
+#: DOTween 열거 `AnimationType` — 3 Rotate(월드) · 4 LocalRotate · `Ease.Linear` 1
+DOTWEEN_ROTATE, DOTWEEN_LOCAL_ROTATE, DOTWEEN_LINEAR = 3, 4, 1
+
+
+def moving_of(go, transform, cache: dict) -> dict | None:
+    """혼자 움직이는 물체인가 — `field.ts`의 `movingOf`와 같은 규칙이다 (풍차 · 기계 · 지구본의 DOTween 회전, 석탄 더미의 Mecanim 클립).
+
+    자식 없는 잎 물체만. DOTween은 `autoPlay` · 무한 · Restart · 선형 · 상대인 회전만 읽는다. 아니면 `None`
+    """
+    if len(transform.m_Children) > 0:
+        return None
+    spin = None
+    world = False
+    clip = None
+    for c in go.m_Components:
+        try:
+            reader = c.deref()
+            kind = reader.type.name
+        except Exception:
+            continue
+        if kind == "MonoBehaviour":
+            try:
+                mb = reader.read_typetree()
+            except Exception:
+                continue
+            tween = mb.get("animationType")
+            if tween not in (DOTWEEN_ROTATE, DOTWEEN_LOCAL_ROTATE):
+                continue
+            end = mb.get("endValueV3") or {}
+            secs = float(mb.get("duration", 0))
+            if (not secs > 0 or mb.get("loops") != -1 or mb.get("loopType") != 0 or mb.get("easeType") != DOTWEEN_LINEAR
+                    or mb.get("isRelative") != 1 or mb.get("autoPlay") != 1 or mb.get("delay") != 0 or mb.get("isFrom") != 0):
+                continue
+            spin = {"euler": [], "add": [end.get("x", 0.0), end.get("y", 0.0), end.get("z", 0.0)], "secs": secs}
+            world = tween == DOTWEEN_ROTATE
+        elif kind == "Animator":
+            try:
+                a = reader.read_typetree()
+                ref = a.get("m_Controller") or {}
+                if ref.get("m_FileID", 0) != 0 or ref.get("m_PathID", 0) == 0:
+                    continue
+                ctrl = c.assetsfile.objects[ref["m_PathID"]].read_typetree()
+            except Exception:
+                continue
+            for k in ctrl.get("m_AnimationClips") or []:
+                if k.get("m_FileID", 0) == 0 and k.get("m_PathID", 0) != 0 and clip is None:
+                    clip = int(k["m_PathID"])
+    if spin is None and clip is None:
+        return None
+    father = getattr(transform, "m_Father", None)
+    has_father = father is not None and getattr(father, "m_PathID", 0) != 0
+    world_m = world_of(transform, cache)
+    parent = None if world or not has_father else world_of(father.read(), cache)
+    q = transform.m_LocalRotation
+    local_q = [q.x, q.y, q.z, q.w]
+    if world or not has_father:
+        t, r, s = decompose(flipped(world_m))
+        body = {"t": t, "r": r, "s": s}
+        euler_q = decompose(world_m)[1]
+    else:
+        p, sc = transform.m_LocalPosition, transform.m_LocalScale
+        body = {"t": [-p.x, p.y, p.z], "r": [q.x, -q.y, -q.z, q.w], "s": [sc.x, sc.y, sc.z]}
+        euler_q = local_q
+    if spin is not None:
+        spin["euler"] = euler_of(euler_q)
+    return {"parent": parent, "body": body, "spin": spin, "clip": clip, "name": go.m_Name or "move"}
+
+
+def rig_at(v: float) -> str:
+    return f"{0.0 if abs(v) < 5e-4 else v:.3f}"
+
+
+def find_rigs(env, cache: dict) -> list[dict]:
+    """계층이 있는 움직이는 소품(에스컬레이터)의 뼈대 — 브라우저 변환기 `rig.ts`의 `findRigs`와 같다.
+
+    `P_RO_005_Escalator_0N`은 스킨 메시이고 계단이 뼈다. 클립 `up` · `down`을 **늘** 돈다(원작 DS는 늘 움직인다).
+    ⚠️ 방향은 번들 구성이 말한다 — `03`은 오르는 것(`up`) · `04`는 내리는 것(`down`): 1층(`c07r0201`)에는 03만, 꼭대기(`c07r0205`)에는 04만 있다
+    """
+    by = {o.path_id: o for o in env.objects}
+    out: list[dict] = []
+    for o in env.objects:
+        if o.type.name != "MonoBehaviour":
+            continue
+        try:
+            mb = o.read_typetree()
+        except Exception:
+            continue
+        clips = mb.get("clips")
+        if not isinstance(clips, list):
+            continue
+        go = by[mb["m_GameObject"]["m_PathID"]].read()
+        name = re.sub(r" \(\d+\)$", "", go.m_Name or "")
+        m = re.search(r"Escalator_0([34])", name)
+        if not m:
+            continue
+        want = "up" if m.group(1) == "3" else "down"
+        clip = next((c for c in clips if c.get("name") == want), None)
+        clip_pid = int((clip or {}).get("animationClip", {}).get("m_PathID", 0))
+        if clip_pid == 0:
+            continue
+        root = go.m_Transform.read()
+        nodes: list[dict] = []
+
+        def walk(t, path: str) -> None:
+            p, q, s = t.m_LocalPosition, t.m_LocalRotation, t.m_LocalScale
+            nodes.append({
+                "name": t.m_GameObject.read().m_Name, "transform": t.object_reader.path_id,
+                "t": [-p.x, p.y, p.z], "r": [q.x, -q.y, -q.z, q.w], "s": [s.x, s.y, s.z],
+                "children": [c.m_PathID for c in t.m_Children], "path": path,
+            })
+            for c in t.m_Children:
+                ct = c.read()
+                kname = ct.m_GameObject.read().m_Name
+                walk(ct, kname if path == "" else f"{path}/{kname}")
+
+        walk(root, "")
+        inside = {n["transform"] for n in nodes}
+        skins = []
+        for so in env.objects:
+            if so.type.name != "SkinnedMeshRenderer":
+                continue
+            smr = so.read()
+            if smr.m_GameObject.read().m_Transform.m_PathID not in inside:
+                continue
+            skins.append({
+                "mesh": smr.m_Mesh, "materials": [m for m in smr.m_Materials],
+                "bones": [b.m_PathID for b in smr.m_Bones],
+            })
+        world = world_of(root, cache)
+        father = getattr(root, "m_Father", None)
+        has_father = father is not None and getattr(father, "m_PathID", 0) != 0
+        out.append({
+            "key": f"{name}:{rig_at(world[0, 3])}:{rig_at(world[1, 3])}:{rig_at(world[2, 3])}",
+            "name": name, "parent": world_of(father.read(), cache) if has_father else None,
+            "clip": clip_pid, "nodes": nodes, "skins": skins,
+        })
+    return sorted(out, key=lambda r: r["key"])
+
+
+def path_hashes(rig: dict) -> dict[int, int]:
+    """경로 CRC32 → 마디 순서 (뿌리 `''`는 0) — `rig.ts`의 `pathHashes`와 같다."""
+    import zlib
+    return {(0 if n["path"] == "" else zlib.crc32(n["path"].encode()) & 0xFFFFFFFF): i for i, n in enumerate(rig["nodes"])}
+
+
+def skin_rig(rig: dict, buf, st_of: dict, by_name: dict) -> list[dict]:
+    """뼈대 소품의 껍데기(스킨 메시)를 glTF 메시로 — `arena.ts`의 `skinned`와 같다. 정점은 제 좌표에서 x만 뒤집고 역바인드 행렬은 `S·M·S`다."""
+    made = []
+    for sk in rig["skins"]:
+        try:
+            mesh = sk["mesh"].read()
+        except Exception:
+            continue
+        handler = MeshHelper.MeshHandler(mesh)
+        handler.process()
+        n = len(handler.m_Vertices)
+        if n == 0:
+            continue
+        verts = np.array(handler.m_Vertices, dtype=np.float64).reshape(-1, 3)
+        verts[:, 0] *= -1
+        normals = lanes(handler.m_Normals, n, 3, [0.0, 1.0, 0.0])
+        normals[:, 0] *= -1
+        length = np.linalg.norm(normals, axis=1, keepdims=True)
+        normals = np.where(length > 1e-9, normals / np.maximum(length, 1e-9), [0.0, 1.0, 0.0])
+        uv_raw = lanes(handler.m_UV0, n, 2, [0.0, 0.0]).astype(np.float32)
+        joints = np.zeros((n, 4), dtype=np.uint16)
+        weights = np.zeros((n, 4), dtype=np.float32)
+        if handler.m_BoneWeights is None or handler.m_BoneIndices is None:
+            weights[:, 0] = 1.0
+        else:
+            bi = np.asarray(handler.m_BoneIndices)
+            bw = np.asarray(handler.m_BoneWeights, dtype=np.float32)
+            if bi.ndim == 1:
+                bi = bi.reshape(n, -1)
+                bw = bw.reshape(n, -1)
+            wide = min(bi.shape[1], 4)
+            joints[:, :wide] = bi[:, :wide].astype(np.uint16)
+            weights[:, :wide] = bw[:, :wide]
+        total = weights.sum(axis=1, keepdims=True)
+        weights = np.where(total > 0, weights / np.maximum(total, 1e-8), weights)
+        weights[total[:, 0] == 0, 0] = 1.0
+        joints = np.minimum(joints, max(0, len(sk["bones"]) - 1)).astype(np.uint16)
+        a_pos = buf.add(verts.astype(np.float32), "VEC3", FLOAT, ARRAY, minmax=True)
+        a_nrm = buf.add(normals.astype(np.float32), "VEC3", FLOAT, ARRAY)
+        a_joint = buf.add(joints, "VEC4", USHORT, ARRAY)
+        a_weight = buf.add(weights, "VEC4", FLOAT, ARRAY)
+        indices = np.array(handler.m_IndexBuffer, dtype=np.uint32)
+        mats = []
+        for ref in sk["materials"]:
+            try:
+                mats.append(ref.read().m_Name)
+            except Exception:
+                mats.append(None)
+        primitives = []
+        for i, sub in enumerate(mesh.m_SubMeshes):
+            mat_name = mats[i] if i < len(mats) else None
+            slot = by_name.get(mat_name, -1) if mat_name else -1
+            sx, sy, ox, oy = st_of.get(mat_name, (1.0, 1.0, 0.0, 0.0)) if mat_name else (1.0, 1.0, 0.0, 0.0)
+            uv = np.stack([uv_raw[:, 0] * sx + ox, 1.0 - (uv_raw[:, 1] * sy + oy)], axis=1).astype(np.float32)
+            first = sub.firstByte // (2 if mesh.m_IndexFormat == 0 else 4)
+            tri = indices[first: first + sub.indexCount].reshape(-1, 3)[:, ::-1].copy()
+            prim = {
+                "attributes": {"POSITION": a_pos, "NORMAL": a_nrm, "TEXCOORD_0": buf.add(uv, "VEC2", FLOAT, ARRAY),
+                               "JOINTS_0": a_joint, "WEIGHTS_0": a_weight},
+                "indices": (buf.add(tri.reshape(-1).astype(np.uint16), "SCALAR", USHORT, ELEMENT) if n <= 65536
+                            else buf.add(tri.reshape(-1).astype(np.uint32), "SCALAR", UINT, ELEMENT)),
+                "mode": 4,
+            }
+            if slot >= 0:
+                prim["material"] = slot
+            primitives.append(prim)
+        if not primitives:
+            continue
+        ibm = np.array([
+            [m.e00, m.e10, m.e20, m.e30, m.e01, m.e11, m.e21, m.e31, m.e02, m.e12, m.e22, m.e32, m.e03, m.e13, m.e23, m.e33]
+            for m in mesh.m_BindPose
+        ], dtype=np.float32).reshape(-1, 4, 4)
+        flip = np.diag([-1.0, 1.0, 1.0, 1.0]).astype(np.float32)
+        ibm = np.einsum("ij,njk,kl->nil", flip, ibm, flip)
+        made.append({"primitives": primitives, "bones": sk["bones"], "inverse": buf.add(ibm.reshape(-1, 16), "MAT4", FLOAT),
+                     "vertices": n})
+    return made
+
+
 def top_group(transform) -> str:
     """뿌리 바로 아래 자식의 이름 — 나무열매 `kinoNNN`의 `Miki`(줄기) · `Hana`(꽃) · `Mi`(열매)"""
     chain = []
@@ -247,8 +564,9 @@ def top_group(transform) -> str:
 
 
 def export(bundle: Path, out: Path, far: float | None, max_size: int | None = None, groups: bool = False,
-           plant: bool = False) -> dict:
-    """`groups` 뿌리 바로 아래 자식마다 노드를 따로 둔다 · `plant` 나무열매 색 입히기 (`arena.ts`의 `plant`와 같다 — 둘은 따로 켠다)"""
+           plant: bool = False, motion: bool = False) -> dict:
+    """`groups` 뿌리 바로 아래 자식마다 노드를 따로 둔다 · `plant` 나무열매 색 입히기 (`arena.ts`의 `plant`와 같다 — 둘은 따로 켠다) ·
+    `motion` 흐름 · 흔들림 값을 `extras`로 싣는다 (`arena.ts`의 `motion` — 방이 켠다)"""
     env = UnityPy.load(str(bundle))
     filters = [o.read() for o in env.objects if o.type.name == "MeshFilter"]
     if not filters:
@@ -329,6 +647,8 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
     #: 재질 슬롯 → (`_Color`, `_LayerColor`) — `blend` 재질의 정점 색 `COLOR_0`이 이 둘을 정점 알파로 섞는다
     blend_of: dict[int, tuple[np.ndarray, np.ndarray]] = {}
     transformed = False
+    #: 바람에 흔들리는 재질 슬롯 — 그 재질을 쓰는 조각에 정점 가중치 `_SWING`을 싣는다 (`motion`)
+    swing_slots: set[int] = set()
     for name, png, sp in sorted(baked, key=lambda b: b[0]):
         images.append({
             "bufferView": buf.view(png.read_bytes()), "mimeType": "image/png", "name": name,
@@ -364,12 +684,16 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
             pbr["baseColorFactor"] = tint
         pbr["metallicFactor"] = 0.0
         pbr["roughnessFactor"] = 0.9
+        moving = motion_extras(floats, colors, lay) if motion else None
         materials.append({
             "name": name,
             "pbrMetallicRoughness": pbr,
             **alpha_of(name),
             "doubleSided": True,
+            **({"extras": moving} if moving else {}),
         })
+        if moving and "swing" in moving:
+            swing_slots.add(len(materials) - 1)
         by_name[name] = len(materials) - 1
     for d in (albedo, layer_dir):
         if d.is_dir():
@@ -420,6 +744,11 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         glow = colors.get("_EmissionColor")
         if glow and floats.get("_EmissionColorIntensity", 0.0) > 0:
             mat["emissiveFactor"] = [glow["r"], glow["g"], glow["b"]]
+        moving = motion_extras(floats, colors, False) if motion else None
+        if moving:
+            mat["extras"] = moving
+            if "swing" in moving:
+                swing_slots.add(len(materials))
         materials.append(mat)
         by_name[name] = len(materials) - 1
 
@@ -429,6 +758,8 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
     parts: dict[tuple[str, int], list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]]] = {}
     dropped = 0
     kept = 0
+    #: 혼자 움직이는 묶음(`move:<Transform>`) → 그 물체 (`moving_of`)
+    movers: dict[str, dict] = {}
     for mf in filters:
         try:
             mesh = mf.m_Mesh.read()
@@ -451,6 +782,8 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         except Exception:
             continue
         world = world_of(transform, cache)
+        # 혼자 움직이는 물체(풍차 · 기계 · 석탄 더미)는 제 좌표에 두고 따로 싣는다 (`arena.ts`의 `moving`과 같다)
+        move = moving_of(go, transform, cache) if motion else None
 
         handler = MeshHelper.MeshHandler(mesh)
         handler.process()
@@ -458,18 +791,24 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         if n == 0:
             continue
         verts = np.array(handler.m_Vertices, dtype=np.float64).reshape(-1, 3)
-        verts = (world[:3, :3] @ verts.T).T + world[:3, 3]
-        if far is not None and float(np.min(np.hypot(verts[:, 0], verts[:, 2]))) > far:
-            dropped += 1
-            continue
+        if move is None:
+            verts = (world[:3, :3] @ verts.T).T + world[:3, 3]
+            if far is not None and float(np.min(np.hypot(verts[:, 0], verts[:, 2]))) > far:
+                dropped += 1
+                continue
         kept += 1
         normals = lanes(handler.m_Normals, n, 3, [0.0, 1.0, 0.0])
-        normals = (world[:3, :3] @ normals.T).T
+        if move is None:
+            normals = (world[:3, :3] @ normals.T).T
         length = np.linalg.norm(normals, axis=1, keepdims=True)
         normals = np.where(length > 1e-9, normals / np.maximum(length, 1e-9), [0.0, 1.0, 0.0])
         uv_raw = lanes(handler.m_UV0, n, 2, [0.0, 0.0]).astype(np.float32)
         # 정점 색의 알파 — 잎(`blend`)이 `_Color` ↔ `_LayerColor`를 이 값으로 섞는다. 8비트라 255로 나눈다. 없으면 흰 정점 색(알파 1)이다
-        vertex_alpha = (lanes(handler.m_Colors, n, 4, [255.0] * 4)[:, 3] / 255.0).astype(np.float32)
+        vertex_color = lanes(handler.m_Colors, n, 4, [255.0] * 4)
+        vertex_alpha = (vertex_color[:, 3] / 255.0).astype(np.float32)
+        # 바람 흔들림 가중치 `_SWING` = 정점 색 R × A (`motion.ts`의 `swingWeights`와 같다). 정점 색 채널이 없으면 흔들지 않는다 · float32로
+        has_color = handler.m_Colors is not None and np.asarray(handler.m_Colors).size >= n * 4
+        wind_all = ((vertex_color[:, 0] / 255.0).astype(np.float32) * vertex_alpha).astype(np.float32) if has_color else None
         # X 뒤집기 (머리말)
         verts[:, 0] *= -1
         normals[:, 0] *= -1
@@ -501,23 +840,33 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
                 one = np.float32(1)
                 rgb = base[None, :] * (one - vertex_alpha)[:, None] + top[None, :] * vertex_alpha[:, None]
                 col = np.concatenate([rgb, np.ones((n, 1), np.float32)], axis=1).astype(np.float32)
-            parts.setdefault((top_group(transform) if groups else bundle.name, slot), []).append((
-                verts.astype(np.float32), normals.astype(np.float32), uv, tri, col,
+            wind = wind_all if slot in swing_slots else None
+            # 묶음 이름 = 이름 + 월드 자리(세 자리) — `arena.ts`와 같다 (PathID는 그쪽에서 64비트가 뭉개진다)
+            def at(v: float) -> str:
+                return f"{0.0 if abs(v) < 5e-4 else v:.3f}"
+            group = (f"move:{move['name']}:{at(world[0, 3])}:{at(world[1, 3])}:{at(world[2, 3])}" if move
+                     else (top_group(transform) if groups else bundle.name))
+            if move:
+                movers[group] = move
+            parts.setdefault((group, slot), []).append((
+                verts.astype(np.float32), normals.astype(np.float32), uv, tri, col, wind,
             ))
 
     meshes: dict[str, list[dict]] = {}
     total_v = total_t = 0
     for (group, slot), chunks in sorted(parts.items()):
         primitives = meshes.setdefault(group, [])
-        pos, nrm, tex, idx, cols = [], [], [], [], []
+        pos, nrm, tex, idx, cols, winds = [], [], [], [], [], []
         base = 0
-        for v, nn, u, t, cc in chunks:
+        for v, nn, u, t, cc, ww in chunks:
             pos.append(v)
             nrm.append(nn)
             tex.append(u)
             idx.append(t + base)
             if cc is not None:
                 cols.append(cc)
+            if ww is not None:
+                winds.append(ww)
             base += v.shape[0]
         pos = np.concatenate(pos)
         nrm = np.concatenate(nrm)
@@ -542,15 +891,96 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         }
         if cols:
             prim["attributes"]["COLOR_0"] = buf.add(np.concatenate(cols), "VEC4", FLOAT, ARRAY)
+        # 모든 조각에 가중치가 있을 때만 싣는다 (`arena.ts`의 `wind`와 같다)
+        if winds and len(winds) == len(chunks):
+            prim["attributes"]["_SWING"] = buf.add(np.concatenate(winds), "SCALAR", FLOAT, ARRAY)
         if slot >= 0:
             prim["material"] = slot
         primitives.append(prim)
 
+    # 노드 — 합친 묶음은 노드 하나, 움직이는 것은 닻(부모 월드 · 정지) → 몸(제 로컬 TRS · 움직임) 둘 (`arena.ts`와 같다)
+    # 뼈대 소품의 껍데기(스킨 메시) — `arena.ts`의 `skinned`와 같다. 메시 이름은 `skin:<키>:<번호>`
+    rigs = find_rigs(env, cache)
+    skinned: list[tuple[int, dict, str]] = []
+    for r, rig in enumerate(rigs):
+        for made in skin_rig(rig, buf, st_of, by_name):
+            key = f"skin:{rig['key']}:{len(skinned)}"
+            meshes[key] = made["primitives"]
+            skinned.append((r, made, key))
+    nodes: list[dict] = []
+    body_of: dict[int, dict] = {}
+    for i, g in enumerate(meshes):
+        if g.startswith("skin:"):
+            continue
+        mv = movers.get(g)
+        if mv is None:
+            nodes.append({"name": g, "mesh": i})
+            continue
+        body = {"name": mv["name"], "mesh": i, "translation": mv["body"]["t"], "rotation": mv["body"]["r"],
+                "scale": mv["body"]["s"]}
+        if mv["spin"] is not None:
+            body["extras"] = {"spin": mv["spin"]}
+        if mv["parent"] is not None:
+            nodes.append({"name": f"{mv['name']}/anchor", "matrix": column_major(flipped(mv["parent"])),
+                          "children": [len(nodes) + 1]})
+        body_of[len(nodes)] = mv
+        nodes.append(body)
+    # 파티클 표식 — `FieldEffect`(`_effectId`)가 달린 켜진 물체의 자리. `motion.ts`의 `FX_NODE_PREFIX`와 `arena.ts`와 같다 (방만)
+    if motion:
+        by_id = {o.path_id: o for o in env.objects}
+        for o in env.objects:
+            if o.type.name != "MonoBehaviour":
+                continue
+            try:
+                mb = o.read_typetree()
+            except Exception:
+                continue
+            if not isinstance(mb.get("_effectId"), int) or isinstance(mb.get("_effectId"), bool):
+                continue
+            go_obj = by_id.get(mb["m_GameObject"]["m_PathID"])
+            go = go_obj.read() if go_obj is not None else None
+            if go is None or not go.m_IsActive or mb.get("m_Enabled") == 0:
+                continue
+            nodes.append({"name": f"fx:{mb['_effectId']}", "matrix": column_major(flipped(world_of(go.m_Transform.read(), cache))),
+                          "extras": {"fx": mb["_effectId"]}})
+    animations: list[dict] = []
+    skins: list[dict] = []
+    for r, rig in enumerate(rigs):
+        if rig["parent"] is not None:
+            nodes.append({"name": f"{rig['name']}/anchor", "matrix": column_major(flipped(rig["parent"])),
+                          "children": [len(nodes) + 1]})
+        first = len(nodes)
+        index = {n["transform"]: first + i for i, n in enumerate(rig["nodes"])}
+        for n in rig["nodes"]:
+            kids = [index[c] for c in n["children"] if c in index]
+            nodes.append({"name": n["name"], "translation": n["t"], "rotation": n["r"], "scale": n["s"],
+                          **({"children": kids} if kids else {})})
+        for sr, made, key in skinned:
+            if sr != r:
+                continue
+            skin = len(skins)
+            skins.append({"inverseBindMatrices": made["inverse"], "joints": [index.get(b, first) for b in made["bones"]],
+                          "skeleton": first})
+            holder = len(nodes)
+            nodes.append({"name": f"{rig['name']}/skin", "mesh": list(meshes).index(key), "skin": skin})
+            nodes[first].setdefault("children", []).append(holder)
+        hashes = {h: first + i for h, i in path_hashes(rig).items()}
+        from bdspGlb import build_animations
+        made_anim, _ = build_animations(env, buf, hashes, None, False, {rig["clip"]})
+        animations += [{**a, "name": rig["name"]} for a in made_anim]
+    for node, mv in body_of.items():
+        if mv["clip"] is None:
+            continue
+        from bdspGlb import build_animations
+        made, _ = build_animations(env, buf, {0: node}, None, False, {mv["clip"]})
+        animations += [{**a, "name": mv["name"]} for a in made]
+    kids = {c for n in nodes for c in n.get("children", [])}
+
     gltf = {
         "asset": {"version": "2.0", "generator": "radiant-platinum bdspArena"},
         "scene": 0,
-        "scenes": [{"nodes": list(range(len(meshes)))}],
-        "nodes": [{"name": g, "mesh": i} for i, g in enumerate(meshes)],
+        "scenes": [{"nodes": [i for i in range(len(nodes)) if i not in kids]}],
+        "nodes": nodes,
         "meshes": [{"name": g, "primitives": p} for g, p in meshes.items()],
         "materials": materials,
         "textures": textures,
@@ -562,6 +992,10 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
     # 빈 배열은 glTF가 안 받는다
     if samplers:
         gltf["samplers"] = samplers
+    if skins:
+        gltf["skins"] = skins
+    if animations:
+        gltf["animations"] = animations
     # TV 화면의 첫 칸 (`flipbook_cell`) — 적어 두어야 로더가 읽는다
     if transformed:
         gltf["extensionsUsed"] = ["KHR_texture_transform"]
@@ -657,7 +1091,7 @@ def bake_rooms(names: list[str]) -> int:
     print(f"방 {len(names)}벌")
     total = 0
     for name in names:
-        stat = export(ROOMS / name, ROOM_OUT / f"{name}.glb", None, ROOM_TEXTURE)
+        stat = export(ROOMS / name, ROOM_OUT / f"{name}.glb", None, ROOM_TEXTURE, motion=True)
         total += stat["바이트"]
         print(f"  {name}  삼각형 {stat['삼각형']:>7,} · 재질 {stat['재질']:>2} · {stat['바이트'] / 1e6:.1f}MB")
     # 목차는 **구운 것 전부**다 — 한 벌만 다시 구워도 목차가 줄지 않게 폴더를 센다

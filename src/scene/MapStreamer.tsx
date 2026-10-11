@@ -96,6 +96,7 @@ import { useDevWarp } from './useDevWarp'
 import { ChunkModels } from './ChunkModels'
 import { BdspRoom, useBdspRoom } from './BdspRoom'
 import { BdspField, useBdspFields } from './BdspField'
+import { WorldFx } from './WorldFx'
 import { BdspDungeon, openAir, useBdspDungeon } from './BdspDungeon'
 import { OuterFloor } from './OuterFloor'
 import { NpcMonModels } from './NpcMonModels'
@@ -1443,6 +1444,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         dsHidden={bdspDraws}
       />
       {/* 바깥은 BDSP 지역이 선다 — 원작 좌표 그대로다 (`BdspField`) */}
+      <WorldFx />
       {outdoor && <BdspField near={fieldsNear} hidden={bdspDown} />}
       {/* 실내는 BDSP 방이 있으면 그것이 선다 — 원작 칸 좌표 그대로다 (`BdspRoom`) */}
       {room !== null && <BdspRoom key={`${room}@${String(mapId)}`} name={room} mapId={mapId} />}

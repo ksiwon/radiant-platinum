@@ -15,6 +15,11 @@ import {
   verifyGlb, writeGlb, type Gltf,
 } from './glb'
 import { meshFrom, CHANNEL, type MeshData } from './mesh'
+import { FX_NODE_PREFIX, motionExtras, swingWeights, SWING_ATTRIBUTE } from './motion'
+import { buildAnimations } from './model'
+import { columnMajor, flipped } from './matrix'
+import type { Moving } from './field'
+import type { Rig } from './rig'
 import { readTexture, resize, resizePremultiplied, resource, type Texture } from './texture'
 import type { Environment } from './environment'
 import type { UnityValue } from './typetree'
@@ -127,6 +132,12 @@ function alphaOf(kind: string): Record<string, unknown> {
   return { alphaMode: 'MASK', alphaCutoff: 0.5 }
 }
 
+/** 재질 `extras` — 빛(`add` · `glow` · `emitOn`) 다음에 움직임(`texVel` …)을 잇는다. 둘 다 없으면 빈 객체(펼치면 아무것도 안 싣는다) */
+function extrasOf(base: Record<string, unknown>, moving: Record<string, unknown> | null): { extras?: Record<string, unknown> } {
+  const merged = { ...base, ...moving }
+  return Object.keys(merged).length > 0 ? { extras: merged } : {}
+}
+
 /** 번들의 재질을 glTF 재질 · 그림으로 — 무대와 야외(`field.ts`)가 같이 쓴다 */
 interface Looks {
   images: Record<string, unknown>[]
@@ -143,6 +154,8 @@ interface Looks {
   transformed: boolean
   /** 나무열매 잎(`blend`) 재질 슬롯 → [`_Color`, `_LayerColor`] (선형) — 정점 색 `COLOR_0`이 이 둘을 정점 알파로 섞는다 */
   blend: Map<number, [number[], number[]]>
+  /** 바람에 흔들리는 재질의 glTF 재질 번호 (`motion` 옵션일 때만) — 그 재질을 쓰는 조각에 정점 가중치 `_SWING`을 싣는다 */
+  swing: Set<number>
 }
 
 /**
@@ -189,6 +202,8 @@ interface LookOptions {
   share?: ImageShare
   /** 나무열매 나무 — 재질 색을 입힌다 (`plantKind`). 노드 쪽 `bdspArena.py`의 `groups`와 같다 */
   plant?: boolean
+  /** 흐름 · 흔들림 값을 `extras`로 싣는다 (`motion.ts`). 야외 · 던전 · 방이 켠다 — 무대 · 나무열매 · 기믹은 안 켠다 */
+  motion?: boolean
 }
 
 /** 감마 값 → 선형. 재질에 박힌 색은 감마다 (`albedo.ts`의 레이어 색과 같은 자리) */
@@ -289,6 +304,8 @@ export async function bakeLooks(
   const maxSize = options.maxSize ?? null
   const lights = options.lights ?? false
   const plant = options.plant ?? false
+  const motion = options.motion ?? false
+  const swing = new Set<number>()
   /** 그림 한 장을 glTF 그림으로 — 공용 자리가 있으면 거기 두고 주소만, 없으면 glb 안에 싣는다 */
   const image = async (px: Uint8Array, w: number, h: number, name: string): Promise<Record<string, unknown>> => {
     if (options.share) return { uri: await options.share(px, w, h), name }
@@ -491,6 +508,7 @@ export async function bakeLooks(
     // 실어서 이 재질들의 밤 창이 안 켜졌다. 더하는 재질(입구 빛)은 아래 그림 없는 길이 맡는다.
     // ⚠️ **높이 안개 판(`_DEPTHDENSITY` — `HeightFog_01`)은 빛이 아니다** — 안개 빛깔을 발광으로 들고 있어 켜면 밤에 안개 판이 스스로 빛난다. 전처럼 안 켠다
     const glow = lights && look && !add && !look.keywords.includes('_DEPTHDENSITY') ? await glowOf(look) : null
+    const moving = motion ? motionExtras(look, lay) : null
     materials.push({
       name: m.name,
       pbrMetallicRoughness: {
@@ -504,9 +522,11 @@ export async function bakeLooks(
       },
       ...alphaOf(renderType.get(m.name) ?? 'Opaque'),
       doubleSided: true,
-      ...(lights && add ? { alphaMode: 'BLEND', extras: { add: true } } : {}),
-      ...(glow ? { emissiveTexture: { index: glow.index }, emissiveFactor: glow.factor, extras: glow.extras } : {}),
+      ...(lights && add ? { alphaMode: 'BLEND' } : {}),
+      ...(glow ? { emissiveTexture: { index: glow.index }, emissiveFactor: glow.factor } : {}),
+      ...extrasOf({ ...(lights && add ? { add: true } : {}), ...(glow ? glow.extras : {}) }, moving),
     })
+    if (moving?.swing) swing.add(materials.length - 1)
     slotOf.set(m.name, materials.length - 1)
     // ⚠️ **재질이 적어 둔 UV 배율을 먹여야 한다.** 무대 바닥이 배율 (11, 11)로
     // 되풀이하는 그림이다 — 안 먹이면 타일 121장이 한 장으로 늘어난다
@@ -567,11 +587,14 @@ export async function bakeLooks(
       }
       if (Object.keys(extras).length > 0) plain.extras = extras
     }
+    const moving = motion ? motionExtras(looks.get(mat), false) : null
+    if (moving) plain.extras = { ...(plain.extras as Record<string, unknown> | undefined), ...moving }
+    if (moving?.swing) swing.add(materials.length)
     materials.push(plain)
     slotOf.set(mat, materials.length - 1)
   }
 
-  return { images, textures, materials, samplers, slotOf, uvOf, materialName, transformed, blend }
+  return { images, textures, materials, samplers, slotOf, uvOf, materialName, transformed, blend, swing }
 }
 
 // ── 내보내기 ─────────────────────────────────────────────────────────────────
@@ -598,6 +621,21 @@ interface ArenaOptions {
   premultiplied?: boolean
   /** 나무열매 나무 — 재질 색을 입힌다 (`bakeLooks`의 `plant`). 잎은 정점 색 `COLOR_0`을 싣는다 */
   plant?: boolean
+  /** 흐름 · 흔들림 값을 싣는다 (`bakeLooks`의 `motion`) — 방이 켠다 */
+  motion?: boolean
+  /**
+   * 혼자 움직이는 물체를 가르는 함수 (`field.ts`의 `movingOf`) — 주면 그 물체는 합치지 않고 노드 둘(닻 · 몸)로 싣는다.
+   * ⚠️ `field.ts`가 이 파일을 불러서 여기서 못 불러온다(순환) — 부르는 쪽(`convert.ts`)이 넘긴다
+   */
+  moving?: (env: Environment, go: Props, transformPid: number, cache: Map<number, Mat4>) => Moving | null
+  /**
+   * 뼈대에 매단 움직이는 소품(에스컬레이터 — `rig.ts`)의 함수 둘. 껍데기가 스킨 메시라 `MeshFilter` 길에는 안 걸린다 — 여기서 스킨으로 싣는다.
+   * `moving`과 같은 까닭으로(순환) 부르는 쪽이 넘긴다
+   */
+  rigging?: {
+    find: (env: Environment, cache: Map<number, Mat4>) => Rig[]
+    hashes: (rig: Rig) => Map<number, number>
+  }
 }
 
 interface ArenaStat {
@@ -621,6 +659,8 @@ interface Part {
   indices: Uint32Array
   /** 정점 색 `COLOR_0` (RGBA · 선형) — 나무열매 잎만 */
   colors?: Float32Array
+  /** 바람 흔들림 가중치 `_SWING` — 흔드는 재질이고 정점 색 채널이 있을 때만 */
+  swing?: Float32Array
 }
 
 /** 정점당 `want`개 값으로 편다. 없거나 개수가 안 맞으면 `fallback`으로 채운다 */
@@ -667,10 +707,13 @@ export async function exportArena(
 
   // 재질 이름 → RenderType. 짐작하지 않고 번들이 적어 둔 것을 읽는다
   const buf = new GlbBuffer()
-  const { images, textures, materials, samplers, slotOf, uvOf, materialName, transformed, blend } =
-    await bakeLooks(env, encodePng, buf, { maxSize: options.maxSize ?? null, premultiplied: options.premultiplied ?? false, plant: options.plant ?? false })
+  const { images, textures, materials, samplers, slotOf, uvOf, materialName, transformed, blend, swing } =
+    await bakeLooks(env, encodePng, buf, { maxSize: options.maxSize ?? null, premultiplied: options.premultiplied ?? false, plant: options.plant ?? false, motion: options.motion ?? false })
 
   const cache = new Map<number, Mat4>()
+  const rigs = options.rigging ? options.rigging.find(env, cache) : []
+  /** 혼자 움직이는 묶음(`move:<Transform>`) → 그 물체 */
+  const movers = new Map<string, Moving>()
   /** 묶음 이름 → (재질 슬롯 → 그 재질로 그리는 조각들). `groups`가 아니면 묶음은 `name` 하나다 */
   const parts = new Map<string, Map<number, Part[]>>()
   let kept = 0
@@ -718,7 +761,12 @@ export async function exportArena(
     if (slots.length === 0 || transformPid === 0) continue
 
     const world = worldOf(env, transformPid, cache)
-    const group = options.groups ? topGroup(env, transformPid) : name
+    // 혼자 움직이는 물체(풍차 · 기계 · 석탄 더미)는 제 좌표에 두고 따로 싣는다 (`Moving`)
+    const move = options.moving ? options.moving(env, go, transformPid, cache) : null
+    // 묶음 이름 = 이름 + 월드 자리(세 자리) — PathID는 자바스크립트에서 64비트가 뭉개져 노드 쪽(`bdspArena.py`)과 갈린다
+    const at = (v: number): string => (Math.abs(v) < 5e-4 ? 0 : v).toFixed(3)
+    const group = move ? `move:${move.name}:${at(world[3]!)}:${at(world[7]!)}:${at(world[11]!)}` : options.groups ? topGroup(env, transformPid) : name
+    if (move) movers.set(group, move)
     const n = mesh.vertexCount
     const rawPos = mesh.attributes.get(CHANNEL.position)
     if (!rawPos) continue
@@ -728,6 +776,11 @@ export async function exportArena(
     let nearest = Infinity
     for (let i = 0; i < n; i++) {
       const x = src[i * 3]!; const y = src[i * 3 + 1]!; const z = src[i * 3 + 2]!
+      if (move) {
+        // 제 좌표 그대로 — x만 뒤집는다. 월드로 옮기는 것은 노드의 몫이다
+        verts[i * 3] = -x; verts[i * 3 + 1] = y; verts[i * 3 + 2] = z
+        continue
+      }
       const wx = world[0]! * x + world[1]! * y + world[2]! * z + world[3]!
       const wy = world[4]! * x + world[5]! * y + world[6]! * z + world[7]!
       const wz = world[8]! * x + world[9]! * y + world[10]! * z + world[11]!
@@ -746,6 +799,11 @@ export async function exportArena(
       n, 3, [0, 1, 0])
     for (let i = 0; i < n; i++) {
       const x = rawNrm[i * 3]!; const y = rawNrm[i * 3 + 1]!; const z = rawNrm[i * 3 + 2]!
+      if (move) {
+        const len = Math.hypot(x, y, z)
+        if (len > 1e-9) { normals[i * 3] = -x / len; normals[i * 3 + 1] = y / len; normals[i * 3 + 2] = z / len } else normals[i * 3 + 1] = 1
+        continue
+      }
       const wx = world[0]! * x + world[1]! * y + world[2]! * z
       const wy = world[4]! * x + world[5]! * y + world[6]! * z
       const wz = world[8]! * x + world[9]! * y + world[10]! * z
@@ -805,12 +863,15 @@ export async function exportArena(
           colors[i * 4 + 3] = 1
         }
       }
-      const part: Part = { positions: verts, normals, uvs, indices, ...(colors ? { colors } : {}) }
+      // 바람 흔들림 — 가중치는 정점 색 R × A (`swingWeights`). 정점 색이 없는 메시는 흔들지 않는다
+      const weights = swing.has(slot) ? swingWeights(mesh.attributes.get(CHANNEL.color), mesh.dimensions.get(CHANNEL.color), n) : null
+      const part: Part = { positions: verts, normals, uvs, indices, ...(colors ? { colors } : {}), ...(weights ? { swing: weights } : {}) }
       if (list) list.push(part)
       else bySlot.set(slot, [part])
     }
 
-    for (let i = 0; i < n; i++) {
+    // 움직이는 물체의 정점은 제 좌표라 방 치수에 안 센다
+    for (let i = 0; i < (move ? 0 : n); i++) {
       const x = verts[i * 3]!; const y = verts[i * 3 + 1]!; const z = verts[i * 3 + 2]!
       if (x < lowX) lowX = x
       if (x > highX) highX = x
@@ -840,10 +901,12 @@ export async function exportArena(
       const tex = new Float32Array(count * 2)
       const idx = new Uint32Array(idxCount)
       const col = chunks.every((c) => c.colors) ? new Float32Array(count * 4) : null
+      const wind = chunks.every((c) => c.swing) ? new Float32Array(count) : null
       let base = 0
       let atI = 0
       for (const c of chunks) {
         if (col && c.colors) col.set(c.colors, base * 4)
+        if (wind && c.swing) wind.set(c.swing, base)
         pos.set(c.positions, base * 3)
         nrm.set(c.normals, base * 3)
         tex.set(c.uvs, base * 2)
@@ -867,18 +930,174 @@ export async function exportArena(
         mode: 4,
       }
       if (col) (prim.attributes as Record<string, number>).COLOR_0 = buf.add(col, 'VEC4', FLOAT, ARRAY_BUFFER)
+      if (wind) (prim.attributes as Record<string, number>)[SWING_ATTRIBUTE] = buf.add(wind, 'SCALAR', FLOAT, ARRAY_BUFFER)
       if (slot >= 0) prim.material = slot
       primitives.push(prim)
       draws++
     }
   }
 
+  // 뼈대 소품의 껍데기(스킨 메시) — 정점은 제 좌표에서 x만 뒤집고(`model.ts`와 같다) 역바인드 행렬도 `S·M·S`로 옮긴다
+  const skinned: { rig: number, mesh: number, bones: number[], inverse: number }[] = []
+  rigs.forEach((rig, r) => {
+    for (const sk of rig.skins) {
+      const meshValue = env.read(sk.mesh) as Props | null
+      if (!meshValue) continue
+      const holder = env.bundleOf(sk.mesh)
+      let mesh: MeshData
+      try { mesh = meshFrom(meshValue, (p) => (holder ? resource(holder, p) : null)) } catch { continue }
+      const n = mesh.vertexCount
+      const src = lanes(mesh.attributes.get(CHANNEL.position), mesh.dimensions.get(CHANNEL.position), n, 3, [0, 0, 0])
+      const rawNrm = lanes(mesh.attributes.get(CHANNEL.normal), mesh.dimensions.get(CHANNEL.normal), n, 3, [0, 1, 0])
+      const rawUv = lanes(mesh.attributes.get(CHANNEL.uv0), mesh.dimensions.get(CHANNEL.uv0), n, 2, [0, 0])
+      const verts = new Float32Array(n * 3)
+      const normals = new Float32Array(n * 3)
+      for (let i = 0; i < n; i++) {
+        verts[i * 3] = -src[i * 3]!; verts[i * 3 + 1] = src[i * 3 + 1]!; verts[i * 3 + 2] = src[i * 3 + 2]!
+        const x = -rawNrm[i * 3]!, y = rawNrm[i * 3 + 1]!, z = rawNrm[i * 3 + 2]!
+        const len = Math.hypot(x, y, z) || 1
+        normals[i * 3] = x / len; normals[i * 3 + 1] = y / len; normals[i * 3 + 2] = z / len
+      }
+      const joints = new Uint16Array(n * 4)
+      const weights = new Float32Array(n * 4)
+      const bw = mesh.attributes.get(CHANNEL.blendWeight)
+      const bi = mesh.intAttributes.get(CHANNEL.blendIndices)
+      const wide = Math.min(4, mesh.dimensions.get(CHANNEL.blendWeight) ?? 0)
+      if (!bw || !bi || wide === 0) {
+        for (let i = 0; i < n; i++) weights[i * 4] = 1
+      } else {
+        const iw = mesh.dimensions.get(CHANNEL.blendIndices) ?? wide
+        for (let i = 0; i < n; i++) {
+          for (let k = 0; k < wide; k++) { weights[i * 4 + k] = bw[i * wide + k]!; joints[i * 4 + k] = bi[i * iw + k]! }
+        }
+      }
+      for (let i = 0; i < n; i++) {
+        const sum = weights[i * 4]! + weights[i * 4 + 1]! + weights[i * 4 + 2]! + weights[i * 4 + 3]!
+        if (sum > 0) for (let k = 0; k < 4; k++) weights[i * 4 + k] = weights[i * 4 + k]! / sum
+        else weights[i * 4] = 1
+      }
+      const maxJoint = Math.max(0, sk.bones.length - 1)
+      for (let i = 0; i < joints.length; i++) if (joints[i]! > maxJoint) joints[i] = maxJoint
+      const aPos = buf.add(verts, 'VEC3', FLOAT, ARRAY_BUFFER, true)
+      const aNrm = buf.add(normals, 'VEC3', FLOAT, ARRAY_BUFFER)
+      const aJoint = buf.add(joints, 'VEC4', USHORT, ARRAY_BUFFER)
+      const aWeight = buf.add(weights, 'VEC4', FLOAT, ARRAY_BUFFER)
+      const wideIdx = num(meshValue.m_IndexFormat) === 1
+      const primitives: Record<string, unknown>[] = []
+      mesh.subMeshes.forEach((sub, s) => {
+        const matName = s < sk.materials.length ? materialName.get(sk.materials[s]!) : undefined
+        const slot = matName === undefined ? -1 : (slotOf.get(matName) ?? -1)
+        const [sx, sy, ox, oy] = (matName === undefined ? undefined : uvOf.get(matName)) ?? [1, 1, 0, 0]
+        const uvs = new Float32Array(n * 2)
+        for (let i = 0; i < n; i++) { uvs[i * 2] = rawUv[i * 2]! * sx + ox; uvs[i * 2 + 1] = 1 - (rawUv[i * 2 + 1]! * sy + oy) }
+        const first = Math.floor(sub.firstByte / (wideIdx ? 4 : 2))
+        const tri = mesh.indices.subarray(first, first + sub.indexCount)
+        if (tri.length < 3) return
+        const idx = new Uint32Array(tri.length - (tri.length % 3))
+        for (let i = 0; i + 2 < tri.length; i += 3) { idx[i] = tri[i + 2]!; idx[i + 1] = tri[i + 1]!; idx[i + 2] = tri[i]! }
+        const prim: Record<string, unknown> = {
+          attributes: { POSITION: aPos, NORMAL: aNrm, TEXCOORD_0: buf.add(uvs, 'VEC2', FLOAT, ARRAY_BUFFER), JOINTS_0: aJoint, WEIGHTS_0: aWeight },
+          indices: n <= 65536 ? buf.add(Uint16Array.from(idx), 'SCALAR', USHORT, ELEMENT_BUFFER) : buf.add(idx, 'SCALAR', UINT, ELEMENT_BUFFER),
+          mode: 4,
+        }
+        if (slot >= 0) prim.material = slot
+        primitives.push(prim)
+        totalT += idx.length / 3
+        draws++
+      })
+      if (primitives.length === 0) continue
+      totalV += n
+      // X 뒤집기를 역바인드 행렬에도: S·M·S — 유니티 `e{행}{열}`은 행 우선, glTF MAT4는 열 우선이다 (`model.ts`)
+      const boneCount = mesh.bindPose.length / 16
+      const ibm = new Float32Array(boneCount * 16)
+      for (let b = 0; b < boneCount; b++) {
+        for (let r2 = 0; r2 < 4; r2++) {
+          for (let c = 0; c < 4; c++) {
+            ibm[b * 16 + c * 4 + r2] = mesh.bindPose[b * 16 + r2 * 4 + c]! * ((r2 === 0 ? -1 : 1) * (c === 0 ? -1 : 1))
+          }
+        }
+      }
+      meshes.push({ name: `skin:${rig.key}:${String(skinned.length)}`, primitives })
+      skinned.push({ rig: r, mesh: meshes.length - 1, bones: sk.bones, inverse: buf.add(ibm, 'MAT4', FLOAT) })
+    }
+  })
+
+  // 노드 — 합친 묶음은 노드 하나, 움직이는 것은 닻(부모 월드 · 정지) → 몸(제 로컬 TRS · 움직임) 둘 (`field.ts`와 같다)
+  const nodes: Record<string, unknown>[] = []
+  const bodyOf = new Map<number, Moving>()
+  meshes.forEach((m, i) => {
+    if (m.name.startsWith('skin:')) return
+    const mv = movers.get(m.name)
+    if (!mv) { nodes.push({ name: m.name, mesh: i }); return }
+    const body: Record<string, unknown> = {
+      name: mv.name, mesh: i, translation: mv.body.t, rotation: mv.body.r, scale: mv.body.s,
+      ...(mv.spin ? { extras: { spin: mv.spin } } : {}),
+    }
+    if (mv.parent) {
+      nodes.push({ name: `${mv.name}/anchor`, matrix: columnMajor(flipped(mv.parent)), children: [nodes.length + 1] })
+    }
+    bodyOf.set(nodes.length, mv)
+    nodes.push(body)
+  })
+  // 파티클 표식 — `FieldEffect`가 달린 켜진 물체의 자리 (`motion.ts`의 `FX_NODE_PREFIX`). 방(`motion`)만 싣는다
+  if (options.motion) {
+    for (const e of env.ofType('MonoBehaviour')) {
+      const mb = env.readEntry(e) as Props | null
+      if (!mb || typeof mb._effectId !== 'number') continue
+      const go = env.read(num((mb.m_GameObject as Props | undefined)?.m_PathID)) as Props | null
+      if (!go || go.m_IsActive === false || go.m_IsActive === 0 || mb.m_Enabled === false || mb.m_Enabled === 0) continue
+      let transformPid = 0
+      for (const c of (go.m_Component as UnityValue[] | undefined) ?? []) {
+        const holder = (Array.isArray(c) ? c[1] : c) as Props
+        const pid = num(((holder.component ?? holder) as Props).m_PathID)
+        if (env.entryOf(pid)?.type === 'Transform') transformPid = pid
+      }
+      if (transformPid === 0) continue
+      nodes.push({ name: `${FX_NODE_PREFIX}${String(mb._effectId)}`, matrix: columnMajor(flipped(worldOf(env, transformPid, cache))), extras: { fx: mb._effectId } })
+    }
+  }
+  const animations: Record<string, unknown>[] = []
+  // 뼈대 소품 — 닻 → 마디 …, 껍데기는 뿌리 마디에 스킨으로 단다. 클립은 자식 경로의 CRC32로 마디를 찾는다 (`rig.ts`)
+  const skins: Record<string, unknown>[] = []
+  rigs.forEach((rig, r) => {
+    if (rig.parent) nodes.push({ name: `${rig.name}/anchor`, matrix: columnMajor(flipped(rig.parent)), children: [nodes.length + 1] })
+    const first = nodes.length
+    const index = new Map(rig.nodes.map((n, i) => [n.transform, first + i]))
+    const rootNode: Record<string, unknown> = {}
+    rig.nodes.forEach((n) => {
+      const kids = n.children.map((c) => index.get(c)).filter((c): c is number => c !== undefined)
+      nodes.push({ name: n.name, translation: n.t, rotation: n.r, scale: n.s, ...(kids.length > 0 ? { children: kids } : {}) })
+    })
+    Object.assign(rootNode, nodes[first])
+    for (const sk of skinned.filter((k) => k.rig === r)) {
+      const skin = skins.length
+      skins.push({
+        inverseBindMatrices: sk.inverse,
+        joints: sk.bones.map((b) => index.get(b) ?? first),
+        skeleton: first,
+      })
+      const holderNode = nodes.length
+      nodes.push({ name: `${rig.name}/skin`, mesh: sk.mesh, skin })
+      ;((nodes[first] as Record<string, unknown>).children ??= [] as number[]) as number[]
+      ;(nodes[first]!.children as number[]).push(holderNode)
+    }
+    const hashes = new Map([...options.rigging!.hashes(rig)].map(([h, i]) => [h, first + i]))
+    for (const a of buildAnimations(env, buf, hashes, null, false, new Set([rig.clip])).animations) animations.push({ ...a, name: rig.name })
+  })
+  for (const [node, mv] of bodyOf) {
+    if (mv.clip === undefined) continue
+    for (const a of buildAnimations(env, buf, new Map([[0, node]]), null, false, new Set([mv.clip])).animations) animations.push({ ...a, name: mv.name })
+  }
+  const kids = new Set<number>()
+  for (const n of nodes) for (const c of (n.children as number[] | undefined) ?? []) kids.add(c)
+
   const gltf: Gltf & { extensionsUsed?: string[] } = {
     asset: { version: '2.0', generator: 'radiant-platinum bdsp arena' },
     scene: 0,
-    scenes: [{ nodes: meshes.map((_, i) => i) }],
-    nodes: meshes.map((m, i) => ({ name: m.name, mesh: i })),
+    scenes: [{ nodes: nodes.map((_, i) => i).filter((i) => !kids.has(i)) }],
+    nodes,
     meshes,
+    ...(skins.length > 0 ? { skins } : {}),
     materials,
     textures,
     images,
@@ -888,6 +1107,7 @@ export async function exportArena(
   }
   // 빈 배열은 glTF가 안 받는다
   if (samplers.length > 0) gltf.samplers = samplers
+  if (animations.length > 0) gltf.animations = animations
   // TV 화면의 첫 칸 (`flipbookCell`)
   if (transformed) gltf.extensionsUsed = ['KHR_texture_transform']
 

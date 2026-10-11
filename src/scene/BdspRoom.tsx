@@ -17,7 +17,7 @@
 // ⚠️ **움직이는 장치는 원작 쪽이 그린다** (`FeatureProps` · `movingProps`). BDSP 체육관에는 승강판 · 톱니 · 물바닥이 정적 메시로
 // 구워져 있어서(애니메이션 0개) 그대로 두면 굳은 BDSP 장치 위에서 원작 장치가 따로 움직였다. 원작 장치가 그 맵에 서면 BDSP의 그
 // 부분만 숨긴다(`deviceMaterials`)
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { Box3, BufferAttribute, BufferGeometry, Mesh, Vector3, type Group, type Material, type Object3D } from 'three'
@@ -31,6 +31,8 @@ import { sunyshoreRoomOf } from '../engine/world/sunyshoreGym'
 import { disposeTree } from './disposeTree'
 import { useBdspMark } from './bdspReady'
 import { liveWater } from './BdspField'
+import { liveMotion, liveMotionMaterials, type BdspMotion } from './bdspMotion'
+import { FieldFx } from './FieldFx'
 import { holdBdspDoors } from './DoorAnimations'
 import { holdBdspSigns } from './ObjectProps'
 import { shellRoom } from './roomShell'
@@ -253,6 +255,8 @@ export function BdspRoom({ name, mapId }: { name: string, mapId: number }) {
     doors: readonly { mesh: Mesh, x: number, z: number }[]
   }>({ first: [], hanging: [], shafts: [], doors: [] })
   useBdspMark(name, scene !== null, failed)
+  const motion = useRef<BdspMotion | null>(null)
+  const eye = useRef(new Vector3())
 
   useEffect(() => {
     let alive = true
@@ -267,6 +271,9 @@ export function BdspRoom({ name, mapId }: { name: string, mapId: number }) {
         held = gltf.scene
         hideDevices(gltf.scene, mapId)
         liveWater(gltf.scene)
+        // 흐르는 그림(TV · PC 화면 · 기계 불빛) · 바람 흔들림 — 물 뒤에 (`bdspMotion`)
+        liveMotionMaterials(gltf.scene)
+        motion.current = liveMotion(gltf.scene, gltf.animations)
         const at = placementOf(name)
         const doors = splitEliteFourDoors(gltf.scene, name)
           .map((d) => ({ mesh: d.mesh, x: d.x + at.x, z: d.z + at.z }))
@@ -294,11 +301,14 @@ export function BdspRoom({ name, mapId }: { name: string, mapId: number }) {
     return () => {
       alive = false
       for (const r of release) r()
+      motion.current?.dispose()
+      motion.current = null
       if (held) disposeTree(held)
     }
   }, [name, mapId])
 
-  useFrame(() => {
+  useFrame(({ camera }, dt) => {
+    motion.current?.update(dt, camera.getWorldPosition(eye.current))
     // ⚠️ **눈이 실제로 어디 있나로 가른다** (`firstPersonView`) — 설정 값을 보면 컷신 동안 3인칭 카메라가 천장에 막힌다
     const first = firstPersonView()
     for (const c of lens.first) c.visible = first
@@ -309,5 +319,5 @@ export function BdspRoom({ name, mapId }: { name: string, mapId: number }) {
     for (const d of lens.doors) d.mesh.visible = eliteDoorShown(npcActors.list, d.x, d.z)
   })
 
-  return scene ? <primitive object={scene} /> : null
+  return scene ? <><primitive object={scene} /><FieldFx root={scene} /></> : null
 }
