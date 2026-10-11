@@ -27,6 +27,7 @@ import { narcEntry } from './nds'
 import { creditsLocator, type CreditsSite } from './validate'
 import { maybeLz77, palettes, chars, screen, screenCell, drawTile, TILE } from './ntrgfx'
 import { encodePng } from './png'
+import { convertCreditsArt } from './creditsArt'
 import {
   breathe, check, json, put, readRomFile, type ConvertContext, type Produced,
 } from './convertTypes'
@@ -145,6 +146,9 @@ export async function convertCredits(ctx: ConvertContext): Promise<Produced> {
   const overlay = await ctx.fs.overlay(site.overlay)
   if (!overlay) throw new Error(`오버레이 ${String(site.overlay)}을 못 읽었다`)
   put(ctx, out, `data/credits.${ctx.locale}.json`, json({ rows: creditRows(overlay, site) }))
+
+  // 3D 무대의 그림 — 회상 사진 · 날아다니는 포켓몬 (`creditsArt.ts`). 노드 쪽은 이 함수를 그대로 부른다
+  for (const [path, bytes] of await convertCreditsArt(ctx)) out.set(path, bytes)
 
   ctx.onProgress?.(COUNT + 1, COUNT + 1)
   return out

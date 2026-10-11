@@ -370,7 +370,7 @@ export const GROUPS: readonly GroupSpec[] = [
     // 창기둥과 깨어진 세계로 가는 문 — 필드 밖 연출의 모델 (`demoModels.ts`)
     name: 'demoModels',
     outputs: ['data/demo/{이름}.bin', 'data/demo/{이름}.png', 'data/demo/anims.bin', 'data/demo/index.json'],
-    converter: 1,
+    converter: 2,
     convert: convertDemoModels,
   },
   {
@@ -490,8 +490,9 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: [
       'data/credits.json', 'data/credits.*.json',
       'data/credits0.png', 'data/credits1.png', 'data/credits2.png',
+      'data/credits/{memory,night}-{male,female}{n}.png', 'data/credits/sprite{0~3}.png', 'data/credits/art.json',
     ],
-    converter: 2,
+    converter: 3,
     convert: convertCredits,
   },
   { name: 'frontier', outputs: ['data/frontier.json'], converter: 1, convert: convertFrontier },

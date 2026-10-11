@@ -100,7 +100,7 @@
     "extract:pokeIcons": "node tools/extract/pokeIcons.js",
     "extract:boxWallpapers": "node tools/extract/boxWallpapers.js",
     "extract:poketchMap": "node tools/extract/poketchMap.js",
-    "extract:credits": "node tools/extract/credits.js",
+    "extract:credits": "node tools/extract/credits.js && node --experimental-strip-types --import ./tools/extract/tsResolve.mjs tools/extract/creditsArt.mjs",
     "extract:townMap": "node tools/extract/townMap.js",
     "extract:signposts": "node tools/extract/signposts.js",
     "extract:chunks": "node tools/extract/chunks.js",
