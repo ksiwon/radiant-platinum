@@ -1291,7 +1291,7 @@ export const BDSP_GROUPS: readonly GroupSpec[] = [
   {
     // 포획 · 내보내기 · 기술 이펙트 — 원작 파티클 프리팹 그대로 (docs/orders/BATTLE_FX_20261004.md §4 · `import/bdsp/fx.ts`)
     name: 'battleFx',
-    outputs: ['data/fx/prefab/{프리팹}.json', 'data/fx/tex/{그림}.png', 'data/fx/tex/index.json', 'data/fx/seq/{시퀀스}.json', 'data/fx/model/ew121_egg00.glb', 'data/fx/index.json'],
+    outputs: ['data/fx/prefab/{프리팹}.json', 'data/fx/tex/{그림}.png', 'data/fx/tex/index.json', 'data/fx/seq/{시퀀스}.json', 'data/fx/model/ew121_egg00.glb', 'data/fx/model/substitute_doll.glb', 'data/fx/index.json'],
     converter: 1,
     convert: convertBattleFx,
   },

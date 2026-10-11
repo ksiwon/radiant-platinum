@@ -22,9 +22,9 @@ describe('싱글 · 더블 갈래', () => {
       planSequence(SEQ, { options: o }).particles[0]!.commands.map((x) => x.name)
     expect(names(undefined)).toEqual([])
     expect(names(battleOptions(false))).toEqual(['ParticleMoveRelativePoke'])
-    // 더블: 「싱글 이외」(4)의 `ParticleMoveSpecialPos`는 아직 안 옮긴 명령이라 접히지 않는다 — 싱글 묶음(1)은 빠진다
-    expect(names(battleOptions(true))).toEqual([])
-    expect(planSequence(SEQ, { options: battleOptions(true) }).ignored.has('ParticleMoveSpecialPos')).toBe(true)
+    // 더블: 「싱글 이외」(4)의 `ParticleMoveSpecialPos`(특수 자리 2 — 필드 가운데)가 서고, 싱글 묶음(1)은 빠진다
+    expect(names(battleOptions(true))).toEqual(['ParticleMoveSpecialPos'])
+    expect(planSequence(SEQ, { options: battleOptions(true) }).ignored.has('ParticleMoveSpecialPos')).toBe(false)
   })
 
   it('맞는 쪽(trg=1)에 붙는 입자만 touchesTarget이다', () => {
@@ -70,7 +70,13 @@ maybe('실제 시퀀스 — 파도타기 · 지진 · 암석봉인', () => {
   })
 
   it('더블 갈래는 싱글과 다른 벌이다', () => {
-    for (const n of ['ew057', 'ew089', 'ew157']) expect(count(n, true)).not.toBe(count(n, false))
+    // 수가 같아도 명령이 다르다 — 싱글은 몸 기준(`ParticleMoveRelativePoke`), 더블은 특수 자리(`ParticleMoveSpecialPos`)
+    const names = (n: string, doubles: boolean): string => {
+      const p = planSequence(seq(n), { attackerMine: true, options: battleOptions(doubles) })
+      return [...p.particles.flatMap((q) => q.commands.map((x) => x.name)), ...p.camera.map((x) => x.name)].sort().join()
+    }
+    for (const n of ['ew057', 'ew089', 'ew157']) expect(names(n, true)).not.toBe(names(n, false))
+    expect(count('ew057', true)).toBeGreaterThan(0)
   })
 })
 
@@ -119,5 +125,33 @@ withData('fx/seq/ew416.json')('무대 갈래(`GroupOption 28`) — 기가임팩�
     const cmds = plan(false).body[0].commands
     expect(cmds.some((c) => c.name === 'PokemonMoveRelativePoke' && c.start === 79)).toBe(true)
     expect(cmds.some((c) => c.name === 'PokemonMoveReset' && c.start === 115)).toBe(true)
+  })
+})
+
+describe('특수 자리 명령', () => {
+  const ctx = (special: (pos: number) => { pos: [number, number, number]; yaw: number } | null) => ({
+    anchor: () => null, home: () => ({ pos: [0, 0, 3] as [number, number, number], yaw: 0 }), rest: () => null, mine: () => true, special,
+  })
+  const SEQ: SeqData = { name: 'ew113', groups: [
+    { name: 'wall', no: 1, options: [[0, 2]], commands: [c(0, 40, 'ParticleCreate', { file: ['ew113/ew113_at_start.ptcl'] }), c(5, 5, 'ParticleMoveSpecialPos', { pos: ['0'], ofs: ['0', '50', '60'], isRot: ['1'], isFlip: ['1'], move: ['0'] })] },
+    { name: 'cam', no: 0, options: [[0, 2]], commands: [c(0, 0, 'CameraMoveSpecialPos', { pos: ['300', '222', '600'], trg: ['20', '50', '0'], posTrg: ['0'], fov: ['19'], isFlip: ['1'], isRot: ['1'], move: ['0'] })] },
+  ] }
+
+  it('입자는 특수 자리 0(자기 진영 가운데) + 오프셋(cm)에 서고, 특수 자리 번호는 역할로 안 바뀐다', () => {
+    const plan = planSequence(SEQ, { options: battleOptions(true), targets: { 0: 0, 1: 1 } })
+    expect(plan.particles[0]!.commands.map((x) => x.name)).toEqual(['ParticleMoveSpecialPos'])
+    expect(plan.camera.map((x) => x.name)).toEqual(['CameraMoveSpecialPos'])
+    expect(plan.camera[0]!.values.posTrg).toEqual(['0'])
+  })
+
+  it('몸이 아니라 특수 자리에서 읽는다 — 자리가 없으면 서지 않는다', async () => {
+    const { particleAt, cameraAt } = await import('./sequence')
+    const plan = planSequence(SEQ, { options: battleOptions(true) })
+    const at = particleAt(plan.particles[0]!, 10, ctx(() => ({ pos: [0, 0, 3], yaw: 0 })))
+    // 오프셋 (0, 50, 60)cm — 위 0.5m · 앞 0.6m
+    expect(at.pos[1]).toBeCloseTo(0.5, 2)
+    expect(Math.abs(at.pos[2] - 3)).toBeCloseTo(0.6, 1)
+    const cam = cameraAt(plan, 1, { ...ctx(() => ({ pos: [0, 0, 3], yaw: 0 })), scale: () => 1 }, { pos: [0, 0, 0], target: [0, 0, 1], fov: 30, roll: 0 })
+    expect(cam?.fov).toBe(19)
   })
 })

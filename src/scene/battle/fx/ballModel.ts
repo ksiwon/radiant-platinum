@@ -70,3 +70,35 @@ export function loadBallModel(ball: number): Promise<BallModel | null> {
 export function cloneBall(model: BallModel): Group {
   return cloneSkinned(model.scene) as Group
 }
+
+let doll: Promise<Group | null> | null = null
+onProviderSwap(() => { doll = null })
+
+/**
+ * 대타 인형 (`data/fx/model/substitute_doll.glb`). 뼈 스물의 정지한 스킨 모델이다. 묶음이 5판 아래면 `null`.
+ * 쓰는 자리마다 `cloneBall`로 복제한다
+ */
+export function loadSubstituteDoll(): Promise<Group | null> {
+  doll ??= (async () => {
+    const path = (await fxIndex())?.substituteDoll
+    if (!path) return null
+    const full = `data/fx/${path}`
+    const provider = assets()
+    if (!(await provider.exists(full))) return null
+    const url = await provider.objectUrl(full)
+    try {
+      const gltf = await loader.loadAsync(url)
+      unifySkeletons(gltf.scene)
+      gltf.scene.traverse((o) => { o.castShadow = true; o.frustumCulled = false })
+      return gltf.scene
+    } finally {
+      provider.releaseObjectUrl(full)
+    }
+  })().catch(() => null)
+  return doll
+}
+
+/** 대타 인형 한 벌을 복제한다 */
+export function cloneDoll(scene: Group): Group {
+  return cloneSkinned(scene) as Group
+}

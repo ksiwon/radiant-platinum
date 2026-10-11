@@ -40,13 +40,15 @@ import {
 } from './moveElements'
 import { SplParticles } from './SplParticles'
 import { StatusVfx } from './StatusVfx'
+import { DS_BODY_FX_FRAMES, DsBodyFx } from './DsBodyFx'
+import { patchBareAnim } from '../../engine/battle/moveAnimFuncs'
 import { moveAnimFrames } from '../../engine/battle/moveLength'
 import { preloadSplPack, splFileFor, splPackReader, SPL_WAZA } from './splPack'
 import { splMetre, type Vec3 } from './splPlace'
 import type { SplCue } from './splDraw'
 import { BdspSequence } from './fx/BdspSequence'
 import { warmFxEffects } from './fx/BdspEffect'
-import { moveSeqPlan, preloadMoveSeqs } from './fx/moveSeq'
+import { moveSeqIsEmpty, moveSeqPartial, moveSeqPlan, preloadMoveSeqs } from './fx/moveSeq'
 import { planFrames, type SeqPlan } from '../../engine/battle/fx/sequence'
 
 /** 60fps 기준 프레임을 초로 */
@@ -109,6 +111,13 @@ interface Shot {
    */
   seq: SeqPlan | null
   /**
+   * 도형 틀을 안 세운다 — BDSP 시퀀스가 통째로 빈 기술이고 DS 대본에도 이미터가 없다. 두 원작 모두 그 기술에서 입자를 안 그리고
+   * 몸 동작(달림 · 눌림 · 떨림 · 사라짐 · 물들임)과 소리만 낸다. 그것은 도형과 상관없이 아래 무대가 건다
+   */
+  bare: boolean
+  /** 기술 번호 — 전용 몸 연출(`DsBodyFx`)을 고른다 */
+  move: number | null
+  /**
    * 이 기술이 내는 소리 — 원작 대본의 소리를 BDSP 시퀀스의 소리 칸에 짝지은 것(시작에서 몇 초 뒤 · `moveSoundTimes`).
    * 자리는 쓴 쪽 기준이라 내 쪽이면 뒤집는다(`statusPan`)
    */
@@ -143,6 +152,16 @@ function cuesOf(anim: MoveAnim | null): readonly SplCue[] | null {
   return cues.length > 0 ? cues : null
 }
 
+/**
+ * 이 기술이 돌릴 BDSP 계획. 온전한 계획이 있으면 그것이고, 없을 때(프리팹이 롬에 없다)는 **DS 이미터도 없는 기술만** 반쪽 계획으로
+ * 간다 — 그 밖에는 DS 이미터가 더 풍부해 DS가 맡는다 (`moveSeqPartial`)
+ */
+function seqFor(anim: MoveAnim | null, move: number | null, mine: boolean, doubles: boolean): SeqPlan | null {
+  const full = moveSeqPlan(move, mine, doubles)
+  if (full !== null) return full
+  return anim !== null && anim.emitters.length > 0 ? null : moveSeqPartial(move, mine, doubles)
+}
+
 /** 0→1 진행에서 한 번 부풀었다 꺼지는 값. 연출이 툭 끊기지 않게 한다 */
 function pulse(t: number): number {
   return Math.sin(Math.min(1, Math.max(0, t)) * Math.PI)
@@ -165,7 +184,7 @@ function Shape({ shot, done }: { shot: Shot; done: (seq: number) => void }) {
   // 두 벌이 겹쳐서 무엇이 원작인지 알아볼 수 없다. 다만 머리·꼬리 메시는
   // **지우지 않고 숨긴다** — 무대에 거는 값(`moveImpact`)과 배경 물들임이
   // 같은 `useFrame` 안에서 그 뒤에 오기 때문이다
-  const usesSpl = shot.cues !== null
+  const usesSpl = shot.cues !== null || shot.bare
   const particleIds = useMemo(
     () => (usesSpl
       ? []
@@ -533,7 +552,7 @@ export function MoveVfx({
       })
     void loadMoveAnims()
       .then((a) => {
-        if (alive) setAnims(a)
+        if (alive) setAnims(a.map((x, move) => patchBareAnim(move, x)))
       })
       .catch(() => {
         /* 대본이 없으면 밋밋한 한 벌로 간다 */
@@ -567,7 +586,7 @@ export function MoveVfx({
       // 처음 쓰는 기술도 안 멎게 판이 열리는 동안 파이프라인을 굽는다 (`warmFxEffects`)
       const prefabs: string[] = []
       for (const m of moves) {
-        for (const mine of [true, false]) for (const p of moveSeqPlan(m, mine)?.particles ?? []) prefabs.push(p.prefab)
+        for (const mine of [true, false]) for (const p of (moveSeqPlan(m, mine) ?? moveSeqPartial(m, mine))?.particles ?? []) prefabs.push(p.prefab)
       }
       void warmFxEffects(prefabs, scene).catch((e: unknown) => { console.warn('[fx] 미리 굽기 실패', e) })
     })
@@ -583,13 +602,13 @@ export function MoveVfx({
   useEffect(() => {
     if (anims === null) return undefined
     setMoveFrames((move, mine, doubles) => {
-      const plan = moveSeqPlan(move, mine, doubles)
+      const plan = seqFor(anims[move ?? -1] ?? null, move, mine, doubles)
       if (plan) return 2 * (plan.hit ?? planFrames(plan))
       return moveAnimFrames(anims[move ?? -1] ?? null, wazaFile)
     })
     // 맞는 소리 · 깜박임은 게이지가 아니라 몸이 움찔하는 프레임이다 — 박자가 그 시각을 기술 사건에 실어 보낸다
     setMoveImpact((move, mine, doubles) => {
-      const impact = moveSeqPlan(move, mine, doubles)?.impact ?? null
+      const impact = seqFor(anims[move ?? -1] ?? null, move, mine, doubles)?.impact ?? null
       return impact === null ? null : 2 * impact
     })
     return () => {
@@ -614,12 +633,14 @@ export function MoveVfx({
     const also = cast.spread.filter((s) => s !== at && s !== cast.by)
     const target = spotAt(at)
     const kind = archetypeFor(move)
-    const anim = anims?.[cast.move ?? 0] ?? null
-    const seq = moveSeqPlan(cast.move, cast.by.startsWith('p1'), doubles)
+    const anim = cast.move === null ? (anims?.[0] ?? null) : patchBareAnim(cast.move, anims?.[cast.move] ?? null, cast.magnitude ?? null)
+    const seq = seqFor(anim, cast.move, cast.by.startsWith('p1'), doubles)
     // 판 도중 배운 기술처럼 미리 못 받은 것은 이번엔 DS로 가고 다음부터 BDSP다
     if (seq === null && cast.move !== null) void preloadMoveSeqs([cast.move])
     setShot({
       seq,
+      move: cast.move,
+      bare: seq === null && cuesOf(anim) === null && moveSeqIsEmpty(cast.move),
       sounds: moveSoundTimes(anim?.sounds ?? [], seq === null ? null : seq.sounds),
       kind,
       by: cast.by,
@@ -700,6 +721,12 @@ function MoveShot({ shot, setShot, spotAt }: {
           setShot((now) => (now === null || now.seed === seq ? null : now))
         }}
       />
+      {shot.bare && shot.move !== null && DS_BODY_FX_FRAMES[shot.move] !== undefined && (
+        <DsBodyFx
+          key={`d${String(shot.seed)}`}
+          shot={{ move: shot.move, by: shot.by, at: shot.at, startedAt: shot.startedAt, from: shot.from, to: shot.to }}
+        />
+      )}
       {shot.cues !== null && shot.place !== null && (
         <SplParticles
           cues={shot.cues}

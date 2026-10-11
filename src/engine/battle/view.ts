@@ -111,6 +111,11 @@ export interface BattleView {
   /** 이긴 쪽 이름. 무승부면 null인 채로 `ended`만 선다 */
   winner: string | null
   /**
+   * 매그니튜드가 굴린 수 — 굴림 줄(`-activate … move: Magnitude`)이 기술 줄(`|move|`)보다 **먼저** 오므로 여기 들고 있다가
+   * 다음 기술 줄이 `lastMove`에 옮긴다
+   */
+  pendingMagnitude: number | null
+  /**
    * 지금 화면에서 도는 기술. 무대의 연출이 이걸 보고 한 번 돈다.
    *
    * `seq`가 있는 이유는 **같은 기술이 이어서 나오기 때문**이다 — 몸통박치기를
@@ -118,6 +123,8 @@ export interface BattleView {
    */
   lastMove: {
     by: SlotId; to: SlotId | null; move: number | null; seq: number; spread: readonly SlotId[]
+    /** 매그니튜드가 굴린 수(4~10) — 연출의 흔들림 단계(`engine/battle/moveAnimFuncs`)가 쓴다. 다른 기술에는 없다 */
+    magnitude?: number
     /** 맞는 소리 · 깜박임을 몸이 움찔하는 시각에 낸다 (`BattleEvent` 'move'의 `strike`) */
     strike?: { at: number; slots: readonly SlotId[]; level: Effectiveness | 'normal'; crit: boolean }
   } | null
@@ -182,6 +189,7 @@ const EMPTY_MAP: ReadonlyMap<string, number> = new Map()
 export function emptyView(doubles = false): BattleView {
   return {
     lastMove: null,
+    pendingMagnitude: null,
     lastHit: null,
     lastReward: null,
     lastEffect: null,
@@ -275,12 +283,14 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
       if (e.miss) return view
       return {
         ...view,
+        pendingMagnitude: null,
         lastMove: {
           by: e.actor.slot,
           to: e.target?.slot ?? null,
           move: e.move,
           seq: (view.lastMove?.seq ?? 0) + 1,
           spread: e.spread ?? [],
+          ...(view.pendingMagnitude !== null ? { magnitude: view.pendingMagnitude } : {}),
           ...(e.strike ? { strike: e.strike } : {}),
         },
       }
@@ -423,6 +433,7 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
     }
 
     case 'activate':
+      if (e.effect.id === 'magnitude' && e.extra.num !== null) return { ...view, pendingMagnitude: e.extra.num }
       // 「혼란하고 있다!」 — 기술을 내기 전에 원작이 글 다음에 튼다 (`subscript_confused.s` 9줄).
       // 스스로를 공격하는 갈래(`subscript_hurt_self_in_confusion.s`)도 같은 연출 한 번이다
       if (e.actor === null || e.effect.id !== 'confusion') return view

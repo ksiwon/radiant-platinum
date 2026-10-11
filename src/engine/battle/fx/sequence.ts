@@ -100,6 +100,12 @@ export interface SeqContext {
   modelNode?(no: number, node: number | string, f: number): V3 | null
   /** 몸 크기 배율 — `isScale` 오프셋 · 입자를 몸 크기로 늘린다(카메라 `cameraAt`와 같은 값) */
   scale?(role: Role): number
+  /**
+   * 「특수 자리」(`*SpecialPos`의 `pos` · `posTrg`) — 0 쓴 쪽 진영의 가운데 · 1 맞는 쪽 진영의 가운데 · 2 필드 한가운데.
+   * 롬에 표가 없다 — 쓰는 기술로 읽었다: 리플렉터 · 빛의장막 · 순풍은 0(자기 진영, 더블 갈래에만 있다), 단내 · 거품 · 암석봉인은 1,
+   * 파도타기는 2(필드 한가운데에서 앞으로 8~9m). 더블 갈래(`GroupOption 0`이 2 · 4)에만 나오므로 진영 가운데는 두 자리의 중점이다
+   */
+  special?(pos: number): SeqAnchor | null
 }
 
 /**
@@ -351,6 +357,8 @@ const ROLE_KEYS = ['trg', 'moveTrg', 'posTrg', 'dirPoke', 'poke'] as const
 /** 대상 번호를 우리 역할로. 모르는 대상을 겨눈 명령이면 `null` */
 function retarget(c: SeqCommand, targets: PlanOptions['targets']): SeqCommand | null {
   if (!targets || /Trainer/.test(c.name)) return c
+  // 특수 자리 명령의 `posTrg` · `pos`는 대상이 아니라 특수 자리 번호(0 · 1 · 2)다 — 역할로 바꾸지 않는다
+  if (/SpecialPos$/.test(c.name)) return c
   const values: Record<string, readonly string[]> = { ...c.values }
   // `ParticleFollowPoke`는 대상이 `pos`에 들었다
   const keys: readonly string[] = c.name === 'ParticleFollowPoke' ? [...ROLE_KEYS, 'pos'] : ROLE_KEYS
@@ -605,12 +613,12 @@ function flipCameraZ(c: SeqCommand): SeqCommand {
 }
 
 const CAMERA_CMDS = new Set([
-  'CameraMoveRelativePoke', 'CameraMovePosition', 'CameraTwist', 'CameraReset', 'CameraResetFieldAll',
+  'CameraMoveRelativePoke', 'CameraMoveSpecialPos', 'CameraMovePosition', 'CameraTwist', 'CameraReset', 'CameraResetFieldAll',
   'DprCameraMovePosition', 'DprCameraLookAtPath', 'DprCameraRotate',
 ])
 
 const PARTICLE_CMDS = new Set([
-  'ParticleMoveRelativePoke', 'ParticleMovePosition', 'ParticleFollowPoke', 'ParticleScale',
+  'ParticleMoveRelativePoke', 'ParticleMoveSpecialPos', 'ParticleMovePosition', 'ParticleFollowPoke', 'ParticleScale',
   'ParticleRotate', 'ParticleRotatePoke', 'ParticleSpMoveShake', 'ParticleLengthScale',
   'DprParticleMoveRelativeModel', 'DprParticleFollowModel',
 ])
@@ -618,11 +626,11 @@ const PARTICLE_CMDS = new Set([
 const BODY_CMDS = new Set([
   'PokemonMoveRelativePoke', 'PokemonMovePosition', 'PokemonMoveReset', 'PokemonScale',
   'PokemonVisible', 'PokemonShaderCol', 'PokemonAttackMotion', 'PokemonMotion', 'HitBack',
-  'PokemonRotatePoke', 'PokemonRotate', 'PokemonSpMoveShake', 'PokemonIntroMotion', 'PokemonSetMotionSpeed',
+  'PokemonRotatePoke', 'PokemonRotateSpecialPos', 'PokemonRotate', 'PokemonSpMoveShake', 'PokemonIntroMotion', 'PokemonSetMotionSpeed',
 ])
 
 const MODEL_CMDS = new Set([
-  'ModelCreateBall', 'ModelCreate', 'ModelDelete', 'ModelVisible', 'ModelMovePosition', 'ModelMoveRelativePoke',
+  'ModelCreateBall', 'ModelCreate', 'ModelDelete', 'ModelVisible', 'ModelMovePosition', 'ModelMoveRelativePoke', 'ModelMoveSpecialPos',
   'ModelRotate', 'ModelSpMoveShake', 'ModelSetAnimationSpeed', 'DprModelAnimationPlayIndex', 'DprModelAttachTrainer',
 ])
 
@@ -913,7 +921,7 @@ export function particleAt(p: SeqParticle, f: number, ctx: SeqContext): Particle
 }
 
 const PLACE = new Set([
-  'ParticleMoveRelativePoke', 'ParticleMovePosition', 'ParticleFollowPoke',
+  'ParticleMoveRelativePoke', 'ParticleMoveSpecialPos', 'ParticleMovePosition', 'ParticleFollowPoke',
   'DprParticleMoveRelativeModel', 'DprParticleFollowModel',
 ])
 
@@ -937,6 +945,12 @@ function placeTarget(c: SeqCommand, ctx: SeqContext, before: V3, g: number): V3 
       const rot = offsetYaw(c.values, 'isRotPos', role, a.yaw, ctx)
       const rate = num(c.values.rate, 0, 100) / 100
       return lerp3(before, add(a.pos, offsetOf(vec(c.values.pos), rot)), rate)
+    }
+    case 'ParticleMoveSpecialPos': {
+      const a = ctx.special?.(num(c.values.pos))
+      if (!a) return null
+      const rot = offsetYaw(c.values, 'isRot', 0, a.yaw, ctx)
+      return add(a.pos, offsetOf(vec(c.values.ofs), rot))
     }
     case 'ParticleFollowPoke': {
       if (num(c.values.isEnable, 0, 1) !== 1) return before
@@ -1114,6 +1128,10 @@ function foldModelPlace(m: ModelTrack, g: number, ctx: SeqContext): V3 {
     if (c.name === 'ModelMovePosition') {
       const v = vec(c.values.pos)
       target = num(c.values.relative) === 1 ? add(value, offsetOf(v, null)) : worldOf(ctx, v)
+    } else if (c.name === 'ModelMoveSpecialPos') {
+      const a = ctx.special?.(num(c.values.pos))
+      if (!a) return undefined
+      target = add(a.pos, offsetOf(vec(c.values.ofs), offsetYaw(c.values, 'isRot', 0, a.yaw, ctx)))
     } else if (c.name === 'ModelMoveRelativePoke') {
       const role: Role = num(c.values.trg) === 1 ? 1 : 0
       const a = ctx.rest(role, num(c.values.node))
@@ -1282,6 +1300,17 @@ export function bodyAt(plan: SeqPlan, role: Role, f: number, ctx: SeqContext): B
         const k = plan.shaderBase
         const col = lerp3(a, b, t)
         out.glow = { color: [Math.max(0, col[0] - k), Math.max(0, col[1] - k), Math.max(0, col[2] - k)], power: pa + (pb - pa) * t }
+        break
+      }
+      case 'PokemonRotateSpecialPos': {
+        // 그 특수 자리를 향해 몸을 돌린다 — `rotOfs`도(도). 몸이 이미 그쪽을 보면 0이다
+        const a = ctx.special?.(num(c.values.pos))
+        if (!a || !home) break
+        const dx = a.pos[0] - home.pos[0], dz = a.pos[2] - home.pos[2]
+        if (Math.hypot(dx, dz) < 0.05) break
+        const toward = Math.atan2(dx, dz) - home.yaw - num(c.values.rotOfs) * Math.PI / 180
+        const wrapped = Math.atan2(Math.sin(toward), Math.cos(toward))
+        out.turn += (wrapped - out.turn) * t
         break
       }
       case 'PokemonRotate': {
@@ -1578,6 +1607,18 @@ function cameraTarget(
           fov: fovOf(),
           roll: from.roll,
         },
+        parts: ['pos', 'target', 'fov'],
+      }
+    }
+    case 'CameraMoveSpecialPos': {
+      // 몸이 아니라 특수 자리 기준 — `posTrg`가 자리 번호, `pos` · `trg`가 cm 오프셋이다(몸 기준 카메라와 같은 읽기)
+      const a = ctx.special?.(num(v.posTrg))
+      if (!a) return null
+      const flip = num(v.isFlip) === 1 && !ctx.mine(0) ? -1 : 1
+      const yaw = num(v.isRot) === 1 ? a.yaw : null
+      const local = (x: V3): V3 => offsetOf([x[0] * flip, x[1], x[2]], yaw)
+      return {
+        cam: { pos: add(a.pos, local(vec(v.pos))), target: add(a.pos, local(vec(v.trg))), fov: fovOf(), roll: from.roll },
         parts: ['pos', 'target', 'fov'],
       }
     }

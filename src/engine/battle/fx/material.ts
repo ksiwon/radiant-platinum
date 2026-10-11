@@ -43,6 +43,19 @@ interface FxTextureSpec {
   pow: number
 }
 
+/** 특수 컴바이너 갈래 — 키워드 이름 → 우리가 읽는 갈래 */
+type CombinerKind = 'ice' | 'light' | 'alphaMul' | 'fresnelOne' | 'fire' | 'zSmoke' | 'zWater'
+
+const COMBINER_KINDS: readonly (readonly [string, CombinerKind])[] = [
+  ['_COMBINER_ICE01', 'ice'],
+  ['_COMBINER_LIGHTPARAM01', 'light'],
+  ['_COMBINER_ALPHABLEND_MUL_TEX0', 'alphaMul'],
+  ['_COMBINER_FRESNEL_ONECOLOR', 'fresnelOne'],
+  ['_COMBINER_FIRE_TWOCOLOR', 'fire'],
+  ['_COMBINER_ZOFFSET_SMOKE', 'zSmoke'],
+  ['_COMBINER_ZOFFSET_WATER', 'zWater'],
+]
+
 export interface FxMaterialSpec {
   name: string
   textures: FxTextureSpec[]
@@ -70,8 +83,33 @@ export interface FxMaterialSpec {
   /** 유니티 `CompareFunction` (0 끔 · 4 LessEqual · 8 Always) */
   ztest: number
   queue: number
-  /** 그리지 않는다 — 화면 왜곡(색 버퍼) 재질 */
+  /** 그리지 않는다 — 화면 왜곡(색 버퍼)을 셰이더가 못 그리는 판 (`FX_SCREEN`이 꺼졌을 때) */
   hidden: boolean
+  /**
+   * 깊이 페이드(부드러운 입자) — 장면 깊이와 입자 깊이의 차가 `near`에서 0, `near + 1/scale`에서 1로 오른다.
+   * `_SoftParticleFadeParams` = (near, 1/(far − near))를 그대로 읽는다 (실측: 0.4 · 0.01 → 2.5641 = 1/0.39)
+   */
+  soft: { near: number, scale: number } | null
+  /**
+   * 프레넬 알파 — `알파 × saturate(x + y × (1 − |N·V|))`. `_FresnelAlphaRef` = (x, y). ⚠️ 식은 우리 해석이다: 셰이더가 스위치 블롭이라
+   * 못 읽는다. 끈 재질의 기본값 (1, 0)이 항등이 되는 모양이라 이 꼴로 읽었다
+   */
+  fresnel: { x: number, y: number } | null
+  /** 줄무늬 두 색 (`_StripeColor0/1`). ⚠️ 쓰임(UV 세로로 섞는다)은 우리 해석이다 */
+  stripe: { c0: Rgba, c1: Rgba } | null
+  /** 그림 칸마다 스피어맵(눈 공간 법선 → UV)인가 (`_SphereMapEnabled_TexN`) */
+  sphere: boolean[]
+  /**
+   * 왜곡: 0 없음 · 1 색 버퍼(화면을 굴절) · 2 그림(`_DISTORTION_TEXTURE` — 첫 그림이 뒷그림의 UV를 민다). 세기는 `_DistortionStrengthScaled`
+   * × 수명 곡선(`curve` = `_DistortionAnim0~3`의 (수명 진행, 배율) 넷 — 꺾은선)
+   */
+  distortion: { mode: number, x: number, y: number, curve: [number, number][] }
+  /**
+   * 특수 컴바이너 — `_COMBINER_*` 키워드가 고르는 셰이더 갈래와 값 여덟 칸(`_CombinerAnim0_0~7` — 수명에 걸쳐 고르게 놓인 열쇠로
+   * 읽는다: 대부분 여덟이 같은 상수이고 `LIGHTPARAM01`만 첫 칸이 다르다). `kind`는 갈래 이름이고 디졸브(`_COMBINER_DISSOLVE_*`)는
+   * 알파 식이 맡으므로 `null`이다. ⚠️ 식은 키워드 이름과 값의 꼴에서 읽은 우리 해석이다 (`fxMaterial` 각 갈래)
+   */
+  combiner: { kind: CombinerKind | null, keys: Rgba[] }
   /** 아직 안 옮긴 기능 (한 번씩 알린다) */
   todo: string[]
 }
@@ -151,14 +189,27 @@ export function readMaterial(m: FxMaterialData, ctrl: MaterialControllerFields |
   }
 
   const todo: string[] = []
-  if ((f._SoftParticlesEnabled ?? 0) > 0) todo.push('soft')
-  if ((f._Distortion ?? 0) > 0) todo.push('distortion')
-  if ((f._FresnelAlphaType ?? 0) > 0) todo.push('fresnel')
-  if ((f._StripeEnabled ?? 0) > 0) todo.push('stripe')
-  if ((f._SphereMapEnabled_Tex0 ?? 0) + (f._SphereMapEnabled_Tex1 ?? 0) + (f._SphereMapEnabled_Tex2 ?? 0) > 0) todo.push('spheremap')
   if ((f._LightColorEnabled ?? 0) > 0) todo.push('lightcolor')
-  if (kw.some((k) => k.startsWith('_COMBINER_') && !k.startsWith('_COMBINER_DISSOLVE'))) todo.push('combiner')
-  if (kw.includes('_COMBINERANIM0')) todo.push('combineranim')
+  const comb = kw.find((k) => k.startsWith('_COMBINER_') && !k.startsWith('_COMBINER_DISSOLVE'))
+  const combinerKind = comb === undefined ? null : COMBINER_KINDS.find(([p]) => comb.startsWith(p))?.[1] ?? null
+  if (comb !== undefined && combinerKind === null) todo.push('combiner')
+  const combinerKeys: Rgba[] = Array.from({ length: 8 }, (_, k) => vec4At([c[`_CombinerAnim0_${String(k)}`] as Rgba], 0) ?? [0, 0, 0, 0])
+
+  const fade = c._SoftParticleFadeParams
+  const soft = (f._SoftParticlesEnabled ?? 0) > 0
+    ? { near: fade?.[0] ?? f._SoftParticlesNearFadeDistance ?? 0.01, scale: fade?.[1] ?? 1 / Math.max(1e-3, (f._SoftParticlesFarFadeDistance ?? 1) - (f._SoftParticlesNearFadeDistance ?? 0.01)) }
+    : null
+  const fres = c._FresnelAlphaRef
+  const fresnel = (f._FresnelAlphaType ?? 0) > 0 ? { x: fres?.[0] ?? 1, y: fres?.[1] ?? 0 } : null
+  const stripe = (f._StripeEnabled ?? 0) > 0 ? { c0: c._StripeColor0 ?? [1, 1, 1, 1], c1: c._StripeColor1 ?? [1, 1, 1, 1] } : null
+  const sphere = textures.map((_, i) => (f[`_SphereMapEnabled_Tex${String(i)}`] ?? 0) > 0)
+  const dmode = Math.round(f._Distortion ?? 0)
+  const dstr = c._DistortionStrengthScaled
+  const curve: [number, number][] = [0, 1, 2, 3].map((k): [number, number] => {
+    const a = c[`_DistortionAnim${String(k)}`]
+    return [a?.[0] ?? k / 3, a?.[1] ?? 1]
+  })
+  const distortion = { mode: dmode, x: dstr?.[0] ?? f._DistortionStrengthX ?? 0, y: dstr?.[1] ?? f._DistortionStrengthY ?? 0, curve }
 
   const ctrlMul = ctrl?._MulColor
   const mulFromCtrl: Rgba | null = !ctrlMul ? null
@@ -191,7 +242,13 @@ export function readMaterial(m: FxMaterialData, ctrl: MaterialControllerFields |
     ztest: Math.round(m.ztest ?? f._ZTest ?? 4),
     queue: m.renderQueue !== undefined && m.renderQueue >= 0 ? m.renderQueue : 3000,
     // 색 버퍼 왜곡은 화면을 굴절시키는 판이라, 그림으로 그리면 흰 판이 뜬다
-    hidden: Math.round(f._Distortion ?? 0) === 1,
+    hidden: dmode === 1,
+    soft,
+    fresnel,
+    stripe,
+    sphere,
+    distortion,
+    combiner: { kind: combinerKind, keys: combinerKeys },
     todo,
   }
 }
@@ -203,5 +260,17 @@ export function readMaterial(m: FxMaterialData, ctrl: MaterialControllerFields |
 export function materialKey(s: FxMaterialSpec): string {
   const t = s.textures.map((x) => `${x.rawUv ? 1 : 0}${x.colorChannel}${x.alphaChannel}${x.colorBlend}${x.alphaBlend}`).join('.')
   return [t, s.colorExpr, s.alphaExpr, s.primColorExpr, s.primColorChannel, s.primAlphaExpr, s.primAlphaChannel,
+    s.soft ? 1 : 0, s.fresnel ? 1 : 0, s.stripe ? 1 : 0, s.sphere.map((b) => (b ? 1 : 0)).join(''), s.distortion.mode, s.combiner.kind ?? '', combinerConstant(s) ? 'k' : 'a', distortionFlat(s) ? 'f' : 'c',
     s.alphaTest, s.src, s.dst, s.srcA, s.dstA, s.op, s.opA, s.cull, s.zwrite ? 1 : 0, s.ztest].join('|')
+}
+
+/** 컴바이너 값 여덟 칸이 다 같은가 — 같으면 수명 곡선을 안 짓는다 (셰이더 그래프가 갈리므로 열쇠에 든다) */
+export function combinerConstant(s: FxMaterialSpec): boolean {
+  const k = s.combiner.keys
+  return k.every((v) => v[0] === k[0]![0] && v[1] === k[0]![1] && v[2] === k[0]![2] && v[3] === k[0]![3])
+}
+
+/** 왜곡 세기 곡선이 늘 1인가 — 그러면 곡선을 안 짓는다 (열쇠에 든다) */
+export function distortionFlat(s: FxMaterialSpec): boolean {
+  return s.distortion.curve.every(([, y]) => y === 1)
 }
