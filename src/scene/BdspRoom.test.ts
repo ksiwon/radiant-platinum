@@ -5,7 +5,7 @@ import { world, type EventFile, type MapHeader } from '../engine/map/world'
 import { BoxGeometry, Group, Mesh, MeshStandardMaterial } from 'three'
 import type { NpcActor } from '../engine/actor/npcs'
 import {
-  deviceMaterials, ELITE_FOUR_DOOR_GFX, eliteDoorShown, hideDevices, MISFIT_ROOMS, placementOf, roomFor,
+  deviceMaterials, ELITE_FOUR_DOOR_GFX, eliteDoorShown, hideDevices, MISFIT_ROOMS, placementOf, ROOM_ALIAS, roomFor,
 } from './BdspRoom'
 import { roomBundles } from '../import/bdsp/convert'
 import { DATA, withData, withModels } from '../data/romData.testkit'
@@ -33,6 +33,35 @@ describe('맵 ↔ BDSP 방 (`roomFor`)', () => {
   it('바깥(행렬 0)은 방을 안 쓴다', () => {
     world.maps = [header(0, 'T01', 0)]
     expect(roomFor(0, new Set(['t01']))).toBeNull()
+  })
+})
+
+describe('BDSP가 건물에 붙여 둔 방 (`ROOM_ALIAS`)', () => {
+  it('제 이름의 방도 같은 행렬의 형제도 없어도 별칭 번들이 있으면 그 방이다', () => {
+    world.maps = [header(0, 'C07R0501', 125), header(1, 'C08R0701', 125)]
+    const rooms = new Set(['c05r0901'])
+    expect(roomFor(0, rooms)).toBe('c05r0901')
+    expect(roomFor(1, rooms)).toBe('c05r0901')
+    // 번들이 안 구워졌으면 원작 그림이다
+    expect(roomFor(0, new Set(['t01r0301']))).toBeNull()
+  })
+
+  it('들어올 문이 없는 자리표시 맵(`c01r0401`)은 별칭이 없다', () => {
+    world.maps = [header(0, 'C01R0401', 125)]
+    expect(roomFor(0, new Set(['c05r0901']))).toBeNull()
+  })
+
+  it('제 이름의 방이 먼저다 · 맞지 않는 방(`MISFIT_ROOMS`)은 별칭이어도 안 쓴다', () => {
+    world.maps = [header(0, 'C06R0401', 125)]
+    expect(roomFor(0, new Set(['c05r0901', 'c06r0401']))).toBe('c06r0401')
+    world.maps = [header(0, 'C06R0401', 125)]
+    const misfit = Object.entries(ROOM_ALIAS).filter(([, room]) => MISFIT_ROOMS.has(room))
+    expect(misfit).toEqual([])
+  })
+
+  it('별칭이 가리키는 방은 구운 방 목록에 든다', () => {
+    const rooms = new Set(['c05r0901', 't01r0301', 't02fs0101', 'c01r0302'])
+    expect([...new Set(Object.values(ROOM_ALIAS))].filter((r) => !rooms.has(r))).toEqual([])
   })
 })
 
@@ -161,6 +190,55 @@ withData('maps.json', 'events.json')('구운 방 ↔ 원작 칸', () => {
       // 백화점 2층 문 (10, 12) · 갤럭시단 빌딩 1층 문 (11, 15)
       expect(mat('c07r0201', 'M_C_001_Mat_01') - 12.5).toBeCloseTo(0.21, 1)
       expect(mat('c04r0201', 'M_C_001_Mat_08') - 15.5).toBeCloseTo(0.21, 1)
+    })
+  })
+})
+
+interface TileMeta { tileWidth: number, tileHeight: number, byteOffset: number }
+
+withData('maps.json', 'events.json', 'matrices/interiors.json', 'matrices/interiors.bin')('별칭 짝 ↔ 원작 칸', () => {
+  withModels('room/index.json', ...[...new Set(Object.values(ROOM_ALIAS))].map((r) => `room/${r}.glb`))('방', () => {
+    it('문에서 걸어 닿는 칸이 전부 방 바닥 위다 · 사람 · 워프도 바닥 안이다 (측정: `.audit/probe/pairSearch.mjs`)', () => {
+      const maps = (JSON.parse(readFileSync(resolve(DATA, 'maps.json'), 'utf8')) as { maps: MapHeader[] }).maps
+      const events = (JSON.parse(readFileSync(resolve(DATA, 'events.json'), 'utf8')) as { events: EventFile[] }).events
+      const meta = (JSON.parse(readFileSync(resolve(DATA, 'matrices/interiors.json'), 'utf8')) as {
+        matrices: Record<string, TileMeta>
+      }).matrices
+      const bin = readFileSync(resolve(DATA, 'matrices/interiors.bin'))
+      const bad: string[] = []
+      let walked = 0
+      for (const [name, room] of Object.entries(ROOM_ALIAS)) {
+        const h = maps.find((m) => m.name.toLowerCase() === name)!
+        const mx = meta[String(h.matrix)]!
+        const tile = (x: number, z: number): number => bin.readUInt16LE(mx.byteOffset + (z * mx.tileWidth + x) * 2)
+        const floors = roomParts(room).filter((p) => /_Floor_/.test(p.mat))
+        const at = placementOf(room)
+        const x0 = Math.min(...floors.map((p) => p.min[0]!)) + at.x, x1 = Math.max(...floors.map((p) => p.max[0]!)) + at.x
+        const z0 = Math.min(...floors.map((p) => p.min[2]!)) + at.z, z1 = Math.max(...floors.map((p) => p.max[2]!)) + at.z
+        const inside = (x: number, z: number): boolean => x + 0.5 >= x0 - 0.3 && x + 0.5 <= x1 + 0.3 && z + 0.5 >= z0 - 0.3 && z + 0.5 <= z1 + 0.3
+        const ev = events[h.events]!
+        // 문에서 걸어 닿는 칸 (막힌 칸은 못 지난다)
+        const seen = new Set<number>()
+        const queue: [number, number][] = []
+        for (const w of ev.warps) if (!(w.x <= 1 && w.z <= 1)) { queue.push([w.x, w.z]); seen.add(w.z * mx.tileWidth + w.x) }
+        for (let i = 0; i < queue.length; i++) {
+          const [x, z] = queue[i]!
+          for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+            const nx = x + dx, nz = z + dz
+            if (nx < 0 || nz < 0 || nx >= mx.tileWidth || nz >= mx.tileHeight || seen.has(nz * mx.tileWidth + nx)) continue
+            if (tile(nx, nz) & 0x8000) continue
+            seen.add(nz * mx.tileWidth + nx)
+            queue.push([nx, nz])
+          }
+        }
+        for (const [x, z] of queue) {
+          walked++
+          if (!inside(x, z)) bad.push(`${name}→${room} 걸음칸 (${String(x)}, ${String(z)})`)
+        }
+        for (const n of ev.npcs) if (!(n.flag !== 0) && !inside(n.x, n.z) && !(tile(n.x, n.z) & 0x8000)) bad.push(`${name}→${room} 사람 (${String(n.x)}, ${String(n.z)})`)
+      }
+      expect(walked).toBeGreaterThan(300)
+      expect(bad).toEqual([])
     })
   })
 })

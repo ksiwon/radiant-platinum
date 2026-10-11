@@ -106,6 +106,32 @@ const NO_BORROW_MAPS: ReadonlySet<string> = new Set(['c05r0601'])
  */
 const ROOM_PLACEMENT: Readonly<Record<string, readonly [number, number]>> = { c04r0201: [0, 3] }
 
+/**
+ * **제 이름의 방이 없고 같은 행렬의 형제도 없는 건물이 BDSP에서 어느 방을 쓰는가** (원작 맵 이름 → 방 번들 이름, 소문자).
+ *
+ * BDSP는 집 · 상점 · 건물 층을 **한 벌씩 돌려쓴다** — 존 표(`Dpr/scriptableobjects/gamesettings`의 `MapInfo.ZoneData[].AssetBundleName`)에서
+ * 민가 마흔 곳이 `t01r0301` · `c05r0901` · `c04r0701` · `c02r0501` … 예닐곱 번들에 나뉜다. 원작은 같은 집을 맵마다 다른 행렬로 두었으므로
+ * (행렬 125 하나가 아홉 맵) 이름 · 행렬로는 짝이 안 맺힌다. 그래서 **BDSP가 그 건물에 붙여 둔 번들**을 적는다.
+ *
+ * 근거는 둘이다 — ① 존 표의 캡션(`トバリ:民家1 · 2` → `c05r0901` · `サバイバルエリア:民家2` → `c05r0901` · `208ばんどうろ:民家（木の実爺）` →
+ * `t01r0301` · `213ばんどうろ:足跡博士の家` → `c05r0901` · `ノモセ:フレンドリィショップ` → `t02fs0101`) ② 원작 칸(통행 · 사람 · 워프)을 방 바닥에
+ * 얹어 센 맞춤(`.audit/probe/pairSearch.mjs` · `ascii.mjs`) — 걸을 수 있는 칸에 BDSP 바닥이 없는 칸 0 · 사람 · 워프가 바닥 밖 0 · 벽 뒤 0.
+ *
+ * · 행렬 125 집(`c01r0901` · `c01r1001` · `c06r0401` · `c07r0501` · `c07r0601` · `c08r0701` · `t06r0201` · `r228r0301`) — 원작 방 안쪽이 x 1~9 · z 3~8이고
+ *   BDSP `c05r0901` 바닥이 x 1~10 · z 3~9다. 걸음 37칸이 전부 바닥 위고 막힌 17칸 중 7칸이 빈 바닥(BDSP 가구가 더 적다)이다
+ * · `r208r0101` — `t01r0301`: 걸음 38칸 전부 바닥 위 · 사람 넷이 바닥 안
+ * · `r213r0201` 발자국 박사의 집 — BDSP 존 표가 `c05r0901`을 붙였다
+ * · `c06fs0101` 연못시티 프렌들리숍 — BDSP 상점 `t02fs0101`이 원작 행렬 206 위에 걸음 64칸이 전부 바닥 위다
+ * · `c03r0103` · `c03r0203` 철광마을 건물 3층 — BDSP는 2층까지만 지었고 같은 바닥(x 3~19 · z 3~13)의 건물 2층 `c01r0302`를 쓴다
+ *
+ * ⚠️ **행렬 125 맵 중 `c01r0401`은 뺀다** — 들어올 문이 없는 자리표시 맵이고 문이 (9, 11)로 방(z 3~8) 밖이다
+ */
+export const ROOM_ALIAS: Readonly<Record<string, string>> = {
+  c01r0901: 'c05r0901', c01r1001: 'c05r0901', c06r0401: 'c05r0901', c07r0501: 'c05r0901', c07r0601: 'c05r0901',
+  c08r0701: 'c05r0901', t06r0201: 'c05r0901', r228r0301: 'c05r0901', r213r0201: 'c05r0901',
+  r208r0101: 't01r0301', c06fs0101: 't02fs0101', c03r0103: 'c01r0302', c03r0203: 'c01r0302',
+}
+
 /** 그 방을 놓을 자리 (칸) — 대개 원점이다 */
 export function placementOf(room: string): { x: number, z: number } {
   const p = ROOM_PLACEMENT[room]
@@ -120,6 +146,9 @@ export function roomFor(mapId: number, rooms: ReadonlySet<string>): string | nul
   const own = here.name.toLowerCase()
   if (rooms.has(own)) return fits(own) ? own : null
   if (NO_BORROW_MAPS.has(own)) return null
+  // BDSP가 그 건물에 붙여 둔 번들이 먼저다 — 같은 행렬의 형제는 그것이 없을 때만
+  const alias = ROOM_ALIAS[own]
+  if (alias !== undefined && fits(alias)) return alias
   for (const m of world.maps ?? []) {
     if (m.matrix !== here.matrix) continue
     const name = m.name.toLowerCase()
