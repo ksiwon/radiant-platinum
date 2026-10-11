@@ -1,8 +1,8 @@
 // 엔딩 크레딧 3D 무대의 시계 · 물체 표 (`overlay099`) — 원작 상태 기계를 한 틱씩 옮긴 것이 원작 표와 맞는지 잰다
 import { describe, expect, it } from 'vitest'
 import {
-  beltTrack, CreditsClock, CREDITS_CAMERA, CREDITS_LIGHT, drifloonTrack, naturalSchedule, nightFlierTrack, shootingStarAt,
-  wingullTrack, type CreditsView,
+  beltTrack, blendBgr555, CreditsClock, CREDITS_CAMERA, CREDITS_LIGHT, drifloonTrack, naturalSchedule, nightFlierTrack, nightSkyAt,
+  shootingStarAt, wingullTrack, type CreditsView,
 } from './creditsStage'
 
 /** 눌림 없이 `n`틱 돌린 시계 */
@@ -232,5 +232,37 @@ describe('날아다니는 포켓몬', () => {
     // 다 떨어지면 없다
     expect(shootingStarAt(7200 + 60)).toBeNull()
     expect(shootingStarAt(7380)).not.toBeNull()
+  })
+})
+
+describe('밤 하늘의 팔레트 섞기 (7620틱부터)', () => {
+  it('7620틱 앞은 첫 벌이다', () => {
+    expect(nightSkyAt(0)).toEqual({ from: 0, to: 0, level: 0 })
+    expect(nightSkyAt(7619)).toEqual({ from: 0, to: 0, level: 0 })
+    // 첫 두 틱은 상태만 넘어간다
+    expect(nightSkyAt(7621)).toEqual({ from: 0, to: 0, level: 0 })
+  })
+
+  it('한 단계가 블렌드 4틱(4 · 8 · 12 · 16)이고 한 틱 쉰다', () => {
+    const seen: number[] = []
+    for (let t = 7620; t < 7640; t++) seen.push(nightSkyAt(t).level)
+    expect(seen.slice(0, 12)).toEqual([0, 0, 4, 8, 12, 16, 16, 4, 8, 12, 16, 16])
+  })
+
+  it('여덟 단계 뒤에는 마지막 벌에서 멈춘다', () => {
+    expect(nightSkyAt(9000)).toEqual({ from: 7, to: 7, level: 16 })
+    // 마지막 단계는 7 → 7이다
+    const last = Array.from({ length: 60 }, (_, i) => nightSkyAt(7620 + i)).filter((s) => s.from === 7)
+    expect(last.every((s) => s.to === 7)).toBe(true)
+  })
+
+  it('BlendColor는 5비트 채널마다 산술 시프트로 나눈다', () => {
+    const a = 0b00010_00100_01000, b = 0b11111_00000_01000
+    expect(blendBgr555(a, b, 0)).toBe(a)
+    expect(blendBgr555(a, b, 16)).toBe(b)
+    // 8(r) → 31 → 4/16: 8 + (23 * 4 >> 4) = 8 + 5
+    expect(blendBgr555(8, 31, 4) & 31).toBe(8 + 5)
+    // 내려갈 때는 바닥으로 자른다: 31 → 8: 31 + (-23 * 4 >> 4) = 31 - 6
+    expect(blendBgr555(31, 8, 4) & 31).toBe(31 - 6)
   })
 })

@@ -14,6 +14,11 @@
 // ⚠️ **0번 색은 뚫린 자리다.** 사진 둘레의 검정은 그림이 아니라 뒤판 색이고, 경계 상자는 0번이 아닌 픽셀로 잰다.
 // 상자 안의 0번 색(그림 속 검정)은 검정으로 채운다 — 액자 뒤가 검정이라 같은 색이다.
 //
+// **밤 하늘의 팔레트 여덟 벌** (`ov99_021D24F0` · `ov99_021D3930`) — 장면 4의 배경은 **한 팔레트 벌(칸의 위 4비트 1)** 만 쓰고, 그 벌을 원작이 7620틱부터
+// `ending.narc` 17번의 여덟 벌 사이로 섞는다(한 벌에서 다음 벌까지 4틱). 처음 벌(0번)은 거의 한 색이고 마지막 벌이 은하가 켜진 모습이다. 그래서 배경을
+// 색이 아니라 **팔레트 번호 판**으로 굽고(`night-sky.png` — R이 번호 · G가 벌 0 또는 1 · 0번 색은 알파 0) 섞이는 1번 벌 여덟 벌과 안 섞이는 0번 벌(20번 멤버)을
+// `art.json`에 15비트 그대로 싣는다 — 화면이 틱마다 섞어 칠한다. ⚠️ 칸의 위 4비트가 0과 1뿐이다(실측: 160칸 · 608칸).
+//
 // **날아다니는 포켓몬 넷** — 셀 뱅크 1번 · 그림 0번 · 팔레트 15번 (`SpriteSystem_Load…FromOpenNarc(… 0 · 1 · 2 · 15)`):
 // 0 둥실봉 · 1 갈모매 · 2 어두운 한 마리 · 3 별똥별. 셀마다 경계 상자와 함께 굽는다 — 왼쪽 위 `(ox, oy)`가 스프라이트 중심에서 잰 자리다.
 import { narcEntry } from './nds'
@@ -50,6 +55,9 @@ const MEMORY_OFFSETS: readonly (readonly [number, number])[] = [
   [0, 0], [-32, -48], [-16, -30], [-42, -2], [-8, -20], [-50, -16], [-40, -34], [-16, -1], [-44, -15], [-30, -30],
 ]
 
+/** 밤 하늘 — 장면 4의 BG (`credits2.png`와 같은 타일 11 · 배치 5)와 팔레트 여덟 벌의 멤버 */
+const NIGHT_SKY = { chr: 11, scr: 5, pal: 17 }
+
 const SIZE = 256
 const VIEW_W = 256
 const VIEW_H = 192
@@ -60,10 +68,12 @@ interface CreditsPhoto { file: string, x: number, y: number, w: number, h: numbe
 /** 날아다니는 포켓몬 한 장 — `(ox, oy)`가 스프라이트 중심에서 그림 왼쪽 위까지다 */
 interface CreditsSprite { file: string, ox: number, oy: number, w: number, h: number }
 
-export interface CreditsArt {
+interface CreditsArt {
   memory: { male: CreditsPhoto[], female: CreditsPhoto[] }
   night: { male: CreditsPhoto[], female: CreditsPhoto[] }
   sprites: CreditsSprite[]
+  /** 밤 하늘 — 번호 판 한 장 · 섞이는 1번 벌 여덟 · 안 섞이는 0번 벌 (칸 16 · BGR555) */
+  nightSky: { file: string, w: number, h: number, palettes: number[][], fixed: number[] }
 }
 
 const wrap = (v: number): number => ((v % SIZE) + SIZE) % SIZE
@@ -130,8 +140,11 @@ export async function convertCreditsArt(ctx: ConvertContext): Promise<Produced> 
     return b
   }
   const out: Produced = new Map()
-  const art: CreditsArt = { memory: { male: [], female: [] }, night: { male: [], female: [] }, sprites: [] }
-  const total = 2 * 10 + 2 * 4 + 4
+  const art: CreditsArt = {
+    memory: { male: [], female: [] }, night: { male: [], female: [] }, sprites: [],
+    nightSky: { file: 'credits/night-sky.png', w: 0, h: 0, palettes: [], fixed: [] },
+  }
+  const total = 2 * 10 + 2 * 4 + 4 + 1
   let done = 0
 
   const bakeSet = async (
@@ -168,6 +181,47 @@ export async function convertCreditsArt(ctx: ConvertContext): Promise<Produced> 
     check(ctx)
   }
   if (art.sprites.length !== 4) throw new Error(`날아다니는 셀이 ${String(art.sprites.length)}개다 — 넷이라야 한다`)
+
+  // 밤 하늘 — 번호 판 + 팔레트 여덟 벌
+  {
+    const tilesRaw = chars(maybeLz77(take(NIGHT_SKY.chr))).data
+    const scr = screen(maybeLz77(take(NIGHT_SKY.scr)))
+    const w = scr.width * TILE, h = scr.height * TILE
+    const rgba = new Uint8Array(w * h * 4)
+    for (let cy = 0; cy < scr.height; cy++) {
+      for (let cx = 0; cx < scr.width; cx++) {
+        const cell = screenCell(scr, cx, cy)
+        const tile = cell & 0x3ff
+        for (let i = 0; i < TILE * TILE; i++) {
+          let px = i & 7, py = i >> 3
+          if (cell & 0x400) px = TILE - 1 - px
+          if (cell & 0x800) py = TILE - 1 - py
+          const byte = tilesRaw[tile * 32 + (i >> 1)] ?? 0
+          const idx = i & 1 ? byte >> 4 : byte & 0xf
+          const slot = (cell >> 12) & 0xf
+          if (idx !== 0 && slot > 1) throw new Error('밤 하늘에 0 · 1번이 아닌 벌의 칸이 있다')
+          const at = ((cy * TILE + py) * w + cx * TILE + px) * 4
+          rgba[at] = idx
+          rgba[at + 1] = slot
+          rgba[at + 3] = idx === 0 ? 0 : 255
+        }
+      }
+    }
+    const pal = maybeLz77(take(NIGHT_SKY.pal))
+    const pv = new DataView(pal.buffer, pal.byteOffset, pal.byteLength)
+    const count = Math.min(Math.floor(pv.getUint32(0x20, true) / 32), Math.floor((pal.length - 0x28) / 32))
+    if (count !== 8) throw new Error(`밤 하늘의 팔레트가 ${String(count)}벌이다 — 여덟이라야 한다`)
+    // 안 섞이는 0번 벌 — 장면 4의 팔레트 파일(20번)의 0번 벌
+    const fixedRaw = maybeLz77(take(20))
+    const fv = new DataView(fixedRaw.buffer, fixedRaw.byteOffset, fixedRaw.byteLength)
+    out.set('data/credits/night-sky.png', await encodePng(rgba, w, h))
+    art.nightSky = {
+      file: 'credits/night-sky.png', w, h,
+      palettes: Array.from({ length: 8 }, (_, p) => Array.from({ length: 16 }, (_, i) => pv.getUint16(0x28 + (p * 16 + i) * 2, true))),
+      fixed: Array.from({ length: 16 }, (_, i) => fv.getUint16(0x28 + i * 2, true)),
+    }
+    ctx.onProgress?.(++done, total)
+  }
 
   out.set('data/credits/art.json', json(art))
   return out

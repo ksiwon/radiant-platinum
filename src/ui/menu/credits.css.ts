@@ -43,7 +43,7 @@ export const dim = style({
   position: 'absolute',
   inset: 0,
   background: vars.scrim.black,
-  opacity: 1,
+  opacity: 0,
   pointerEvents: 'none',
 })
 

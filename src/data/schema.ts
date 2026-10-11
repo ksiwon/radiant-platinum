@@ -512,6 +512,14 @@ export const creditsArtSchema = z.object({
     w: z.number().int().positive(),
     h: z.number().int().positive(),
   })).length(4),
+  /** 밤 하늘 — R이 팔레트 번호 · G가 벌(0 · 1)인 판 한 장, 섞이는 1번 벌 여덟 벌과 안 섞이는 0번 벌(칸 16 · BGR555). 장면 4가 7620틱부터 섞는다 */
+  nightSky: z.object({
+    file: z.string(),
+    w: z.number().int().positive(),
+    h: z.number().int().positive(),
+    palettes: z.array(z.array(z.number().int().min(0).max(0xffff)).length(16)).length(8),
+    fixed: z.array(z.number().int().min(0).max(0xffff)).length(16),
+  }),
 })
 
 /** 크레딧 배경 세 장 (DATA.md §2.26) */

@@ -14,7 +14,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import {
-  BoxGeometry, CanvasTexture, Color, DoubleSide, Group, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, NearestFilter, PlaneGeometry,
+  BoxGeometry, CanvasTexture, Color, DataTexture, DoubleSide, Group, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, NearestFilter, PlaneGeometry,
   Quaternion, RepeatWrapping, SRGBColorSpace, TextureLoader, Vector3,
   type BufferGeometry, type Material, type PerspectiveCamera, type Texture,
 } from 'three'
@@ -27,8 +27,8 @@ import { usePersonModel } from './personModel'
 import { playerModelPath } from './playerModelPath'
 import { spinBike } from './BikeModel'
 import {
-  beltTrack, CREDITS_CAMERA, CREDITS_LIGHT, CREDITS_LIGHT3, drifloonTrack, nightFlierTrack, shootingStarAt, wingullTrack,
-  naturalSchedule, SCENE_3D, type CreditsLight,
+  beltTrack, blendBgr555, CREDITS_CAMERA, CREDITS_LIGHT, CREDITS_LIGHT3, drifloonTrack, nightFlierTrack, nightSkyAt, shootingStarAt,
+  wingullTrack, naturalSchedule, SCENE_3D, type CreditsLight,
 } from '../engine/world/creditsStage'
 import { createRig, updateLocomotion, type Rig } from '../engine/actor/locomotion'
 import { RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
@@ -241,6 +241,72 @@ function makeFrame(photo: Texture, look: PhotoLook, unit: number, tilt: number, 
   return { group, picture }
 }
 
+// ───────────────────────────── 밤 하늘 (팔레트 섞기) ─────────────────────────────
+
+/** 밤 하늘 한 장 — 번호 판(R 번호 · G 벌 · A 0번 색)과 칠한 결과 */
+interface NightSky {
+  texture: DataTexture
+  indices: Uint8ClampedArray
+  data: Uint8Array
+  w: number
+  h: number
+  /** 마지막으로 칠한 섞기 상태 — 같으면 다시 안 칠한다 */
+  key: string
+}
+
+/** 번호 판을 읽어 텍스처를 만든다. 칠하기는 `paintNightSky`가 틱마다 한다 */
+async function makeNightSky(art: CreditsArt): Promise<NightSky> {
+  const img = await loadImage(creditsArtUrl(art.nightSky.file))
+  const { w, h } = art.nightSky
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!ctx) throw new Error('밤 하늘을 읽을 수 없다')
+  ctx.drawImage(img, 0, 0)
+  // ⚠️ 알파가 0인 픽셀의 색은 브라우저가 0으로 지울 수 있다 — 번호는 알파가 있는 픽셀만 쓴다(0번 색은 뚫린 자리다)
+  const indices = ctx.getImageData(0, 0, w, h).data
+  const data = new Uint8Array(w * h * 4)
+  const texture = new DataTexture(data, w, h)
+  texture.colorSpace = SRGBColorSpace
+  texture.magFilter = NearestFilter
+  texture.minFilter = NearestFilter
+  texture.generateMipmaps = false
+  texture.wrapS = RepeatWrapping
+  texture.wrapT = RepeatWrapping
+  texture.needsUpdate = true
+  return { texture, indices, data, w, h, key: '' }
+}
+
+const expand5 = (v: number): number => (v << 3) | (v >> 2)
+
+/**
+ * 그 틱의 1번 벌을 섞어 칠한다 (`ov99_021D3930` — `BlendPalette`). 0번 벌은 안 섞인다.
+ * ⚠️ **DataTexture는 첫 줄이 아래다** — 그림의 줄을 거꾸로 써서 이미지 텍스처와 같은 방향으로 맞춘다
+ */
+function paintNightSky(sky: NightSky, art: CreditsArt, tick: number): void {
+  const blend = nightSkyAt(tick)
+  const key = `${String(blend.from)}/${String(blend.to)}/${String(blend.level)}`
+  if (key === sky.key) return
+  sky.key = key
+  const { palettes, fixed } = art.nightSky
+  const mixed = palettes[blend.from]!.map((c, i) => blendBgr555(c, palettes[blend.to]![i]!, blend.level))
+  const rgb = (c: number): [number, number, number] => [expand5(c & 31), expand5((c >> 5) & 31), expand5((c >> 10) & 31)]
+  const pal1 = mixed.map(rgb), pal0 = fixed.map(rgb)
+  const { w, h, indices, data } = sky
+  for (let y = 0; y < h; y++) {
+    const dst = (h - 1 - y) * w * 4
+    for (let x = 0; x < w; x++) {
+      const at = (y * w + x) * 4
+      const o = dst + x * 4
+      if (indices[at + 3] === 0) { data[o + 3] = 0; continue }
+      const c = (indices[at + 1] === 1 ? pal1 : pal0)[indices[at]!]!
+      data[o] = c[0]; data[o + 1] = c[1]; data[o + 2] = c[2]; data[o + 3] = 255
+    }
+  }
+  sky.texture.needsUpdate = true
+}
+
 // ───────────────────────────── 무대 ─────────────────────────────
 
 /** 장면 3D 종류의 빛 색을 three 색으로 (원작 5비트) */
@@ -390,6 +456,22 @@ export function CreditsStage() {
     frames.mat.dispose()
   }, [frames])
 
+  // 밤 하늘 — 번호 판을 읽어 틱마다 섞어 칠한다 (옛 설치본은 `nightSky`가 없어 구운 한 장으로 남는다)
+  const night = useRef<NightSky | null>(null)
+  useEffect(() => {
+    if (!art || !skyParts) return
+    let alive = true
+    let made: NightSky | null = null
+    void makeNightSky(art).then((sky) => {
+      if (!alive) { sky.texture.dispose(); return }
+      made = sky
+      night.current = sky
+      const front = skyParts[2]?.front
+      if (front) { front.map = sky.texture; front.needsUpdate = true }
+    }).catch(() => undefined)
+    return () => { alive = false; night.current = null; made?.texture.dispose() }
+  }, [art, skyParts])
+
   // 입자 풀 — 모양 기하 넷 · 재질 한 벌(+ 별똥별용 복제)
   const sprites = useMemo(() => {
     if (!art || !pool) return null
@@ -495,6 +577,7 @@ export function CreditsStage() {
         const k = v.scene === 0 ? 0 : v.scene === 2 ? 1 : 2
         sg.children.forEach((c, i) => { c.visible = Math.floor(i / 2) === k })
         const p = skyParts?.[k]
+        if (v.scene === 4 && night.current && art) paintNightSky(night.current, art, v.tick)
         if (p) {
           const offX = v.scene === 0 ? (-v.steps * 0x40) / 4096 : 0
           const offY = v.scene === 2 ? (v.steps * 0x60) / 4096 : 0

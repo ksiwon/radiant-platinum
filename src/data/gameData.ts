@@ -367,7 +367,7 @@ export function loadCreditsAtlas(): Promise<CreditsAtlas> {
 export function loadCreditsArt(): Promise<CreditsArt> {
   return fetchJson('credits/art.json', (v) => creditsArtSchema.parse(v)).then(async (art) => {
     const files = [
-      ...art.memory.male, ...art.memory.female, ...art.night.male, ...art.night.female, ...art.sprites,
+      ...art.memory.male, ...art.memory.female, ...art.night.male, ...art.night.female, ...art.sprites, art.nightSky,
     ].map((p) => `data/${p.file}`)
     await Promise.all(files.map((f) => pinAtlas(f)))
     return art

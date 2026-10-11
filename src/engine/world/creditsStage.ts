@@ -471,6 +471,56 @@ export function shootingStarAt(tick: number): ShootingStar | null {
 
 const spriteTracks = new Map<string, SpriteTrack>()
 
+// ───────────────────────────── 밤 하늘의 팔레트 섞기 ─────────────────────────────
+
+/** 밤 하늘 1번 벌이 지금 어느 두 벌 사이인가 — `from`에서 `to`로 `level`/16만큼 갔다 (`ov99_021D3930`) */
+interface SkyBlend {
+  from: number
+  to: number
+  level: number
+}
+
+/**
+ * 7620틱부터 8단계 — 한 단계가 **블렌드 4틱 + 쉬는 틱 1**이다(`unk_10C += 0x400`이 4096에 닿으면 다음 벌로, 그 틱에는 상태가 0으로 돌아간다).
+ * 여덟 벌을 다 지나면(`unk_108 >= 8`) 멈추고 마지막 벌이 남는다. `tick`은 그 틱의 갱신이 끝난 뒤의 모습이다.
+ */
+const SKY_FROM = 7620
+const skyTable: SkyBlend[] = (() => {
+  const out: SkyBlend[] = []
+  let step = 0, acc = 0, state = 0, counter = 0
+  let now: SkyBlend = { from: 0, to: 0, level: 0 }
+  for (let t = SKY_FROM; t < SKY_FROM + 80; t++) {
+    let ran = true
+    if (state === 0) {
+      if (step >= 8) ran = false
+      else if (counter > 0) state = 1
+    } else {
+      const v2 = step
+      acc += 0x400
+      let level: number
+      if (acc >= 16 << 8) { level = 16; acc = 0; step++; state = 0 } else level = acc >> 8
+      now = { from: v2, to: v2 + 1 >= 8 ? 7 : v2 + 1, level }
+    }
+    if (ran) counter++
+    out.push(now)
+  }
+  return out
+})()
+
+export function nightSkyAt(tick: number): SkyBlend {
+  if (tick < SKY_FROM) return { from: 0, to: 0, level: 0 }
+  return skyTable[Math.min(skyTable.length - 1, tick - SKY_FROM)]!
+}
+
+/** `BlendColor` — 5비트 채널마다 `src + ((target − src) × fraction >> 4)` (`palette.h`) */
+export function blendBgr555(a: number, b: number, fraction: number): number {
+  const ch = (shift: number): number => {
+    const s = (a >> shift) & 31, t = (b >> shift) & 31
+    return s + (((t - s) * fraction) >> 4)
+  }
+  return ch(0) | (ch(5) << 5) | (ch(10) << 10)
+}
+
 // ───────────────────────────── 밝기 (BrightnessController) ─────────────────────────────
 
 /**

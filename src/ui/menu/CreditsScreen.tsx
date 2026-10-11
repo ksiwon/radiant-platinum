@@ -280,6 +280,8 @@ export function CreditsScreen() {
     if (lines === null || table === null || maker) return
     const clock = new CreditsClock()
     creditsLive.view = clock.view()
+    // 시작은 검정이다 (`BrightnessController_SetScreenBrightness(-16, …)`) — 받는 동안 3D가 비치지 않는다
+    if (sceneDim.current) sceneDim.current.style.opacity = '1'
     let raf = 0
     let last: number | null = null
     let acc = 0
