@@ -26,12 +26,13 @@
 //
 // ⚠️ **1인칭은 안 건드린다.** 눈이 곧 주인공이라 가릴 사이가 없다 — 코앞의 벽이 사라지면 더 이상하다 (`PropFade`와 같은 규칙)
 import {
-  Box3, InstancedMesh, Matrix4, Mesh, Vector3, type Material, type Object3D,
+  Box3, Group, InstancedMesh, Matrix4, Mesh, Vector3, type BufferGeometry, type Material, type Object3D,
 } from 'three'
 import { nearScale } from './Foliage'
 import { EASE } from './PropFade'
 import { markSeeThrough } from './fx/seeThrough'
 import { isDoorLeaf } from './DoorAnimations'
+import { ALWAYS_ASYNC } from './asyncPipelines'
 
 /** 이보다 낮은 인스턴스(풀 · 꽃 · 낮은 돌)는 가릴 일이 없다 (타일) */
 const TALL = 1.2
@@ -105,7 +106,8 @@ interface Instances {
   moving: Set<number>
 }
 
-interface Rest { transparent: boolean, opacity: number, depthWrite: boolean, alphaTest: number }
+/** `src`는 복제하기 전 재질의 uuid — 같은 재질에서 나온 복제끼리는 셰이더가 같아 미리 굽는 한 벌을 나눈다 (`FieldFade.warm`) */
+interface Rest { transparent: boolean, opacity: number, depthWrite: boolean, alphaTest: number, src: string }
 
 interface Solid {
   mesh: Mesh
@@ -192,6 +194,17 @@ function crossesCap(cap: Cap, a: Vector3, b: Vector3): boolean {
 }
 
 export interface FieldFade {
+  /**
+   * 흐릴 때 쓸 파이프라인을 **미리** 굽는다 (한 번만 · 다시 불러도 아무것도 안 한다).
+   *
+   * ⚠️ **재질의 `transparent` · `depthWrite`를 뒤집으면 파이프라인 열쇠가 바뀐다** (`WebGPUBackend.getRenderCacheKey`) — 건물 앞에 처음
+   * 서는 순간 그 재질의 흐린 쪽 파이프라인이 처음 서고, 비동기가 아니라 동기로 굽는다(리그 로비에서 한 건에 230~410ms). 또 같은
+   * 열쇠를 쓰는 물체가 다 흐림 쪽으로 넘어가 쓰는 이가 0이 되면 three가 그 파이프라인을 버려(`Pipelines._releasePipeline`) 돌아올 때 또
+   * 굽는다. 그래서 **같은 재질 · 같은 정점 배치마다 보이지 않는 한 벌**(크기 0 · `ALWAYS_ASYNC`)을 보통 쪽 · 흐린 쪽으로 하나씩 세워 둔다 —
+   * 파이프라인이 늘 한 명 이상의 사용자를 갖고, 비동기로 미리 선다. 불러야 하는 때는 빛(`bdspLights`)을 편 **뒤**다 — 복제가 그
+   * 재질을 베낀다
+   */
+  warm(): void
   /** 목표를 정한다 — 선분 판정. 무거워서 몇 프레임에 한 번 부른다 */
   aim(camera: Vector3, target: Vector3, third: boolean): void
   /** 목표로 `dt`초만큼 다가간다. 매 프레임 부른다 */
@@ -284,7 +297,7 @@ export function fieldFade(root: Object3D): FieldFade {
         const c = x.clone()
         // ⚠️ **원래 값으로 되돌린다.** 1 · 켬으로 되돌리면 원래 반투명한 유리가 흐림을 한 번 겪은 뒤 불투명하게 굳는다
         c.userData.rest = {
-          transparent: x.transparent, opacity: x.opacity, depthWrite: x.depthWrite, alphaTest: x.alphaTest,
+          transparent: x.transparent, opacity: x.opacity, depthWrite: x.depthWrite, alphaTest: x.alphaTest, src: x.uuid,
         } satisfies Rest
         return c
       })
@@ -293,10 +306,57 @@ export function fieldFade(root: Object3D): FieldFade {
     }
   })
 
+
+  /** 정점 배치 — 파이프라인의 정점 버퍼 모양이 같은 형상끼리 한 열쇠다 */
+  const layoutOf = (g: BufferGeometry): string => {
+    const names = Object.keys(g.attributes).sort()
+    return names.map((n) => {
+      const a = g.attributes[n]!
+      return `${n}:${String(a.itemSize)}${a.normalized ? 'n' : ''}${a.array.constructor.name}`
+    }).join(',') + (g.index ? `|${g.index.array.constructor.name}` : '')
+  }
+  let warmGroup: Group | null = null
+  /** 흐림 쪽 깃발만 뒤집은 복제 — 지금 재질의 다른 값(발광 · 문턱)은 그대로 베낀다 */
+  const stateClone = (mat: Material, ghost: boolean): Material => {
+    const rest = mat.userData.rest as Rest
+    const c = mat.clone()
+    c.userData[ALWAYS_ASYNC] = true
+    c.transparent = ghost ? true : rest.transparent
+    c.depthWrite = ghost ? false : rest.depthWrite
+    markSeeThrough(c, ghost || !rest.depthWrite)
+    return c
+  }
+
   const scaled = new Matrix4()
   const shrink = new Matrix4()
   const ray = new Vector3()
   return {
+    warm() {
+      if (warmGroup !== null) return
+      warmGroup = new Group()
+      warmGroup.name = '흐림 파이프라인 (보이지 않는다)'
+      const seen = new Set<string>()
+      for (const sol of solids) {
+        const key = sol.materials.map((m) => (m.userData.rest as Rest).src).join('+') + '#' + layoutOf(sol.mesh.geometry)
+          + (sol.mesh.receiveShadow ? '#r' : '')
+        if (seen.has(key)) continue
+        seen.add(key)
+        for (const ghost of [false, true]) {
+          const mats = sol.materials.map((m) => stateClone(m, ghost))
+          const mesh = new Mesh(sol.mesh.geometry, Array.isArray(sol.mesh.material) ? mats : mats[0]!)
+          mesh.name = ghost ? '흐린 쪽' : '보통 쪽'
+          // 크기 0에 가까운 한 벌 — 그려져 파이프라인이 서지만 화소가 안 나온다. 그림자 패스에는 안 낸다(그림자용 파이프라인이 늘지 않게)
+          mesh.scale.setScalar(1e-5)
+          mesh.frustumCulled = false
+          mesh.castShadow = false
+          mesh.receiveShadow = sol.mesh.receiveShadow
+          mesh.matrixAutoUpdate = false
+          mesh.updateMatrix()
+          warmGroup.add(mesh)
+        }
+      }
+      root.add(warmGroup)
+    },
     aim(camera, target, third) {
       for (const l of lists) {
         for (let i = 0; i < l.radii.length; i++) {

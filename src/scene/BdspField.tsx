@@ -475,7 +475,11 @@ function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
         beginAsyncPipelines()
         attach(b)
         await settleAsyncPipelines(() => b.scene.parent !== null, FIELD_COMPILE_CAP_MS)
-        if (alive) setWarm(true)
+        if (alive) {
+          setWarm(true)
+          // 흐림의 파이프라인은 지역이 다 선 **뒤에** 비동기로 미리 굽는다 — 덮개를 기다리게 하지 않고, 처음 건물 앞에 설 때 동기로 안 굽게
+          b.fade.warm()
+        }
       })()
         .catch((e: unknown) => {
           console.error(`지역 ${name}을 못 세웠다`, e)

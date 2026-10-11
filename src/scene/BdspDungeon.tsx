@@ -660,7 +660,8 @@ export function BdspDungeon({ name }: { name: string }) {
         devices.current = { map: world.mapId, hidden: hideDevices(root, world.mapId) }
         liveWater(root)
         // ⚠️ **흐림이 먼저다** — `BdspField`와 같은 까닭이다
-        fade.current = fieldFade(root)
+        const made = fieldFade(root)
+        fade.current = made
         lights.current = bdspLights(root)
         lights.current.update(worldState.time.gameHour)
         for (const c of cover) root.add(c)
@@ -671,6 +672,8 @@ export function BdspDungeon({ name }: { name: string }) {
         for (const c of firstOnly.current) c.visible = firstPersonView()
         release = [holdBdspDoors(root), holdBdspSigns(root)]
         setScene(root)
+        // 흐림의 파이프라인을 비동기로 미리 굽는다 — 처음 벽 앞에 설 때 동기로 안 굽게 (`FieldFade.warm`)
+        made.warm()
       })
       .catch((e: unknown) => {
         console.error(`던전 ${name}을 못 세웠다`, e)

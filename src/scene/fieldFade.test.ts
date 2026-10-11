@@ -8,6 +8,7 @@ import {
 } from 'three'
 import { easeStep, fieldFade, GHOST, isBuilding, isGround } from './fieldFade'
 import { EASE } from './PropFade'
+import { ALWAYS_ASYNC } from './asyncPipelines'
 
 /** 3인칭 카메라 — 주인공 뒤 8칸 · 위 4칸 */
 const EYE = new Vector3(0, 5.2, 8)
@@ -101,6 +102,77 @@ describe('BDSP 흐림 — 건물', () => {
     const two = 1 - (1 - easeStep(FRAME)) ** 2
     expect(easeStep(2 * FRAME)).toBeCloseTo(two, 9)
     expect(easeStep(FRAME)).toBeCloseTo(EASE, 9)
+  })
+})
+
+describe('BDSP 흐림 — 파이프라인 미리 굽기 (`warm`)', () => {
+  /** 같은 재질을 쓰는 집 둘과 다른 재질의 집 하나 */
+  function street(): Group {
+    const root = new Group()
+    const shared = new MeshStandardMaterial({ name: 'M_T_001_House_01' })
+    const other = new MeshStandardMaterial({ name: 'M_T_001_Shop_01' })
+    for (const [m, x] of [[shared, 0], [shared, 6], [other, 12]] as const) {
+      const mesh = new Mesh(new BoxGeometry(3, 3, 3), m)
+      mesh.position.set(x, 1.5, 4)
+      root.add(mesh)
+    }
+    return root
+  }
+  const warmOnes = (root: Group): Mesh[] => {
+    const out: Mesh[] = []
+    root.traverse((o) => { if (o instanceof Mesh && o.parent?.name.startsWith('흐림 파이프라인')) out.push(o) })
+    return out
+  }
+
+  it('같은 재질 · 같은 정점 배치는 한 벌이다 — 보통 쪽 · 흐린 쪽 둘씩', () => {
+    const root = street()
+    fieldFade(root).warm()
+    expect(warmOnes(root)).toHaveLength(4)
+  })
+
+  it('두 번 불러도 더 안 는다', () => {
+    const root = street()
+    const fade = fieldFade(root)
+    fade.warm()
+    fade.warm()
+    expect(warmOnes(root)).toHaveLength(4)
+  })
+
+  it('흐린 쪽 한 벌은 `transparent` · 깊이 안 씀, 보통 쪽은 원래 깃발이고 둘 다 늘 비동기다', () => {
+    const root = street()
+    fieldFade(root).warm()
+    const normal = warmOnes(root).find((m) => m.name === '보통 쪽')!.material as MeshStandardMaterial
+    const ghost = warmOnes(root).find((m) => m.name === '흐린 쪽')!.material as MeshStandardMaterial
+    expect(normal.transparent).toBe(false)
+    expect(normal.depthWrite).toBe(true)
+    expect(ghost.transparent).toBe(true)
+    expect(ghost.depthWrite).toBe(false)
+    expect(normal.userData[ALWAYS_ASYNC]).toBe(true)
+    expect(ghost.userData[ALWAYS_ASYNC]).toBe(true)
+  })
+
+  it('보이지 않고 · 그림자를 안 낸다 — 크기 0에 가깝고 컬링을 안 받는다', () => {
+    const root = street()
+    fieldFade(root).warm()
+    for (const m of warmOnes(root)) {
+      expect(m.scale.x).toBeLessThan(1e-3)
+      expect(m.frustumCulled).toBe(false)
+      expect(m.castShadow).toBe(false)
+    }
+  })
+
+  it('진짜 건물의 재질은 안 건드린다 — 흐림은 원래대로 그 재질 하나를 뒤집는다', () => {
+    const root = street()
+    const fade = fieldFade(root)
+    const first = root.children[0] as Mesh
+    const mat = first.material as MeshStandardMaterial
+    fade.warm()
+    expect(first.material).toBe(mat)
+    expect(mat.transparent).toBe(false)
+    fade.aim(EYE, AIM, true)
+    fade.step(FRAME)
+    expect(first.material).toBe(mat)
+    expect(mat.transparent).toBe(true)
   })
 })
 
