@@ -21,6 +21,8 @@ import { SUPPORTED, type Release } from './validate'
 import { convertNpcTrades } from './npcTrades'
 import { convertBoxWallpapers } from './boxWallpapers'
 import { convertPoketchMap } from './poketchMap'
+import { convertBagSprite } from './bagSprite'
+import { convertSlots } from './slots'
 import { withRom, romPath, fileSource } from '../../data/romData.testkit'
 
 const LOCALES = ['en', 'ko', 'ja'] as const
@@ -84,6 +86,36 @@ function pathsInSource(): readonly string[] {
   return [...out].sort()
 }
 
+/**
+ * `ctx.fs.read`에 **옮겨진 자리를 그대로** 넣는 곳 — `파일: 자리` 목록.
+ *
+ * ⚠️ 위 ②는 「그 자리를 자리표로 풀면 열리는가」만 잰다. 변환기가 자리표를 **안 거치면**
+ * ②는 초록인데 한국판에서 죽는다. 실제로 그랬다(2026-10-11): `bagSprite` · `slots`가
+ * 미국판 자리를 `ctx.fs.read`에 박아 두어 배포판 한국판 설치에서 「못 만든 것」으로 떨어졌다.
+ * 옮겨진 파일은 `readRomFile`(자리표를 거친다)로만 읽는다
+ */
+function rawMovedReads(): readonly string[] {
+  const moved = new Set(movedFiles().flatMap((r) => [r.ja, r.en, r.ko]))
+  const dir = __dirname
+  const out: string[] = []
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith('.ts') || name.endsWith('.test.ts')) continue
+    const src = readFileSync(resolve(dir, name), 'utf8')
+    const consts = new Map([...src.matchAll(/const (\w+) = '(\/[^']+)'/g)].map((m) => [m[1]!, m[2]!]))
+    for (const m of src.matchAll(/\.fs\.read\(\s*(?:'([^']+)'|(\w+))\s*\)/g)) {
+      const at = m[1] ?? consts.get(m[2]!)
+      if (at !== undefined && moved.has(at)) out.push(`${name}: ${at}`)
+    }
+  }
+  return out.sort()
+}
+
+describe('옮겨진 파일은 자리표를 거쳐 읽는다', () => {
+  it('ctx.fs.read에 옮겨진 자리를 그대로 넣는 변환기가 없다', () => {
+    expect(rawMovedReads()).toEqual([])
+  })
+})
+
 withRom(...LOCALES)('세 롬에 대조한다', () => {
   const opened = new Map<Loc, NdsFileSystem>()
   const open = async (loc: Loc): Promise<NdsFileSystem> => {
@@ -144,6 +176,12 @@ withRom(...LOCALES)('세 롬에 대조한다', () => {
       ) as { shades: string[][] }
       expect(poketchMeta.shades.length, `${loc}: 액정 색 수`).toBe(8)
       expect(poketch.get('data/poketchMap.png')!.length, `${loc}: 지도 그림`).toBeGreaterThan(1000)
+
+      // 배포판 한국판 설치에서 「못 만든 것」으로 떨어지던 둘 (2026-10-11)
+      const bag = await convertBagSprite(ctx)
+      expect(bag.get('data/bagSprite.png')!.length, `${loc}: 가방 그림`).toBeGreaterThan(1000)
+      const slots = await convertSlots(ctx)
+      expect(slots.get('data/slotBg.png')!.length, `${loc}: 슬롯 화면`).toBeGreaterThan(1000)
     }
   }, 120_000)
 })

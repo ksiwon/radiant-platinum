@@ -6,7 +6,7 @@
 import { narcCount, narcEntry } from './nds'
 import { color, type Rgb } from './nitrotex'
 import { encodePng } from './png'
-import { breathe, check, json, type ConvertContext, type Produced } from './convertTypes'
+import { breathe, check, json, readRomFile, type ConvertContext, type Produced } from './convertTypes'
 
 /** 가방 한 장 */
 const BAG = 64
@@ -93,10 +93,11 @@ function member(narc: Uint8Array, at: number): Uint8Array {
 }
 
 export async function convertBagSprite(ctx: ConvertContext): Promise<Produced> {
-  const narc = await ctx.fs.read('/graphic/pl_bag_gra.narc')
-  if (!narc) throw new Error('pl_bag_gra.narc을 못 읽었다')
-  if (narcCount(narc) !== MEMBERS) {
-    throw new Error(`가방 아카이브가 ${String(narcCount(narc))}칸이다 — ${String(MEMBERS)}칸이라야 한다`)
+  // ⚠️ 한국판은 이 파일이 `/resource/kor/bag/pl_bag_gra.narc`에 있다 (`localePaths`)
+  const narc = await readRomFile(ctx, '/graphic/pl_bag_gra.narc')
+  // ⚠️ 일본판은 41칸이다 — 0~38번은 세 판이 같고, 끝에 그림이 아닌 칸 둘(254B · 2B)이 더 붙었다. 모자랄 때만 막는다
+  if ((narcCount(narc) ?? 0) < MEMBERS) {
+    throw new Error(`가방 아카이브가 ${String(narcCount(narc))}칸이다 — ${String(MEMBERS)}칸은 있어야 한다`)
   }
 
   // ── 가방 여덟 장 × 두 벌 ─────────────────────────────────────────────────

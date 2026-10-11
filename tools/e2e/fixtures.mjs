@@ -133,6 +133,7 @@ export const REQUIRED_PLATINUM_GROUPS = [
   'pokeIcons', 'boxWallpapers', 'poketchMap', 'signposts', 'starterScene', 'distortionProps',
   'distortion', 'trainerSprites', 'particles', 'trainerCase',
   'typeIcons', 'startMenuIcons', 'dexShapes', 'dexHeightWeight', 'townMapPlayer', 'mailArt', 'berryArt', 'diplomaArt',
+  'bagSprite', 'slots',
 ]
 
 export const REQUIRED_BDSP_GROUPS = [

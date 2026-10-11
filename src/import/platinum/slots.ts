@@ -18,7 +18,7 @@ import { narcCount, narcEntry } from './nds'
 import { chars, palettes, screen, screenCell, TILE, TILE_BYTES } from './ntrgfx'
 import { cellAnims, cellBank, cellBox, drawCell } from './ntrcell'
 import { encodePng } from './png'
-import { check, json, type ConvertContext, type Produced } from './convertTypes'
+import { check, json, readRomFile, type ConvertContext, type Produced } from './convertTypes'
 
 const SLOT_NARC = '/data/slot.narc'
 const MEMBERS = 77
@@ -85,8 +85,8 @@ function raw555(buf: Uint8Array, rows: number): number[][] {
 }
 
 export async function convertSlots(ctx: ConvertContext): Promise<Produced> {
-  const narc = await ctx.fs.read(SLOT_NARC)
-  if (!narc) throw new Error('slot.narc을 못 읽었다')
+  // ⚠️ 한국판은 이 파일이 `/resource/kor/slot/slot.narc`에 있다 (`localePaths`)
+  const narc = await readRomFile(ctx, SLOT_NARC)
   if (narcCount(narc) !== MEMBERS) {
     throw new Error(`슬롯 아카이브가 ${String(narcCount(narc))}칸이다 — ${String(MEMBERS)}칸이라야 한다`)
   }
