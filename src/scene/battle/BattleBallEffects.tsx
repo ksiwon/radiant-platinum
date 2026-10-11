@@ -28,16 +28,24 @@ import { loadSeq } from './fx/moveSeq'
 import { useBattleStore } from '../../state/battleStore'
 import { Ball } from '../../engine/battle/meta/capture'
 import { recallsBody } from './battleBallMotion'
+import { BallSealBurst } from './BallSealBurst'
+import { preloadSplPack, SPL_BALL } from './splPack'
+import type { BallSeal } from '../../engine/world/ballCapsule'
 
 /** 포획 볼이 몸을 빨아들여 몸이 사라지는 프레임 — `ee101` `PokemonVisible visible=0` f45, 트레이너 몸짓 9프레임을 자른 뒤 */
 const CAPTURE_VANISH = 36
 
 /** 쌍으로 나오는 둘째 자리 (`Cue.mate`) */
-interface Mate { slot: SlotId; ball: number; species: number }
+interface Mate { slot: SlotId; ball: number; species: number; seals?: readonly BallSeal[] }
+
+/** 볼캡슐 씰 입자 한 번 (`BallSealBurst`) — 볼이 열리는 시각에 선다 */
+interface Burst { id: number; slot: SlotId; seals: readonly BallSeal[]; openAt: number }
 
 type Cue =
   | {
     id: number; kind: 'send'; slot: SlotId; ball: number; species: number; started: number; doubles: boolean
+    /** 그 마리에 붙은 볼캡슐의 씰 — 열릴 때 씰마다 입자가 터진다 */
+    seals?: readonly BallSeal[]
     /** 같은 쪽 둘째 자리가 **같이** 나온다 — 한 시퀀스로 둘을 튼다 (`sendOutPairPlan`) */
     mate?: Mate
     /** 한 쪽에 트레이너가 둘이다 (태그 — `ee405` · `ee402`) */
@@ -63,6 +71,7 @@ export function BattleBallEffects({
   const kind = useBattleStore((s) => s.kind)
   const wildFoe = kind === 'wild' || kind === 'safari'
   const [cues, setCues] = useState<Cue[]>([])
+  const [bursts, setBursts] = useState<Burst[]>([])
   const activeKeys = useRef<Record<SlotId, string | null> | null>(null)
   /** 자리마다 앞서 본 마리가 **서 있었는가** — 쓰러진 뒤의 교체는 거둘 몸이 없다 */
   const standing = useRef<Record<SlotId, boolean>>({ p1a: false, p1b: false, p2a: false, p2b: false })
@@ -70,6 +79,8 @@ export function BattleBallEffects({
 
   useEffect(() => {
     for (const n of PRELOAD) void loadSeq(n)
+    // 씰 입자는 볼이 열리는 프레임에 기다림 없이 꺼내 쓴다 (`splFileFor`) — 미리 받아 둔다
+    void preloadSplPack(SPL_BALL)
     void ballMeta()
   }, [])
 
@@ -77,6 +88,7 @@ export function BattleBallEffects({
     if (!view) {
       activeKeys.current = null
       clearBallOpen()
+      setBursts([])
       return
     }
     const current: Record<SlotId, string | null> = {
@@ -127,6 +139,7 @@ export function BattleBallEffects({
       added.push({
         id: nextCueId++, kind: 'send', slot, ball: roster[key]?.ball ?? Ball.POKE, species: mon?.species ?? 0,
         started: begin, doubles, tag: slot.startsWith('p1') ? partner !== null : foes.length > 1,
+        ...(roster[key]?.capsule ? { seals: roster[key].capsule } : {}),
       })
     }
     // 한 쪽 두 자리가 같은 순간(앞 마리 없이)에 서면 한 시퀀스로 묶는다 — BDSP가 두 볼을 같이 던진다 (`ee404` 등)
@@ -134,7 +147,7 @@ export function BattleBallEffects({
       const a = added.find((c) => c.kind === 'send' && c.slot === `${side}a`)
       const b = added.find((c) => c.kind === 'send' && c.slot === `${side}b`)
       if (a?.kind !== 'send' || b?.kind !== 'send' || a.started !== b.started || a.mate) continue
-      a.mate = { slot: b.slot, ball: b.ball, species: b.species }
+      a.mate = { slot: b.slot, ball: b.ball, species: b.species, ...(b.seals ? { seals: b.seals } : {}) }
       added.splice(added.indexOf(b), 1)
     }
     // **몸은 볼이 열려 나타나는 프레임까지 기다린다** (`ee400`의 `PokemonIntroMotion`). 안 적으면
@@ -145,6 +158,15 @@ export function BattleBallEffects({
       ballOpen[c.slot] = c.started + (c.mate ? pairAppearAt(side, false) : sendOutAppearAt())
       if (c.mate) ballOpen[c.mate.slot] = c.started + pairAppearAt(side, true)
     }
+    const burst: Burst[] = []
+    for (const c of added) {
+      if (c.kind !== 'send') continue
+      const open = ballOpen[c.slot]
+      if (c.seals && open !== undefined) burst.push({ id: nextCueId++, slot: c.slot, seals: c.seals, openAt: open })
+      const mateOpen = c.mate ? ballOpen[c.mate.slot] : undefined
+      if (c.mate?.seals && mateOpen !== undefined) burst.push({ id: nextCueId++, slot: c.mate.slot, seals: c.mate.seals, openAt: mateOpen })
+    }
+    if (burst.length > 0) setBursts((old) => [...old, ...burst].slice(-8))
     if (added.length > 0) setCues((old) => [...old, ...added].slice(-16))
   }, [view, wildFoe])
 
@@ -166,6 +188,16 @@ export function BattleBallEffects({
 
   return (
     <group>
+      {bursts.map((b) => (
+        <BallSealBurst
+          key={b.id}
+          seals={b.seals}
+          slot={b.slot}
+          floor={spotAt(b.slot)}
+          openAt={b.openAt}
+          onDone={() => { setBursts((old) => old.filter((x) => x.id !== b.id)) }}
+        />
+      ))}
       {cues.map((cue) => (
         <CueSequence
           key={cue.id}

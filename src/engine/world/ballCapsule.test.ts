@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   attachCapsule, canReceiveSeal, CAPSULE_SLOTS, carrierOf, detachCapsule, emptyCapsule, hasSeals, newCapsules, placeSeal,
-  removeSeal, SEALS_PER_CAPSULE, sealsAnywhere, sealsInUse, swapCapsules, syncCarriers, TOTAL_CAPSULES, uniqueSealsAnywhere,
+  removeSeal, SEALS_PER_CAPSULE, sealsOf, sealsAnywhere, sealsInUse, swapCapsules, syncCarriers, TOTAL_CAPSULES, uniqueSealsAnywhere,
   type BallSeal, type MonCapsule,
 } from './ballCapsule'
 import { giveOrTakeSeal, newSealCase } from './sealCase'
@@ -130,6 +130,14 @@ describe('볼캡슐', () => {
       expect(got.party[0]!.capsule!.id).toBe(6)
       expect(got.party[0]!.capsule!.seals[0]!.type).toBe(1)
     })
+  })
+
+  it('씰이 붙은 칸만 걸러 낸다 (배틀 명부가 이것을 든다)', () => {
+    const c = emptyCapsule()
+    c[1] = { ...c[1]!, type: 7 }
+    c[6] = { ...c[6]!, type: 80 }
+    expect(sealsOf(c).map((s) => s.type)).toEqual([7, 80])
+    expect(sealsOf(emptyCapsule())).toEqual([])
   })
 
   it('빈 캡슐은 칸 자리를 쥔다', () => {
