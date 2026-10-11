@@ -249,16 +249,23 @@ suite('인물', () => {
 
   // ⚠️ **굽는 쪽이 둘이라 여기서 브라우저 쪽을 잡는다.** 노드 추출기(`--clip-filter`)가 하나도 안 실어도
   // 이쪽이 싣거나 그 반대면 개발 서버와 설치본의 트레이너가 갈린다 — 개발 서버에서는 멀쩡히 보이므로 눈으로는 안 걸린다
-  it('등신 트레이너 몸에는 클립이 하나도 안 실린다', async () => {
+  it('등신 트레이너 몸에는 말하는 입 하나만 실린다 — 그것이 없는 몸은 하나도 안 실린다', async () => {
+    // `tr0002_00`은 `speak01_b`를 가진 26벌 중 하나다 (턱 · 입술만, `SPEAK_CLIPS`)
     const env = openEnvironment([bytes(person('battle', 'tr0002_00')!)])
     const { glb, stat } = await exportModel(env, encodePng, {
       maxSize: 256, keepClips: true, clipFilter: clipFilterFor('tr0002_00'),
     })
-    expect(stat.anim.clips).toBe(0)
-    // 걸러진 것이 있어야 한다 — 규칙이 아무것도 안 거르면 0이 나올 리 없다
+    expect(stat.anim.clips).toBe(1)
+    // 걸러진 것이 있어야 한다 — 규칙이 아무것도 안 거르면 1이 나올 리 없다
     expect(stat.anim.skipped).toBeGreaterThan(0)
     expect(verifyGlb(glb)).toEqual([])
-  }, 120_000)
+    // 아지트 조무래기는 그 클립이 없다
+    const none = openEnvironment([bytes(person('battle', 'tr1073_00')!)])
+    const bare = await exportModel(none, encodePng, {
+      maxSize: 256, keepClips: true, clipFilter: clipFilterFor('tr1073_00'),
+    })
+    expect(bare.stat.anim.clips).toBe(0)
+  }, 180_000)
 
   // ⚠️ **여기도 굽는 쪽 둘이다.** 필드 동작은 치비 번들에만 있어서 옮겨 와야
   // 하는데, 옮기는 도구가 한동안 파이썬에만 있었다 — 그러면 개발 서버에서는
@@ -278,8 +285,8 @@ suite('인물', () => {
       maxSize: 256, keepClips: true, clipFilter: clipFilterFor(hero),
       clipsFrom: from, borrowOnly: new Set(HERO_FIELD_CLIPS),
     })
-    // 제 클립은 서 있기 · 걷기 · 뛰기 셋이다 (`wait_b` · `walk_b` · `run_b`) — 배틀 클립은 안 싣는다
-    expect(stat.anim.clips).toBe(3)
+    // 제 클립은 서 있기 둘 · 걷기 · 뛰기 넷이다 (`wait_b` · `stand_b` · `walk_b` · `run_b`) — 배틀 클립은 안 싣는다
+    expect(stat.anim.clips).toBe(4)
     expect(stat.borrow?.borrowed).toBe(HERO_FIELD_CLIPS.length)
     expect(stat.borrow?.channels).toBe(1088)
     // 이름이 겹쳐 버린 뼈가 하나라도 있으면 그 자리가 조용히 안 움직인다

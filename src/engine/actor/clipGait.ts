@@ -41,6 +41,11 @@ export interface GaitClips {
   wait: AnimationClip | null
   walk: AnimationClip
   run: AnimationClip | null
+  /**
+   * 필드에서 서 있는 동작 — 주인공 몸의 `stand_b`(1.5초, 다리가 체중을 옮긴다). **꿔 주는 몸에만** 있다.
+   * 이것을 다른 몸으로 옮겨 그 몸의 `wait`로 쓴다 (`scene/NpcModels`의 `gaitFor`)
+   */
+  stand?: AnimationClip | null
 }
 
 function find(clips: readonly AnimationClip[], names: readonly string[]): AnimationClip | null {
@@ -52,7 +57,7 @@ function find(clips: readonly AnimationClip[], names: readonly string[]): Animat
 export function pickGaitClips(clips: readonly AnimationClip[]): GaitClips | null {
   const walk = find(clips, NAMES.walk)
   if (walk === null) return null
-  return { wait: find(clips, NAMES.wait), walk, run: find(clips, NAMES.run) }
+  return { wait: find(clips, NAMES.wait), walk, run: find(clips, NAMES.run), stand: find(clips, ['stand_b']) }
 }
 
 /**
@@ -530,7 +535,11 @@ export class GaitPlayer {
   private readonly run: AnimationAction | null
   state: GaitState = GAIT_REST
 
-  constructor(root: Object3D, set: GaitSet, rest?: RestPose) {
+  /**
+   * @param idlePhase 서 있기 클립의 시작 위상(0~1). **사람마다 엇갈려 줘야 한다** — 같은 클립이 같은 위상으로 돌면
+   * 줄 선 사람들이 한 몸처럼 체중을 같이 옮긴다
+   */
+  constructor(root: Object3D, set: GaitSet, rest?: RestPose, idlePhase = 0) {
     this.set = set
     this.mixer = new AnimationMixer(root)
     const start = (clip: AnimationClip | null, scale: number): AnimationAction | null => {
@@ -542,6 +551,7 @@ export class GaitPlayer {
       return a
     }
     this.wait = start(set.clips.wait ?? restClip(rest ?? captureRest(root)), 1)!
+    this.wait.time = (idlePhase % 1) * this.wait.getClip().duration
     this.walk = start(set.clips.walk, 0)!
     this.run = start(set.clips.run, 0)
   }
@@ -568,6 +578,51 @@ export class GaitPlayer {
       this.run.time = u * this.set.clips.run!.duration
     }
     this.mixer.update(dt)
+  }
+
+  dispose(root: Object3D): void {
+    this.mixer.stopAllAction()
+    this.mixer.uncacheRoot(root)
+  }
+}
+
+
+/** 클립 목록에서 말하는 입(`speak01_b`)을 고른다. 없으면 `null` — 26벌에만 있다 (`engine/actor/npcModels`의 `SPEAK_CLIPS`) */
+export function pickSpeakClip(clips: readonly AnimationClip[]): AnimationClip | null {
+  const hit = clips.find((c) => c.name === 'speak01_b')
+  if (!hit) return null
+  // 회전만 남긴다 — 이동 클립과 같은 까닭이다 (`trimGaitClip`: 크기 · 자리 트랙은 우리가 맞춰 둔 값을 덮는다)
+  const keep = hit.tracks.filter((t) => splitTrack(t).prop === 'quaternion')
+  return new AnimationClip(hit.name, hit.duration, keep)
+}
+
+/**
+ * 말하는 동안 턱 · 입술만 움직이는 재생기.
+ *
+ * ⚠️ **이동 클립(`GaitPlayer`)의 믹서와 따로 둔다.** 같은 믹서에 얹으면 턱 뼈의 비중이 서 있기와 반씩 나뉜다.
+ * 이동 믹서를 먼저 돌린 **다음에** 이것을 돌리면 이 클립이 만진 뼈만 덮어쓴다 (비중 1). 끝나면 믹서가 뼈를 말하기 직전
+ * 값으로 되돌린다 (`AnimationMixer._deactivateAction`의 `restoreOriginalState`) — 그 뒤는 이동 클립이 다시 쓴다
+ */
+export class MouthPlayer {
+  private readonly mixer: AnimationMixer
+  private readonly action: AnimationAction
+  private on = false
+
+  constructor(root: Object3D, clip: AnimationClip) {
+    this.mixer = new AnimationMixer(root)
+    this.action = this.mixer.clipAction(clip)
+    this.action.setLoop(LoopRepeat, Infinity)
+  }
+
+  get talking(): boolean { return this.on }
+
+  /** 이동 클립을 민 **다음에** 부른다 */
+  update(dt: number, talking: boolean): void {
+    if (talking !== this.on) {
+      this.on = talking
+      if (talking) { this.action.reset().play() } else { this.mixer.stopAllAction(); return }
+    }
+    if (talking) this.mixer.update(dt)
   }
 
   dispose(root: Object3D): void {

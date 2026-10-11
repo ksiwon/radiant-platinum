@@ -17,7 +17,7 @@
 // 사람을 한 번은 돌려야 한다** — 안 돌리면 팔을 벌린 T 자세로 선다.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Group, type AnimationClip, type Mesh, type Object3D } from 'three'
+import { Group, Object3D, type AnimationClip, type Mesh } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
@@ -27,7 +27,8 @@ import { spriteRollRadians } from '../engine/actor/distortionSurface'
 import { disguiseOf } from '../engine/actor/ambient'
 import { createRig, updateLocomotion, type Rig } from '../engine/actor/locomotion'
 import {
-  GaitPlayer, captureRest, measureCycle, pickFieldIdleClip, pickGaitClips, recordClip, retargetClip,
+  GAIT_REST, GaitPlayer, MouthPlayer, captureRest, measureCycle, pickFieldIdleClip, pickGaitClips, pickSpeakClip,
+  recordClip, retargetClip,
   type GaitClips, type GaitSet, type RestPose,
 } from '../engine/actor/clipGait'
 import { bodyGfx, NPC_BUNDLE, nearestFirst } from '../engine/actor/npcModels'
@@ -44,16 +45,18 @@ import { groundYAt } from './distortion'
 import { addWhenWarm } from './warmPipelines'
 import { ALWAYS_ASYNC } from './asyncPipelines'
 import { unifySkeletons } from './unifySkeleton'
+import { LodStage, WALK_POSES, bakePose, type LodBody } from './npcLod'
 import { assets, onProviderSwap, type AssetPath } from '../data/providers/assetProvider'
 
 /**
- * 동시에 세우는 모델 수의 상한.
+ * **뼈 달린 몸**(스킨 모델)을 동시에 세우는 수의 상한.
  *
- * 판때기(64)보다 낮다 — 한 명이 정점 8천 개에 뼈 131개다. 넘치는 사람은
- * 판때기로 선다: `NpcSprites`가 **모델이 실제로 선 사람만** 건너뛴다.
+ * 한 명이 정점 8천 개에 뼈 131개고, 복제마다 정점 프로그램이 하나씩 선다. 상한을 넘는 사람은 판때기가
+ * 아니라 **굳힌 3D**로 선다 (`npcLod` · `standLod`) — 그쪽은 뼈가 없어 파이프라인이 갈래 × 재질이고
+ * 사람 수와 상관없다. 그래서 이 값은 「몇 명까지 세우나」가 아니라 「몇 명까지 움직이나」다.
  *
  * ⚠️ **칸은 가까운 사람부터 채운다.** 배치표 차례로 채우면 멀리 선 사람이 칸을
- * 먹고, 바로 앞사람이 판때기로 남는다
+ * 먹고, 바로 앞사람이 굳은 몸으로 남는다
  */
 const MAX = 24
 /**
@@ -115,19 +118,16 @@ const GROUP_BODIES: Readonly<Record<number, { tag: string, offsets: readonly num
 const ALONE: readonly number[] = [0]
 
 /**
- * 여럿이 그려진 판때기가 쓸 수 있는 **따로 잡은 몫**.
+ * 여럿이 그려진 판때기가 쓸 수 있는 뼈 달린 몸의 **따로 잡은 몫**.
  *
- * ⚠️ **사람 몫(`MAX`)에 같이 넣으면 안 된다.** 갤럭시단 집회장 하나 때문에
- * 상한을 80으로 올리면 사람 많은 거리도 전부 그만큼 세운다. 이 그림 둘은
- * **게임 전체에서 그 방 하나에만** 있으므로(맵 522 배치표) 값이 커져도
- * 무거워지는 것은 그 방뿐이다.
+ * ⚠️ **사람 몫(`MAX`)에 같이 넣으면 안 된다.** 갤럭시단 집회장 하나 때문에 상한을 올리면 사람 많은 거리도
+ * 전부 그만큼 움직인다. 이 그림 둘은 **게임 전체에서 그 방 하나에만** 있다(맵 522 배치표).
  *
- * ⚠️ **값이 싸지 않다.** 그 방을 다 세우면 삼각형이 **151.8k → 715.0k**로 늘고
- * 순회 하네스에서 **60fps → 36fps(최저 33)**다 (`FP_ONLY=galactic-hq node
- * .audit/probe/fpTour.mjs`). 다만 그 하네스는 WebGL2 폴백이라(`backend xG`) 이
- * 수가 사용자가 받는 성능은 아니다 — 설치본은 WebGPU로 돈다
+ * 그 방은 몸이 80여 개다. 넘치는 몸은 굳힌 3D로 선다(`npcLod`) — 한때 64까지 뼈 달린 몸으로 세웠더니
+ * 삼각형이 151.8k → 715.0k로 늘고 순회 하네스에서 60fps → 36fps(최저 33)였다 (`FP_ONLY=galactic-hq node
+ * .audit/probe/fpTour.mjs`, WebGL2 폴백이라 사용자가 받는 성능은 아니다)
  */
-const GROUP_MAX = 64
+const GROUP_MAX = 24
 /** 걷는 중인지 가르는 문턱(타일/초). 이 아래는 서 있는 것으로 친다 */
 const MOVING = 0.05
 /**
@@ -157,6 +157,8 @@ const loader = new GLTFLoader()
  */
 let donor: { rest: RestPose, clips: GaitClips } | null = null
 let donorAsked = false
+/** 꿔 줄 몸의 응답이 끝났다 (왔든 실패했든). 굳힌 몸을 굽기 전에 이동 클립이 올지 가린다 */
+let donorSettled = false
 /** 갈래 → 옮겨 둔 이동 클립과 잰 한 바퀴. 갈래마다 한 번만 만든다 */
 const gaitOf = new Map<string, GaitSet | null>()
 
@@ -171,9 +173,10 @@ function askDonor(done: () => void): void {
       const clips = pickGaitClips(gltf.animations)
       // 클립이 없는 설치본이면 꿔 줄 것이 없다 — 그때는 절차형이 그대로 돈다
       if (clips) donor = { rest: captureRest(gltf.scene), clips }
+      donorSettled = true
       done()
     })
-    .catch(() => { /* 못 받으면 다들 절차형으로 걷는다 */ })
+    .catch(() => { donorSettled = true /* 못 받으면 다들 절차형으로 걷는다 */ })
 }
 
 /**
@@ -198,7 +201,11 @@ function gaitFor(
     // 배틀에서 명령을 기다리는 자세라 발을 앞뒤로 벌리고 거의 안 움직인다 —
     // 아지트 조무래기 서른여섯이 그 자세로 서서 걷다 멈춘 것처럼 보였다.
     // 그런 몸은 절차형이 세우던 자세를 떠서 쓴다 (`standClip`)
-    wait: pickFieldIdleClip(mine) ?? (rig ? standClip(rig, body) : null),
+    // 그 몸에 필드의 서 있기가 없으면 주인공의 `stand_b`(체중을 옮기는 1.5초)를 옮겨 쓴다 (`HERO_IDLE_CLIP_NAMES`).
+    // 그것도 못 구하는 설치본은 절차형이 세우던 자세를 뜬다
+    wait: pickFieldIdleClip(mine)
+      ?? (lend?.clips.stand ? retargetClip(lend.clips.stand, lend.rest, rest) : null)
+      ?? (rig ? standClip(rig, body) : null),
     walk: lend ? retargetClip(lend.clips.walk, lend.rest, rest) : own!.walk,
     run: lend
       ? (lend.clips.run ? retargetClip(lend.clips.run, lend.rest, rest) : null)
@@ -238,8 +245,8 @@ function standClip(rig: Rig, body: Object3D): AnimationClip {
 // 갈아 끼우면 사람 모델은 옛 설치본 것이다 — 그 몸에서 뽑아 둔 이동 클립과
 // 꿔 줄 몸도 같이 버린다. 안 버리면 옛 뼈대에서 옮긴 동작이 새 몸에 걸린다
 onProviderSwap(() => {
-  scenes.clear(); loading.clear(); clipsOf.clear(); gaitOf.clear()
-  donor = null; donorAsked = false
+  scenes.clear(); loading.clear(); clipsOf.clear(); gaitOf.clear(); lodBodies.clear()
+  donor = null; donorAsked = false; donorSettled = false
 })
 
 /** 한 사람 몫. 모델·리그·래퍼를 함께 들고 있는다 */
@@ -262,6 +269,8 @@ interface Slot {
    * 오는 대로 다음 프레임에 붙는다 — 그전에는 절차형이 그 자리를 맡는다
    */
   gaits: (GaitPlayer | null)[]
+  /** 말하는 입. 이 몸이 `speak01_b`를 가졌을 때만 있다 (26벌). 말을 거는 상대만 움직인다 */
+  mouths: (MouthPlayer | null)[]
   /**
    * 이 칸에 사람이 막 앉았는가. 첫 프레임만 몸을 곧바로 돌려세운다 —
    * 감아 돌리면 지난 주인의 각에서 한 바퀴 도는 것이 보인다
@@ -284,12 +293,67 @@ interface Slot {
 /** 칸 번호를 매기는 셈 (`Slot.seq`) */
 let slotSeq = 0
 
+/** 갈래(통 이름) → 굳힌 몸. 사람이 상한을 넘은 맵에서만 채워진다 (`bakeLod`) */
+const lodBodies = new Map<string, LodBody>()
+/** 굳힌 몸 하나를 굽는 데 드는 시간이 한 프레임에 몰리지 않게 — 프레임마다 한 갈래만 굽는다 */
+let lodBakedAt = -1
+
+const lodDummy = new Object3D()
+/** 굳힌 사람이 지난 프레임에 서 있던 각 · 걸은 위상. 칸이 없어서 사람(배우)에 붙여 둔다 */
+const lodState = new WeakMap<NpcActor, { rot: number, phase: number }>()
+
+/**
+ * 이 칸 모양의 몸을 **자세별로 굳힌다** (`npcLod`). 아직 못 굽는 사정이면 `null`.
+ *
+ * 쉬는 자세는 스킨 몸이 서 있는 자세와 같은 길로 뜬다 — 이동 클립이 있으면 그 쉬는 클립의 처음, 없으면
+ * 절차형(`updateLocomotion`)의 처음이다. 걷기는 한 바퀴를 `WALK_POSES`장으로 끊는다.
+ * 꿔 줄 몸의 응답이 오기 전에 구우면 걷기 장이 영영 빠지므로 그때는 기다린다
+ */
+function bakeLod(source: Object3D, bundle: string, tag: string, offsets: readonly number[]): LodBody | null {
+  const probe = build(source, bundle, tag, offsets)
+  const gaits = probe.bodies.map((_, i) => makeGait(probe, i))
+  const walkable = gaits.every((g) => g !== null)
+  if (!walkable && !donorSettled) { disposeProbe(probe, gaits); return null }
+
+  const stand = (): void => {
+    probe.rigs.forEach((rig, i) => {
+      const gait = gaits[i]
+      if (gait) { gait.state = GAIT_REST; gait.update(0, 0) } else if (rig) {
+        rig.phase = 0; rig.elapsed = 0
+        updateLocomotion(rig, 0, 0, WALK_SPEED, RUN_SPEED)
+      }
+    })
+  }
+  stand()
+  const poses = [bakePose(probe.outer)]
+  let cycle = 0
+  if (walkable) {
+    cycle = gaits[0]!.set.walk.distance
+    for (let k = 0; k < WALK_POSES; k++) {
+      for (const g of gaits) { g!.state = { phase: k / WALK_POSES, moving: 1, run: 0 }; g!.update(0, 0) }
+      poses.push(bakePose(probe.outer))
+    }
+  }
+  // 스킨 몸과 같은 재질을 쓰므로 이미 표시돼 있을 수 있지만, 이 갈래에 스킨 몸이 없었다면 아니다
+  for (const part of poses.flat()) {
+    for (const m of Array.isArray(part.material) ? part.material : [part.material]) m.userData[ALWAYS_ASYNC] = true
+  }
+  disposeProbe(probe, gaits)
+  return { poses, cycle, height: probe.height }
+}
+
+/** 굽는 데 쓴 임시 칸을 치운다. 씬에 안 붙었으므로 믹서만 떼면 된다 */
+function disposeProbe(probe: Slot, gaits: (GaitPlayer | null)[]): void {
+  gaits.forEach((g, i) => { const b = probe.bodies[i]?.body; if (g && b) g.dispose(b) })
+}
+
 /** 이 칸의 몸 하나에 이동 클립을 붙인다. 아직 못 붙이면 `null` */
 function makeGait(slot: Slot, i: number): GaitPlayer | null {
   const at = slot.bodies[i]
   if (!at) return null
   const set = gaitFor(slot.bundle, at.body, at.frame, at.rest, slot.rigs[i] ?? null)
-  return set ? new GaitPlayer(at.body, set, at.rest) : null
+  // 서 있기의 시작 위상은 칸마다 엇갈린다 — 황금비 걸음이라 어느 두 칸도 같은 때 같은 자세가 아니다
+  return set ? new GaitPlayer(at.body, set, at.rest, (slot.seq * 0.6180339887 + i * 0.37) % 1) : null
 }
 
 interface Props {
@@ -299,6 +363,30 @@ interface Props {
   table: Readonly<Record<string, string>> | null
   /** 모델이 실제로 선 사람. `NpcSprites`가 이 사람들을 건너뛴다 */
   onStanding: (taken: ReadonlySet<NpcActor>) => void
+}
+
+/**
+ * 배우가 선 세계 자리. 고정 스텝 사이를 보간하고(`NpcActor.fromX` — 주인공과 같은 `alpha`다) 연출이 건 어긋남을
+ * 더한다 (`MapObject_SetSpritePosOffset`). 뼈 달린 몸과 굳힌 몸이 같은 자리에 서야 해서 한 곳에 둔다
+ */
+function placeOf(grid: MapGrid, layer: number, actor: NpcActor): { x: number, y: number, z: number } {
+  const blend = gameLoop.alpha
+  const fromX = actor.fromX ?? actor.x, fromZ = actor.fromZ ?? actor.z
+  const x = fromX + (actor.x - fromX) * blend
+  const z = fromZ + (actor.z - fromZ) * blend
+  const y = groundYAt(grid, world.mapId, x + 0.5, z + 0.5, layer, actor.y, actor)
+  return {
+    x: x + 0.5 + (actor.offsetX ?? 0),
+    y: y + (actor.offsetY ?? 0),
+    z: z + 0.5 + (actor.offsetZ ?? 0),
+  }
+}
+
+/** 각 `cur`을 `want` 쪽으로 최단 호로 `max`만큼 감는다 (`TURN_RATE`) */
+function turnToward(cur: number, want: number, max: number): number {
+  let d = want - cur
+  d -= Math.round(d / (Math.PI * 2)) * Math.PI * 2
+  return cur + (Math.abs(d) <= max ? d : Math.sign(d) * max)
 }
 
 export function NpcModels({ grid, layer, table, onStanding }: Props) {
@@ -324,6 +412,8 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
   const standing = useRef<ReadonlySet<NpcActor>>(new Set())
   /** 그린 프레임 수. 먼 사람이 동작을 밀 차례를 가른다 (`FAR_EVERY`) */
   const tick = useRef(0)
+  /** 상한을 넘은 사람의 굳힌 몸 (`npcLod`). 첫 프레임에 그룹이 생기면 만든다 */
+  const lodStage = useRef<LodStage | null>(null)
 
   // 걷기를 꿔 줄 몸은 맵마다 한 번만 받는다. 오면 다시 그려서 그 프레임부터 붙는다
   useEffect(() => { askDonor(() => { bump((v) => v + 1) }) }, [])
@@ -335,12 +425,14 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
       slot.dropped = true
       for (let i = 0; i < slot.gaits.length; i++) {
         const body = slot.bodies[i]?.body
-        if (body) slot.gaits[i]?.dispose(body)
+        if (body) { slot.gaits[i]?.dispose(body); slot.mouths[i]?.dispose(body) }
       }
       group?.remove(slot.outer)
     }
     slots.clear()
     spare.clear()
+    lodStage.current?.clear()
+    lodStage.current = null
   }, [slots, spare])
 
   useFrame((_, delta) => {
@@ -348,7 +440,12 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
     if (group === null || table === null) return
 
     const p = worldState.player.position
+    /** 모델(뼈 달린 것이든 굳힌 것이든)이 선 사람 — 판때기가 건너뛴다 */
     const seen = new Set<NpcActor>()
+    /** 그중 뼈 달린 칸을 쥔 사람 */
+    const kept = new Set<NpcActor>()
+    const lod = lodStage.current ??= new LodStage(group)
+    lod.begin(cam)
     let n = 0
     /** 여럿짜리 판때기가 세운 몸 수 (`GROUP_MAX`) */
     let crowd = 0
@@ -357,6 +454,49 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
     // 말을 건 상대(`SCRIPT_MANAGER_TARGET_OBJECT`)는 스크립트가 도는 동안 칸을
     // 먼저 받는다 — 장면의 한가운데 선 사람이 칸이 모자라 판때기로 서면 안 된다
     const focus = fieldScripts.ctx !== null ? fieldScripts.world?.target ?? null : null
+    // 개발 서버에서만: 굳힌 몸을 끄고 옛 상한(여럿짜리 64)과 판때기 넘김으로 돌려 전후를 같은 코드에서 잰다
+    // (`.audit/probe/npcCrowdPerf.mjs`). 배포판에서는 이 줄이 늘 거짓이다
+    const legacy = import.meta.env.DEV && (globalThis as { __ptNpcLegacy?: boolean }).__ptNpcLegacy === true
+    const groupMax = legacy ? 64 : GROUP_MAX
+    const speaking = fieldScripts.ctx !== null && fieldScripts.world?.boxOpen === true
+    /**
+     * 뼈 달린 몫이 찬 사람을 **굳힌 3D**로 세운다 (`npcLod`). 세웠으면 `true`.
+     *
+     * 굽기는 프레임마다 한 갈래만 한다. 아직 못 구웠으면 `false`라 그 사람은 잠깐 판때기로 서고, 구워지는 대로
+     * 바뀐다. 몸이 화면 밖이면 인스턴스를 안 올리지만 **선 사람으로는 센다** — 판때기가 대신 서면 안 된다
+     */
+    const standLod = (
+      actor: NpcActor, source: Object3D, bundle: string, tag: string, offsets: readonly number[], dt: number,
+    ): boolean => {
+      let body = lodBodies.get(tag)
+      if (!body) {
+        if (lodBakedAt === tick.current) return false
+        lodBakedAt = tick.current
+        const baked = bakeLod(source, bundle, tag, offsets)
+        if (!baked) return false
+        lodBodies.set(tag, baked)
+        lod.add(tag, baked)
+        body = baked
+      }
+      bodyHeights.set(actor, body.height)
+      const at = placeOf(grid, layer, actor)
+      const step = DIR_STEP[actor.dir & 3]!
+      const want = Math.atan2(step.x, step.z)
+      const st = lodState.get(actor) ?? { rot: want, phase: 0 }
+      st.rot = turnToward(st.rot, want, TURN_RATE * dt)
+      const speed = actor.speed < MOVING ? 0 : actor.speed
+      if (speed > 0 && body.cycle > 0) st.phase = (st.phase + (speed * dt) / body.cycle) % 1
+      lodState.set(actor, st)
+      if (!lod.inView(at.x, at.y + body.height * 0.5, at.z, body.height + 1.5)) return true
+      const roll = actor.info.roll
+      lodDummy.position.set(at.x, at.y, at.z)
+      lodDummy.rotation.set(0, st.rot, 0, roll !== undefined && roll !== 0 ? 'ZYX' : 'XYZ')
+      if (roll !== undefined && roll !== 0) lodDummy.rotation.z = spriteRollRadians(roll)
+      lodDummy.updateMatrix()
+      const pose = speed > 0 && body.poses.length > 1 ? 1 + Math.floor(st.phase * WALK_POSES) % WALK_POSES : 0
+      lod.push(tag, pose, lodDummy.matrix)
+      return true
+    }
     const order = nearestFirst(npcActors.list, p, {
       range: RANGE, near: NEAR, hold: HOLD,
       // 변장 중이면 사람이 아니라 더미가 선다 (`DisguisePlates`)
@@ -365,16 +505,21 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
       focus: (a) => a === focus,
     })
     for (const { actor, far } of order) {
-      if (n >= MAX && crowd >= GROUP_MAX) break
       const many = GROUP_BODIES[actor.gfx]
       const bundle = many?.tag ?? table[String(bodyGfx(actor))]
       if (bundle === undefined) continue
       const offsets = many?.offsets ?? ALONE
       // 통은 **선 몸 수까지 갈라** 잡는다 — 넷짜리 칸에 혼자를 앉히면 셋이 남는다
       const tag = offsets.length === 1 ? bundle : `${bundle}×${String(offsets.length)}`
-      // 여럿짜리 판때기는 제 몫에서 센다 (`GROUP_MAX`)
-      if (many) { if (crowd + offsets.length > GROUP_MAX) continue }
-      else if (n + offsets.length > MAX) continue
+      // 여럿짜리 판때기는 제 몫에서 센다 (`GROUP_MAX`). 몫이 차면 굳힌 몸으로 세운다 — 판때기로 안 내보낸다
+      const fits = many ? crowd + offsets.length <= groupMax : n + offsets.length <= MAX
+      if (!fits) {
+        if (legacy) continue
+        const source = scenes.get(bundle)
+        if (!source) { fetchModel(bundle, () => { bump((v) => v + 1) }); continue }
+        if (standLod(actor, source, bundle, tag, offsets, delta)) seen.add(actor)
+        continue
+      }
 
       let slot = slots.get(actor)
       if (!slot) {
@@ -408,20 +553,11 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
       }
       if (many) crowd += offsets.length; else n += offsets.length
       seen.add(actor)
+      kept.add(actor)
       bodyHeights.set(actor, slot.height)
 
-      // 고정 스텝 사이를 보간한 자리에 세운다 (`NpcActor.fromX`) — 주인공과 같은 `alpha`다
-      const blend = gameLoop.alpha
-      const fromX = actor.fromX ?? actor.x, fromZ = actor.fromZ ?? actor.z
-      const x = fromX + (actor.x - fromX) * blend
-      const z = fromZ + (actor.z - fromZ) * blend
-      const y = groundYAt(grid, world.mapId, x + 0.5, z + 0.5, layer, actor.y, actor)
-      // 연출이 걸려 있으면 그림만 그만큼 어긋난다 (`MapObject_SetSpritePosOffset`)
-      slot.outer.position.set(
-        x + 0.5 + (actor.offsetX ?? 0),
-        y + (actor.offsetY ?? 0),
-        z + 0.5 + (actor.offsetZ ?? 0),
-      )
+      const at = placeOf(grid, layer, actor)
+      slot.outer.position.set(at.x, at.y, at.z)
       // 모델 정면이 +Z다. `DIR_STEP`이 그 방향의 걸음이라 그대로 각이 된다
       const step = DIR_STEP[actor.dir & 3]!
       const want = Math.atan2(step.x, step.z)
@@ -431,10 +567,7 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
       // 화면에서는 아니다. 각의 최단 거리로 감아 준다 (`TURN_RATE`)
       const first = slot.fresh
       if (slot.fresh) { slot.outer.rotation.y = want; slot.fresh = false } else {
-        let d = want - slot.outer.rotation.y
-        d -= Math.round(d / (Math.PI * 2)) * Math.PI * 2
-        const max = TURN_RATE * delta
-        slot.outer.rotation.y += Math.abs(d) <= max ? d : Math.sign(d) * max
+        slot.outer.rotation.y = turnToward(slot.outer.rotation.y, want, TURN_RATE * delta)
       }
       // 벽에 선 사람은 그림이 눕는다 (`rotated` · `rotationAngle`) — 방향을 돌린 뒤 세계 Z축 둘레로 눕히는 순서라
       // 오일러 순서가 ZYX다 (`R = Rz · Ry`). 안 누운 사람은 건드리지 않는다
@@ -469,17 +602,23 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
         // 늦게 오므로 **매 프레임 한 번 물어본다** — 오는 순간부터 바뀐다
         slot.gaits[i] ??= makeGait(slot, i)
         const gait = slot.gaits[i]
-        if (gait) { gait.update(dt, going); continue }
-        // 서 있는 사람도 돌려야 한다 — 안 돌리면 바인드 포즈로 굳는다
-        const rig = slot.rigs[i]
-        if (rig) updateLocomotion(rig, dt, going, WALK_SPEED, RUN_SPEED)
+        if (gait) gait.update(dt, going)
+        else {
+          // 서 있는 사람도 돌려야 한다 — 안 돌리면 바인드 포즈로 굳는다
+          const rig = slot.rigs[i]
+          if (rig) updateLocomotion(rig, dt, going, WALK_SPEED, RUN_SPEED)
+        }
+        // 말하는 입은 이동 클립 **다음에** 민다 — 턱 뼈만 덮어쓴다 (`MouthPlayer`). 대사창이 열린 동안의 말 상대만
+        slot.mouths[i]?.update(dt, speaking && actor === focus)
       }
     }
 
+    lod.end()
     for (const [actor, slot] of slots) {
-      if (seen.has(actor)) continue
+      if (kept.has(actor)) continue
       slot.outer.visible = false
-      bodyHeights.delete(actor)
+      // 굳힌 몸으로 내려앉은 사람은 키를 `standLod`가 다시 적는다
+      if (!seen.has(actor)) bodyHeights.delete(actor)
       // 통에 넣어 둔다. 씬에는 그대로 두고 안 그리기만 한다 — 떼었다 붙이면
       // 그만큼 다시 굽는다
       slots.delete(actor)
@@ -582,8 +721,10 @@ function build(
     // 걸려 있어서, 그 안에서 재면 한 바퀴 거리가 몸 크기만큼 어긋난다
     bodies.push({ body, frame: outer, rest: captureRest(body) })
   }
+  const speak = pickSpeakClip(clipsOf.get(bundle) ?? [])
   return {
     outer, rigs, bodies, gaits: bodies.map(() => null),
+    mouths: bodies.map((b) => (speak ? new MouthPlayer(b.body, speak) : null)),
     fresh: true, height, dropped: false, tag, bundle, lag: 0, seq: slotSeq++,
   }
 }

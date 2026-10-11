@@ -14,7 +14,7 @@ import {
   VectorKeyframeTrack,
 } from 'three'
 import {
-  GAIT_REST, GaitPlayer, captureRest, measureCycle, pickFieldIdleClip, pickGaitClips,
+  GAIT_REST, GaitPlayer, MouthPlayer, captureRest, measureCycle, pickFieldIdleClip, pickGaitClips, pickSpeakClip,
   recordClip, retargetClip, restorePose, snapshotPose, stepGait,
 } from './clipGait'
 
@@ -388,5 +388,59 @@ describe('서 있으면 서 있는 클립이 다 받는다', () => {
       // 쉬는 자세는 곧게 선 것이다 (넓적다리 회전 없음)
       expect(thigh.quaternion.angleTo(new Quaternion())).toBeLessThan(1e-4)
     }
+  })
+})
+
+describe('서 있기 시작 위상', () => {
+  /** 몸 하나에 뼈 하나, 서 있기는 그 뼈를 0에서 1(라디안)로 천천히 돌리는 클립이다 */
+  function body(): { root: Object3D, bone: Object3D, set: ConstructorParameters<typeof GaitPlayer>[1] } {
+    const root = new Group()
+    const bone = new Object3D()
+    bone.name = 'Spine'
+    root.add(bone)
+    const q = (a: number) => new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), a).toArray()
+    const wait = new AnimationClip('stand', 2, [
+      new QuaternionKeyframeTrack('Spine.quaternion', [0, 2], [...q(0), ...q(1)]),
+    ])
+    const walk = new AnimationClip('walk_b', 1, [])
+    return { root, bone, set: { clips: { wait, walk, run: null }, walk: { distance: 1, leftForward: 0 } as never, run: null } }
+  }
+
+  it('시작 위상이 다르면 같은 때 다른 자세다 — 줄 선 사람이 한 몸처럼 흔들리지 않는다', () => {
+    const a = body(), b = body()
+    const pa = new GaitPlayer(a.root, a.set, captureRest(a.root), 0)
+    const pb = new GaitPlayer(b.root, b.set, captureRest(b.root), 0.5)
+    pa.update(0, 0); pb.update(0, 0)
+    expect(a.bone.quaternion.angleTo(b.bone.quaternion)).toBeGreaterThan(0.3)
+  })
+})
+
+describe('말하는 입', () => {
+  const rot = (name: string, a: number) =>
+    new QuaternionKeyframeTrack(name, [0, 1], [
+      ...new Quaternion().toArray(), ...new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), a).toArray(),
+    ])
+
+  it('`speak01_b`만 집고 회전 트랙만 남긴다', () => {
+    const speak = new AnimationClip('speak01_b', 1, [rot('Jaw.quaternion', 0.5), new VectorKeyframeTrack('Jaw.scale', [0, 1], [1, 1, 1, 2, 2, 2])])
+    expect(pickSpeakClip([new AnimationClip('wait_b', 1, []), speak])?.tracks.map((t) => t.name)).toEqual(['Jaw.quaternion'])
+    expect(pickSpeakClip([new AnimationClip('wait_b', 1, [])])).toBeNull()
+  })
+
+  it('말하는 동안만 턱이 움직이고, 끝나면 말하기 전 값으로 돌아간다', () => {
+    const root = new Group()
+    const jaw = new Object3D()
+    jaw.name = 'Jaw'
+    root.add(jaw)
+    const mouth = new MouthPlayer(root, new AnimationClip('speak01_b', 1, [rot('Jaw.quaternion', 0.8)]))
+    mouth.update(0.5, false)
+    expect(jaw.quaternion.angleTo(new Quaternion())).toBe(0)
+    mouth.update(0.5, true)
+    expect(jaw.quaternion.angleTo(new Quaternion())).toBeCloseTo(0.4, 2)
+    mouth.update(0.25, true)
+    expect(jaw.quaternion.angleTo(new Quaternion())).toBeCloseTo(0.6, 2)
+    mouth.update(0.016, false)
+    expect(jaw.quaternion.angleTo(new Quaternion())).toBe(0)
+    expect(mouth.talking).toBe(false)
   })
 })
