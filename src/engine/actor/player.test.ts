@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   DEEP_MUD_PRESSES, MUD_JUMP_TIME, MUD_TURN_FRAMES, deepMud, mudPressDir, playerSystem,
-  resetDeepMud, stuckInDeepMud, terrainSink,
+  resetDeepMud, stepTooHigh, stuckInDeepMud, terrainSink,
 } from './player'
 import { cameraSystem } from './camera'
 import { drainBikeCues } from './bikeTerrain'
@@ -333,5 +333,20 @@ describe('깊은 진흙은 붙든다', () => {
     // 비스듬하면 크게 민 쪽, 같으면 위아래다
     expect(mudPressDir({ x: -0.9, z: 0.3 }, DIR.north)).toBe(DIR.west)
     expect(mudPressDir({ x: 0.707, z: 0.707 }, DIR.north)).toBe(DIR.south)
+  })
+})
+
+describe('단차 (`stepTooHigh` · `GetVerticalDirection`)', () => {
+  // 물가 체육관 3번 방 윗단(높이 7) 옆의 틈은 판이 없다 — 원작은 높이 0으로 보고 막는다
+  const floor = (h: number | null) => ({ heightAtWorld: () => h })
+  it('갈 칸 바닥과 지금 높이가 1.25칸(20/16) 이상 다르면 막는다', () => {
+    expect(stepTooHigh(floor(7), 7.5, 4.5, 7)).toBe(false)
+    expect(stepTooHigh(floor(8.2), 7.5, 4.5, 7)).toBe(false)
+    expect(stepTooHigh(floor(8.25), 7.5, 4.5, 7)).toBe(true)
+    expect(stepTooHigh(floor(5.75), 7.5, 4.5, 7)).toBe(true)
+  })
+  it('판이 없는 칸은 높이 0이다', () => {
+    expect(stepTooHigh(floor(null), 7.5, 4.5, 7)).toBe(true)
+    expect(stepTooHigh(floor(null), 7.5, 4.5, 0)).toBe(false)
   })
 })
