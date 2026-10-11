@@ -16,8 +16,8 @@ import {
   InstancedMesh, Matrix4, Vector3, type Group, type Material, type Mesh, type Object3D, type SkinnedMesh,
 } from 'three'
 
-/** 걷기 한 바퀴를 끊는 장 수. 6장이면 한 장이 60° 위상이다 — 먼 몸에서는 끊겨 보이지 않는다 */
-export const WALK_POSES = 6
+/** 걷기 한 바퀴를 끊는 장 수. 12장이면 한 장이 30° 위상이다 (6장은 뚝뚝 끊길 수 있어 늘렸다 — 메모리는 갈래당 정점 위치·법선 몫이 장마다 는다) */
+export const WALK_POSES = 12
 
 /** 갈래 하나에서 한 번에 세울 수 있는 사람(몸) 수. 이만큼이 인스턴스 버퍼 크기다 */
 export const LOD_CAPACITY = 128
