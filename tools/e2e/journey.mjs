@@ -31,7 +31,7 @@ import {
   valleyWindworks,
 } from './badges.mjs'
 import {
-  canalaveGym, canalaveToLakes, celesticToCanalave, coronetToSnowpoint, pastoriaToCelestic, snowpointGym,
+  CANALAVE_ENTRY, canalaveClimb, canalaveGym, canalaveToLakes, celesticToCanalave, coronetToSnowpoint, pastoriaToCelestic, snowpointGym,
   snowpointSlide,
 } from './badges67.mjs'
 import { looksFlat, statsOf } from '../shot/png.mjs'
@@ -47,7 +47,7 @@ import { CELLS, CELL_COUNT, keepPartEnd, partEnvelope, partStart, PARTS_DIR } fr
 // 칸 8~16(깨어진 세계 · 리그 다리)의 걸음 — 예전 탐침 `_dw` · `_league`가 부르던 것을 journey가 그대로 부른다 (사용자 10-11)
 import { MAP as DW_MAP, candiceToAcuity, catchGiratina, coronetToSpear, veilstoneHQ, walkDistortion } from './badgesDW.mjs'
 import { MAP as LEAGUE_MAP, beaconToVictory, eliteFour, sendoffToBeacon, victoryRoad } from './badgesLeague.mjs'
-import { landDrawn, levelLook } from './partChecks.mjs'
+import { landDrawn, levelLook, skyDecision } from './partChecks.mjs'
 import {
   bindingDigest, dataDigest, describeEnvironment, rosterOf, sealEvidence,
 } from '../distribution/evidence.mjs'
@@ -882,8 +882,10 @@ async function shot(name, { world = true } = {}) {
     try {
       const at = `${head}-캔버스.png`
       const cut = await atNoon(() => shootCanvas(page, { path: resolve(ROOT, at) }))
-      const sky = await atNoon(skyRef)
-      one.sky = sky
+      // 하늘이 전부 어두우면(깨어진 세계의 빈 어둠) 기준으로 안 쓴다 — 칸 판 다리 g·h가 그 안에서 찍는다 (`partChecks.takeCut`과 같다)
+      const skySeen = await atNoon(skyRef)
+      one.sky = skySeen
+      const sky = skyDecision(skySeen).use ? skySeen : null
       /**
        * ⚠️ **색 개수로 지형을 인정하지 않는다.** 실측(2026-09-08)에서 까만
        * 원반 위에 주인공만 뜬 컷과 바닥이 한 줄만 그려진 컷이 색 개수로는
@@ -2518,6 +2520,9 @@ try {
         const here = await api.now().catch(() => null)
         if (here?.map === PASTORIA.map) {
           await pastoriaClimb(api, exitCtx, { goal: PASTORIA.door, what: '들판 체육관 문' })
+        } else if (here?.map === B3MAP.canalaveGym) {
+          // 운하는 동관 앞(3층)에서 끝난다 — 길 계획이 층을 몰라 바로 `goTo`하면 방 안을 헤맨다 (탐침 c1 · `badges67.mjs` ③과 같다)
+          await canalaveClimb(api, exitCtx, { goal: CANALAVE_ENTRY, what: '운하 체육관 입구' })
         } else if (here?.map === B3MAP.snowpointGym) {
           await snowpointSlide(api, exitCtx, { goals: [[SNOWPOINT_GYM_DOOR.x, SNOWPOINT_GYM_DOOR.z]], what: '선단 체육관 문' })
         }
@@ -3004,7 +3009,7 @@ try {
       healed: pe?.healed ?? false, healWhy: pe?.healWhy ?? '경계에 못 닿았다', at: pe?.at ?? null,
       ok: digest !== null && pe !== null && (LEG_CELL ? pe.reached === true : pe.healed && pe.badges >= PART.badges),
     }
-    console.log(`  칸 ${String(PART_N)} 끝 — ${partOut.ok ? '통과' : '못 닿았다'} · 배지 ${String(partOut.badges)}/${String(PART.badges)}`
+    console.log(`  칸 ${String(PART_N)} 끝 — ${partOut.ok ? '통과' : '못 닿았다'} · ${LEG_CELL ? `다리 ${PART.leg} ${pe?.reached === true ? '닿았다' : '못 닿았다'}` : `배지 ${String(partOut.badges)}/${String(PART.badges)}`}`
       + ` · 끝 세이브 ${String(digest)}`)
   }
   const endState = await readSave()

@@ -359,7 +359,7 @@ const LIBRARY_RIVAL = { x: 37, z: 719 }
 /** 동관 (16, 높이 30, 3) — 4층 (16,4)에서 북쪽을 보고 말을 건다 */
 export const CANALAVE_GOAL = { x: 16, z: 4, floor: 3 }
 /** 운하 체육관 입구 — 문 (16,27) 바로 안쪽 칸, 0층 */
-const CANALAVE_ENTRY = { x: 16, z: 26, floor: 0 }
+export const CANALAVE_ENTRY = { x: 16, z: 26, floor: 0 }
 const BYRON = { x: 16, z: 3 }
 /** 새턴 · 마스 스크립트 번호 */
 const SATURN_SCRIPT = 4
