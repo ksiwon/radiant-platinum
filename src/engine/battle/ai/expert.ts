@@ -5,9 +5,9 @@
 //
 // ⚠️ **부분 이식이다.** 원작 스크립트의 EXPERT 분기표는 효과 177가지를 루틴 136개로
 // 보내는데, 그 대부분은 우리가 아직 안 들고 있는 상태(골로피 횟수, 도구 소지,
-// 예약된 미래예지, 더블 배틀의 파트너)를 봐야 한다. 여기서는 **실제로 자주 걸리는
+// 예약된 미래예지)를 봐야 한다. 여기서는 **실제로 자주 걸리는
 // 루틴부터** 옮겼다 — `sim/brain.test.ts`가 928명의 실제 파티를 훑어 적용률을
-// 재고(실측 42.0% · 1,261/3,004 · 원작 분기표가 닿는 51.8%의 여덟 할), 그 값이
+// 재고(실측 43.4% · 1,305/3,004 · 원작 분기표가 닿는 51.8%), 그 값이
 // 떨어지면 실패한다. 안 옮긴 효과는 점수를 안 건드린다.
 //
 // 옮긴 것이 **실제로 이기는 수를 고르는가**는 다른 질문이고 `ai/strength.test.ts`가
@@ -281,18 +281,53 @@ function overheat(turn: AiTurn, move: AiMove): number {
   return isSlower(turn) ? (hp > 80 ? 0 : -1) : (hp > 60 ? 0 : -1)
 }
 
-/** 능력을 올리는 변화기. 체력이 넉넉할 때만 값어치가 있다 */
-function statusRaise(turn: AiTurn, stat: keyof AiMon['boosts']): number {
-  let delta = 0
+/**
+ * 능력을 올리는 변화기의 공통 앞머리 — 이미 +3 이상이면 ~60.9%로 −1, 아니면 체력이
+ * 가득일 때 50%로 +2 (`Expert_Status{Attack,SpAttack,Defense,SpDefense}Up` 첫 석 줄)
+ */
+function raiseHead(turn: AiTurn, stat: keyof AiMon['boosts']): number {
+  if (turn.self.boosts[stat] >= 3) return skip(turn.random, 100) ? 0 : -1
+  return hpPercent(turn.self) === 100 && !skip(turn.random, 128) ? 2 : 0
+}
+
+/**
+ * 공격·특공 올리기 (`Expert_StatusAttackUp` 1975 · `StatusSpAttackUp` 2075). 체력 70% 초과면
+ * 끝, 40% 미만이면 −2, 그 사이는 문턱 `n` 밖이면 −2 (공격 40 · 특공 70)
+ */
+function attackRaise(turn: AiTurn, stat: 'atk' | 'spa'): number {
+  const delta = raiseHead(turn, stat)
   const hp = hpPercent(turn.self)
-  if (turn.self.boosts[stat] >= 3) {
-    if (!skip(turn.random, 100)) delta -= 1
-  } else if (hp === 100 && !skip(turn.random, 128)) {
-    delta += 2
-  }
   if (hp > 70) return delta
   if (hp < 40) return delta - 2
-  return skip(turn.random, 40) ? delta : delta - 2
+  return skip(turn.random, stat === 'atk' ? 40 : 70) ? delta : delta - 2
+}
+
+/**
+ * 방어·특방 올리기 (`Expert_StatusDefenseUp` 2006 · `StatusSpDefenseUp` 2109). 체력 70% 이상이면
+ * 78%로 끝, 40% 미만이면 −2. 그 사이는 상대가 **직전에 쓴 기술**을 본다 — 위력이 없었으면
+ * (없음·변화기) 60/256만 넘기고, 방어는 특수기 · 특방은 물리기를 맞았으면 곧장 −2,
+ * 그 밖에는 60/256만 넘긴다
+ */
+function defenseRaise(turn: AiTurn, stat: 'def' | 'spd'): number {
+  let delta = raiseHead(turn, stat)
+  const hp = hpPercent(turn.self)
+  if (hp >= 70 && skip(turn.random, 200)) return delta
+  if (hp >= 40) {
+    const last = turn.foeLastMoveCategory
+    if (last === null || last === 'status') {
+      if (skip(turn.random, 60)) return delta
+    } else {
+      if (last !== (stat === 'def' ? 'special' : 'physical') && skip(turn.random, 60)) return delta
+    }
+  }
+  delta -= 2
+  return delta
+}
+
+/** 스피드 올리기 (`Expert_StatusSpeedUp` 2057) — 내가 더 빠르면 −3, 느리면 ~72.7%로 +3 */
+function speedRaise(turn: AiTurn): number {
+  if (!isSlower(turn)) return -3
+  return skip(turn.random, 70) ? 0 : 3
 }
 
 /** 회피율 올리기. 지속 데미지를 깔아 놨을수록 값어치가 크다 */
@@ -430,13 +465,56 @@ function protect(turn: AiTurn): number {
 const MOVE_PROTECT = 182
 const MOVE_DETECT = 197
 
-/** 상대 능력을 깎는 변화기. 원작은 능력마다 조금씩 다르다 */
-function statusLower(turn: AiTurn, stat: keyof AiMon['boosts']): number {
-  if (stat === 'spe') return statusSpeedDown(turn)
-  // 공격·방어 깎기는 체력이 넉넉할 때만 값어치가 있다
-  const hp = hpPercent(turn.self)
-  if (hp < 70) return -1
-  return 0
+/**
+ * 공격·특공 깎기 (`Expert_StatusAttackDown` 2274 · `StatusSpAttackDown` 2365). 상대 단계가
+ * ±0이 아니면 −1, 내 체력이 90% 이하면 −1 더, 상대가 −3 이하면 ~80.5%로 −2.
+ * 상대 체력 70% 이하면 −2, 직전에 쓴 기술이 (공격은 특수 · 특공은 물리)면 50%로 −2
+ */
+function attackLower(turn: AiTurn, stat: 'atk' | 'spa'): number {
+  let delta = 0
+  if (turn.foe.boosts[stat] !== 0) {
+    delta -= 1
+    if (hpPercent(turn.self) <= 90) delta -= 1
+    if (turn.foe.boosts[stat] <= -3 && !skip(turn.random, 50)) delta -= 2
+  }
+  if (hpPercent(turn.foe) <= 70) delta -= 2
+  const want = stat === 'atk' ? 'special' : 'physical'
+  if (turn.foeLastMoveCategory === want && !skip(turn.random, 128)) delta -= 2
+  return delta
+}
+
+/**
+ * 방어·특방·회피 깎기 (`Expert_StatusDefenseDown` 2315 · `StatusSpDefenseDown` 2408 ·
+ * `StatusEvasionDown` 2497 — 셋이 같다). 내 체력이 70% 미만이거나 상대가 −3 이하면
+ * ~80.5%로 −2, 상대 체력 70% 이하면 −2
+ */
+function defenseLower(turn: AiTurn, stat: 'def' | 'spd' | 'evasion'): number {
+  let delta = 0
+  if (hpPercent(turn.self) < 70 || turn.foe.boosts[stat] <= -3) {
+    if (!skip(turn.random, 50)) delta -= 2
+  }
+  if (hpPercent(turn.foe) <= 70) delta -= 2
+  return delta
+}
+
+/**
+ * 명중 깎기 (`Expert_StatusAccuracyDown` 2428). 독독·씨뿌리기·저주로 깎아 두었으면 +2,
+ * 뿌리박기·아쿠아링이면 50%로 +1. 체력이 바닥이면 −
+ */
+function accuracyLower(turn: AiTurn): number {
+  const { random, self, foe } = turn
+  let delta = 0
+  const mine = hpPercent(self)
+  const theirs = hpPercent(foe)
+  if ((mine < 70 || theirs <= 70) && !skip(random, 100)) delta -= 1
+  if (self.boosts.accuracy <= -2 && !skip(random, 80)) delta -= 2
+  if (foe.status === 'tox' && !skip(random, 70)) delta += 2
+  if (foe.volatiles.has('leechseed') && !skip(random, 70)) delta += 2
+  if ((self.volatiles.has('ingrain') || self.volatiles.has('aquaring')) && !skip(random, 128)) delta += 1
+  if (foe.volatiles.has('curse') && !skip(random, 70)) delta += 2
+  if (mine > 70 || foe.boosts.accuracy === 0) return delta
+  if (mine < 40 || theirs < 40) return delta - 2
+  return skip(random, 70) ? delta : delta - 2
 }
 
 /**
@@ -499,24 +577,35 @@ export function scoreExpert(turn: AiTurn, move: AiMove): number {
       return overheat(turn, move)
 
     case EFFECT.ATK_UP: case EFFECT.ATK_UP_2:
-      return statusRaise(turn, 'atk')
-    case EFFECT.DEF_UP: case EFFECT.DEF_UP_2:
-      return statusRaise(turn, 'def')
+      return attackRaise(turn, 'atk')
+    case EFFECT.DEF_UP: case EFFECT.DEF_UP_2: case EFFECT.ATK_DEF_UP:
+      return defenseRaise(turn, 'def')
     case EFFECT.SPEED_UP: case EFFECT.SPEED_UP_2:
-      return statusRaise(turn, 'spe')
+      return speedRaise(turn)
     case EFFECT.SP_ATK_UP: case EFFECT.SP_ATK_UP_2:
-      return statusRaise(turn, 'spa')
+      return attackRaise(turn, 'spa')
+    // 명상(특공·특방)과 철벽류(방어·특방)도 원작은 특방 루틴으로 보낸다
     case EFFECT.SP_DEF_UP: case EFFECT.SP_DEF_UP_2:
-      return statusRaise(turn, 'spd')
+    case EFFECT.SP_ATK_SP_DEF_UP: case EFFECT.DEF_SPD_UP:
+      return defenseRaise(turn, 'spd')
     case EFFECT.EVA_UP: case EFFECT.EVA_UP_2: case EFFECT.EVA_UP_2_MINIMIZE:
       return statusEvasionUp(turn)
 
     case EFFECT.ATK_DOWN: case EFFECT.ATK_DOWN_2:
-      return statusLower(turn, 'atk')
-    case EFFECT.DEF_DOWN: case EFFECT.DEF_DOWN_2:
-      return statusLower(turn, 'def')
+      return attackLower(turn, 'atk')
+    case EFFECT.SP_ATK_DOWN: case EFFECT.SP_ATK_DOWN_2:
+      return attackLower(turn, 'spa')
+    case EFFECT.DEF_DOWN: case EFFECT.DEF_DOWN_2: case EFFECT.ATK_DEF_DOWN:
+      return defenseLower(turn, 'def')
+    case EFFECT.SP_DEF_DOWN: case EFFECT.SP_DEF_DOWN_2:
+      return defenseLower(turn, 'spd')
+    case EFFECT.EVA_DOWN: case EFFECT.ACC_DOWN_2:
+      // ⚠️ 원작은 회피 깎기(63)와 명중 깎기(64)의 루틴을 서로 바꿔 달았다 (1675~1676)
+      return defenseLower(turn, 'evasion')
+    case EFFECT.ACC_DOWN: case EFFECT.EVA_DOWN_2:
+      return accuracyLower(turn)
     case EFFECT.SPEED_DOWN: case EFFECT.SPEED_DOWN_2:
-      return statusLower(turn, 'spe')
+      return statusSpeedDown(turn)
 
     case EFFECT.HALVE_DEFENSE:
       return explosion(turn)
@@ -582,7 +671,10 @@ export const EXPERT_HANDLED: ReadonlySet<number> = new Set([
   EFFECT.ATK_UP, EFFECT.ATK_UP_2, EFFECT.DEF_UP, EFFECT.DEF_UP_2,
   EFFECT.SPEED_UP, EFFECT.SPEED_UP_2, EFFECT.SP_ATK_UP, EFFECT.SP_ATK_UP_2,
   EFFECT.SP_DEF_UP, EFFECT.SP_DEF_UP_2, EFFECT.EVA_UP, EFFECT.EVA_UP_2,
-  EFFECT.EVA_UP_2_MINIMIZE, EFFECT.ATK_DOWN, EFFECT.ATK_DOWN_2,
+  EFFECT.EVA_UP_2_MINIMIZE, EFFECT.ATK_DOWN, EFFECT.ATK_DOWN_2, EFFECT.SP_ATK_DOWN, EFFECT.SP_ATK_DOWN_2,
+  EFFECT.SP_DEF_DOWN, EFFECT.SP_DEF_DOWN_2, EFFECT.ACC_DOWN, EFFECT.ACC_DOWN_2,
+  EFFECT.EVA_DOWN, EFFECT.EVA_DOWN_2, EFFECT.ATK_DEF_DOWN, EFFECT.DEF_SPD_UP,
+  EFFECT.ATK_DEF_UP, EFFECT.SP_ATK_SP_DEF_UP,
   EFFECT.DEF_DOWN, EFFECT.DEF_DOWN_2, EFFECT.SPEED_DOWN, EFFECT.SPEED_DOWN_2,
   EFFECT.HALVE_DEFENSE, EFFECT.CURSE, EFFECT.ATK_SPD_UP, BIND_HIT,
   EFFECT.PREVENT_ESCAPE, EFFECT.PROTECT, EFFECT.ALWAYS_FLINCH_FIRST_TURN_ONLY,
