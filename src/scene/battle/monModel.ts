@@ -264,7 +264,7 @@ export function loadMonModel(
  * 덮는다. 몸통 → 마스크 → 껍질 차례라야 해서 `renderOrder`를 준다.
  * 복제(`makeBody` · 배틀의 `ownMaterials`)는 재질 값과 `renderOrder`를 그대로 옮긴다
  */
-export function rimLook(root: Object3D): void {
+function rimLook(root: Object3D): void {
   root.traverse((o) => {
     const mesh = o as Mesh
     if (!mesh.isMesh) return
