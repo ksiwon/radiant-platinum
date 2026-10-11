@@ -70,8 +70,24 @@ export interface FxMaterialSpec {
   /** 유니티 `CompareFunction` (0 끔 · 4 LessEqual · 8 Always) */
   ztest: number
   queue: number
-  /** 그리지 않는다 — 화면 왜곡(색 버퍼) 재질 */
+  /** 그리지 않는다 — 화면 왜곡(색 버퍼)을 셰이더가 못 그리는 판 (`FX_SCREEN`이 꺼졌을 때) */
   hidden: boolean
+  /**
+   * 깊이 페이드(부드러운 입자) — 장면 깊이와 입자 깊이의 차가 `near`에서 0, `near + 1/scale`에서 1로 오른다.
+   * `_SoftParticleFadeParams` = (near, 1/(far − near))를 그대로 읽는다 (실측: 0.4 · 0.01 → 2.5641 = 1/0.39)
+   */
+  soft: { near: number, scale: number } | null
+  /**
+   * 프레넬 알파 — `알파 × saturate(x + y × (1 − |N·V|))`. `_FresnelAlphaRef` = (x, y). ⚠️ 식은 우리 해석이다: 셰이더가 스위치 블롭이라
+   * 못 읽는다. 끈 재질의 기본값 (1, 0)이 항등이 되는 모양이라 이 꼴로 읽었다
+   */
+  fresnel: { x: number, y: number } | null
+  /** 줄무늬 두 색 (`_StripeColor0/1`). ⚠️ 쓰임(UV 세로로 섞는다)은 우리 해석이다 */
+  stripe: { c0: Rgba, c1: Rgba } | null
+  /** 그림 칸마다 스피어맵(눈 공간 법선 → UV)인가 (`_SphereMapEnabled_TexN`) */
+  sphere: boolean[]
+  /** 왜곡: 0 없음 · 1 색 버퍼(화면을 굴절) · 2 그림(`_DISTORTION_TEXTURE` — 첫 그림이 뒷그림의 UV를 민다). 세기는 `_DistortionStrengthScaled` */
+  distortion: { mode: number, x: number, y: number }
   /** 아직 안 옮긴 기능 (한 번씩 알린다) */
   todo: string[]
 }
@@ -151,14 +167,21 @@ export function readMaterial(m: FxMaterialData, ctrl: MaterialControllerFields |
   }
 
   const todo: string[] = []
-  if ((f._SoftParticlesEnabled ?? 0) > 0) todo.push('soft')
-  if ((f._Distortion ?? 0) > 0) todo.push('distortion')
-  if ((f._FresnelAlphaType ?? 0) > 0) todo.push('fresnel')
-  if ((f._StripeEnabled ?? 0) > 0) todo.push('stripe')
-  if ((f._SphereMapEnabled_Tex0 ?? 0) + (f._SphereMapEnabled_Tex1 ?? 0) + (f._SphereMapEnabled_Tex2 ?? 0) > 0) todo.push('spheremap')
   if ((f._LightColorEnabled ?? 0) > 0) todo.push('lightcolor')
   if (kw.some((k) => k.startsWith('_COMBINER_') && !k.startsWith('_COMBINER_DISSOLVE'))) todo.push('combiner')
   if (kw.includes('_COMBINERANIM0')) todo.push('combineranim')
+
+  const fade = c._SoftParticleFadeParams
+  const soft = (f._SoftParticlesEnabled ?? 0) > 0
+    ? { near: fade?.[0] ?? f._SoftParticlesNearFadeDistance ?? 0.01, scale: fade?.[1] ?? 1 / Math.max(1e-3, (f._SoftParticlesFarFadeDistance ?? 1) - (f._SoftParticlesNearFadeDistance ?? 0.01)) }
+    : null
+  const fres = c._FresnelAlphaRef
+  const fresnel = (f._FresnelAlphaType ?? 0) > 0 ? { x: fres?.[0] ?? 1, y: fres?.[1] ?? 0 } : null
+  const stripe = (f._StripeEnabled ?? 0) > 0 ? { c0: c._StripeColor0 ?? [1, 1, 1, 1], c1: c._StripeColor1 ?? [1, 1, 1, 1] } : null
+  const sphere = textures.map((_, i) => (f[`_SphereMapEnabled_Tex${String(i)}`] ?? 0) > 0)
+  const dmode = Math.round(f._Distortion ?? 0)
+  const dstr = c._DistortionStrengthScaled
+  const distortion = { mode: dmode, x: dstr?.[0] ?? f._DistortionStrengthX ?? 0, y: dstr?.[1] ?? f._DistortionStrengthY ?? 0 }
 
   const ctrlMul = ctrl?._MulColor
   const mulFromCtrl: Rgba | null = !ctrlMul ? null
@@ -191,7 +214,12 @@ export function readMaterial(m: FxMaterialData, ctrl: MaterialControllerFields |
     ztest: Math.round(m.ztest ?? f._ZTest ?? 4),
     queue: m.renderQueue !== undefined && m.renderQueue >= 0 ? m.renderQueue : 3000,
     // 색 버퍼 왜곡은 화면을 굴절시키는 판이라, 그림으로 그리면 흰 판이 뜬다
-    hidden: Math.round(f._Distortion ?? 0) === 1,
+    hidden: dmode === 1,
+    soft,
+    fresnel,
+    stripe,
+    sphere,
+    distortion,
     todo,
   }
 }
@@ -203,5 +231,6 @@ export function readMaterial(m: FxMaterialData, ctrl: MaterialControllerFields |
 export function materialKey(s: FxMaterialSpec): string {
   const t = s.textures.map((x) => `${x.rawUv ? 1 : 0}${x.colorChannel}${x.alphaChannel}${x.colorBlend}${x.alphaBlend}`).join('.')
   return [t, s.colorExpr, s.alphaExpr, s.primColorExpr, s.primColorChannel, s.primAlphaExpr, s.primAlphaChannel,
+    s.soft ? 1 : 0, s.fresnel ? 1 : 0, s.stripe ? 1 : 0, s.sphere.map((b) => (b ? 1 : 0)).join(''), s.distortion.mode,
     s.alphaTest, s.src, s.dst, s.srcA, s.dstA, s.op, s.opA, s.cull, s.zwrite ? 1 : 0, s.ztest].join('|')
 }

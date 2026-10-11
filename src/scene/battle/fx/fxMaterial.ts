@@ -17,8 +17,10 @@
 // 선형 색 공간 프로젝트가 하는 그대로다. BDSP가 감마 프로젝트라면 덧셈 섞기가
 // 조금 밝게 나온다(`LINEAR` 하나로 뒤집을 수 있다).
 //
-// 아직 안 옮긴 것(한 번씩 알린다): 부드러운 입자(깊이 페이드) · 화면 왜곡 ·
-// 프레넬 · 스피어 맵 · 줄무늬 · 디졸브 외의 특수 컴바이너.
+// 옮긴 것: 깊이 페이드 · 프레넬 · 스피어맵 · 줄무늬 · 그림 왜곡 · 색 버퍼 왜곡 (아래 각 절).
+// ⚠️ **원본 셰이더는 스위치 블롭이라 식을 못 읽는다.** 속성 값의 꼴(`_SoftParticleFadeParams` = (근 · 1/(원−근)) 같은 것)로
+// 읽은 우리 해석이다 — 각 절에 어디까지가 실측이고 어디부터가 해석인지 적었다.
+// 아직 안 옮긴 것(한 번씩 알린다): 조명색 · 디졸브 외의 특수 컴바이너 · 컴바이너 애니 · 왜곡 세기의 수명 곡선(`_DistortionAnim0~3`).
 import {
   AddEquation, BackSide, CustomBlending, DoubleSide, DstAlphaFactor, DstColorFactor,
   FrontSide, LessEqualDepth, MaxEquation, MinEquation, OneFactor, OneMinusDstAlphaFactor,
@@ -30,14 +32,23 @@ import {
 } from 'three'
 import { MeshBasicNodeMaterial, type Node } from 'three/webgpu'
 import {
-  attribute, cameraProjectionMatrix, clamp, cos, float, Fn, max, modelViewMatrix, pow,
-  positionGeometry, sin, sRGBTransferEOTF, texture, uniform, uv, varying, vec2, vec3, vec4,
+  abs, attribute, cameraFar, cameraNear, cameraProjectionMatrix, clamp, cos, dot, float, Fn, max, mix, modelViewMatrix,
+  normalGeometry, normalize, perspectiveDepthToViewZ, positionGeometry, pow, saturate, screenUV, sin, sRGBTransferEOTF,
+  texture, uniform, uv, varying, vec2, vec3, vec4, viewportDepthTexture, viewportSharedTexture,
 } from 'three/tsl'
 import type { FxMaterialSpec } from '../../../engine/battle/fx/material'
 import { ALWAYS_ASYNC } from '../../asyncPipelines'
 
 /** 선형 작업 흐름인가 (머리말) */
 const LINEAR = true
+
+/**
+ * **화면을 읽는 기능**(깊이 페이드 · 색 버퍼 왜곡)을 켜는가. 깊이 · 프레임버퍼를 복사해 읽으므로(`viewportDepthTexture` ·
+ * `viewportSharedTexture`) 이 기능이 있는 재질이 그려지는 프레임마다 복사가 든다.
+ * ⚠️ **GPU 확인 전에는 끈다.** 작업트리에서 브라우저가 막힌 채 쓴 코드다 — 켜고 `fxshot`으로 컴파일 · 그림 · 프레임 시간을 잰 뒤 켠다.
+ * 꺼져 있으면 깊이 페이드는 안 하고(입자가 그대로 선다) 색 버퍼 왜곡 재질은 안 그린다(전과 같다)
+ */
+export const FX_SCREEN = false
 
 /** 유니티 `BlendMode` → three */
 const FACTOR: readonly (BlendingSrcFactor & BlendingDstFactor)[] = [
@@ -102,6 +113,12 @@ export function buildFxMaterial(spec: FxMaterialSpec, maps: readonly Texture[], 
   const world = center.add(ax.mul(p.x)).add(ay.mul(p.y)).add(az.mul(p.z))
   material.vertexNode = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(world, 1)))
 
+  // 눈 공간 위치 · 법선 — 깊이 페이드 · 프레넬 · 스피어맵이 쓴다. 법선은 입자 축으로 돌려 눈 공간에 옮긴다(축 크기는 무시한다)
+  const viewPos = modelViewMatrix.mul(vec4(world, 1))
+  const vView = varying(viewPos.xyz)
+  const nObj = ax.mul(normalGeometry.x).add(ay.mul(normalGeometry.y)).add(az.mul(normalGeometry.z))
+  const vNormal = varying(normalize(modelViewMatrix.mul(vec4(nObj, 0)).xyz))
+
   const rect = varying(attribute<'vec4'>('iL7', 'vec4'))
   const fxTime = varying(l0.w)
   const vColor = varying(attribute<'vec4'>('iL4', 'vec4'))
@@ -125,6 +142,15 @@ export function buildFxMaterial(spec: FxMaterialSpec, maps: readonly Texture[], 
   const mul = spec.mulColor
   const mulColor = uniform(new Vector4(mul[0], mul[1], mul[2], mul[3]))
   const alphaRef = uniform(spec.alphaRef)
+  const softNear = uniform(spec.soft?.near ?? 0)
+  const softScale = uniform(spec.soft?.scale ?? 1)
+  const fresnelX = uniform(spec.fresnel?.x ?? 1)
+  const fresnelY = uniform(spec.fresnel?.y ?? 0)
+  const stripe0 = uniform(new Vector4(...(spec.stripe?.c0 ?? [1, 1, 1, 1])))
+  const stripe1 = uniform(new Vector4(...(spec.stripe?.c1 ?? [1, 1, 1, 1])))
+  const distort = uniform(new Vector2(spec.distortion.x, spec.distortion.y))
+  // 눈 쪽으로 향한 정도 — 면이 마주 보면 1, 모서리면 0 (프레넬 · 판 종류는 법선이 없어 쓰지 않는다)
+  const facing = (): Node<'float'> => abs(dot(vNormal, normalize(vView.negate()))) as Node<'float'>
 
   material.colorNode = Fn(() => {
     const raw = uv()
@@ -133,17 +159,23 @@ export function buildFxMaterial(spec: FxMaterialSpec, maps: readonly Texture[], 
 
     let comboRgb: Node<'vec3'> = vec3(1, 1, 1)
     let comboA: Node<'float'> = float(1)
+    // 그림 왜곡(`_DISTORTION_TEXTURE`) — 첫 그림의 RG(0.5 중심)가 뒷그림들의 UV를 민다. 첫 그림 자체는 평소대로 그린다
+    let warp: Node<'vec2'> = vec2(0, 0)
     spec.textures.forEach((t, i) => {
       const u = uniforms[i]!
       // 그림 칸 → 0.5 둘레 회전 → 타일링 × UV 크기 → 오프셋 + 흘리기
-      const base = t.rawUv ? raw : sheet
+      // 스피어맵 — 법선의 눈 공간 xy를 0~1로 옮긴 것이 UV다 (판은 법선이 없어 평소 UV를 쓴다)
+      const sphere = spec.sphere[i] === true && !billboard
+      const base = sphere ? vNormal.xy.mul(0.5).add(0.5) : t.rawUv ? raw : sheet
       const d = base.sub(0.5)
       const c = cos(u.rotation)
       const s = sin(u.rotation)
       const rot = vec2(d.x.mul(c).sub(d.y.mul(s)), d.x.mul(s).add(d.y.mul(c))).add(0.5)
       const scale = u.uvScale.add(u.uvScaleSpeed.mul(time))
-      const st = rot.mul(u.tiling).mul(scale).add(u.offset).add(u.scroll).add(u.scrollSpeed.mul(time))
+      const st0 = rot.mul(u.tiling).mul(scale).add(u.offset).add(u.scroll).add(u.scrollSpeed.mul(time))
+      const st = spec.distortion.mode === 2 && i > 0 ? st0.add(warp) : st0
       const tex = texture(maps[i]!, st)
+      if (spec.distortion.mode === 2 && i === 0) warp = tex.rg.sub(0.5).mul(2).mul(distort)
       const rgb = pow(max(tex.rgb, vec3(0, 0, 0)), vec3(u.pow, u.pow, u.pow))
       const crgb = colorChannel(t.colorChannel, rgb, tex.a)
       const ca = alphaChannel(t.alphaChannel, tex.r, tex.a)
@@ -185,6 +217,21 @@ export function buildFxMaterial(spec: FxMaterialSpec, maps: readonly Texture[], 
     rgb = rgb.mul(colorScale).mul(lin(mulColor.xyz))
     alpha = clamp(alpha.mul(mulColor.w), 0, 1)
     rgb = max(rgb, vec3(0, 0, 0))
+
+    // 줄무늬 — 두 색을 UV 세로로 섞어 곱한다 (우리 해석: 속성은 색 둘뿐이다)
+    if (spec.stripe) rgb = rgb.mul(lin(mix(stripe0.xyz, stripe1.xyz, raw.y)))
+    // 프레넬 알파 — 법선이 있는 메시에만 (우리 해석, `FxMaterialSpec.fresnel`)
+    if (spec.fresnel && !billboard) alpha = alpha.mul(saturate(fresnelX.add(fresnelY.mul(float(1).sub(facing())))))
+    // 깊이 페이드 — 장면 깊이가 입자 깊이보다 `near` 넘게 뒤에 있어야 온전히 선다
+    if (FX_SCREEN && spec.soft) {
+      const sceneZ = perspectiveDepthToViewZ(viewportDepthTexture().r, cameraNear, cameraFar)
+      alpha = alpha.mul(saturate(vView.z.sub(sceneZ).sub(softNear).mul(softScale)))
+    }
+    // 색 버퍼 왜곡 — 그림의 RG(0.5 중심)만큼 화면 UV를 밀어 지금까지 그려진 화면을 다시 읽는다. 섞기는 평소 알파 섞기다
+    if (FX_SCREEN && spec.distortion.mode === 1) {
+      const flow = comboRgb.xy.sub(0.5).mul(2).mul(distort)
+      rgb = viewportSharedTexture(screenUV.add(flow.mul(alpha))).rgb as Node<'vec3'>
+    }
 
     alphaTest(spec.alphaTest, alpha, alphaRef)
     // 시험대 `&dbg=` — 한 칸만 불투명하게 내 본다

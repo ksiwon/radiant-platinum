@@ -29,7 +29,7 @@ import {
 import { materialKey, readMaterial } from '../../../engine/battle/fx/material'
 import type { FxMesh, FxPrefab } from '../../../engine/battle/fx/schema'
 import type { FxSlot } from '../../../engine/battle/fx/effect'
-import { buildFxMaterial } from './fxMaterial'
+import { buildFxMaterial, FX_SCREEN } from './fxMaterial'
 import { loadFxPrefab, loadFxTexture } from './fxAssets'
 
 /** 무거운 프레임 뒤 한 번에 따라잡는 위끝 (초) — 연출 시계도 0.1초로 자른다 */
@@ -315,7 +315,7 @@ function buildRigs(effect: FxEffect, maps: ReadonlyMap<string, Texture>): Rig[] 
     const matData = rend.materials?.[0]
     if (!matData) continue
     const spec = readMaterial(matData, slot.controller)
-    if (spec.hidden) continue
+    if (spec.hidden && !FX_SCREEN) continue
     const key = `${effect.name}/${slot.path}`
     const cap = slot.system.cap
     const reused = geometryPool.get(key)?.pop()
