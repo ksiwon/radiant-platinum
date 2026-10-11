@@ -1,6 +1,7 @@
 // 스크립트 전수 점검 보고 — `.audit/scripts-sweep/part-*.json`을 모아 한 파일로 열리는 HTML 하나를 만든다
 // (`tools/e2e/scriptsSweep.mjs --report`). 외부 자원을 안 쓴다.
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { TRIAGE } from './scriptsSweepTriage.mjs'
 import { resolve } from 'node:path'
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
@@ -10,6 +11,13 @@ const OUT_OF_SCOPE_NAME = /Comm|Wifi|WiFi|Union|Underground|Contest|Colosseum|Gr
 
 const STATUS_LABEL = {
   done: '끝까지', stall: '멈춤', timeout: '시간 초과', refused: '시작 거절', error: '하네스 오류', battle: '배틀이 안 닫힘',
+}
+
+const VERDICT = { done: '만들었다', noop: '원작도 효과 없음', out: '범위 밖', visual: '화면 확인 대기', todo: '남음' }
+function triageCell(name) {
+  const t = TRIAGE[name]
+  if (t === undefined) return OUT_OF_SCOPE_NAME.test(name) ? '범위 밖 짐작' : '<b>미판정</b>'
+  return `<b>${esc(VERDICT[t[0]] ?? t[0])}</b> <span class="dim">${esc(t[1])}</span>`
 }
 
 function table(head, rows, cls = '') {
@@ -61,7 +69,7 @@ export function buildReport(dir) {
   const unimplRows = [...unimpl].sort((a, b) => b[1].scripts.size - a[1].scripts.size)
     .map(([name, e]) => [
       `<code>${esc(name)}</code>`, String(e.scripts.size), String(e.count),
-      OUT_OF_SCOPE_NAME.test(name) ? '범위 밖 짐작' : '<b>범위 안</b>',
+      triageCell(name),
       `<span class="dim">${e.where.map(esc).join('<br>')}</span>`,
     ])
 
@@ -129,7 +137,7 @@ export function buildReport(dir) {
 <p>자연 판: 멈춤 ${natStall.length} · 오류 ${natErr.length}. 뒤집은 판: 멈춤 ${forcedStall.length} · 오류 ${forcedErr.length}.</p>
 ${table(['스크립트', '파일', '판', '마지막 명령'], natStall.map((r) => [`<code>${esc(r[0])}</code>`, esc(r[1]), esc(r[2]), `<code>${esc(r[3] ?? '')}</code>`]))}
 <h3>정적 미구현 명령</h3>
-${table(['명령', '자리', '자연 판에서 닿은 스크립트', '뒤집은 판', '파일'], headless.unimpl.map((u) => [`<code>${esc(u.name)}</code>`, String(u.sites), String((nat.get(u.name) ?? new Set()).size), String((forced.get(u.name) ?? new Set()).size), `<span class="dim">${u.files.slice(0, 4).map(esc).join(', ')}</span>`]))}
+${table(['명령', '자리', '자연 판에서 닿은 스크립트', '뒤집은 판', '판정 · 근거', '파일'], headless.unimpl.map((u) => [`<code>${esc(u.name)}</code>`, String(u.sites), String((nat.get(u.name) ?? new Set()).size), String((forced.get(u.name) ?? new Set()).size), triageCell(u.name), `<span class="dim">${u.files.slice(0, 4).map(esc).join(', ')}</span>`]))}
 <h3>덜 밟힌 파일 (정적으로 닿는데 안 밟힌 명령이 많은 차례)</h3>
 ${table(['파일', '닿음', '밟음', '덮음'], coverageRows)}`
   }
@@ -180,7 +188,7 @@ ${table(['메시지', '수', '예'], errRows)}
 
 <h2>3. 미구현 명령 (<code>skipper</code>가 건너뜀)</h2>
 <p class="dim">「범위 밖 짐작」은 이름 모양으로만 묶은 것이다 — 판정이 아니다. 범위는 위 목록(맵)으로 갈랐고, 범위 안 맵의 스크립트가 부른 것이므로 이름과 상관없이 <b>자리마다 확인</b>한다.</p>
-${table(['명령', '스크립트 수', '호출 수', '구분', '예'], unimplRows)}
+${table(['명령', '스크립트 수', '호출 수', '판정 · 근거', '예'], unimplRows)}
 
 <h2>4. 빈 대사</h2>
 ${table(['글', '수', '뱅크', '예'], emptyRows)}
@@ -202,7 +210,15 @@ ${headlessHtml}
 <p class="dim">맵 헤더가 가리키는 스크립트 파일의 이름으로 갈랐다 — 이름 추정이 아니라 <code>maps.json</code>의 <code>scripts</code> 칸 → <code>scripts.json</code>의 파일 이름이다.</p>
 ${table(['까닭', '맵'], [...excluded].map(([k, v]) => [esc(k), `<span class="dim">${v.map(esc).join(' · ')}</span>`]))}
 
-<h2>10. 이 점검이 못 재는 것</h2>
+<h2>10. 안 돈 자리와 남은 의문</h2>
+${table(['어디', '왜'], mapRows.flatMap((m) => m.sites.filter((s) => s.skipped).map((s) => [esc(`${m.map} ${m.name} · ${s.key}`), esc(s.skipped)])))}
+<ul>
+<li><b>파이트에리어(맵 188) 매 프레임 라이벌 장면의 빈 대사 4줄</b> — 공용 스크립트가 3줄짜리 뱅크로 읽는다. 맵 이동 · 첫 판 직후 틈은 하네스에서 가려냈지만(맵 번호 · 뱅크 번호 · 둘째 판 전 맵 확인) 이 한 자리는 안 가려졌다. 화면으로 확인할 자리다.</li>
+<li><b>걷기 표본</b>은 <b>돌아다니는 사람(이동 유형 3 · 5 · 15 등)이 정한 칸에서 벗어난 것</b>이 대부분이라 제품 결함으로 못 읽는다. 가만히 선 사람은 225 중 220이 걸렸다. 안 걸린 둘(안농길 카운터 건너편 · 휴양지 마을 하나)은 확인 자리.</li>
+<li><b>화면이 쥐는 자리</b>(상점 · 낱말 고르기 · 이름 짓기 · 저장 · 태그 배틀 뒤 걸음)는 하네스에 화면 손잡이가 없어 멈춤으로 적힌다 — 마지막 명령과 서비스 이름이 까닭이다.</li>
+</ul>
+
+<h2>11. 이 점검이 못 재는 것</h2>
 <ul>
 <li>스크립트 <b>안쪽 분기</b>의 완전한 덮음 — 선택지 첫째 · (메뉴가 있었던 판만) 둘째 두 회차와 시작 조건만 바꿨다. 앞 스크립트가 세우는 변수에 걸린 가지는 안 밟혔을 수 있다.</li>
 <li>배틀은 열지 않고 이긴 것으로 돌렸다 — 배틀 화면 · 진 뒤 갈래는 <code>story</code> · <code>journey</code>의 몫.</li>

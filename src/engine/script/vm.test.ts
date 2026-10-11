@@ -259,7 +259,8 @@ maybe('스크립트 VM', () => {
     const idle = [...Array(meta.commands.length).keys()]
       .filter((op) => !unhandled.has(op) && !seen.has(op))
       .map((op) => meta.commands[op]!.name)
-    expect(idle).toEqual(IDLE_COMMANDS)
+    // 순서가 아니라 **집합**이다 — 새 명령을 표 중간에 붙여도 목록 순서를 안 맞춘다
+    expect([...idle].sort()).toEqual([...IDLE_COMMANDS].sort())
     expect(handledSeen.length).toBe(implemented - IDLE_COMMANDS.length)
   })
 
@@ -495,9 +496,9 @@ const LOOPING_ENTRIES_YES = 30
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_778
-const RUNNING_SITES = 55_137
+const RUNNING_SITES = 55_259
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 599
+const IMPLEMENTED_COMMANDS = 624
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -802,6 +803,10 @@ const IDLE_COMMANDS = [
   'LogLinkInfoInWiFiHistory',
   // 위와 같은 자리다 — 전당 항목을 고른 **뒤에** 나오는 줄이라 더 못 닿는다
   'CheckIsHallOfFameCorrupted',
+  // 전수 점검이 이름을 붙인 것 가운데 이 훑기가 못 닿는 일곱 — 지하통로 굿즈 · 드레스업 사진 · TV 기록 · 빈 명령이라
+  // 앞 갈래가 막혀 있다 (`script/sweepGaps.test`가 폭과 답을 따로 잠근다)
+  'CheckHasRoomForGoodsInPC', 'ScrCmd_0A6', 'ShowDressUpPhoto', 'SetDressUpPhotoTitle',
+  'ScrCmd_27C', 'ScrCmd_2B8', 'Dummy316',
 ]
 
 /**
