@@ -69,6 +69,26 @@ def hex_color(text: str) -> dict:
     return {"r": r, "g": g, "b": b, "a": 1.0}
 
 
+# **마스크가 비어 있는 자리를 칠하는 값.** 프로퍼티 이름이 `_Patch`로 시작하면 색 채널이 아니라 이 모양이다:
+#
+#     _Patch0 = '#efefff@0.235~0~0.29~0.04'     색 `@` 유니티 UV 네모 `u0~v0~u1~v1` (v는 아래서 잰다)
+#
+# 그 네모 안에서 **어느 마스크 채널에도 안 속한**(합 0.1 아래) 텍셀을 그 색 한 가지로 덮는다. 틴트를 못 받는 안감이 속옷
+# 자리에 보이는 몸(핸섬의 목 앞 V)이 쓴다 — 채널은 셋뿐이고 다 다른 부위가 쓰고 있어서 채널을 옮길 수 없다.
+# 같은 재질 키에 여럿이면 뒤엣것이 이긴다.
+# ⚠️ **브라우저 변환기와 같아야 한다** (`src/import/bdsp/albedo.ts`의 `parsePatch` · 텍셀 가운데로 UV를 잰다 · 같은 `< 0.1`)
+PATCH_PROP = "_Patch"
+
+
+def parse_patch(value: str):
+    hexcol, _, box = value.partition("@")
+    rect = tuple(float(x) for x in box.split("~"))
+    if len(rect) != 4:
+        raise SystemExit(f"_Patch 네모를 못 읽었다: {value}")
+    c = hex_color(hexcol)
+    return rect, srgb_to_linear(np.array([c["r"], c["g"], c["b"]], dtype=np.float32))
+
+
 def plant_kind(keywords: str, main_pid: int, layer_pid: int) -> str:
     """나무열매 재질의 색 입히는 길 (`bake(…, plant=True)` · `bdspArena.py --berries`) — 재질이 적어 둔 셰이더 키워드로 가른다.
 
@@ -555,7 +575,11 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
             if 0 <= ch < len(VARIATION_CHANNEL_PROPS):
                 colors[VARIATION_CHANNEL_PROPS[ch]] = col
         # 우리가 적어 둔 색이 제일 세다 — 사람이 정한 것이라 원본을 이긴다
+        patches = []
         for prop, hexcol in (recolor or {}).get(key, {}).items():
+            if prop.startswith(PATCH_PROP):
+                patches.append(parse_patch(hexcol))
+                continue
             colors[prop] = hex_color(hexcol)
         slots, uvs = {}, {}
         for k, v in prop_pairs(props.get("m_TexEnvs", [])):
@@ -661,6 +685,14 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
             m = np.asarray(mm, dtype=np.float32)[..., 0:1] / np.float32(255)
             tint = layer("_Color") * (np.float32(1) - m) + layer("_LayerColor") * m
         out_lin = rgb_lin * tint
+        # 마스크가 비어 있는(어느 채널에도 안 속한) 자리를 UV 네모 안에서 한 색으로 칠한다 (`PATCH_PROP`)
+        if patches:
+            xs = (np.arange(w) + 0.5) / w
+            ys = 1.0 - (np.arange(h) + 0.5) / h
+            for (u0, v0, u1, v1), rgb in patches:
+                inside = (((xs >= u0) & (xs < u1))[None, :] & ((ys >= v0) & (ys < v1))[:, None]
+                          & (coverage[..., 0] < 0.1))
+                out_lin = np.where(inside[..., None], rgb, out_lin)
         # 불투명하다고 적힌 재질은 알파를 통째로 채운다. 남겨 두면 KTX2로
         # 옮길 때나 다른 곳에서 다시 오려 낼 빌미가 된다
         opacity = np.ones_like(col[..., 3:4]) if opaque else col[..., 3:4]

@@ -424,6 +424,11 @@ describe('다시 칠하기', () => {
       const props = Object.values(spec.paint).flatMap((m) => Object.entries(m))
       expect(props.length, key).toBeGreaterThan(0)
       for (const [prop, hex] of props) {
+        // `_Patch0`… 은 색 채널이 아니라 「마스크 빈 자리를 칠하는 네모」다 — `색@u0~v0~u1~v1`
+        if (prop.startsWith('_Patch')) {
+          expect(hex, `${key} ${prop}`).toMatch(/^#[0-9a-f]{6}@[0-9.]+(~[0-9.]+){3}$/)
+          continue
+        }
         expect(MASK_CHANNEL_PROPS, `${key} ${prop}`).toContain(prop)
         expect(hex, `${key} ${prop}`).toMatch(/^#[0-9a-f]{6}$/)
       }

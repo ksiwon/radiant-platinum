@@ -22,7 +22,7 @@ import { POKEBALL, arenaFiles } from './convert'
 import { verifyGlb } from './glb'
 import { decodePng, encodePng } from '../platinum/png'
 import { SPRITE_NAMES } from '../platinum/spriteTable'
-import { HERO_FIELD_CLIPS, clipFilterFor, fieldClipDonor, modelFor } from '../../engine/actor/npcModels'
+import { HERO_FIELD_CLIPS, NPC_RECOLOR, clipFilterFor, fieldClipDonor, modelFor } from '../../engine/actor/npcModels'
 import { TRAINER_MODELS } from './trainerModels'
 import { bundleDeps } from './bundleDeps'
 import { bdspDir, withLocal } from '../../data/romData.testkit'
@@ -301,6 +301,42 @@ suite('인물', () => {
     for (const name of HERO_FIELD_CLIPS) {
       expect(clips.some((c) => c.name === name), name).toBe(true)
     }
+  }, 180_000)
+
+  // ⚠️ **마스크가 빈 자리를 칠하는 `_Patch`도 굽는 쪽이 둘이다.** 핸섬의 목 앞 V 안감(롬 그림에서는 흰 셔츠 깃 · 자주 넥타이)이 노드 쪽에서만
+  // 칠해지면 개발 서버에서는 멀쩡하고 설치본에서는 회색 삼각형이 남는다 — 눈으로는 안 걸린다
+  const LOOKER = 'fc1051_00-looker'
+  it.runIf(existsSync(join(__dirname, `../../../public/models/npc/${LOOKER}.glb`)))('핸섬 목 앞 안감이 개발 산출물과 같다 — `_Patch` 두 네모', async () => {
+    const env = openEnvironment([bytes(person('field', 'fc1051_00')!)])
+    const spec = NPC_RECOLOR[LOOKER]!
+    const { glb } = await exportModel(env, encodePng, {
+      maxSize: 256, keepClips: false, recolor: spec.paint, ...(spec.drop ? { drop: spec.drop } : {}),
+    })
+    const wearOf = async (g: Uint8Array): Promise<{ width: number, height: number, pixels: Uint8Array }> => {
+      const dv = new DataView(g.buffer, g.byteOffset, g.byteLength)
+      const n = dv.getUint32(12, true)
+      const j = JSON.parse(new TextDecoder().decode(g.subarray(20, 20 + n))) as {
+        materials: { name: string, pbrMetallicRoughness: { baseColorTexture: { index: number } } }[]
+        textures: { source: number }[], images: { bufferView: number }[]
+        bufferViews: { byteOffset: number, byteLength: number }[]
+      }
+      const bin = g.subarray(28 + n)
+      const mat = j.materials.find((m) => m.name === 'wear')!
+      const v = j.bufferViews[j.images[j.textures[mat.pbrMetallicRoughness.baseColorTexture.index]!.source]!.bufferView]!
+      return decodePng(bin.subarray(v.byteOffset, v.byteOffset + v.byteLength))
+    }
+    const mine = await wearOf(glb)
+    const want = await wearOf(new Uint8Array(readFileSync(join(__dirname, `../../../public/models/npc/${LOOKER}.glb`))))
+    expect([mine.width, mine.height]).toEqual([want.width, want.height])
+    const px = (im: typeof mine, x: number, y: number): number[] => [...im.pixels.subarray((y * im.width + x) * 4, (y * im.width + x) * 4 + 3)]
+    // 셔츠 깃 두 줄 · 넥타이 네 줄 — 아래 여덟 행 (마스크가 빈 행)
+    for (const y of [248, 251, 255]) {
+      for (const x of [60, 63, 65, 68, 70, 73]) expect(px(mine, x, y), `(${String(x)},${String(y)})`).toEqual(px(want, x, y))
+    }
+    expect(px(mine, 66, 250)).toEqual([0x84, 0x42, 0x73])
+    expect(px(mine, 61, 250)).toEqual([0xef, 0xef, 0xff])
+    // 네모 밖의 안감(뒤쪽)은 그대로 짙은 회색이다
+    expect(px(mine, 20, 250)[0]).toBeLessThan(0x40)
   }, 180_000)
 
   it('그림 번호가 BDSP 번들로 이어진다', () => {
