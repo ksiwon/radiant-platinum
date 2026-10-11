@@ -29,7 +29,7 @@ describe('셰이더 기능 명세', () => {
     expect(s.fresnel).toEqual({ x: 0, y: 0.6 })
     expect(s.stripe?.c1).toEqual([0, 0, 1, 1])
     expect(s.sphere).toEqual([false, true])
-    expect(s.distortion).toEqual({ mode: 2, x: 0.05, y: 0.08 })
+    expect(s.distortion).toMatchObject({ mode: 2, x: 0.05, y: 0.08 })
     expect(s.todo).toEqual([])
   })
 
@@ -51,5 +51,39 @@ describe('셰이더 기능 명세', () => {
     const maps = [new Texture(), new Texture()]
     expect(() => buildFxMaterial(spec, maps, false)).not.toThrow()
     expect(() => buildFxMaterial(spec, maps, true)).not.toThrow()
+  })
+
+  it('특수 컴바이너 갈래와 값 여덟 칸 · 왜곡 곡선이 읽히고 그래프가 지어진다', () => {
+    const kinds: [string, string][] = [
+      ['_COMBINER_ICE01', 'ice'], ['_COMBINER_LIGHTPARAM01_MULVERTEXCOL_NORML', 'light'], ['_COMBINER_ALPHABLEND_MUL_TEX0', 'alphaMul'],
+      ['_COMBINER_FRESNEL_ONECOLOR_TEX2MULTIPLY', 'fresnelOne'], ['_COMBINER_FIRE_TWOCOLOR', 'fire'],
+      ['_COMBINER_ZOFFSET_SMOKE_ALPHAMASK', 'zSmoke'], ['_COMBINER_ZOFFSET_WATER_ALPHA', 'zWater'],
+    ]
+    const maps = [new Texture(), new Texture()]
+    for (const [kw, kind] of kinds) {
+      const m = base({}, { _CombinerAnim0_0: [0.4, 0.5, 0, 1], _CombinerAnim0_1: [0.9, 0.6, 0, 0], _DistortionAnim0: [0, 0, 0, 0], _DistortionAnim1: [0.5, 1, 0, 0] })
+      ;(m as unknown as { keywords: string[] }).keywords = [kw, '_COMBINERANIM0']
+      const spec = readMaterial(m, null)
+      expect(spec.combiner.kind).toBe(kind)
+      expect(spec.todo).toEqual([])
+      expect(() => buildFxMaterial(spec, maps, false)).not.toThrow()
+      expect(() => buildFxMaterial(spec, maps, true)).not.toThrow()
+    }
+    // 디졸브는 알파 식이 맡는다 — 갈래 없음 · 알리지도 않는다
+    const d = base({}); (d as unknown as { keywords: string[] }).keywords = ['_COMBINER_DISSOLVE_TEX01_COL_MULTI']
+    expect(readMaterial(d, null).combiner.kind).toBeNull()
+    expect(readMaterial(d, null).todo).toEqual([])
+  })
+
+  it('값이 상수인 재질과 수명 곡선이 있는 재질은 셰이더 열쇠가 갈린다', () => {
+    const keysOf = (extra: Record<string, number[]>) => {
+      const m = base({}, extra); (m as unknown as { keywords: string[] }).keywords = ['_COMBINER_LIGHTPARAM01']
+      return materialKey(readMaterial(m, null))
+    }
+    const same = Object.fromEntries(Array.from({ length: 8 }, (_, k) => [`_CombinerAnim0_${String(k)}`, [1, 1, 0, 0]]))
+    expect(keysOf(same)).not.toBe(keysOf({ _CombinerAnim0_0: [0.4, 0.5, 0, 1], _CombinerAnim0_1: [0.9, 0.6, 0, 0] }))
+    const flat = readMaterial(base({ _Distortion: 2 }, { _DistortionAnim0: [0, 1, 0, 0], _DistortionAnim1: [1, 1, 0, 0] }), null)
+    const bent = readMaterial(base({ _Distortion: 2 }, { _DistortionAnim0: [0, 0, 0, 0], _DistortionAnim1: [0.3, 1, 0, 0] }), null)
+    expect(materialKey(flat)).not.toBe(materialKey(bent))
   })
 })

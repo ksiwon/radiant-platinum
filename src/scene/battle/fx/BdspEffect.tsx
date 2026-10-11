@@ -80,7 +80,7 @@ interface Rig {
 
 /**
  * 인스턴스 값의 칸 (vec4 하나씩):
- *   iL0 가운데.xyz + 이펙트 시각 · iL1~3 축 X·Y·Z · iL4 정점색 · iL5 C0 · iL6 C1 · iL7 그림 칸 UV
+ *   iL0 가운데.xyz + 이펙트 시각 · iL1~3 축 X·Y·Z (iL1.w = 수명 진행 0~1) · iL4 정점색 · iL5 C0 · iL6 C1 · iL7 그림 칸 UV
  */
 const LANES = ['iL0', 'iL1', 'iL2', 'iL3', 'iL4', 'iL5', 'iL6', 'iL7'] as const
 const STRIDE = LANES.length * 4
@@ -92,7 +92,7 @@ function pack(inst: FxInstances, out: Float32Array, n: number, time: number): vo
     const a = k * 3
     const b = k * 4
     out[o] = inst.center[a]!; out[o + 1] = inst.center[a + 1]!; out[o + 2] = inst.center[a + 2]!; out[o + 3] = time
-    out[o + 4] = inst.axisX[a]!; out[o + 5] = inst.axisX[a + 1]!; out[o + 6] = inst.axisX[a + 2]!
+    out[o + 4] = inst.axisX[a]!; out[o + 5] = inst.axisX[a + 1]!; out[o + 6] = inst.axisX[a + 2]!; out[o + 7] = inst.life[k]!
     out[o + 8] = inst.axisY[a]!; out[o + 9] = inst.axisY[a + 1]!; out[o + 10] = inst.axisY[a + 2]!
     out[o + 12] = inst.axisZ[a]!; out[o + 13] = inst.axisZ[a + 1]!; out[o + 14] = inst.axisZ[a + 2]!
     for (let c = 0; c < 4; c++) {
