@@ -615,6 +615,8 @@ export async function exportModel(
       alphaMode: m.look.alpha,
       ...(m.look.alpha === 'MASK' ? { alphaCutoff: 0.5 } : {}),
       doubleSided: m.look.double,
+      // 테두리 짝의 몫 — `monModel`의 `rimLook`이 읽는다 (`albedo`의 `rimPairs`)
+      ...(m.look.role ? { extras: { role: m.look.role } } : {}),
     })
     materialOf.set(m.name, materials.length - 1)
   }
@@ -830,7 +832,7 @@ export async function exportModel(
       // ⚠️ **재질이 없으면 그리지 않는다.** three는 재질 없는 조각을 **기본
       // 흰색**으로 그린다 — 리자몽 꼬리·또가스 연기·로토무 오라에 흰 덩어리가
       // 붙는다. 색이 있는 것은 알베도가 구워 주고, 여기 남는 것은 스텐실로
-      // 깎아 내는 `*Mask` 조각뿐이라 안 그리는 것이 맞다. 노드 추출기가 같은
+      // 깎아 내는 `*Mask` 조각뿐이라 안 그리는 것이 맞다(테두리 짝의 마스크는 알베도가 깊이용 재질을 준다 — `rimPairs`). 노드 추출기가 같은
       // 자리에서 같은 일을 한다 (`bdspGlb.py`의 `noMaterial` — 54종 233조각)
       const mat = materialOf.get(matKey)
       if (mat === undefined) { noMaterial.push(name || meshName); return }

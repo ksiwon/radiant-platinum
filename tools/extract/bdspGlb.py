@@ -532,6 +532,8 @@ def export(bundle, out: Path, color_index: int | None = None,
             "alphaMode": mode,
             **({"alphaCutoff": 0.5} if mode == "MASK" else {}),
             "doubleSided": bool(look.get("double", False)),
+            # 테두리 짝의 몫 — `monModel`의 `rimLook`이 읽는다 (`bdsp_bake_albedo`의 `rim_pairs`)
+            **({"extras": {"role": look["role"]}} if look.get("role") else {}),
         })
         by_name[name] = len(materials) - 1
         png.unlink()

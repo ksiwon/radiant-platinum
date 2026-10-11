@@ -115,6 +115,8 @@ interface MaterialLook {
   wrap: [number, number]
   alpha: string
   double: boolean
+  /** 테두리 짝의 몫 (`rimPairs`) — glTF 재질 `extras.role`로 나가고 `monModel`이 그리는 법을 바꾼다 */
+  role?: 'rim' | 'rimMask'
 }
 
 interface BakedMaterial {
@@ -395,12 +397,15 @@ function effectAlbedo(
   uvs: ReadonlyMap<string, [number, number, number, number]>,
   textureAt: ReadonlyMap<number, () => Texture>,
   maxSize: number | null,
+  rim = false,
 ): BakedMaterial | null {
+  // ⚠️ 재질에 적힌 색은 **감마(sRGB)** 다 — 선형으로 내려 곱하고 다시 감마로 올린다. 노드 `bdsp_bake_albedo.py`의
+  // `to_linear`가 그렇다(배정밀도로 내리고 float32로 담는다). 항등으로 두면 불꽃·오라가 더 밝게 구워진다
+  const lin = (v: number): number => f32(v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
   const rgbOf = (prop: string): [number, number, number] | null => {
     const c = colors.get(prop) as Record<string, number> | undefined
-    return c ? [c.r ?? 0, c.g ?? 0, c.b ?? 0] : null
+    return c ? [lin(c.r ?? 0), lin(c.g ?? 0), lin(c.b ?? 0)] : null
   }
-  // ⚠️ 유니티가 적어 둔 색은 이미 선형이다 — 다시 안 편다 (`to_linear`가 항등이다)
   const base = rgbOf('_BaseColor')
   if (base === null) return null
   const top = rgbOf('_LayerColor') ?? base
@@ -422,6 +427,8 @@ function effectAlbedo(
     pixels = Uint8Array.from([
       byte(linearToSrgb(base[0])), byte(linearToSrgb(base[1])), byte(linearToSrgb(base[2])), 255,
     ])
+    // 마스크와 짝인 껍질(로토무 오라)은 불투명한 한 색이다 — 마스크 바깥 테두리로만 선다 (`rimPairs`)
+    if (rim) look = { ...look, alpha: 'OPAQUE', double: false, role: 'rim' }
   } else {
     const tex = textureAt.get(slots.get(shapeKey)!)!()
     width = tex.width
@@ -460,6 +467,68 @@ function effectAlbedo(
     height = h
   }
   return { name, look, width, height, pixels }
+}
+
+/**
+ * **모양 그림 없는 껍질과 그 짝 마스크** — 원판은 둘로 테두리를 그린다. 로토무(`pm0479`) 여섯 판뿐이다.
+ *
+ * 원판 재질(`pm0479_11_00`)을 읽으면 이렇다:
+ *
+ * | 조각 | 재질 | 폭(x) | 그리는 법 |
+ * |---|---|---|---|
+ * | `BodySkin` | `BodyRotom` | ±0.051 | 주황 몸통 |
+ * | `FireMaskASkin` | `FireMask` (`MASK_CALC_MODE_ADD _ZWRITE_ON`) | ±0.065 | `_ZWrite` 1 · `_ZTest` 4 — 깊이만 |
+ * | `FireCoreSkin` | `FireCore` (`_BaseColor` 하늘색 · 모양 그림 없음) | ±0.07 | `_ZWrite` 0 · `_ZTest` 8(늘) · `_Stencil` 1 |
+ *
+ * 껍질은 마스크가 덮은 자리를 스텐실로 비켜 그리므로 화면에는 **마스크 실루엣 바깥 · 껍질 실루엣 안쪽의 하늘색 테두리**만
+ * 남는다(비교 함수는 셰이더에 있어 못 읽었다 — 같다면 몸통 위를 통째로 덮을 뿐이라 다르다고 본다). 우리는 스텐실 대신
+ * 깊이로 같은 꼴을 낸다: 마스크는 색 없이 깊이만 쓰고(`rimMask`), 껍질은 **뒷면만** 깊이 검사를 받아 그린다(`rim`) —
+ * 마스크 실루엣 안에서는 껍질의 뒷면이 마스크 앞면보다 멀어 가려진다. `monModel`의 `rimLook`이 그렇게 건다.
+ *
+ * ⚠️ 이것을 하기 전에는 마스크를 버리고 껍질을 불투명으로 세워서 **몸 전체가 하늘색 덩어리**였다(배틀 · 도감).
+ *
+ * ⚠️ **노드 추출기와 같아야 한다** (`tools/extract/bdsp_bake_albedo.py`의 `rim_pairs`)
+ */
+function rimPairs(
+  env: Environment, mainProps: readonly string[], carved: ReadonlySet<string>,
+): { cores: Set<string>, masks: Set<string> } {
+  const shapeless: string[] = []
+  const names = new Set<string>()
+  for (const e of env.ofType('Material')) {
+    const v = env.readEntry(e) as Props | null
+    if (!v) continue
+    const name = (v.m_Name as string | undefined) ?? ''
+    names.add(name)
+    const saved = (v.m_SavedProperties ?? {}) as Props
+    const texEnvs = pairs(saved.m_TexEnvs)
+    const has = (prop: string): boolean =>
+      num(((texEnvs.get(prop) as Props | undefined)?.m_Texture as Props | undefined)?.m_PathID) !== 0
+    if (!pairs(saved.m_Colors).has('_BaseColor') || carved.has(name)) continue
+    if (mainProps.some(has) || EFFECT_SHAPE_PROPS.some(has)) continue
+    shapeless.push(name)
+  }
+  const cores = new Set<string>()
+  const masks = new Set<string>()
+  for (const core of shapeless) {
+    const at = core.lastIndexOf('Core')
+    if (at < 0) continue
+    const mask = `${core.slice(0, at)}Mask${core.slice(at + 4)}`
+    if (!names.has(mask)) continue
+    cores.add(core)
+    masks.add(mask)
+  }
+  return { cores, masks }
+}
+
+/** 테두리 짝의 마스크 — 색은 안 쓰므로 한 점이다. 깊이만 쓰게 하는 것은 `monModel`이다 */
+function rimMask(name: string): BakedMaterial {
+  return {
+    name,
+    look: { uv: [1, 1, 0, 0], wrap: [10497, 10497], alpha: 'OPAQUE', double: false, role: 'rimMask' },
+    width: 1,
+    height: 1,
+    pixels: Uint8Array.from([0, 0, 0, 255]),
+  }
 }
 
 /**
@@ -567,6 +636,7 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
   const shrink = options.premultiplied ? resizePremultiplied : resize
   const overrides = colorOverrides(env, options.colorIndex ?? null)
   const carved = carvedShells(env, mainProps)
+  const rims = rimPairs(env, mainProps, carved)
 
   const textureAt = new Map<number, () => Texture>()
   for (const e of env.ofType('Texture2D')) {
@@ -622,9 +692,10 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
     if (found === undefined) {
       // 밑그림이 없는 재질이 셋으로 갈린다 — 깊이로 깎여야 하는데 우리가 못 깎는
       // 껍데기는 통째로 빼고(`carvedShells`), 색이 재질에 적힌 불꽃·연기는 굽고
-      // (`effectAlbedo`), 색도 없는 `FireMask*`는 지어내지 않고 건너뛴다
+      // (`effectAlbedo`), 색도 없는 `FireMask*`는 지어내지 않고 건너뛴다 — 테두리 짝의 마스크만 깊이용으로 남긴다(`rimPairs`)
       if (carved.has(name)) continue
-      const effect = effectAlbedo(key, colors, slots, uvs, textureAt, maxSize)
+      if (rims.masks.has(name)) { out.push(rimMask(key)); continue }
+      const effect = effectAlbedo(key, colors, slots, uvs, textureAt, maxSize, rims.cores.has(name))
       if (effect) out.push(effect)
       continue
     }
