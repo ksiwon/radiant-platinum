@@ -2653,7 +2653,15 @@ WebGL2(ANGLE) 폴백 이야기로 읽어야 한다. 맵 118(사람 26)은 평균
 #### 남은 몸 대체 (G4 · 쉬운 길)
 
 - **남자 점원**(`CASHIER_M` 20곳): 점원(`clerk`)이 여자 하나뿐이라 전부 여자 몸이었다. BDSP에 이미 있는 남자 제복 몸 작업원 `fc0040_00`(모자 · 작업복 재질)으로 바꿨다 — 새 몸 없이 가장 가까운 것. 화면 확인은 아직 안 했다.
-- **핸섬 중절모 · 플루토**: BDSP 이름표 표(`bdspNpc.json` 필드 121 · 배틀 95 갈래)에 핸섬 · 플루토 · 프런티어 안내원에 해당하는 갈래가 없다(이름표 없는 몸 셋까지 앞서 열어 봤다). 그대로 둔다 — 핸섬은 갬블러 몸(모자는 코트와 한 조각), 플루토는 연구원 몸에 머리만 칠한 판.
+- **핸섬 중절모 · 플루토**: BDSP에 몸이 없다고 판단한다. 찾아 본 곳:
+  ① `Characters/persons/field` 161 · `persons/battle` 124 · `objects` 번들 413개의 텍스처 · 재질 · 게임오브젝트 · 메시 · 클립 · 아바타 이름에서
+  `looker|handsome|charon|pluto|inspector|detective|interpol|saturn|akagi` — 0건.
+  ② `Message/english` · `Message/korean` 문장 은행 — 「Looker」는 아이템 713 **핸섬티켓**(`ITEMNAME_713`)에서만 나오고(영어 Looker Ticket · 한국어 핸섬티켓),
+  인물 이름표(`DP_Trainers_Name_*`)에는 핸섬 · 카론(플루토)이 없다(갤럭시단은 마스 · 쥬피터 · 새턴뿐).
+  ③ `Dpr/masterdatas`(맵 워프 · 장소 표) · `Dpr/ev_script` · `Dpr/scriptableobjects/gamesettings`(맵 정보 · 조우표)에서 같은 낱말 — 0건. 필드 캐릭터 → 모델 표 자체는 AssetAssistant에 없다
+  (앱 본체 쪽이다) — 그래서 표로 거꾸로 짚는 길은 막혀 있다.
+  핸섬 · 카론은 플래티넘에서 더해진 인물이라 DP를 옮긴 BDSP에 몸이 없는 것이 이야기와도 맞는다. 그대로 둔다 — 핸섬은 갬블러 몸(`fc1051_00-looker`, 모자는 코트와 한 조각),
+  플루토는 연구원 몸에 머리만 칠한 판(`fc1041_00-charon`).
 - **프런티어 안내원**(15곳): 접수원 둘(`fc2012_00` · `fc2015_00`)보다 원작 그림(`bfsm` · `bfsw`)에 가까운 BDSP 몸이 표에 없어 그대로 둔다.
 
 #### 필드 NPC의 서 있기 · 말하는 입
