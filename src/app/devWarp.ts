@@ -32,10 +32,15 @@ import type { EncounterTable } from '../engine/battle/encounter'
 import type { Checkpoint, PartySpec } from '../engine/dev/checkpoints'
 import { assets, readJson } from '../data/providers/assetProvider'
 
-export const devWarp = {
+// ⚠️ **상태는 모듈이 아니라 `globalThis`가 쥔다.** 파일이 바뀌면 vite HMR이 앱 쪽 import를 `?t=<시각>` 붙은
+// 주소로 다시 불러서, 하네스가 `import('/src/app/devWarp.ts')`로 얻는 모듈과 앱이 쥔 모듈이 **서로 다른 사본**이 된다.
+// 하네스가 `pending`을 써도 씬은 다른 객체를 읽어 `shot --warp`가 조용히 아무것도 안 했다(서버를 다시 띄우면 풀렸다).
+// 한 객체를 두 사본이 같이 보게 한다. 이 파일은 개발 빌드에서만 올라온다
+const devWarpState = globalThis as unknown as { __devWarp?: { pending: Checkpoint | null } }
+export const devWarp: {
   /** 씬이 처리해야 할 확인 지점. 처리하고 나면 씬이 null로 되돌린다 */
-  pending: null as Checkpoint | null,
-}
+  pending: Checkpoint | null
+} = (devWarpState.__devWarp ??= { pending: null })
 
 /** 다친 파티를 만들 때 남기는 비율. 회복이 눈에 보일 만큼 낮아야 한다 */
 const HURT_FRACTION = 1 / 3
