@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import struct
 import sys
@@ -273,6 +274,129 @@ def motion_extras(floats: dict, colors: dict, layered: bool) -> dict | None:
     return out or None
 
 
+def flipped(m: np.ndarray) -> np.ndarray:
+    """Unity 월드 행렬 → 원작 좌표(x 뒤집기)의 행렬 `F·W·F` — `matrix.ts`의 `flipped`와 같다."""
+    out = m.copy()
+    out[0, 1:] *= -1
+    out[1:, 0] *= -1
+    return out
+
+
+def column_major(m: np.ndarray) -> list[float]:
+    """glTF 노드 행렬(열 우선) — `matrix.ts`의 `columnMajor`와 같다."""
+    return [float(m[r, c]) for c in range(4) for r in range(4)]
+
+
+def decompose(m: np.ndarray) -> tuple[list[float], list[float], list[float]]:
+    """행 우선 4×4 → 이동 · 회전(사원수 x y z w) · 배율 — `matrix.ts`의 `decompose`와 같다. 밀림은 버린다."""
+    cx, cy, cz = m[:3, 0], m[:3, 1], m[:3, 2]
+    sx, sy, sz = float(np.linalg.norm(cx)), float(np.linalg.norm(cy)), float(np.linalg.norm(cz))
+    det = (cx[0] * (cy[1] * cz[2] - cy[2] * cz[1]) - cy[0] * (cx[1] * cz[2] - cx[2] * cz[1])
+           + cz[0] * (cx[1] * cy[2] - cx[2] * cy[1]))
+    if det < 0:
+        sx = -sx
+    r00, r10, r20 = cx[0] / sx, cx[1] / sx, cx[2] / sx
+    r01, r11, r21 = cy[0] / sy, cy[1] / sy, cy[2] / sy
+    r02, r12, r22 = cz[0] / sz, cz[1] / sz, cz[2] / sz
+    trace = r00 + r11 + r22
+    if trace > 0:
+        k = 0.5 / math.sqrt(trace + 1)
+        w, x, y, z = 0.25 / k, (r21 - r12) * k, (r02 - r20) * k, (r10 - r01) * k
+    elif r00 > r11 and r00 > r22:
+        k = 2 * math.sqrt(1 + r00 - r11 - r22)
+        w, x, y, z = (r21 - r12) / k, 0.25 * k, (r01 + r10) / k, (r02 + r20) / k
+    elif r11 > r22:
+        k = 2 * math.sqrt(1 + r11 - r00 - r22)
+        w, x, y, z = (r02 - r20) / k, (r01 + r10) / k, 0.25 * k, (r12 + r21) / k
+    else:
+        k = 2 * math.sqrt(1 + r22 - r00 - r11)
+        w, x, y, z = (r10 - r01) / k, (r02 + r20) / k, (r12 + r21) / k, 0.25 * k
+    length = math.sqrt(x * x + y * y + z * z + w * w) or 1.0
+    return [float(m[0, 3]), float(m[1, 3]), float(m[2, 3])], [x / length, y / length, z / length, w / length], [sx, sy, sz]
+
+
+def euler_of(q: list[float]) -> list[float]:
+    """사원수(유니티 로컬) → 오일러(도 · ZXY: `Ry·Rx·Rz`). x는 ±90도 안쪽 — `field.ts`의 `eulerOf`와 같다."""
+    x, y, z, w = q
+    r12 = 2 * (y * z - x * w)
+    sx = max(-1.0, min(1.0, -r12))
+    rad = 180 / math.pi
+    if abs(sx) > 0.999999:
+        r20, r00 = 2 * (x * z - y * w), 1 - 2 * (y * y + z * z)
+        return [math.asin(sx) * rad, math.atan2(-r20, r00) * rad, 0.0]
+    r02, r22 = 2 * (x * z + y * w), 1 - 2 * (x * x + y * y)
+    r10, r11 = 2 * (x * y + z * w), 1 - 2 * (x * x + z * z)
+    return [math.asin(sx) * rad, math.atan2(r02, r22) * rad, math.atan2(r10, r11) * rad]
+
+
+#: DOTween 열거 `AnimationType` — 3 Rotate(월드) · 4 LocalRotate · `Ease.Linear` 1
+DOTWEEN_ROTATE, DOTWEEN_LOCAL_ROTATE, DOTWEEN_LINEAR = 3, 4, 1
+
+
+def moving_of(go, transform, cache: dict) -> dict | None:
+    """혼자 움직이는 물체인가 — `field.ts`의 `movingOf`와 같은 규칙이다 (풍차 · 기계 · 지구본의 DOTween 회전, 석탄 더미의 Mecanim 클립).
+
+    자식 없는 잎 물체만. DOTween은 `autoPlay` · 무한 · Restart · 선형 · 상대인 회전만 읽는다. 아니면 `None`
+    """
+    if len(transform.m_Children) > 0:
+        return None
+    spin = None
+    world = False
+    clip = None
+    for c in go.m_Components:
+        try:
+            reader = c.deref()
+            kind = reader.type.name
+        except Exception:
+            continue
+        if kind == "MonoBehaviour":
+            try:
+                mb = reader.read_typetree()
+            except Exception:
+                continue
+            tween = mb.get("animationType")
+            if tween not in (DOTWEEN_ROTATE, DOTWEEN_LOCAL_ROTATE):
+                continue
+            end = mb.get("endValueV3") or {}
+            secs = float(mb.get("duration", 0))
+            if (not secs > 0 or mb.get("loops") != -1 or mb.get("loopType") != 0 or mb.get("easeType") != DOTWEEN_LINEAR
+                    or mb.get("isRelative") != 1 or mb.get("autoPlay") != 1 or mb.get("delay") != 0 or mb.get("isFrom") != 0):
+                continue
+            spin = {"euler": [], "add": [end.get("x", 0.0), end.get("y", 0.0), end.get("z", 0.0)], "secs": secs}
+            world = tween == DOTWEEN_ROTATE
+        elif kind == "Animator":
+            try:
+                a = reader.read_typetree()
+                ref = a.get("m_Controller") or {}
+                if ref.get("m_FileID", 0) != 0 or ref.get("m_PathID", 0) == 0:
+                    continue
+                ctrl = c.assetsfile.objects[ref["m_PathID"]].read_typetree()
+            except Exception:
+                continue
+            for k in ctrl.get("m_AnimationClips") or []:
+                if k.get("m_FileID", 0) == 0 and k.get("m_PathID", 0) != 0 and clip is None:
+                    clip = int(k["m_PathID"])
+    if spin is None and clip is None:
+        return None
+    father = getattr(transform, "m_Father", None)
+    has_father = father is not None and getattr(father, "m_PathID", 0) != 0
+    world_m = world_of(transform, cache)
+    parent = None if world or not has_father else world_of(father.read(), cache)
+    q = transform.m_LocalRotation
+    local_q = [q.x, q.y, q.z, q.w]
+    if world or not has_father:
+        t, r, s = decompose(flipped(world_m))
+        body = {"t": t, "r": r, "s": s}
+        euler_q = decompose(world_m)[1]
+    else:
+        p, sc = transform.m_LocalPosition, transform.m_LocalScale
+        body = {"t": [-p.x, p.y, p.z], "r": [q.x, -q.y, -q.z, q.w], "s": [sc.x, sc.y, sc.z]}
+        euler_q = local_q
+    if spin is not None:
+        spin["euler"] = euler_of(euler_q)
+    return {"parent": parent, "body": body, "spin": spin, "clip": clip, "name": go.m_Name or "move"}
+
+
 def top_group(transform) -> str:
     """뿌리 바로 아래 자식의 이름 — 나무열매 `kinoNNN`의 `Miki`(줄기) · `Hana`(꽃) · `Mi`(열매)"""
     chain = []
@@ -478,6 +602,8 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
     parts: dict[tuple[str, int], list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]]] = {}
     dropped = 0
     kept = 0
+    #: 혼자 움직이는 묶음(`move:<Transform>`) → 그 물체 (`moving_of`)
+    movers: dict[str, dict] = {}
     for mf in filters:
         try:
             mesh = mf.m_Mesh.read()
@@ -500,6 +626,8 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         except Exception:
             continue
         world = world_of(transform, cache)
+        # 혼자 움직이는 물체(풍차 · 기계 · 석탄 더미)는 제 좌표에 두고 따로 싣는다 (`arena.ts`의 `moving`과 같다)
+        move = moving_of(go, transform, cache) if motion else None
 
         handler = MeshHelper.MeshHandler(mesh)
         handler.process()
@@ -507,13 +635,15 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         if n == 0:
             continue
         verts = np.array(handler.m_Vertices, dtype=np.float64).reshape(-1, 3)
-        verts = (world[:3, :3] @ verts.T).T + world[:3, 3]
-        if far is not None and float(np.min(np.hypot(verts[:, 0], verts[:, 2]))) > far:
-            dropped += 1
-            continue
+        if move is None:
+            verts = (world[:3, :3] @ verts.T).T + world[:3, 3]
+            if far is not None and float(np.min(np.hypot(verts[:, 0], verts[:, 2]))) > far:
+                dropped += 1
+                continue
         kept += 1
         normals = lanes(handler.m_Normals, n, 3, [0.0, 1.0, 0.0])
-        normals = (world[:3, :3] @ normals.T).T
+        if move is None:
+            normals = (world[:3, :3] @ normals.T).T
         length = np.linalg.norm(normals, axis=1, keepdims=True)
         normals = np.where(length > 1e-9, normals / np.maximum(length, 1e-9), [0.0, 1.0, 0.0])
         uv_raw = lanes(handler.m_UV0, n, 2, [0.0, 0.0]).astype(np.float32)
@@ -555,7 +685,14 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
                 rgb = base[None, :] * (one - vertex_alpha)[:, None] + top[None, :] * vertex_alpha[:, None]
                 col = np.concatenate([rgb, np.ones((n, 1), np.float32)], axis=1).astype(np.float32)
             wind = wind_all if slot in swing_slots else None
-            parts.setdefault((top_group(transform) if groups else bundle.name, slot), []).append((
+            # 묶음 이름 = 이름 + 월드 자리(세 자리) — `arena.ts`와 같다 (PathID는 그쪽에서 64비트가 뭉개진다)
+            def at(v: float) -> str:
+                return f"{0.0 if abs(v) < 5e-4 else v:.3f}"
+            group = (f"move:{move['name']}:{at(world[0, 3])}:{at(world[1, 3])}:{at(world[2, 3])}" if move
+                     else (top_group(transform) if groups else bundle.name))
+            if move:
+                movers[group] = move
+            parts.setdefault((group, slot), []).append((
                 verts.astype(np.float32), normals.astype(np.float32), uv, tri, col, wind,
             ))
 
@@ -605,11 +742,37 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
             prim["material"] = slot
         primitives.append(prim)
 
+    # 노드 — 합친 묶음은 노드 하나, 움직이는 것은 닻(부모 월드 · 정지) → 몸(제 로컬 TRS · 움직임) 둘 (`arena.ts`와 같다)
+    nodes: list[dict] = []
+    body_of: dict[int, dict] = {}
+    for i, g in enumerate(meshes):
+        mv = movers.get(g)
+        if mv is None:
+            nodes.append({"name": g, "mesh": i})
+            continue
+        body = {"name": mv["name"], "mesh": i, "translation": mv["body"]["t"], "rotation": mv["body"]["r"],
+                "scale": mv["body"]["s"]}
+        if mv["spin"] is not None:
+            body["extras"] = {"spin": mv["spin"]}
+        if mv["parent"] is not None:
+            nodes.append({"name": f"{mv['name']}/anchor", "matrix": column_major(flipped(mv["parent"])),
+                          "children": [len(nodes) + 1]})
+        body_of[len(nodes)] = mv
+        nodes.append(body)
+    animations: list[dict] = []
+    for node, mv in body_of.items():
+        if mv["clip"] is None:
+            continue
+        from bdspGlb import build_animations
+        made, _ = build_animations(env, buf, {0: node}, None, False, {mv["clip"]})
+        animations += [{**a, "name": mv["name"]} for a in made]
+    kids = {c for n in nodes for c in n.get("children", [])}
+
     gltf = {
         "asset": {"version": "2.0", "generator": "radiant-platinum bdspArena"},
         "scene": 0,
-        "scenes": [{"nodes": list(range(len(meshes)))}],
-        "nodes": [{"name": g, "mesh": i} for i, g in enumerate(meshes)],
+        "scenes": [{"nodes": [i for i in range(len(nodes)) if i not in kids]}],
+        "nodes": nodes,
         "meshes": [{"name": g, "primitives": p} for g, p in meshes.items()],
         "materials": materials,
         "textures": textures,
@@ -621,6 +784,8 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
     # 빈 배열은 glTF가 안 받는다
     if samplers:
         gltf["samplers"] = samplers
+    if animations:
+        gltf["animations"] = animations
     # TV 화면의 첫 칸 (`flipbook_cell`) — 적어 두어야 로더가 읽는다
     if transformed:
         gltf["extensionsUsed"] = ["KHR_texture_transform"]

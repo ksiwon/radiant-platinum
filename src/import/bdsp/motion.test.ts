@@ -124,19 +124,21 @@ describe('movingOf', () => {
     // 부모 월드(이동 10, 0, 5)가 닻이다
     expect(move!.parent![3]).toBe(10)
     expect(move!.parent![11]).toBe(5)
-    expect(move!.local[3]).toBe(1)
+    // 몸은 부모 공간의 로컬이고 x를 뒤집었다 — 이동 (1, 2, 3) → (−1, 2, 3), y 22.5도 사원수 → y 부호 반대
+    expect(move!.body.t).toEqual([-1, 2, 3])
+    expect(move!.body.r[1]).toBeCloseTo(-Math.sin(Math.PI / 8), 9)
   })
 
   it('월드 회전(Rotate · 지구본)은 닻이 없고 몸의 로컬이 곧 월드다', () => {
     const env = fakeEnv({ 20: { type: 'MonoBehaviour', value: { ...DOTWEEN, animationType: 3, endValueV3: xyz(0, -360, 0), duration: 15 } } })
     const move = movingOf(env, goOf([2, 20]), 2, new Map<number, Mat4>())!
     expect(move.parent).toBeNull()
-    expect(move.local[3]).toBe(11)
+    expect(move.body.t[0]).toBe(-11)
     expect(move.spin!.add).toEqual([0, -360, 0])
   })
 
   it('자동이 아니거나 되풀이가 아니거나 상대가 아니면 안 싣는다', () => {
-    for (const bad of [{ autoPlay: 0 }, { loops: 3 }, { loopType: 1 }, { isRelative: 0 }, { easeType: 6 }, { animationType: 5 }]) {
+    for (const bad of [{ autoPlay: 0 }, { loops: 3 }, { loopType: 1 }, { isRelative: 0 }, { easeType: 6 }, { animationType: 5 }] as Props[]) {
       const env = fakeEnv({ 20: { type: 'MonoBehaviour', value: { ...DOTWEEN, ...bad } } })
       expect(movingOf(env, goOf([2, 20]), 2, new Map<number, Mat4>())).toBeNull()
     }

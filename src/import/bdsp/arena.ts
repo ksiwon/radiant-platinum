@@ -16,6 +16,9 @@ import {
 } from './glb'
 import { meshFrom, CHANNEL, type MeshData } from './mesh'
 import { motionExtras, swingWeights, SWING_ATTRIBUTE } from './motion'
+import { buildAnimations } from './model'
+import { columnMajor, flipped } from './matrix'
+import type { Moving } from './field'
 import { readTexture, resize, resizePremultiplied, resource, type Texture } from './texture'
 import type { Environment } from './environment'
 import type { UnityValue } from './typetree'
@@ -619,6 +622,11 @@ interface ArenaOptions {
   plant?: boolean
   /** 흐름 · 흔들림 값을 싣는다 (`bakeLooks`의 `motion`) — 방이 켠다 */
   motion?: boolean
+  /**
+   * 혼자 움직이는 물체를 가르는 함수 (`field.ts`의 `movingOf`) — 주면 그 물체는 합치지 않고 노드 둘(닻 · 몸)로 싣는다.
+   * ⚠️ `field.ts`가 이 파일을 불러서 여기서 못 불러온다(순환) — 부르는 쪽(`convert.ts`)이 넘긴다
+   */
+  moving?: (env: Environment, go: Props, transformPid: number, cache: Map<number, Mat4>) => Moving | null
 }
 
 interface ArenaStat {
@@ -694,6 +702,8 @@ export async function exportArena(
     await bakeLooks(env, encodePng, buf, { maxSize: options.maxSize ?? null, premultiplied: options.premultiplied ?? false, plant: options.plant ?? false, motion: options.motion ?? false })
 
   const cache = new Map<number, Mat4>()
+  /** 혼자 움직이는 묶음(`move:<Transform>`) → 그 물체 */
+  const movers = new Map<string, Moving>()
   /** 묶음 이름 → (재질 슬롯 → 그 재질로 그리는 조각들). `groups`가 아니면 묶음은 `name` 하나다 */
   const parts = new Map<string, Map<number, Part[]>>()
   let kept = 0
@@ -741,7 +751,12 @@ export async function exportArena(
     if (slots.length === 0 || transformPid === 0) continue
 
     const world = worldOf(env, transformPid, cache)
-    const group = options.groups ? topGroup(env, transformPid) : name
+    // 혼자 움직이는 물체(풍차 · 기계 · 석탄 더미)는 제 좌표에 두고 따로 싣는다 (`Moving`)
+    const move = options.moving ? options.moving(env, go, transformPid, cache) : null
+    // 묶음 이름 = 이름 + 월드 자리(세 자리) — PathID는 자바스크립트에서 64비트가 뭉개져 노드 쪽(`bdspArena.py`)과 갈린다
+    const at = (v: number): string => (Math.abs(v) < 5e-4 ? 0 : v).toFixed(3)
+    const group = move ? `move:${move.name}:${at(world[3]!)}:${at(world[7]!)}:${at(world[11]!)}` : options.groups ? topGroup(env, transformPid) : name
+    if (move) movers.set(group, move)
     const n = mesh.vertexCount
     const rawPos = mesh.attributes.get(CHANNEL.position)
     if (!rawPos) continue
@@ -751,6 +766,11 @@ export async function exportArena(
     let nearest = Infinity
     for (let i = 0; i < n; i++) {
       const x = src[i * 3]!; const y = src[i * 3 + 1]!; const z = src[i * 3 + 2]!
+      if (move) {
+        // 제 좌표 그대로 — x만 뒤집는다. 월드로 옮기는 것은 노드의 몫이다
+        verts[i * 3] = -x; verts[i * 3 + 1] = y; verts[i * 3 + 2] = z
+        continue
+      }
       const wx = world[0]! * x + world[1]! * y + world[2]! * z + world[3]!
       const wy = world[4]! * x + world[5]! * y + world[6]! * z + world[7]!
       const wz = world[8]! * x + world[9]! * y + world[10]! * z + world[11]!
@@ -769,6 +789,11 @@ export async function exportArena(
       n, 3, [0, 1, 0])
     for (let i = 0; i < n; i++) {
       const x = rawNrm[i * 3]!; const y = rawNrm[i * 3 + 1]!; const z = rawNrm[i * 3 + 2]!
+      if (move) {
+        const len = Math.hypot(x, y, z)
+        if (len > 1e-9) { normals[i * 3] = -x / len; normals[i * 3 + 1] = y / len; normals[i * 3 + 2] = z / len } else normals[i * 3 + 1] = 1
+        continue
+      }
       const wx = world[0]! * x + world[1]! * y + world[2]! * z
       const wy = world[4]! * x + world[5]! * y + world[6]! * z
       const wz = world[8]! * x + world[9]! * y + world[10]! * z
@@ -835,7 +860,8 @@ export async function exportArena(
       else bySlot.set(slot, [part])
     }
 
-    for (let i = 0; i < n; i++) {
+    // 움직이는 물체의 정점은 제 좌표라 방 치수에 안 센다
+    for (let i = 0; i < (move ? 0 : n); i++) {
       const x = verts[i * 3]!; const y = verts[i * 3 + 1]!; const z = verts[i * 3 + 2]!
       if (x < lowX) lowX = x
       if (x > highX) highX = x
@@ -901,11 +927,35 @@ export async function exportArena(
     }
   }
 
+  // 노드 — 합친 묶음은 노드 하나, 움직이는 것은 닻(부모 월드 · 정지) → 몸(제 로컬 TRS · 움직임) 둘 (`field.ts`와 같다)
+  const nodes: Record<string, unknown>[] = []
+  const bodyOf = new Map<number, Moving>()
+  meshes.forEach((m, i) => {
+    const mv = movers.get(m.name)
+    if (!mv) { nodes.push({ name: m.name, mesh: i }); return }
+    const body: Record<string, unknown> = {
+      name: mv.name, mesh: i, translation: mv.body.t, rotation: mv.body.r, scale: mv.body.s,
+      ...(mv.spin ? { extras: { spin: mv.spin } } : {}),
+    }
+    if (mv.parent) {
+      nodes.push({ name: `${mv.name}/anchor`, matrix: columnMajor(flipped(mv.parent)), children: [nodes.length + 1] })
+    }
+    bodyOf.set(nodes.length, mv)
+    nodes.push(body)
+  })
+  const animations: Record<string, unknown>[] = []
+  for (const [node, mv] of bodyOf) {
+    if (mv.clip === undefined) continue
+    for (const a of buildAnimations(env, buf, new Map([[0, node]]), null, false, new Set([mv.clip])).animations) animations.push({ ...a, name: mv.name })
+  }
+  const kids = new Set<number>()
+  for (const n of nodes) for (const c of (n.children as number[] | undefined) ?? []) kids.add(c)
+
   const gltf: Gltf & { extensionsUsed?: string[] } = {
     asset: { version: '2.0', generator: 'radiant-platinum bdsp arena' },
     scene: 0,
-    scenes: [{ nodes: meshes.map((_, i) => i) }],
-    nodes: meshes.map((m, i) => ({ name: m.name, mesh: i })),
+    scenes: [{ nodes: nodes.map((_, i) => i).filter((i) => !kids.has(i)) }],
+    nodes,
     meshes,
     materials,
     textures,
@@ -916,6 +966,7 @@ export async function exportArena(
   }
   // 빈 배열은 glTF가 안 받는다
   if (samplers.length > 0) gltf.samplers = samplers
+  if (animations.length > 0) gltf.animations = animations
   // TV 화면의 첫 칸 (`flipbookCell`)
   if (transformed) gltf.extensionsUsed = ['KHR_texture_transform']
 

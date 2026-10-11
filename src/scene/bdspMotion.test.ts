@@ -30,6 +30,15 @@ describe('spinQuaternion', () => {
     expect(q.y).toBeCloseTo(-Math.sin((40 * Math.PI / 180) / 2), 9)
   })
 
+  it('굽는 쪽이 싣는 시작 오일러에서 몸 노드의 사원수가 그대로 나온다 (실측 — d05r0114 풍차)', () => {
+    // 노드 rotation [0.483, 0.224, -0.129, 0.837] · extras.spin.euler [60, -30, 0] (유니티 값)
+    spinQuaternion({ euler: [60, -30, 0], add: [360, 0, 0], secs: 6 }, 0, q)
+    expect(q.x).toBeCloseTo(0.4829629, 6)
+    expect(q.y).toBeCloseTo(0.2241438, 6)
+    expect(q.z).toBeCloseTo(-0.1294095, 6)
+    expect(q.w).toBeCloseTo(0.8365163, 6)
+  })
+
   it('음수 시각도 소수부로 접는다', () => {
     spinQuaternion(spin, -1.5, q)
     expect(q.x).toBeCloseTo(Math.sin(Math.PI * 3 / 4), 9)

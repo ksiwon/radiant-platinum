@@ -13,6 +13,7 @@
 // ⚠️ **굽는 쪽은 이것 하나다.** 개발 산출물(`pnpm extract:fields` → `tools/spike/bdspGroups.mjs`)도 이 파일을 돌린다 — 두 굽는 쪽이 갈릴 자리를 안 만든다
 import { UNITY_PLANE } from './unityBuiltin'
 import { bakeLooks, lanes, worldOf, type ImageShare, type Mat4 } from './arena'
+import { columnMajor, decompose, flipped } from './matrix'
 import { swingWeights, SWING_ATTRIBUTE } from './motion'
 import { buildAnimations } from './model'
 import {
@@ -110,11 +111,11 @@ const ROOT_VARIANTS: readonly RootVariant[] = [
  * 배 `Start`/`Move01`/`Stop` · 사파리 열차 · 기계 `ON`/`OFF` — 은 스크립트가 부를 때 도는 것이라 안 싣는다(`FieldEventEntity.clips`).
  * 번들에서 스스로 도는 것은 이 둘뿐이다: DOTween `autoPlay` 46개(풍차 27 · 기계 18 · 지구본 1)와 `Animator` + 컨트롤러 클립(석탄 20)
  */
-interface Moving {
+export interface Moving {
   /** 부모의 월드 행렬(유니티). 월드로 도는 것(`Rotate`)은 `null` — 몸의 로컬이 곧 월드다 */
   parent: Mat4 | null
-  /** 제 로컬 행렬(유니티) */
-  local: Mat4
+  /** 몸의 이동 · 회전(사원수) · 배율 — **이미 x를 뒤집은** glTF 값이다 (`F·L·F`: 이동 x · 사원수 y · z의 부호) */
+  body: { t: number[], r: number[], s: number[] }
   /** DOTween 회전 — 시작 오일러(도 · 유니티 ZXY) · 한 바퀴 동안 더하는 오일러 · 초 */
   spin?: { euler: number[], add: number[], secs: number }
   /** Mecanim 컨트롤러의 클립 PathID — glTF 애니메이션으로 싣는다 */
@@ -295,51 +296,7 @@ function sameSpot(a: Mat4, b: Mat4): boolean {
   return true
 }
 
-/** Unity 월드 행렬 → 원작 좌표(x 뒤집기)의 행렬. `F·W·F` (F = diag(−1, 1, 1)) */
-export function flipped(w: Mat4): Mat4 {
-  const m = Float64Array.from(w)
-  // 행 0과 열 0의 부호를 바꾼다(교차 칸 [0]은 두 번 바뀌어 그대로)
-  for (let c = 1; c < 4; c++) m[c] = -m[c]!
-  for (let r = 1; r < 4; r++) m[r * 4] = -m[r * 4]!
-  return m
-}
-
-/** 행 우선 4×4 → 이동 · 회전(사원수) · 배율. 밀림(shear)은 버린다 */
-export function decompose(m: Mat4): { t: number[], r: number[], s: number[] } {
-  const col = (c: number): number[] => [m[c]!, m[4 + c]!, m[8 + c]!]
-  const cx = col(0), cy = col(1), cz = col(2)
-  let sx = Math.hypot(...cx); const sy = Math.hypot(...cy); const sz = Math.hypot(...cz)
-  const det = cx[0]! * (cy[1]! * cz[2]! - cy[2]! * cz[1]!) - cy[0]! * (cx[1]! * cz[2]! - cx[2]! * cz[1]!)
-    + cz[0]! * (cx[1]! * cy[2]! - cx[2]! * cy[1]!)
-  if (det < 0) sx = -sx
-  const r00 = cx[0]! / sx, r10 = cx[1]! / sx, r20 = cx[2]! / sx
-  const r01 = cy[0]! / sy, r11 = cy[1]! / sy, r21 = cy[2]! / sy
-  const r02 = cz[0]! / sz, r12 = cz[1]! / sz, r22 = cz[2]! / sz
-  const trace = r00 + r11 + r22
-  let x: number, y: number, z: number, w: number
-  if (trace > 0) {
-    const k = 0.5 / Math.sqrt(trace + 1)
-    w = 0.25 / k; x = (r21 - r12) * k; y = (r02 - r20) * k; z = (r10 - r01) * k
-  } else if (r00 > r11 && r00 > r22) {
-    const k = 2 * Math.sqrt(1 + r00 - r11 - r22)
-    w = (r21 - r12) / k; x = 0.25 * k; y = (r01 + r10) / k; z = (r02 + r20) / k
-  } else if (r11 > r22) {
-    const k = 2 * Math.sqrt(1 + r11 - r00 - r22)
-    w = (r02 - r20) / k; x = (r01 + r10) / k; y = 0.25 * k; z = (r12 + r21) / k
-  } else {
-    const k = 2 * Math.sqrt(1 + r22 - r00 - r11)
-    w = (r10 - r01) / k; x = (r02 + r20) / k; y = (r12 + r21) / k; z = 0.25 * k
-  }
-  const len = Math.hypot(x, y, z, w) || 1
-  return { t: [m[3]!, m[7]!, m[11]!], r: [x / len, y / len, z / len, w / len], s: [sx, sy, sz] }
-}
-
-/** glTF 노드 행렬(열 우선) */
-function columnMajor(m: Mat4): number[] {
-  const out: number[] = []
-  for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) out.push(m[r * 4 + c]!)
-  return out
-}
+export { decompose, flipped }
 
 // ── 문 너머 가짜 실내의 바닥 밑을 도려낸다 ─────────────────────────────────────
 //
@@ -642,36 +599,18 @@ export function movingOf(env: Environment, go: Props, transformPid: number, cach
   const father = num((t.m_Father as Props | undefined)?.m_PathID)
   const worldM = worldOf(env, transformPid, cache)
   const parent = world || father === 0 ? null : worldOf(env, father, cache)
-  // 로컬 = 부모⁻¹ · 월드 — 부모가 없으면(또는 월드로 도는 것이면) 월드가 로컬이다. 행렬 곱 없이 속성에서 바로 짓는다
-  const local = world || father === 0 ? worldM : localFrom(t)
-  if (spin) {
-    const q = (t.m_LocalRotation ?? {}) as Props
-    const lq = world ? decomposeQuat(worldM) : [num(q.x), num(q.y), num(q.z), num(q.w, 1)]
-    spin.euler = eulerOf(lq)
-  }
-  const goName = typeof go.m_Name === 'string' ? go.m_Name : 'move'
-  return { parent, local, ...(spin ? { spin } : {}), ...(clip !== undefined ? { clip } : {}), name: goName }
-}
-
-/** 행렬의 회전(사원수 x · y · z · w) */
-function decomposeQuat(m: Mat4): number[] {
-  const d = decompose(m)
-  return d.r
-}
-
-/** `Transform`의 로컬 행렬(유니티) */
-function localFrom(t: Props): Mat4 {
   const p = (t.m_LocalPosition ?? {}) as Props
   const q = (t.m_LocalRotation ?? {}) as Props
-  const s = (t.m_LocalScale ?? {}) as Props
-  const x = num(q.x), y = num(q.y), z = num(q.z), w = num(q.w, 1)
-  const sx = num(s.x, 1), sy = num(s.y, 1), sz = num(s.z, 1)
-  const m = new Float64Array(16)
-  m[0] = (1 - 2 * (y * y + z * z)) * sx; m[1] = 2 * (x * y - z * w) * sy; m[2] = 2 * (x * z + y * w) * sz; m[3] = num(p.x)
-  m[4] = 2 * (x * y + z * w) * sx; m[5] = (1 - 2 * (x * x + z * z)) * sy; m[6] = 2 * (y * z - x * w) * sz; m[7] = num(p.y)
-  m[8] = 2 * (x * z - y * w) * sx; m[9] = 2 * (y * z + x * w) * sy; m[10] = (1 - 2 * (x * x + y * y)) * sz; m[11] = num(p.z)
-  m[15] = 1
-  return m
+  const sc = (t.m_LocalScale ?? {}) as Props
+  const local = [num(q.x), num(q.y), num(q.z), num(q.w, 1)]
+  // 부모가 없거나 월드로 도는 것이면 월드가 곧 로컬이다. 아니면 속성에서 바로 짓는다 — x를 뒤집은 값(`F·L·F`)
+  const flip = (r: readonly number[]): number[] => [r[0]!, -r[1]!, -r[2]!, r[3]!]
+  const body = world || father === 0
+    ? decompose(flipped(worldM))
+    : { t: [-num(p.x), num(p.y), num(p.z)], r: flip(local), s: [num(sc.x, 1), num(sc.y, 1), num(sc.z, 1)] }
+  if (spin) spin.euler = eulerOf(world || father === 0 ? decompose(worldM).r : local)
+  const goName = typeof go.m_Name === 'string' ? go.m_Name : 'move'
+  return { parent, body, ...(spin ? { spin } : {}), ...(clip !== undefined ? { clip } : {}), name: goName }
 }
 
 export async function exportField(
@@ -1026,9 +965,8 @@ export async function exportField(
     if (g.moving) {
       // 닻(부모 월드 · 정지) → 몸(제 로컬 TRS · 움직임). 로컬도 x를 뒤집는다 (`flipped`)
       const mv = g.moving
-      const d = decompose(flipped(mv.local))
       const body: Record<string, unknown> = {
-        name: mv.name, mesh, translation: d.t, rotation: d.r, scale: d.s,
+        name: mv.name, mesh, translation: mv.body.t, rotation: mv.body.r, scale: mv.body.s,
         ...(mv.spin ? { extras: { spin: mv.spin } } : {}),
       }
       const at = nodes.length
