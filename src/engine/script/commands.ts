@@ -6300,6 +6300,176 @@ on('GetGBACartridgeVersion', answers(GBA_CARTRIDGE_NONE))
  */
 on('CheckHasEnoughMonForCatchingShow', answers(0))
 
+// ── 전수 점검(`tools/e2e/scriptsSweep`)이 잡은 건너뛴 명령 — 판정표는 `tools/e2e/scriptsSweepTriage.mjs` ─────────
+//
+// 아래 둘째 덩이는 **원작도 하는 일이 없는** 명령이다. 안 만든 것이 아니라 폭만 읽고 지나가는 것이 원작과 같다 — 그래서
+// 건너뛰기(`skipper`)가 아니라 이름 붙은 핸들러로 둔다. 그렇게 두어야 점검이 「안 만든 명령」으로 세지 않는다.
+
+/**
+ * 구슬을 주웠다는 지하통로 깃발 (`ScrCmd_TrySetUnusedCollectedOrbFlag` · `scrcmd.c:6403`).
+ * 원작 필드 선언이 「Set but never read」(`underground.c`)라 읽는 곳이 없다. 보이는 도구 줍기 322자리가 다 부른다
+ */
+on('TrySetUnusedCollectedOrbFlag', (ctx) => {
+  ctx.readVar()
+  return false
+})
+
+/**
+ * TV 방송 기록 셋 (`ScrCmd_27C` · `scrcmd_tv_broadcast.c:188` · `ScrCmd_2B8` · 같은 파일 116줄). 상호교류광장과 영원시티 아파트가
+ * 부른다. TV는 안 만들기로 했고(PARITY §7.5) 읽는 쪽이 없다 — 인자만 읽는다
+ */
+on('ScrCmd_27C', (ctx) => {
+  ctx.readHalfWord()
+  ctx.readVar()
+  return false
+})
+on('ScrCmd_2B8', (ctx) => {
+  ctx.readVar()
+  return false
+})
+
+/** 읽는 곳이 없는 「좋아하는 포켓몬」 저장 (`ov5_021F6454.c:696`) */
+on('SetFavoriteMon', () => false)
+
+/** 본체가 `return TRUE` 한 줄이다 (`ov5_021F6454.c:828`) */
+on('Dummy316', () => false)
+
+/**
+ * 연고시티 체육관의 다이아·펄 승강기 (`HearthomeGym_MoveLift` · `gym_features.c:776`). 부르는 방(맵 93 · 95)은 문이 막혀
+ * 걸어서 닿지 않는다 (REPAIR 「연고 관장 방의 문 셋은 죽은 자료였다」)
+ */
+on('MoveHearthomeGymDPLift', () => false)
+
+/**
+ * 202번도로 포켓레이더 장면의 카메라 대역 (`ScrCmd_AddCameraOverrideObject` · `scrcmd.c:2410`). 원작은 카메라가 **안 따라가는**
+ * 투명 사람(`STATUS_18`)을 세워 한 걸음 걷게 할 뿐이라 화면에 보이는 변화가 없다 — 좌표 둘만 읽고, 걸음 시간(열여섯 프레임)만 비는 것이다
+ */
+on('AddCameraOverrideObject', (ctx) => {
+  ctx.readVar()
+  ctx.readVar()
+  return false
+})
+on('RemoveCameraOverrideObject', () => false)
+
+/**
+ * 아이언섬 릴리의 충돌 표식 (`ScrCmd_2B6` · `scrcmd.c:6511`). `STATUS_18`은 기본이 꺼져 있고 켜는 곳이 없어서 끄는 이 명령이 할 일이 없다
+ */
+on('ScrCmd_2B6', (ctx) => {
+  ctx.readVar()
+  ctx.readByte()
+  return false
+})
+
+/**
+ * 날씨 26을 세운다 (`ScrCmd_2CD` · `scrcmd.c:6617`). 우리 날씨 표에 26이 없어서(`weatherVisual`의 기본은 맑음) 어차피 아무것도 안 그린다
+ */
+on('ScrCmd_2CD', () => false)
+
+/**
+ * 필드 곡의 볼륨을 **곧바로** 정한다 (`ScrCmd_SetPlayerVolume` · `ov5_021F6454.c:1081`). 224번도로 쉐이미 장면이 워프 직전에
+ * 0으로 내리고(`SOUND_VOLUME_MIN`) 장면 끝에 127로 올린다 — 안 만들면 장면 내내 새 맵 곡이 들린다. 인자를 **먼저** 읽는다
+ */
+on('SetPlayerVolume', (ctx) => {
+  const volume = ctx.readVar()
+  soundOf(ctx)?.fadeVolume(volume, 1)
+  return false
+})
+
+// 드레스업 사진 갤러리 — 앱을 안 만들었다. 「사진이 하나도 없다」로 닫는다 (`scripts_jubilife_tv_2f_gallery`).
+// ⚠️ **답을 적어야 한다** — 안 적으면 결과 변수에 앞 갈래의 묵은 값이 남아 사진이 있는 것처럼 갈린다 (PARITY §9.2)
+
+/** 사진 앱 (`ScrCmd_0A6` · `scrcmd.c:3108`) — 슬롯 · 답 · 처음 입장 여부. 「아무것도 안 하고 나왔다」(0)로 답한다 */
+on('ScrCmd_0A6', (ctx) => {
+  ctx.readVar()
+  const dest = ctx.readHalfWord()
+  ctx.readVar()
+  ctx.host.vars.set(dest, 0)
+  return false
+})
+/** 그 슬롯에 사진이 있는가 (`ScrCmd_DressUpPhotoHasData` · `scrcmd.c:3162`) — 없다 */
+on('DressUpPhotoHasData', (ctx) => {
+  ctx.readVar()
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  return false
+})
+/** 사진 보기 앱 (`ScrCmd_ShowDressUpPhoto` · `scrcmd.c:3118`) — 앱이 없는 갈래의 답 1 */
+on('ShowDressUpPhoto', (ctx) => {
+  ctx.readVar()
+  ctx.host.vars.set(ctx.readHalfWord(), 1)
+  return false
+})
+/** 사진 제목 (`ScrCmd_SetDressUpPhotoTitle` · `scrcmd.c:3194`) — 사진이 없어 닿지 않는다 */
+on('SetDressUpPhotoTitle', (ctx) => {
+  ctx.readVar()
+  return false
+})
+
+/**
+ * 지하통로 굿즈 창고 — 지하통로가 범위 밖이라 **자리가 없다**고 답한다 (`scrcmd_underground_inventory.c`).
+ * 연고시티 체육관 동상 갈래(배지 8개)가 범위 안에서 닿는 하나뿐이고, 안 적으면 직전 명령의 값(배지 수)이 「자리 있다」로 읽혔다.
+ * 굿즈 이름 뱅크(626~631)가 안 구워져 있어 「받았다」는 말은 거짓이 되므로 받지 않는 쪽으로 닫는다
+ */
+for (const name of ['CheckHasRoomForGoodsInPC', 'SendGoodToPC', 'GiveTrap', 'GiveSphere'] as const) {
+  on(name, (ctx) => {
+    ctx.readVar()
+    ctx.readVar()
+    ctx.host.vars.set(ctx.readHalfWord(), 0)
+    return false
+  })
+}
+
+/**
+ * 파르크 포획쇼의 시작 · 끝 깃발과 박스 입고 (`scrcmd_catching_show.c:24` · `:58`). 접수원이 옮겨 온 여섯 마리를 확인하는
+ * `CheckHasEnoughMonForCatchingShow`가 늘 0이라(GBA 이송이 통신) 이 갈래에 닿지 않는다 — 닿을 수 없는 자리를 건너뛴다
+ */
+on('SetClearInCatchingShowFlag', (ctx) => {
+  ctx.readVar()
+  return false
+})
+on('MoveCatchingShowMonsToPCBoxes', () => false)
+
+// 「쉬운 길」(사용자 2026-10-11) — 씰 · 콘테스트 배경은 담는 계통이 없다(PARITY §9.1 · §4.11). 가게는 열리지 않고 주고받은 것은
+// 쌓이지 않는다. 스크립트는 제 대사로 끝까지 간다. 이름 칸을 채우는 `BufferBallSealName` · `BufferContestBackdropName`은 롬 뱅크(12 · 13 · 388)가
+// 안 구워져 있어 그대로 건너뛴다 (`tools/e2e/scriptsSweepTriage.mjs`)
+
+/** 해님시티 씰 가게 (`ScrCmd_PokeMartSeal` · `scrcmd_shop.c:115`) — 열지 않는다 */
+on('PokeMartSeal', (ctx) => {
+  ctx.readVar()
+  return false
+})
+/** 씰 케이스에 더하거나 뺀다 (`ScrCmd_GiveOrTakeSeal` · `scrcmd.c:2563`) — 케이스가 없다 */
+on('GiveOrTakeSeal', (ctx) => {
+  ctx.readVar()
+  ctx.readVar()
+  return false
+})
+/** 콘테스트 배경을 장식 케이스에 (`ScrCmd_AddContestBackdrop` · `scrcmd.c:5120`) — 담지 않는다 */
+on('AddContestBackdrop', (ctx) => {
+  ctx.readVar()
+  return false
+})
+
+/**
+ * 레코드믹싱 그룹 (`ScrCmd_DoGroupConnectionAction` · `scrcmd_group_connection.c:21`) — 통신이라 범위 밖이다. **닫는 답**을 낸다:
+ * 입력이 없고(0 · 1) 이름 짓기를 취소한다(4 → 1). 그러면 접수 NPC가 「그룹이 없다」 · 「안타깝다」로 제 대사를 하고 끝난다.
+ * 동작마다 인자가 다르다 — 0 · 1은 (칸, 답), 2 · 3은 (그룹, 칸), 4는 (답), 5는 (칸), 6은 없다
+ */
+on('DoGroupConnectionAction', (ctx) => {
+  const action = ctx.readHalfWord()
+  if (action === 0 || action === 1) {
+    ctx.readVar()
+    ctx.host.vars.set(ctx.readHalfWord(), 0)
+  } else if (action === 2 || action === 3) {
+    ctx.readVar()
+    ctx.readVar()
+  } else if (action === 4) {
+    ctx.host.vars.set(ctx.readHalfWord(), 1)
+  } else if (action === 5) {
+    ctx.readVar()
+  }
+  return false
+})
+
 /**
  * 트레이너 카드에 사인을 받는 화면 (`FieldSystem_LaunchSignatureApp`).
  *

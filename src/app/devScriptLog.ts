@@ -21,6 +21,7 @@ import { scriptSpy } from '../engine/script/spy'
 import type { Checkpoint } from '../engine/dev/checkpoints'
 import { worldState } from '../state/worldState'
 import { useSaveStore } from '../state/saveStore'
+import { useMenuStore } from '../state/menuStore'
 import { npcActors } from '../engine/actor/npcs'
 import { gridFor } from '../scene/worldData'
 import { devWarp, warpTo } from './devWarp'
@@ -42,6 +43,8 @@ interface Trace {
   menus: number
   services: Map<string, number>
   battles: string[]
+  /** 보통 판이 끝난 횟수 (`scriptSpy.end`) — 매 프레임 표가 곧바로 새 판을 걸어도 **내 판이 끝났음**을 안다 */
+  ended: number
   /** 지금 도는 스크립트 파일 — 빈 글이 어느 파일의 것인지 적는 데 쓴다 */
   file: number
 }
@@ -49,7 +52,7 @@ interface Trace {
 function newTrace(): Trace {
   return {
     starts: [], msgs: 0, empty: [], errors: [], unimpl: new Map(), unimplAt: [], ops: 0, last: [],
-    visited: new Map(), menus: 0, services: new Map(), battles: [], file: -1,
+    visited: new Map(), menus: 0, services: new Map(), battles: [], ended: 0, file: -1,
   }
 }
 
@@ -67,6 +70,7 @@ function installSpy(): void {
     trace.starts.push({ script: info.script, file: info.file, entry: info.entry, kind: info.kind ?? 'run' })
     trace.file = info.file
   }
+  scriptSpy.end = (kind) => { if (kind !== 'init') trace.ended++ }
   scriptSpy.error = (message, where) => { trace.errors.push(`${where}: ${message}`.slice(0, 300)) }
   scriptSpy.unimplemented = (name, file, at) => {
     trace.unimpl.set(name, (trace.unimpl.get(name) ?? 0) + 1)
@@ -96,14 +100,20 @@ const BATTLE_START = /^start.*(Battle|Encounter)$/
  *   ① 배틀을 여는 서비스는 열지 않고 **이긴 것**으로 돌려준다 (`battleResult` 'win')
  *   ② 어떤 서비스를 불렀는지 센다 — 멈춘 자리의 까닭을 가르는 데 쓴다
  */
-function wrapServices<T extends object>(real: T, path: string, battles: string[], state: { won: boolean }): T {
+/** 배틀을 이긴 것으로 돌려주는 중인가 — 판마다 다시 거짓으로 되돌린다 */
+const battleState = { won: false }
+
+function wrapServices<T extends object>(real: T, path: string): T {
   return new Proxy(real, {
     get(target, prop, receiver) {
       const value: unknown = Reflect.get(target, prop, receiver)
       const name = typeof prop === 'string' ? `${path}${prop}` : ''
       if (path === '' && prop === 'battleResult') {
-        return () => (state.won ? 'win' : (value as (() => unknown) | undefined)?.())
+        return () => (battleState.won ? 'win' : (value as (() => unknown) | undefined)?.())
       }
+      // ⚠️ **소리가 끝나기를 기다리지 않는다.** 헤드리스 브라우저는 오디오가 안 풀려 `WaitSE`가 영영 서는데, 사람 기계에서는
+      // 소리가 나므로 그 기다림은 하네스의 탓이다
+      if (path === 'sound.' && typeof prop === 'string' && /Playing$/.test(prop)) return () => false
       if (path === '' && prop === 'battleUp') return () => false
       if (name === '' || value === undefined) return value
       if (typeof value === 'function') {
@@ -111,15 +121,15 @@ function wrapServices<T extends object>(real: T, path: string, battles: string[]
         return (...args: unknown[]) => {
           trace.services.set(name, (trace.services.get(name) ?? 0) + 1)
           if (isBattle) {
-            battles.push(name)
-            state.won = true
+            trace.battles.push(name)
+            battleState.won = true
             return undefined
           }
           return (value as (...a: unknown[]) => unknown).apply(target, args)
         }
       }
       if (typeof value === 'object' && value !== null) {
-        return wrapServices(value as object, `${name}.`, battles, state)
+        return wrapServices(value as object, `${name}.`)
       }
       return value
     },
@@ -199,9 +209,26 @@ interface RunOpts {
   timeoutMs?: number
   /** 이만큼 명령이 안 오르면 멈춘 것이다 (ms) */
   stallMs?: number
+  /**
+   * 내 판이 한 번 끝나면 거기서 끝낸다.
+   *
+   * ⚠️ **맵의 매 프레임 표가 곧바로 새 판을 거는 자리가 있다** — 변수가 안 바뀌는 채로 `LockAll` 뒤 `End`로 끝나는 장면(물가시티의
+   * `OnFrame_Flint`는 z가 790 · 791이 아니면 `ReleaseAll` 없이 끝난다)이 그렇다. 놓아주기를 기다리면 영영 안 놓인다
+   */
+  stopAtEnd?: boolean
 }
 
 const busy = (): boolean => fieldScripts.ctx !== null || marks().script
+
+/**
+ * 멈춘 판이 화면(상점 · 낱말 고르기 · 저장)을 쥔 채 끝났을 수 있다 — 열린 채로 두면 다음 판의 키가 그 화면으로 가서 **뒤따른 판이
+ * 전부 대사에서 멈춘 것으로** 나온다(실측: 베일스톤 지하 상점). B를 눌러 보고 메뉴 스택을 비운다
+ */
+async function closeUi(): Promise<void> {
+  for (let i = 0; i < 4; i++) { tap('KeyX'); tap('Escape'); await frame() }
+  useMenuStore.getState().closeAll()
+  await frame()
+}
 
 /** 변수·플래그를 통째로 떠 둔다 — 한 판 뒤에 되돌린다 */
 function snapshot() {
@@ -257,6 +284,10 @@ async function drive(opts: RunOpts): Promise<{
       return { status: 'timeout', taps, chained, stalledAt: trace.last.at(-1) ?? null }
     }
     const world = fieldScripts.world
+    if (opts.stopAtEnd === true && trace.ended > 0) {
+      abortScript()
+      return { status: 'done', taps, chained, stalledAt: null }
+    }
     if (!busy()) {
       // 끝났다. 바로 뒤에 매 프레임 표가 새 판을 거는 수가 있어 두 프레임 더 본다
       idleFrames++
@@ -331,10 +362,7 @@ export async function runSite(site: SweepSite, opts: RunOpts): Promise<RunReport
   abortScript()
   applyPre(site.pre)
   trace = newTrace()
-  const battles = trace.battles
-  const state = { won: false }
-  const real = fieldScripts.services
-  fieldScripts.services = wrapServices(real, '', battles, state)
+  battleState.won = false
   const t0 = performance.now()
   try {
     // 맵 글이 오기 전에는 `start`가 거절한다 — 한동안 다시 두드린다
@@ -348,6 +376,7 @@ export async function runSite(site: SweepSite, opts: RunOpts): Promise<RunReport
     }
     if (!started) return report(site, opts.round, performance.now() - t0, null, 'refused')
     const run = await drive(opts)
+    if (run.status === 'stall' || run.status === 'timeout') await closeUi()
     return report(site, opts.round, performance.now() - t0, run, run.status)
   } catch (e) {
     trace.errors.push(`하네스: ${e instanceof Error ? e.message : String(e)}`)
@@ -355,8 +384,6 @@ export async function runSite(site: SweepSite, opts: RunOpts): Promise<RunReport
     return report(site, opts.round, performance.now() - t0, null, 'error')
   } finally {
     abortScript()
-    fieldScripts.services = real
-    if (fieldScripts.world !== null) fieldScripts.world.services = real
     restore(snap)
   }
 }
@@ -367,6 +394,9 @@ export async function runSite(site: SweepSite, opts: RunOpts): Promise<RunReport
 const there = (map: number): boolean =>
   marks().map === map && mapWorld.mapId === map && mapWorld.pending === null
   && fieldScripts.varsReady && !worldState.restoring
+  // ⚠️ **맵 번호가 서는 것과 `enterMap`이 도는 것은 다른 프레임이다.** 그 틈에 걸면 앞 맵의 글 뱅크로 읽는다(`start`의 뱅크 대기는
+  // `enterMap`이 세운 뒤에야 걸린다) — 실측으로 빈 대사 54건이 전부 이 틈이었다. 뱅크 번호가 맵 것이 된 뒤에야 선 것이다
+  && fieldScripts.bank === mapById(map)?.msg
 
 async function waitFor(ok: () => boolean, ms: number): Promise<boolean> {
   const t0 = performance.now()
@@ -403,6 +433,7 @@ export async function gotoMap(
   for (const f of prep) fieldScripts.vars.clearFlag(f)
   useSaveStore.getState().commitScriptState(fieldScripts.vars.saved, fieldScripts.vars.flags)
   trace = newTrace()
+  battleState.won = false
   await warpTo(stripped(map, spot))
   await arrive(map)
   const ok = there(map)
@@ -480,9 +511,7 @@ export async function walkSample(
   const snap = snapshot()
   applyPre(pre)
   trace = newTrace()
-  const state = { won: false }
-  const real = fieldScripts.services
-  fieldScripts.services = wrapServices(real, '', trace.battles, state)
+  battleState.won = false
   try {
     if (kind === 'trigger') {
       // 한 칸 앞에서 그 칸으로 걸어 들어간다 — 방향키를 눌러 두고 칸이 바뀔 때까지
@@ -508,11 +537,18 @@ export async function walkSample(
     }
     out.starts = trace.starts.map((s) => `${String(s.file)}:${String(s.entry)}${s.kind === 'run' ? '' : `(${s.kind})`}`)
     out.matched = expect !== null && out.starts.some((s) => s === expect)
-    if (!out.started) out.detail = '말이 안 걸렸다'
+    if (!out.started) {
+      // 왜 안 걸렸나를 가르는 값 — 서 있는 칸 · 바라보는 쪽 · 목표 칸 둘레의 사람 (우리가 정한 자리와 실제가 같은가)
+      const p = worldState.player.position
+      out.detail = `말이 안 걸렸다 ${JSON.stringify({
+        stand: [at.x, at.z], now: [+p.x.toFixed(2), +p.z.toFixed(2)], facing: +worldState.player.facing.toFixed(2),
+        want: +at.facing.toFixed(2), target: [tx, tz],
+        near: npcActors.list.filter((a) => Math.abs(a.x - tx) < 3 && Math.abs(a.z - tz) < 3)
+          .map((a) => [a.info.localID, +a.x.toFixed(1), +a.z.toFixed(1), a.visible]),
+      })}`
+    }
   } finally {
     abortScript()
-    fieldScripts.services = real
-    if (fieldScripts.world !== null) fieldScripts.world.services = real
     restore(snap)
   }
   return out
@@ -528,11 +564,31 @@ const devScriptLog = {
   }),
   /** 맵에 서 있는 사람 번호 — 숨김 플래그를 지운 뒤 실제로 세워졌는지 본다 */
   actorLocals: (): number[] => [...npcActors.list].map((a) => a.info.localID),
+  /** 글 뱅크 상태 — 맵 헤더의 뱅크 번호 · 지금 맵 글이 몇 줄인가 */
+  bankInfo: () => ({
+    want: mapById(mapWorld.mapId)?.msg ?? -1, have: fieldScripts.bank,
+    lines: (fieldScripts.world as unknown as { messages?: readonly string[] } | null)?.messages?.length ?? -1,
+  }),
   /** 지금 선 맵 — 스크립트가 맵을 옮겼는지 보는 데 쓴다 (옮기는 중이면 −1) */
   currentMap: (): number => (mapWorld.pending === null ? mapWorld.mapId : -1),
 }
 
+/**
+ * 서비스 묶음을 **늘** 감싸서 내준다 — 씬이 새로 달아도(`fieldScripts.services = …`) 그 값을 받아 감싼다. 맵에 들어서며 도는
+ * 장면(리그 방의 배틀 따위)도 배틀을 안 열어야 하므로 판마다가 아니라 설치할 때 한 번이다
+ */
+function installServiceWrap(): void {
+  let wrapped = wrapServices(fieldScripts.services, '')
+  Object.defineProperty(fieldScripts, 'services', {
+    configurable: true,
+    get: () => wrapped,
+    set: (next: typeof fieldScripts.services) => { wrapped = wrapServices(next, '') },
+  })
+  if (fieldScripts.world !== null) fieldScripts.world.services = wrapped
+}
+
 export function installDevScriptLog(): void {
   installSpy()
+  installServiceWrap()
   ;(globalThis as { __scriptSweep?: typeof devScriptLog }).__scriptSweep = devScriptLog
 }
