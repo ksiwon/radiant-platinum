@@ -318,12 +318,13 @@ export function plantKind(keywords: string, mainPid: number, layerPid: number): 
  * 노드 쪽 `bdspGlb.py`의 `scoped_material`과 같은 규칙이다 — 키는 사전순으로 먼저 맞는 것
  */
 /**
- * **마스크가 비어 있는 자리를 칠하는 값.** 프로퍼티 이름이 `_Patch`로 시작하면 색 채널이 아니라 이 모양이다:
+ * **UV 네모를 한 색으로 칠하는 값.** 프로퍼티 이름이 `_Patch`로 시작하면 색 채널이 아니라 이 모양이다:
  *
- *     _Patch0: '#efefff@0.235~0~0.29~0.04'     색 `@` 유니티 UV 네모 `u0~v0~u1~v1` (v는 아래서 잰다)
+ *     _Patch0: '#efefff@0.648~0.422~0.992~0.527'     색 `@` 유니티 UV 네모 `u0~v0~u1~v1` (v는 아래서 잰다)
  *
- * 그 네모 안에서 어느 마스크 채널에도 안 속한(합 0.1 아래) 텍셀을 그 색 한 가지로 덮는다 — 핸섬의 목 앞 V 안감이 쓴다.
- * ⚠️ 노드 쪽 `bdsp_bake_albedo.py`의 `parse_patch`와 같아야 한다 (텍셀 가운데로 UV를 잰다 · 같은 `< 0.1`)
+ * 네모 안의 텍셀을 음영까지 덮어 그 색 한 가지로 만든다 — 레이어 색은 음영에 곱하는 것이라 음영이 낮은 조각은 1로 올려도 그 이상
+ * 못 밝아진다 (핸섬의 속셔츠 조각).
+ * ⚠️ 노드 쪽 `bdsp_bake_albedo.py`의 `parse_patch`와 같아야 한다 (텍셀 가운데로 UV를 잰다)
  */
 const PATCH_PROP = '_Patch'
 
@@ -859,8 +860,8 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
         let lr = f32(lin[i * 3]! * tr)
         let lg = f32(lin[i * 3 + 1]! * tg)
         let lb = f32(lin[i * 3 + 2]! * tb)
-        // 마스크가 빈 자리를 UV 네모 안에서 한 색으로 덮는다 (`PATCH_PROP`)
-        if (patches.length > 0 && coverage < 0.1) {
+        // UV 네모 안을 한 색으로 덮는다 (`PATCH_PROP`)
+        if (patches.length > 0) {
           const pu = (x + 0.5) / width
           const pv = 1 - (y + 0.5) / height
           for (const p of patches) {
