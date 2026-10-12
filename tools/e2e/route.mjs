@@ -322,7 +322,8 @@ export const PLAN = {
  */
 const scratch = new Map()
 function scratchFor(grid) {
-  const size = grid.w * grid.h
+  // 칸마다 두 층 — 다리 데크 위(1)와 그 밖(0). `planPathOnce`의 `layer`
+  const size = grid.w * grid.h * 2
   let s = scratch.get(grid)
   if (!s) {
     s = {
@@ -453,21 +454,31 @@ function planPathOnce(
   const s = scratchFor(grid)
   const run = ++s.run
   const { stamp, parent, dir, queue } = s
+  const size = w * h
   const start = from.z * w + from.x
-  stamp[start] = run
-  parent[start] = -1
-  dir[start] = 0
-  queue[0] = start
   let head = 0
-  let tail = 1
+  let tail = 0
+  /**
+   * 데크 위에서 출발하면 어느 층인지 모른다 — 두 층 다 놓는다. 그 밖은 0층이다
+   */
+  for (const layer of isDeck(grid.at(from.x, from.z) & 0x7fff) ? [1, 0] : [0]) {
+    const sid = layer * size + start
+    stamp[sid] = run
+    parent[sid] = -1
+    dir[sid] = 0
+    queue[tail++] = sid
+  }
 
   while (head < tail && head < limit) {
     // 취소는 **꺼내는 자리**에서만 본다. 칸마다 물으면 그 물음이 계획 시간이 된다
     if (cancelled !== null && (head & 0x3ff) === 0 && cancelled()) return done(PLAN.cancelled, null)
     const id = queue[head++]
     lastPlan.expanded++
-    const cx = id % w
-    const cz = (id - cx) / w
+    const layer = id >= size ? 1 : 0
+    const tile = id - layer * size
+    const cx = tile % w
+    const cz = (tile - cx) / w
+    const here = grid.at(cx, cz) & 0x7fff
     lastPlan.goalTests++
     if (isGoal(cx, cz)) return done(PLAN.found, walkBack(parent, dir, id))
     for (let k = 0; k < 4; k++) {
@@ -475,7 +486,10 @@ function planPathOnce(
       const nx = cx + dx
       const nz = cz + dz
       if (nx < 0 || nz < 0 || nx >= w || nz >= h) continue
-      const nid = nz * w + nx
+      const beh0 = grid.at(nx, nz) & 0x7fff
+      const nextLayer = deckLayer(layer, here, beh0)
+      if (nextLayer < 0) continue
+      const nid = nextLayer * size + nz * w + nx
       if (stamp[nid] === run) continue
       const pad = pads === null ? undefined : pads.get(`${String(nx)},${String(nz)}`)
       if (pad !== undefined) {
@@ -619,6 +633,34 @@ export function slopeClimbBan(matrixId) {
   const slopes = bikeSlopes(matrixId)
   if (slopes.size === 0) return null
   return (nx, nz, key) => key === 'ArrowUp' && slopes.has(`${String(nx)},${String(nz)}`)
+}
+
+/**
+ * **다리는 한 칸이 두 층이다** — 플래너도 층을 센다 (`planPathOnce`의 `layer`).
+ *
+ * 어귀(0x70)를 밟고 올라선 사람은 데크 높이에 있고 옆 땅은 그보다 한참 낮아 제품이 단차로
+ * 막는다(`actor/player`의 `stepTooHigh`, 원작 `TerrainCollisionManager_WillPlayerCollide`).
+ * 옆에서 데크 칸에 들어선 사람은 다리 **밑**이라 어귀로 못 올라선다(`actor/bridge`).
+ * 실측(2026-10-13 연쇄 칸 4 · fd1347c8): 층을 모르는 격자가 215번도로 통나무 다리 위
+ * (593,590~593)에서 동쪽 땅으로 내려서는 길을 냈고, 막혀서 칸 넷 안에서 네 분씩 되밀렸다.
+ * 맞는 길은 다리를 건넌 뒤 돌아 내려와 **밑으로** 동쪽에 가는 것이다.
+ *
+ * 데크는 일반 다리(0x71~0x75)만이다. 자전거 다리(0x76~0x7d)는 예전처럼 층 없이 둔다
+ */
+const BRIDGE_START = 0x70
+const isDeck = (b) => b >= 0x71 && b <= 0x75
+/**
+ * 한 걸음 뒤의 층. 못 가는 걸음이면 -1이다.
+ * @param layer 지금 층 (1 = 데크 위)
+ * @param from  지금 칸 거동값
+ * @param to    갈 칸 거동값
+ */
+export function deckLayer(layer, from, to) {
+  if (to === BRIDGE_START) return layer === 0 && isDeck(from) ? -1 : 1
+  if (isDeck(to)) return isDeck(from) || from === BRIDGE_START ? layer : 0
+  // 데크 위에서 옆 땅으로 내려서지 못한다
+  if (layer === 1 && isDeck(from)) return -1
+  return 0
 }
 
 /**

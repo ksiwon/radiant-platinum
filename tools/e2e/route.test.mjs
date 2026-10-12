@@ -5,7 +5,7 @@
 // 구역·밟기·사람 옆칸에도 걸려 있었고, 그래서 걷다 마지막 한 걸음에서 막혀
 // 「길은 있는데 안 움직인다」가 됐다.
 import { describe, expect, it } from 'vitest'
-import { CLIMB_PREFIX, PANEL_PREFIX, PLAN, gridOf, mapRoute, matrixOf, missingData, planPath } from './route.mjs'
+import { CLIMB_PREFIX, PANEL_PREFIX, PLAN, STEP, deckLayer, gridOf, mapRoute, matrixOf, missingData, planPath } from './route.mjs'
 
 /** 자료를 아직 안 구운 기계에서는 **미실행**이다. 통과가 아니다 */
 const HAVE = missingData().length === 0
@@ -174,5 +174,41 @@ describe.skipIf(!HAVE)('락클라임과 워프 패널', () => {
     const on = planPath(m, { x: 46, z: 4 }, stairs, { enterBlockedGoal: true })
     expect(on.status).toBe(PLAN.found)
     expect(on.keys.filter((k) => k.startsWith(PANEL_PREFIX)).length).toBe(2)
+  })
+})
+
+describe('다리는 두 층이다 (deckLayer)', () => {
+  it('어귀로 올라서면 데크 위고, 데크 위에서는 옆 땅으로 못 내려선다', () => {
+    expect(deckLayer(0, 0x00, 0x70)).toBe(1)
+    expect(deckLayer(1, 0x70, 0x71)).toBe(1)
+    expect(deckLayer(1, 0x71, 0x71)).toBe(1)
+    expect(deckLayer(1, 0x71, 0x00)).toBe(-1)
+    expect(deckLayer(1, 0x71, 0x70)).toBe(1)
+    expect(deckLayer(1, 0x70, 0x00)).toBe(0)
+  })
+
+  it('옆에서 들어선 데크 칸은 다리 밑이라 어귀로 못 올라선다', () => {
+    expect(deckLayer(0, 0x00, 0x71)).toBe(0)
+    expect(deckLayer(0, 0x71, 0x00)).toBe(0)
+    expect(deckLayer(0, 0x71, 0x70)).toBe(-1)
+  })
+
+  it.skipIf(!HAVE)('215번도로 통나무 다리 — 남쪽에서 오면 건너 돌아 밑으로 동쪽에 간다 (실측 2026-10-13 칸 4)', () => {
+    const m = matrixOf(382)
+    const p = planPath(m, { x: 593, z: 596 }, (x) => x >= 641)
+    expect(p.status).toBe(PLAN.found)
+    const grid = gridOf(m)
+    let x = 593
+    let z = 596
+    let layer = 0
+    let prev = grid.at(x, z) & 0x7fff
+    for (const k of p.keys) {
+      x += STEP[k][0]
+      z += STEP[k][1]
+      const beh = grid.at(x, z) & 0x7fff
+      layer = deckLayer(layer, prev, beh)
+      expect(layer).not.toBe(-1)
+      prev = beh
+    }
   })
 })
