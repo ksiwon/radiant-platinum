@@ -12,7 +12,11 @@
 //
 // ⚠️ **뼈를 늘리는 리타깃이 아니다.** 축을 눌러서 얻은 비율이라 팔다리 길이는
 // 그대로다. 아래 각 상수에 무엇이 남는지 적어 둔다.
-import { Group, Matrix3, Matrix4, Quaternion, Vector3, type Object3D, type SkinnedMesh } from 'three'
+import {
+  AnimationClip, AnimationMixer, Group, Matrix3, Matrix4, Quaternion, QuaternionKeyframeTrack, Vector3,
+  type Object3D, type SkinnedMesh,
+} from 'three'
+import { restorePose, snapshotPose } from '../actor/clipGait'
 import { normalizeModel } from './normalize'
 
 /**
@@ -231,8 +235,84 @@ export const CHIBI_GROW = 2.09
  *   신사      0.038   0.088
  *   리오      0.028   0.092     ← 등신 셋. 평균 (0.034, 0.091)
  *   치비 여덟  0.020~0.024 · 0.144~0.151   (옮기기 전 · 목뼈에서 잰 값)
+ *
+ * ⚠️ **앞 값은 쉬는 자세가 아니라 서 있는 자세로 다시 정했다.** 위 표의 앞 0.034는 등신 셋이 **쉬는 자세**에서 잰 평균인데, 필드에서 등신이
+ * 서는 자세(트레이너 다섯 · 광휘 · 빛나, 클립을 걸고 잰 머리 앞쏠림)는 0.007~0.043으로 평균 0.02다. 치비 머리를 수평으로 세우고
+ * (`levelChibiHead`) 재면 0.033~0.036으로 등신보다 1.7배 앞이라 옆에서 거북목으로 보였다. 0.034에서 0.014를 뺀 0.020이다
  */
-const CHIBI_HEAD_SEAT = { forward: 0.034, up: 0.091 } as const
+const CHIBI_HEAD_SEAT = { forward: 0.02, up: 0.091 } as const
+
+/**
+ * 치비 클립이 머리를 **뒤로 젖히는 만큼을 되돌린다** — 걷고 서는 동안의 거북목 (`levelChibiHead`).
+ *
+ * 값의 근거 — 머리뼈의 로컬 X(위)가 연직에서 앞뒤로 기운 각을 월드에서 쟀다 (`.audit/probe/npcBones.mjs`, 부호는 앞이 +):
+ *
+ *                     서 있기      걷기
+ *   등신(광휘 · 빛나)  0.4 · 5.8    -0.4 · -0.6    ← 머리는 수평
+ *   트레이너 다섯      -0.3~0       ·
+ *   치비 열일곱       -4.3~-11     -3.5~-14       ← 턱이 앞으로 나오고 얼굴이 위를 본다
+ *
+ * 원작 치비 클립은 몸을 한 벌만 돌려 쓰면서 머리만 갈아 끼우는 것이라 목뼈 · 머리뼈가 뒤로 젖혀 서 있다. 큰 머리에서는 그것이
+ * 귀여운 고개 짓이지만, 줄인 머리를 목 위 앞쪽에 얹으면(`CHIBI_HEAD_SEAT`) 턱을 내민 거북목이 된다. 등신 평균인 수평(0)까지만
+ * 올린다 — 이미 숙인 몸(허리 굽은 노인)은 그대로 둔다
+ */
+const CHIBI_HEAD_PITCH = 0
+
+/** 머리뼈 위쪽 축이 연직에서 앞(+z)으로 기운 각(라디안) — `frame` 좌표계로 */
+function headPitchIn(head: Object3D, frame: Object3D): number {
+  const q = head.getWorldQuaternion(new Quaternion())
+  q.premultiply(frame.getWorldQuaternion(new Quaternion()).invert())
+  const up = new Vector3(1, 0, 0).applyQuaternion(q)
+  return Math.atan2(up.z, up.y)
+}
+
+/**
+ * 치비 클립의 머리뼈 회전에 **앞으로 숙이는 상수 회전**을 얹어 머리를 수평으로 세운다.
+ *
+ * 클립 한 바퀴를 열두 번 떠서 머리뼈가 얼마나 젖혀 섰는지 잰 평균이 기준이다 — 서 있기 · 걷기 · 뛰기가 각자 제 값을 받는다.
+ * 목뼈는 건드리지 않는다. 머리를 목 위에 얹는 자리는 쉬는 자세에서 정해 둔 것이고(`seatHead`), 목뼈의 앞뒤 기울기는
+ * 등신도 몸마다 다르다(0~16°)
+ *
+ * @param body  모양을 잡은(`shapeChibi`) 뒤의 몸 — 재는 동안 클립을 걸었다가 뼈를 원래 자세로 되돌린다
+ * @param frame 앞 · 위를 정하는 틀(몸의 방향이 도는 래퍼)
+ */
+export function levelChibiHead(clip: AnimationClip, body: Object3D, frame: Object3D): AnimationClip {
+  const head = bonesNamed(body, 'Head')[0]
+  const at = clip.tracks.findIndex((t) => t.name === `${head?.name ?? ''}.quaternion`)
+  if (!head || at < 0) return clip
+  frame.updateMatrixWorld(true)
+  body.updateMatrixWorld(true)
+  // 가로축을 머리뼈 로컬 좌표로 — 쉬는 자세에서 구한다 (뼈가 자세를 따라 돌아도 로컬 축은 그대로다)
+  const lateral = new Vector3(1, 0, 0)
+    .applyQuaternion(frame.getWorldQuaternion(new Quaternion()))
+    .applyQuaternion(head.getWorldQuaternion(new Quaternion()).invert())
+  const snap = snapshotPose(body)
+  const mixer = new AnimationMixer(body)
+  mixer.clipAction(clip).play()
+  const STEPS = 12
+  let sum = 0
+  for (let i = 0; i < STEPS; i++) {
+    mixer.setTime((clip.duration * i) / STEPS)
+    body.updateMatrixWorld(true)
+    sum += headPitchIn(head, frame)
+  }
+  mixer.stopAllAction()
+  mixer.uncacheRoot(body)
+  restorePose(snap)
+  body.updateMatrixWorld(true)
+  const lift = Math.max(0, CHIBI_HEAD_PITCH - sum / STEPS)
+  if (lift < 1e-4) return clip
+  const turn = new Quaternion().setFromAxisAngle(lateral, lift)
+  const old = clip.tracks[at]!
+  const values = new Float32Array(old.values.length)
+  const q = new Quaternion()
+  for (let i = 0; i < old.times.length; i++) {
+    q.fromArray(old.values, i * 4).multiply(turn).toArray(values, i * 4)
+  }
+  const tracks = clip.tracks.slice()
+  tracks[at] = new QuaternionKeyframeTrack(old.name, old.times, values)
+  return new AnimationClip(clip.name, clip.duration, tracks)
+}
 
 /** 재는 틀 — 래퍼의 부모(무대에 선 자리)다. 부모가 없으면 월드 */
 const WORLD = new Group()
@@ -313,6 +393,22 @@ function seatHead(inner: Object3D, body: Object3D, height: number): void {
     head.position.add(delta.applyMatrix3(frameToNeck))
     frame.updateMatrixWorld(true)
   }
+}
+
+/**
+ * 몸에 **붙어 있지만 그 사람 것이 아닌 소품**의 뼈 — 번들 이름 → 뼈 이름들.
+ *
+ * 핸섬(`fc1051_00-looker`)은 갬블러 몸을 다시 칠해 세운다(`NPC_RECOLOR`). 갬블러는 오른손에 동전(`coin` 뼈, `RHand`의 자식)을 쥐고
+ * 있는데 메시가 `baseSkin` 하나에 들어 있어 조각째 못 뗀다 — 오른손에 주황 막대처럼 들린다. 뼈 배율을 거의 0으로 눌러 점 하나로 만든다
+ * (정말 0이면 법선이 깨져 얼룩이 생긴다). 클립은 회전 트랙만 싣고 크기 트랙은 뺀 것이라(`trimGaitClip`) 눌린 채로 남는다
+ */
+const HELD_PROP_BONES: Readonly<Record<string, readonly string[]>> = {
+  'fc1051_00-looker': ['coin'],
+}
+
+/** 이 번들의 몸에서 남의 소품을 끈다 (`HELD_PROP_BONES`) */
+export function hideHeldProps(bundle: string, body: Object3D): void {
+  for (const bone of bonesNamed(body, ...(HELD_PROP_BONES[bundle] ?? []))) bone.scale.setScalar(1e-4)
 }
 
 /** 이 번들이 치비인가 — 필드용(`fc`)만 그렇다 */

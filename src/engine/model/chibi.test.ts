@@ -5,11 +5,11 @@
 //   · 손뼈 아래에 손가락뼈와 **든 물건**이 나란히 달린다
 //     (웨이트리스 `fc1026_00`의 `Tray`, 아이돌 `fc1085_00`의 `Mike`가 그렇다)
 import {
-  Bone, BufferGeometry, Float32BufferAttribute, Group, Skeleton, SkinnedMesh,
+  AnimationClip, AnimationMixer, Bone, BufferGeometry, Quaternion, QuaternionKeyframeTrack, Float32BufferAttribute, Group, Skeleton, SkinnedMesh,
   Uint16BufferAttribute, Vector3,
 } from 'three'
 import { describe, expect, it } from 'vitest'
-import { CHIBI_GROW, CHIBI_HAND, CHIBI_HEAD, CHIBI_LEG, isChibi, shapeChibi, CHIBI_ARM } from './chibi'
+import { CHIBI_GROW, CHIBI_HAND, CHIBI_HEAD, CHIBI_LEG, hideHeldProps, isChibi, levelChibiHead, shapeChibi, CHIBI_ARM } from './chibi'
 
 /** 발밑 0 · 목 1 · 머리끝 2인 사람 하나. 머리는 목 관절을 원점으로 줄어든다 */
 const NATIVE = 2
@@ -189,3 +189,61 @@ function measure(inner: Group, body: Group): number {
   })
   return hi - lo
 }
+
+describe('levelChibiHead', () => {
+  /** 머리뼈 위쪽 축이 연직에서 앞(+z)으로 기운 각(도) */
+  const pitchOf = (head: Bone) => {
+    const up = new Vector3(1, 0, 0).applyQuaternion(head.getWorldQuaternion(new Quaternion()))
+    return (Math.atan2(up.z, up.y) * 180) / Math.PI
+  }
+  const clipTilted = (head: Bone, deg: number) => {
+    const q = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), (deg * Math.PI) / 180).multiply(head.quaternion)
+    const v = [...q.toArray(), ...q.toArray()]
+    return new AnimationClip('wait_f', 1, [new QuaternionKeyframeTrack('Head.quaternion', [0, 1], v)])
+  }
+  const played = (clip: AnimationClip, body: Group, head: Bone) => {
+    const mixer = new AnimationMixer(body)
+    mixer.clipAction(clip).play()
+    mixer.setTime(0.5)
+    body.updateMatrixWorld(true)
+    return pitchOf(head)
+  }
+
+  it('뒤로 젖힌 머리를 수평까지 숙인다', () => {
+    const { inner, body, head } = rig()
+    inner.updateMatrixWorld(true)
+    const clip = clipTilted(head, -10)
+    expect(played(clip, body, head)).toBeCloseTo(-10, 3)
+    const level = levelChibiHead(clip, body, inner)
+    expect(played(level, body, head)).toBeCloseTo(0, 3)
+  })
+
+  it('이미 숙인 머리는 그대로 둔다', () => {
+    const { inner, body, head } = rig()
+    inner.updateMatrixWorld(true)
+    const clip = clipTilted(head, 12)
+    expect(levelChibiHead(clip, body, inner)).toBe(clip)
+  })
+
+  it('재는 동안 건 클립이 뼈 자세를 남기지 않는다', () => {
+    const { inner, body, head } = rig()
+    inner.updateMatrixWorld(true)
+    const before = head.quaternion.clone()
+    levelChibiHead(clipTilted(head, -10), body, inner)
+    expect(head.quaternion.angleTo(before)).toBeLessThan(1e-6)
+  })
+})
+
+describe('hideHeldProps', () => {
+  it('핸섬의 동전 뼈만 눌러 끈다', () => {
+    const { body, hand } = rig()
+    const coin = new Bone(); coin.name = 'coin'
+    hand.add(coin)
+    hideHeldProps('fc1051_00-looker', body)
+    expect(coin.scale.x).toBeLessThan(1e-3)
+    const other = rig()
+    const tray = other.held
+    hideHeldProps('fc2005_00', other.body)
+    expect(tray.scale.x).toBe(1)
+  })
+})

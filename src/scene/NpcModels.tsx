@@ -36,7 +36,7 @@ import { RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { DIR_STEP } from '../engine/script/movement'
 import { gameLoop } from '../engine/loop/GameLoop'
 import { BDSP_TO_WORLD, normalizeModel } from '../engine/model/normalize'
-import { isChibi, shapeChibi } from '../engine/model/chibi'
+import { hideHeldProps, isChibi, levelChibiHead, shapeChibi } from '../engine/model/chibi'
 import { isAltOutfit } from './personModel'
 import { worldState } from '../state/worldState'
 import { world } from '../engine/map/world'
@@ -210,6 +210,12 @@ function gaitFor(
     run: lend
       ? (lend.clips.run ? retargetClip(lend.clips.run, lend.rest, rest) : null)
       : own!.run,
+  }
+  // 치비 자신의 클립은 머리를 뒤로 젖히고 서 있다 — 줄인 머리를 앞에 얹으면 거북목이 된다 (`levelChibiHead`)
+  if (own && isChibi(bundle)) {
+    if (clips.wait) clips.wait = levelChibiHead(clips.wait, body, frame)
+    clips.walk = levelChibiHead(clips.walk, body, frame)
+    if (clips.run) clips.run = levelChibiHead(clips.run, body, frame)
   }
   const walk = measureCycle(body, frame, clips.walk)
   const set = walk
@@ -714,6 +720,7 @@ function build(
     // 차지해서 키로 못 쓴다 (`CHIBI_GROW`). 돌려주는 값이 실제로 선 키다
     if (isChibi(bundle)) height = shapeChibi(inner, body, nativeHeight)
     else normalizeModel(inner, body, height)
+    hideHeldProps(bundle, body)
     // 리그는 정규화 **이후**에 만든다 — 본의 월드 회전에서 로컬 축을 뽑기 때문에
     // 래퍼 변환이 확정된 뒤라야 축이 맞는다 (`PlayerModel`과 같은 순서)
     rigs.push(createRig(body, inner, bundle))
