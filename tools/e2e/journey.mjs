@@ -209,6 +209,11 @@ if (!Number.isFinite(STUCK_MIN) || STUCK_MIN < 0) {
   console.error(`\n--stuck은 0 이상의 분이다: ${String(flag('stuck'))}\n`)
   process.exit(1)
 }
+/**
+ * **녹화를 끈다** (`--no-video`). 녹화는 헤드리스 FPS를 3분의 1로 깎는다(10-12 실측 — 같은 자리 40~60 → 15~22).
+ * 끄면 봉투의 `video`가 null이고, 실패한 칸을 영상으로 되짚을 수 없다 — 그림 · 정체 증거 스크린샷은 그대로 남는다
+ */
+const NO_VIDEO = args.includes('--no-video')
 const VIEW = { width: 960, height: 640 }
 
 /**
@@ -711,7 +716,7 @@ const browserVersion = browser.version()
 const page = await browser.newPage({
   viewport: VIEW,
   acceptDownloads: true,
-  recordVideo: { dir: resolve(SHOTS, 'video'), size: VIEW },
+  ...(NO_VIDEO ? {} : { recordVideo: { dir: resolve(SHOTS, 'video'), size: VIEW } }),
 })
 page.setDefaultNavigationTimeout(300_000)
 // 찍는 동안 화면이 흔들렸는지 재는 자 (`tools/e2e/canvasShot.mjs`)
