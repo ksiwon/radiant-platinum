@@ -151,11 +151,6 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    */
   credits: 4,
   /**
-   * 2 — **엔딩 모델 78~84가 붙는다** (`graphic/ending.narc` 78 `endingLight1` · 79 `endingLight2` · 80 `endingTree1a` · 81 `endingTree1b` · 82 `endingTree2a` · 83 `endingTree2a2` · 84 `endingTree2b` — 엔딩 크레딧의 가로등 · 나무, 정적 모델). 옛 설치본에는 이
-   * 이름이 `data/demo/index.json`에 없어 크레딧의 노을 · 낮 · 밤 장면이 모델 없이 선다. 기존 연출 모델 서른둘은 바이트가 그대로다
-   */
-  demoModels: 2,
-  /**
    * 2 — 맵 헤더의 글 뱅크 번호를 us 번호로 되돌린다.
    *
    * ⚠️ **이미 깔린 것을 그냥 두면 안 된다.** 한국판·일본판 롬으로 설치한 사람의
@@ -459,11 +454,17 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    */
   gimmicks: 1,
   /**
+   * 3 — **사슬 BMA0과 엔딩 모델이 같이 붙는다.** 2가 두 갈래에서 따로 올라서(사슬 · 엔딩) 합치며 3으로 올렸다.
+   * ⚠️ **1 · 2는 안 쓴다**(`GROUP_ACCEPTS`에 없다)
+   *
+   * 2 — **엔딩 모델 78~84가 붙는다** (`graphic/ending.narc` 78 `endingLight1` · 79 `endingLight2` · 80 `endingTree1a` · 81 `endingTree1b` · 82 `endingTree2a` · 83 `endingTree2a2` · 84 `endingTree2b` — 엔딩 크레딧의 가로등 · 나무, 정적 모델). 옛 설치본에는 이
+   * 이름이 `data/demo/index.json`에 없어 크레딧의 노을 · 낮 · 밤 장면이 모델 없이 선다. 기존 연출 모델 서른둘은 바이트가 그대로다
+   *
    * 2 — **창기둥 붉은 사슬(`redChain`)이 BMA0(`demo_tengan_gra` 5번 · 재질 알파 201프레임)를 싣는다** (`import/platinum/demoModels`의
    * `DEMO_MODELS`). 옛 판은 BCA0만 있어 사슬 세 겹이 늘 같은 빛으로 선다. ⚠️ **옛 판(1)을 안 받는다**(`GROUP_ACCEPTS`에 없다) —
    * 이미 깐 사람도 이 그룹을 다시 굽는다(사용자 결정 10-11)
    */
-  demoModels: 2,
+  demoModels: 3,
 }
 
 export function groupFormat(name: string): number {
