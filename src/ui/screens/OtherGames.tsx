@@ -46,7 +46,7 @@ export function OtherGames({ onClose }: Props) {
         <div className={win.head}>
           <h2 className={win.title}>이런 게임은 어떠세요?</h2>
           <span className={win.note}>
-            같은 사람이 만든 포켓몬 웹 게임입니다. 설치 없이 브라우저에서 바로 열립니다.
+            같은 사람이 만든 포켓몬 웹 게임입니다.
           </span>
         </div>
 
