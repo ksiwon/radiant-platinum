@@ -101,7 +101,7 @@ const BATTLE_START = /^start.*(Battle|Encounter)$/
  *   ② 어떤 서비스를 불렀는지 센다 — 멈춘 자리의 까닭을 가르는 데 쓴다
  */
 /** 배틀을 이긴 것으로 돌려주는 중인가 — 판마다 다시 거짓으로 되돌린다 */
-const battleState = { won: false, outcome: 'win' as 'win' | 'loss' }
+const battleState = { won: false, outcome: 'win' as 'win' | 'loss', stub: true }
 
 function wrapServices<T extends object>(real: T, path: string): T {
   return new Proxy(real, {
@@ -119,10 +119,11 @@ function wrapServices<T extends object>(real: T, path: string): T {
       // ⚠️ **소리가 끝나기를 기다리지 않는다.** 헤드리스 브라우저는 오디오가 안 풀려 `WaitSE`가 영영 서는데, 사람 기계에서는
       // 소리가 나므로 그 기다림은 하네스의 탓이다
       if (path === 'sound.' && typeof prop === 'string' && /Playing$/.test(prop)) return () => false
-      if (path === '' && prop === 'battleUp') return () => false
+      // 진짜 배틀을 보려는 판(`setBattleStub(false)`)은 배틀 화면이 떠 있는지를 그대로 물어야 스크립트가 끝나기를 기다린다
+      if (path === '' && prop === 'battleUp' && battleState.stub) return () => false
       if (name === '' || value === undefined) return value
       if (typeof value === 'function') {
-        const isBattle = BATTLE_START.test(String(prop)) || (path !== '' && /startBattle$/.test(name))
+        const isBattle = battleState.stub && (BATTLE_START.test(String(prop)) || (path !== '' && /startBattle$/.test(name)))
         return (...args: unknown[]) => {
           trace.services.set(name, (trace.services.get(name) ?? 0) + 1)
           if (isBattle) {
@@ -576,6 +577,8 @@ const devScriptLog = {
   }),
   /** 감싼 배틀의 결과를 정한다 — 진 갈래(전멸)를 밟아 볼 때 */
   setBattleOutcome: (outcome: 'win' | 'loss'): void => { battleState.outcome = outcome },
+  /** 배틀을 열지 않고 이긴 것으로 돌려주는 감싸기를 끈다(false) — 진짜 배틀 화면을 끝까지 보려는 판. 기본은 켜짐 */
+  setBattleStub: (on: boolean): void => { battleState.stub = on },
   /** 지금 선 맵 — 스크립트가 맵을 옮겼는지 보는 데 쓴다 (옮기는 중이면 −1) */
   currentMap: (): number => (mapWorld.pending === null ? mapWorld.mapId : -1),
 }

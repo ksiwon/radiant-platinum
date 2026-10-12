@@ -126,8 +126,16 @@ const SPOTS = [
   { kind: 'open' }, { kind: 'atWarp', index: 0 }, { kind: 'warp', index: 0 }, { kind: 'grass' },
 ]
 
+/**
+ * 도착 장면이 **정해진 칸에서 걷기 시작하는** 맵은 그 칸에서 서야 한다 — 다른 칸에서 시작하면 원작 이동 값이 문 칸을 지나 맵이 바뀌고
+ * 그 뒤 대사를 새 맵의 글 뱅크로 읽어 빈 대사가 된다 (맵 188을 「열린 칸」에서 시작하면 대사 4줄이 비었고 · 아래 칸에서 시작하면 0이다).
+ * 칸은 장면의 이동표에서 거꾸로 센 것이다 — 파이트에리어 라이벌(`FightArea_OnFrame_Rival`): 라이벌 (628,434) 서쪽 네 칸에서 동 4 → 동 18·북 2·동 9·북 6으로
+ * 볼크너·플린트 앞 (655,426)에 닿는다
+ */
+const START_TILES = new Map([[188, { kind: 'tile', x: 624, z: 434, facing: -Math.PI / 2 }]])
+
 async function enterMap(m, prep) {
-  for (const spot of SPOTS) {
+  for (const spot of [...(START_TILES.has(m.map) ? [START_TILES.get(m.map)] : []), ...SPOTS]) {
     if (flag('verbose')) console.log(`    gotoMap ${String(m.map)} ${spot.kind}`)
     const r = await call('gotoMap', m.map, spot, prep)
     if (flag('verbose')) console.log(`    → ok=${String(r.ok)} ${String(Math.round(r.ms))}ms bank=${JSON.stringify(await call('bankInfo'))}`)
@@ -149,7 +157,6 @@ function pickSamples(m) {
 /** 돌면 페이지가 게임을 떠나는 스크립트 (파일:진입점) — 명예의 전당 `ClearGame` */
 const SKIP_KEYS = new Map([
   ['198:0', '게임을 끝내는 스크립트(ClearGame) — 크레딧으로 넘어간다'],
-  ['201:12', '파이트에리어 BlackBelt1(201:12) — 돌면 페이지가 타이틀로 떠났다. 배틀 마스크 스텁을 넣기 전의 관찰이라 다시 돌려 확인해야 한다 (라이벌 태그전 201:13은 `tagBattleCheck.mjs`로 이김·짐 둘 다 안 떠난다)'],
 ])
 const OPTS = { timeoutMs: 120_000, stallMs: 15_000, stopAtEnd: true }
 const seenKeys = new Set()
@@ -174,6 +181,8 @@ async function sweepMap(m) {
     }
     // ⚠️ **도착 장면이 주인공을 다른 맵으로 내보냈을 수 있다** (스타크마운틴 · 되돌림동굴) — 그 채로 돌면 앞 맵의 글 뱅크로 읽는다
     for (let tries = 0; tries < 2 && await call('currentMap') !== m.map; tries++) await enterMap(m, prep)
+    // 장면 스크립트는 그 칸에서 시작해야 한다 — 앞 판이 주인공을 장면 끝 칸에 세워 두었다
+    if (s.kind === 'frame' && START_TILES.has(m.map)) await enterMap(m, prep)
     seenKeys.add(s.key)
     if (flag('verbose')) console.log(`    run ${s.key} ${s.kind} bank=${JSON.stringify(await call('bankInfo'))}`)
     const site = { key: s.key, kind: s.kind, script: s.script, mapFile: m.mapFile, local: s.local ?? 0, pre: s.pre }
@@ -181,7 +190,7 @@ async function sweepMap(m) {
     const runs = [await call('runSite', site, { round: 0, ...OPTS })]
     if (runs[0].menus > 0 && runs[0].status === 'done') {
       // ⚠️ 첫 판이 맵을 옮겼으면 돌아온 뒤에 둘째 판을 돈다 — 안 그러면 도착 맵의 글 뱅크로 읽어 **빈 대사**로 나온다
-      if (await call('currentMap') !== m.map) await enterMap(m, prep)
+      if (await call('currentMap') !== m.map || (s.kind === 'frame' && START_TILES.has(m.map))) await enterMap(m, prep)
       runs.push(await call('runSite', site, { round: 1, ...OPTS }))
     }
     row.sites.push({
