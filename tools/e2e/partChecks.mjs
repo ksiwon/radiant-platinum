@@ -18,7 +18,7 @@
  */
 import { shootCanvas, WATCH_INIT } from './canvasShot.mjs'
 import { cellStats, judgeTerrain } from './terrainJudge.mjs'
-import { waitTerrain } from './stageProbe.mjs'
+import { framesNow, settleView, waitTerrain } from './stageProbe.mjs'
 
 /** 파트 표의 `checks` 열쇠 — 이 순서로 결과 줄이 나온다 */
 export const CHECK_KEYS = ['terrain', 'console', 'canvas', 'resume', 'report']
@@ -245,7 +245,8 @@ export async function atNoon(page, shoot) {
     w.worldState.time.gameHour = h
     return old
   }, NOON).catch(() => null)
-  if (was !== null) await page.waitForTimeout(600)
+  // 한낮으로 돌린 빛이 그려지기를 기다린다 — 예전 고정 600ms (`journey.mjs`의 `atNoon`과 같다)
+  if (was !== null) await settleView(page, 600, { minFrames: 12, camera: false })
   try { return await shoot() } finally {
     if (was !== null) {
       await page.evaluate(async (h) => {
@@ -267,7 +268,7 @@ export async function skyRef(page) {
   if (was === null) return null
   try {
     await page.evaluate((y) => window.pt.look((y * 180) / Math.PI, 50), was.yaw)
-    await page.waitForTimeout(800)
+    await settleView(page, 800)
     const up = await shootCanvas(page, {})
     return cellStats(up.png).filter((x) => x.r === 0).map((x) => x.rgb)
   } catch { return null } finally {
@@ -275,7 +276,7 @@ export async function skyRef(page) {
       window.pt.view(w.view === 'first' ? 1 : 0)
       window.pt.look((w.yaw * 180) / Math.PI, (w.pitch * 180) / Math.PI)
     }, was).catch(() => {})
-    await page.waitForTimeout(400)
+    await settleView(page, 400)
   }
 }
 
@@ -293,7 +294,7 @@ export async function levelLook(page, sky, path) {
   if (was === null) return { drawn: false, unobservable: '시점을 못 바꿨다' }
   try {
     await page.evaluate((y) => window.pt.look((y * 180) / Math.PI, 0), was.yaw)
-    await page.waitForTimeout(900)
+    await settleView(page, 900)
     const shot = await atNoon(page, () => shootCanvas(page, { path }))
     const land = judgeTerrain(shot.png, { sky })
     return { file: path, steady: shot.steady, drawn: land.drawn && shot.steady, filled: land.filled, roi: land.roi, skyGaps: land.skyGaps, why: land.why }
@@ -304,7 +305,7 @@ export async function levelLook(page, sky, path) {
       window.pt.view(w.view === 'first' ? 1 : 0)
       window.pt.look((w.yaw * 180) / Math.PI, (w.pitch * 180) / Math.PI)
     }, was).catch(() => {})
-    await page.waitForTimeout(400)
+    await settleView(page, 400)
   }
 }
 
@@ -378,6 +379,7 @@ export async function resumeCheck(page, url) {
   const t0 = Date.now()
   let last = null
   let still = null
+  let stillF = null
   let restored = { ok: false, at: null }
   while (Date.now() - t0 < 45_000) {
     const m = await page.evaluate(() => ({ ...document.documentElement.dataset }))
@@ -386,9 +388,12 @@ export async function resumeCheck(page, url) {
     const ready = m.restoring === undefined && w.world.map === want.map && w.world.matrix === want.matrix
       && w.world.grid && m.scene === 'overworld' && m.script === undefined && m.talk === undefined
     const here = `${String(w.player.x)},${String(w.player.z)}`
-    if (ready && still === here) { restored = { ok: true, at: w }; break }
+    // 「연달아 두 번 같다」를 프레임으로 센다 — `journey.mjs`의 `waitRestored`와 같다. 못 읽으면 예전 250ms 간격 그대로다
+    const f = await framesNow(page)
+    if (ready && still === here && (f === null || (stillF !== null && f - stillF >= 3))) { restored = { ok: true, at: w }; break }
+    if (!(ready && still === here)) stillF = f
     still = ready ? here : null
-    await page.waitForTimeout(250)
+    await page.waitForTimeout(f === null ? 250 : 60)
   }
   if (!restored.ok) restored.at = last
   return { want, got: restored.at, stood, restoredOk: restored.ok }

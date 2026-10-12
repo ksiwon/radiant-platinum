@@ -4,7 +4,7 @@
 // 판정식을 줘서 첫 폴링에 통과했고, 그동안 검사는 「준비됐다」고 적고 있었다.
 // 그래서 준비 거짓·참·관측 오류·안 끝나는 물음·상한 초과를 여기서 직접 준다.
 import { describe, expect, it } from 'vitest'
-import { waitTerrain } from './stageProbe.mjs'
+import { framesNow, settleView, waitTerrain } from './stageProbe.mjs'
 
 /** `terrainReady()`가 돌려줄 것을 차례로 흉내 내는 가짜 페이지 */
 const fakePage = (answers) => {
@@ -87,5 +87,62 @@ describe('waitTerrain — 지형이 설 때까지 기다리는 자', () => {
   it('상한을 넘기면 기다린 시간을 적어 「판정 불가」를 가릴 수 있게 한다', async () => {
     const r = await waitTerrain(fakePage([FALSE]), 700)
     expect(r.waitedMs).toBeGreaterThanOrEqual(700)
+  })
+})
+
+/** `framesNow` · `settleView`가 부르는 `evaluate`를 흉내 낸다 — 첫 물음은 프레임 수, 그 뒤는 `{ frames, ready }` */
+const framePage = (reads) => {
+  let n = 0
+  return {
+    slept: 0,
+    async evaluate(_fn, arg) {
+      const r = reads[Math.min(n++, reads.length - 1)]
+      if (typeof r === 'function') return r(arg)
+      return r
+    },
+    async waitForTimeout(ms) { this.slept += ms },
+  }
+}
+
+describe('settleView — 바꾼 화면이 나가기를 기다린다', () => {
+  it('프레임이 모자라면 기다리고 충분하면 나온다', async () => {
+    const page = framePage([100, { frames: 101, ready: true }, { frames: 103, ready: true }])
+    const r = await settleView(page, 600, { minFrames: 3 })
+    expect(r).toMatchObject({ ok: true, known: true })
+  })
+
+  it('카메라가 아직 안 닿았으면(ready 거짓) 프레임이 나가도 기다린다', async () => {
+    const page = framePage([100, { frames: 110, ready: false }, { frames: 112, ready: false }, { frames: 114, ready: true }])
+    const r = await settleView(page, 600, { minFrames: 3 })
+    expect(r.ok).toBe(true)
+  })
+
+  it('camera:false면 준비를 안 묻고 프레임만 본다 (빛을 바꾼 자리)', async () => {
+    const asked = []
+    const page = framePage([5, (arg) => { asked.push(arg); return { frames: 20, ready: true } }])
+    const r = await settleView(page, 600, { minFrames: 12, camera: false })
+    expect(r.ok).toBe(true)
+    expect(asked).toEqual([false])
+  })
+
+  it('프레임을 못 읽으면 예전 고정 시간 그대로 잔다 — 「됐다」로 접지 않는다', async () => {
+    const page = { slept: 0, async evaluate() { throw new Error('/src를 못 연다') }, async waitForTimeout(ms) { this.slept += ms } }
+    const r = await settleView(page, 800)
+    expect(r.known).toBe(false)
+    expect(page.slept).toBe(800)
+  })
+
+  it('끝내 안 나가면 상한(예전 시간의 5배)에서 ok:false로 이어 간다 — 던지지 않는다', async () => {
+    const page = framePage([7, { frames: 7, ready: true }])
+    const t0 = Date.now()
+    const r = await settleView(page, 40, { minFrames: 3 })
+    expect(r.ok).toBe(false)
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(190)
+  })
+
+  it('framesNow — 못 읽으면 0이 아니라 null이다', async () => {
+    expect(await framesNow({ evaluate: async () => { throw new Error('x') } })).toBe(null)
+    expect(await framesNow({ evaluate: async () => NaN })).toBe(null)
+    expect(await framesNow({ evaluate: async () => 42 })).toBe(42)
   })
 })
