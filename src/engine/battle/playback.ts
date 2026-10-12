@@ -407,6 +407,16 @@ export function buildBeats(
     return slots.length === 0 ? undefined : { at: impact, slots, level, crit }
   }
 
+  /** 매그니튜드가 굴린 수 — 기술 줄 뒤에 오는 굴림 줄을 미리 읽는다 (`BattleEvent` 'move'의 `magnitude`) */
+  const magnitudeAfter = (from: number): number | undefined => {
+    for (let j = from + 1; j < events.length; j++) {
+      const n = events[j]!
+      if (n.kind === 'move' || n.kind === 'turn' || n.kind === 'switch' || n.kind === 'faint') return undefined
+      if (n.kind === 'activate' && n.effect.id === 'magnitude' && n.extra.num !== null) return n.extra.num
+    }
+    return undefined
+  }
+
   /**
    * 이 기술이 대상에 닿기 전에 막혔는가 — 원작은 빗나감과 **같은 갈래**(`subscript_missed.s`)로 보내 연출을 안 돌린다:
    * 방어(`MOVE_STATUS_PROTECTED`) · 타입 무효(`MOVE_STATUS_INEFFECTIVE`) · 부유(`LEVITATED`) · 불가사의부적(`WONDER_GUARD`).
@@ -641,7 +651,8 @@ export function buildBeats(
         // 연출이 도는 만큼 쉰다. 이 자리가 0이면 기술 이름이 뜨자마자 게이지가
         // 닳아서, 무엇이 무엇을 때렸는지가 화면에서 안 이어진다.
         // **기술마다 길이가 다르다** — 무대도 같은 자리에 물어본다 (`vfx`)
-        show([strike ? { ...e, strike } : e], moveFramesOf(e.move, e.actor.slot.startsWith('p1'), doubles), 'presentation')
+        const magnitude = magnitudeAfter(at)
+        show([strike || magnitude !== undefined ? { ...e, ...(strike ? { strike } : {}), ...(magnitude !== undefined ? { magnitude } : {}) } : e], moveFramesOf(e.move, e.actor.slot.startsWith('p1'), doubles), 'presentation')
         break
       }
 

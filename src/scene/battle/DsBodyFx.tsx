@@ -8,7 +8,7 @@
 // 이 파일은 작업트리에서 브라우저 없이 쓴 코드다 — 화면 확인 전(`fxshot`)이다.
 import { useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Quaternion, Vector3, type Group, type Object3D } from 'three'
+import { Quaternion, Vector3, type Group, type Object3D, type PerspectiveCamera } from 'three'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import { unifySkeletons } from '../unifySkeleton'
 import { battleClock } from '../../engine/battle/presentationClock'
@@ -112,18 +112,31 @@ function ForesightEye({ shot }: { shot: DsBodyShot }) {
   )
 }
 
-/** 도착 칸 여섯 — 위쪽 셋 · 아래쪽 셋 (`sAssistPawSpriteDestinations`의 0 · 128 · 256 × 0 · 170) */
-const PAW_DESTS: readonly (readonly [number, number])[] = [[-1.6, 1], [0, 1], [1.6, 1], [-1.6, -0.2], [0, -0.2], [1.6, -0.2]]
+/** 도착 칸 여섯 — 화면 위쪽 셋 · 아래쪽 셋, 화면 가장자리 밖(`sAssistPawSpriteDestinations`의 0 · 128 · 256 × 0 · 170이 DS 화면의 가장자리다) */
+const PAW_DESTS: readonly (readonly [number, number])[] = [[-1.25, 1.25], [0, 1.25], [1.25, 1.25], [-1.25, -1.25], [0, -1.25], [1.25, -1.25]]
 
-/** 도우미 — 발바닥 열둘이 무대 앞 허공에 찍히고(눌려 부풀었다 돌아온다) 바깥 여섯 칸으로 날아간다 */
+/**
+ * 도우미 — 발바닥 열둘이 **화면 곳곳에** 찍히고(눌려 부풀었다 돌아온다) 화면 가장자리 여섯 칸으로 날아간다.
+ * 원작이 DS 화면 좌표라 카메라 앞 일정 거리의 면에 펼친다(입체 메시가 카메라 쪽을 본다) — 몸 자리에 매면 카메라가 어디를 보든
+ * 화면 밖으로 나갔다
+ */
 function AssistPaws({ shot }: { shot: DsBodyShot }) {
   const refs = useRef<(Group | null)[]>([])
   const camera = useThree((s) => s.camera)
-  const mid = useMemo(() => [(shot.from[0] + shot.to[0]) / 2, (shot.from[1] + shot.to[1]) / 2] as const, [shot])
-  const tall = Math.max(0.6, tallOf(shot.by))
-  const spread = 2.4 + tall * 0.6
+  const right = useMemo(() => new Vector3(), [])
+  const up = useMemo(() => new Vector3(), [])
+  const fwd = useMemo(() => new Vector3(), [])
+  const centre = useMemo(() => new Vector3(), [])
   useFrame(() => {
     const f = frameOf(shot)
+    const cam = camera as PerspectiveCamera
+    right.setFromMatrixColumn(cam.matrixWorld, 0)
+    up.setFromMatrixColumn(cam.matrixWorld, 1)
+    fwd.setFromMatrixColumn(cam.matrixWorld, 2).negate()
+    const D = 3.5
+    const halfH = D * Math.tan((cam.fov ?? 30) * Math.PI / 360) * 0.85
+    const halfW = halfH * (cam.aspect || 1.6)
+    centre.copy(cam.position).sub(STAGE_ORIGIN).addScaledVector(fwd, D)
     for (let i = 0; i < ASSIST_PAWS; i++) {
       const g = refs.current[i]
       if (!g) continue
@@ -131,12 +144,10 @@ function AssistPaws({ shot }: { shot: DsBodyShot }) {
       g.visible = f >= 0 && p.shown && p.fly < 1
       if (!g.visible) continue
       const d = PAW_DESTS[p.dest]!
-      const x0 = mid[0] + p.at[0] * spread
-      const y0 = tall * (0.2 + (p.at[1] + 1) * 0.4)
-      const x1 = mid[0] + d[0] * spread * 2.2
-      const y1 = tall * (0.1 + (d[1] + 1) * 0.55)
-      g.position.set(x0 + (x1 - x0) * p.fly, y0 + (y1 - y0) * p.fly, mid[1])
-      g.scale.setScalar(tall * 0.32 * p.scale)
+      const sx = p.at[0] + (d[0] - p.at[0]) * p.fly
+      const sy = p.at[1] + (d[1] - p.at[1]) * p.fly
+      g.position.copy(centre).addScaledVector(right, sx * halfW).addScaledVector(up, sy * halfH)
+      g.scale.setScalar(halfH * 0.2 * p.scale)
       g.lookAt(camera.position)
     }
   })

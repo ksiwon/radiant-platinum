@@ -621,4 +621,18 @@ describe('맞는 소리 · 깜박임은 몸이 움찔하는 프레임에 난다 
     expect(m?.kind === 'move' ? m.strike : 'x').toBeUndefined()
     expect(events.filter((e) => e.kind === 'damage').every((e) => e.kind === 'damage' && !e.hit?.voiced)).toBe(true)
   })
+
+  it('매그니튜드의 굴림 줄(기술 줄 뒤)을 미리 읽어 기술 사건에 싣는다 — 연출이 기술 줄에서 시작하므로', () => {
+    const beats = buildBeats([
+      enter(p2, 20),
+      move(p1, 'Magnitude'),
+      { kind: 'activate', actor: p1, effect: { id: 'magnitude', kind: 'move', num: 222, name: 'Magnitude' }, of: null, extra: { num: 9, move: null, moveName: null } } as BattleEvent,
+      hit(p2, 12, 20),
+    ], say)
+    const m = beats.flatMap((b) => b.events).find((e) => e.kind === 'move')
+    expect(m?.kind === 'move' ? m.magnitude : null).toBe(9)
+    // 굴림이 없는 기술에는 안 붙는다
+    const plain = buildBeats([enter(p2, 20), move(p1, 'Tackle'), hit(p2, 12, 20)], say).flatMap((b) => b.events).find((e) => e.kind === 'move')
+    expect(plain?.kind === 'move' ? plain.magnitude : 'x').toBeUndefined()
+  })
 })
