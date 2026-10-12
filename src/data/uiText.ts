@@ -444,8 +444,8 @@ export const CAPSULE_TEXT = {
   noSeals: 16,
 } as const
 
-/** 파티 화면의 캡슐 말 (`PartyMenu_Text_BallCapsuleWasSet` 129 · `TwoCapsulsesCantBeSet` 130) */
-export const PARTY_CAPSULE = { wasSet: 129, two: 130 } as const
+/** 파티 화면의 캡슐 말 (`PartyMenu_Text_BallCapsuleWasSet` 129 · `TwoCapsulsesCantBeSet` 130 · `BallCapsuleWillBeDetached` 195) */
+export const PARTY_CAPSULE = { wasSet: 129, two: 130, detach: 195 } as const
 
 /**
  * 메일박스 (`mailbox` 뱅크 · `unk_020722AC.c`).

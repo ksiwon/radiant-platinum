@@ -19,7 +19,8 @@ import {
   loadItemIcons, loadItemNames, loadMoveNames, loadSpecies, loadSpeciesNames, type SpeciesTable,
 } from '../../data/gameData'
 import type { ItemIcons } from '../../data/schema'
-import { fillMenuText, loadUiText, PARTY_GIVE, partyHeader } from '../../data/uiText'
+import { fillMenuText, loadUiText, PARTY_CAPSULE, PARTY_GIVE, partyHeader } from '../../data/uiText'
+import { detachCapsule } from '../../engine/world/ballCapsule'
 import { genderOf, maxHp } from '../../engine/pokemon/instance'
 import { FIELD_MOVES, MENU_MOVES, type FieldMoveId, type MenuMoveId } from '../../engine/script/fieldMoves'
 import { beginChatter, fieldMoveFromMenu, menuMoveVerdictNow } from '../../engine/script/field'
@@ -56,7 +57,7 @@ import { giveVerdict } from './BagScreen'
 import { SHAYMIN_BEATS } from '../../engine/pokemon/formChangeBeat'
 import { music } from '../../engine/audio/music'
 import { MenuScreen } from './MenuScreen'
-import { PARTY_SLOT_NONE, partyChoice, partyStartCursor, setPartyReturnSlot } from './partyChoice'
+import { PARTY_SLOT_NONE, partyChoice, partyStartCursor, setPartyReturnSlot, tradeAsksDetach } from './partyChoice'
 import { LevelPanel, type LevelPanelShow } from './LevelPanel'
 import { EmptyPlate, MonPlate } from './MonPlate'
 import { askLine, modeLine, partyMode, stoneVerdict, teachVerdict, verdictLine, type PlateVerdict } from './partyText'
@@ -204,7 +205,7 @@ export function PartyScreen() {
   const [notice, setNotice] = useState<string | null>(null)
   /** 떠 있는 갈래 메뉴. null이면 카드를 고르는 중이다 */
   const [menu, setMenu] = useState<
-    'root' | 'item' | 'mail' | 'learnAsk' | 'learnStop' | 'learnForget' | 'daycare' | 'giveSwap' | null
+    'root' | 'item' | 'mail' | 'learnAsk' | 'learnStop' | 'learnForget' | 'daycare' | 'giveSwap' | 'detach' | null
   >(null)
   /**
    * 기술 칸이 다 차서 **무엇을 잊을지 묻는 중**. null이면 안 묻고 있다.
@@ -257,6 +258,7 @@ export function PartyScreen() {
    */
   const choosingMon = useMenuStore((s) => s.choosingMon)
   const chooseDaycare = useMenuStore((s) => s.chooseDaycare)
+  const chooseTrade = useMenuStore((s) => s.chooseTrade)
   const [tables, setTables] = useState<{ items: ItemTable; moves: MoveTable } | null>(null)
   /** 도구 아이콘 시트 — 잡은 볼과 지닌 도구가 이 한 장에서 나온다. 못 받으면 아이콘 자리만 빈다 */
   const [icons, setIcons] = useState<ItemIcons | undefined>(undefined)
@@ -739,6 +741,32 @@ export function PartyScreen() {
     { label: partyText[P.no] ?? '', run: () => { setMenu(null); back() } },
   ]
 
+  /**
+   * 교환으로 고른 마리에 캡슐이 달렸으면 묻는다 (`CheckForItemApplication` · `PartyMenu_Text_BallCapsuleWillBeDetached`).
+   * 예면 캡슐을 떼고 그 마리를 고른 것으로 닫고(`PartyMenuCB_DetachBallSeal_Clear`), 아니오면 고르기로 돌아간다
+   * (`..._Cancel` — 「포켓몬을 고르십시오」). 씰은 캡슐 위에 그대로 남는다
+   */
+  const askDetach = (slot: number): boolean => {
+    if (!tradeAsksDetach(chooseTrade, party[slot])) return false
+    setCursor(slot)
+    setMenu('detach')
+    setMenuAt(0)
+    return true
+  }
+  const detachChoices = (): Choice[] => [
+    {
+      label: partyText[P.yes] ?? '',
+      run: () => {
+        useSaveStore.setState({ party: detachCapsule(useSaveStore.getState().party, at) })
+        partyChoice.slot = at
+        partyChoice.summary = false
+        setMenu(null)
+        closeAll()
+      },
+    },
+    { label: partyText[P.no] ?? '', run: () => { setMenu(null) } },
+  ]
+
   const choices = menu === 'root' ? rootChoices()
     : menu === 'daycare' ? daycareChoices()
     : menu === 'item' ? itemChoices()
@@ -746,7 +774,8 @@ export function PartyScreen() {
         : menu === 'learnAsk' ? learnAskChoices()
           : menu === 'learnStop' ? learnStopChoices()
             : menu === 'learnForget' ? learnForgetChoices()
-              : menu === 'giveSwap' ? giveSwapChoices() : []
+              : menu === 'giveSwap' ? giveSwapChoices()
+                : menu === 'detach' ? detachChoices() : []
 
   /**
    * 들고 온 도구를 고른 마리에게 쓴다 (`item_use_pokemon.c`).
@@ -988,6 +1017,7 @@ export function PartyScreen() {
       if (choosingMon) {
         if (party.length === 0) return
         if (chooseDaycare) { setMenu('daycare'); setMenuAt(0); return }
+        if (askDetach(at)) return
         partyChoice.slot = at
         partyChoice.summary = false
         closeAll()
@@ -1022,6 +1052,8 @@ export function PartyScreen() {
     using: usingItem?.use ?? null,
   })
   const modeText = plainText(partyText[modeLine(mode)])
+  /** 롬 줄의 CR · FF(다음 쪽)는 창 하나에 줄바꿈으로 편다 */
+  const flatLines = (line: string): string => line.replace(/[\r\f]/g, '\n')
   /** 갈래 창이 떠 있을 때의 물음. 갈래 창 안이 아니라 글 띠에 뜬다 (원작 `PartyMenu_PrintShortMessage`) */
   const menuAsk = (): string => {
     const who = selected ? nameOf(selected) : ''
@@ -1030,6 +1062,7 @@ export function PartyScreen() {
       return fillMenuText(partyText[PARTY_GIVE.swapAsk] ?? '', [who, itemNames[selected?.heldItem ?? 0] ?? ''])
         .replace(/[\r\f]/g, '\n')
     }
+    if (menu === 'detach') return flatLines(partyText[PARTY_CAPSULE.detach] ?? '')
     if (menu === 'learnForget') return plainText(partyText[P.whichForget])
     if (menu === 'learnAsk' || menu === 'learnStop') {
       return fillMenuText(partyText[menu === 'learnAsk' ? P.learnAsk : P.stopAsk] ?? '',
@@ -1170,7 +1203,10 @@ export function PartyScreen() {
                   // 스크립트가 고르라고 연 화면에서는 자리를 못 바꾼다 — 집는
                   // 순간 Z가 「놓기」가 되어 고를 길이 사라진다
                   if (choosingMon && chooseDaycare) { setCursor(i); setMenu('daycare'); setMenuAt(0); return }
-                  if (choosingMon) { partyChoice.slot = i; partyChoice.summary = false; closeAll(); return }
+                  if (choosingMon) {
+                    if (askDetach(i)) return
+                    partyChoice.slot = i; partyChoice.summary = false; closeAll(); return
+                  }
                   if (givingItem !== null) { if (pages.length === 0 && menu === null) { setCursor(i); giveItem(i) } return }
                   if (held === null) setHeld(i)
                   else { swapParty(held, i); setHeld(null); setCursor(i) }

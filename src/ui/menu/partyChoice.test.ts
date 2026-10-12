@@ -4,7 +4,7 @@
 // 첫째에 있었다. 원작은 요약이 닫힌 자리로 파티 화면을 다시 연다 (`StartMenu_ExitSummary`).
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  followPartyReturn, partyReturnSlot, partyStartCursor, setPartyReturnSlot,
+  followPartyReturn, partyReturnSlot, partyStartCursor, setPartyReturnSlot, tradeAsksDetach,
 } from './partyChoice'
 
 const plain = { choosingMon: false, chooseStart: 0 }
@@ -45,5 +45,15 @@ describe('요약 안에서 다른 마리로 넘어가기', () => {
     followPartyReturn(4)
     expect(partyReturnSlot()).toBeNull()
     expect(partyStartCursor(plain)).toBe(0)
+  })
+})
+
+describe('교환으로 고를 때의 캡슐', () => {
+  it('캡슐 단 마리만 묻고 다른 고르기는 안 묻는다', () => {
+    const capsuled = { capsule: { id: 1, seals: [] } }
+    expect(tradeAsksDetach(true, capsuled)).toBe(true)
+    expect(tradeAsksDetach(true, {})).toBe(false)
+    expect(tradeAsksDetach(true, undefined)).toBe(false)
+    expect(tradeAsksDetach(false, capsuled)).toBe(false)
   })
 })

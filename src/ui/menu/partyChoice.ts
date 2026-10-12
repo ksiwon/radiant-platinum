@@ -9,6 +9,14 @@
 /** `constants/pokemon.h` — 안 고르고 나갔다 */
 export const PARTY_SLOT_NONE = 0xff
 
+/**
+ * 교환으로 고른 마리가 캡슐을 달고 있어 「캡슐이 떨어진다」를 물어야 하는가
+ * (`PARTY_MENU_MODE_NPC_TRADE` → `CheckForItemApplication`의 `ballSeal != 0`). 다른 고르기는 안 묻는다
+ */
+export function tradeAsksDetach(trading: boolean, mon: { capsule?: unknown } | undefined): boolean {
+  return trading && mon?.capsule !== undefined
+}
+
 export const partyChoice = {
   /** 마지막으로 고른 자리. 안 골랐으면 `PARTY_SLOT_NONE` */
   slot: PARTY_SLOT_NONE,

@@ -2361,7 +2361,8 @@ function tutorChoices(ctx: ScriptContext, slot: number, at: number): number[] {
  * 여기가 갈라져야 한다
  */
 on('OpenPartyMenuForTrade', (ctx) => {
-  ctx.host.world.services.chooseMon?.open()
+  // 캡슐 단 마리를 고르면 「캡슐이 떨어진다」를 묻는다 (`CheckForItemApplication`)
+  ctx.host.world.services.chooseMon?.open({ trade: true })
   ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
   return true
 })

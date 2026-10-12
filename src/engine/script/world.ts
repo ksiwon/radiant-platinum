@@ -460,7 +460,7 @@ export interface FieldServices {
    */
   chooseMon?: {
     /** `daycare`면 키우미집 갈래(맡긴다 · 능력치를 본다 · 그만둔다)로 연다. `slot`에서 커서가 시작한다 */
-    open: (opts?: { daycare?: boolean, slot?: number }) => void
+    open: (opts?: { daycare?: boolean, trade?: boolean, slot?: number }) => void
     picked: () => number
     /** 키우미집 갈래에서 「능력치를 본다」로 닫았는가 (`PARTY_MENU_EXIT_CODE_SUMMARY`) */
     summary: () => boolean
