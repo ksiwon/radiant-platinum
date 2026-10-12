@@ -1763,7 +1763,17 @@ try {
           }
           const came = await api.goTo(CATCH_MAP, Math.min(300_000, api.left()))
           if (came !== 'arrived') { north.caught.push({ ok: false, why: `풀밭에 못 갔다 (${came})` }); break }
-          const got = await api.catchInGrass(CATCH_MAP, Math.min(600_000, api.left()), 12, who.species)
+          let got = await api.catchInGrass(CATCH_MAP, Math.min(600_000, api.left()), 12, who.species)
+          /**
+           * ⚠️ **열두 번 만나도 안 나올 수 있다** — 확률이다. 실측(2026-10-13 연쇄 칸 2 · 635bed62):
+           * 비버니가 열두 번 안 나와 파티가 둘로 남았고, 칸 3에서 풀베기를 배울 마리가 없었다.
+           * 사람은 나올 때까지 한 번 더 돈다
+           */
+          if (!got.ok && got.why === '풀밭을 돌았는데 못 잡았다' && api.left() > 900_000) {
+            const first = got
+            got = await api.catchInGrass(CATCH_MAP, Math.min(600_000, api.left()), 12, who.species)
+            got = { ...got, met: [...(first.met ?? []), ...(got.met ?? [])], rounds: 2 }
+          }
           north.caught.push({ what: who.what, ...got })
           const party = await api.partyState()
           // ⚠️ **찾던 것이 아니라 들어온 것을 적는다.** 실측(2026-09-16)으로

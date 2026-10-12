@@ -58,6 +58,8 @@ function readBattleBag() {
 const STEPV = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }
 /** 자전거 (`items.ko.json` 450번 · 열쇠도구). `actor/bike.ts`의 `BIKE_ITEM`과 같은 값이다 */
 const BIKE_ITEM = 450
+/** 비전기술 여덟 — 풀베기·공중날기·파도타기·괴력·바위깨기·록클라임·폭포오르기·안개제거 (`badges67`의 `MOVE`와 같은 값) */
+const HM_MOVES = [15, 19, 57, 70, 249, 431, 127, 432]
 
 /**
  * **진행 없는 한 바퀴는 이보다 짧게 안 센다** (지시서 H1).
@@ -3429,7 +3431,14 @@ export async function driveStory(page, {
    *   칸이다. ⚠️ 원작은 비전기술을 못 잊게 막는데 제품은 안 막는다(REPAIR §76) —
    *   그래서 부르는 쪽이 비전기술을 여기 넣는다
    */
-  const teachHmOnce = async (item, move, budgetMs, { only = null, keep = [] } = {}) => {
+  const teachHmOnce = async (item, move, budgetMs, { only = null, keep: wantKept = [] } = {}) => {
+    /**
+     * ⚠️ **비전기술은 늘 지킨다** — 이제 제품이 원작처럼 잊기를 막는다(`PartyScreen`의
+     * `isHmMove` · 롬 글 「비전기술은 잊을 수 없다」). 실측(2026-10-13 연쇄 칸 3 · 635bed62):
+     * 수풀부기가 `바위깨기·껍질에숨기·흡수·잎날가르기`로 차 있었고 첫 칸 바위깨기를 잊으려다
+     * 막혀 풀베기를 아무도 못 배웠다 — 그 뒤 나무 앞에서 15분을 돌았다
+     */
+    const keep = [...wantKept, ...HM_MOVES]
     const t0 = Date.now()
     const till = Math.min(Date.now() + budgetMs, started + totalMs)
     const knows = async () => {
@@ -4166,7 +4175,7 @@ export async function driveStory(page, {
       }
     }
     return {
-      ok: false, why: '풀밭을 돌았는데 못 잡았다', tries: tried.length,
+      ok: false, why: '풀밭을 돌았는데 못 잡았다', tries: tried.length, met: saw,
       party: await partyState(), saw: tried.at(-1)?.saw ?? null,
       thrown: tried.reduce((a, b) => a + b.thrown, 0),
     }

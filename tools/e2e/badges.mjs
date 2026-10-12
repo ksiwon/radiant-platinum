@@ -434,7 +434,9 @@ export async function eternaToBike(api, ctx, {
   out.cynthia = v?.eterna ?? null
 
   // ③ 풀베기를 가르치고 나무를 벤다
-  out.taught = await api.teachHm(ITEM.hm01, CUT, Math.min(300_000, api.left()))
+  // 칸이 찬 마리라면 잎날가르기(75)·물기(44)는 지킨다 — 물기는 멜리사(고스트)를 치는 기술이다
+  // (`JOURNEY_BADGE345` §7). 비전기술은 `teachHm`이 늘 지킨다
+  out.taught = await api.teachHm(ITEM.hm01, CUT, Math.min(300_000, api.left()), { keep: [75, 44] })
   note('풀베기 가르치기', out.taught.ok ? `${String(out.taught.slot)}번째가 배웠다` : String(out.taught.why))
   if (api.left() <= 0) return out
   out.cut = await api.clearWay(MAP.eterna, MAP.galactic1F, Math.min(600_000, api.left()), { sprite: 86, maxHits: 3 })
