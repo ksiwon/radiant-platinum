@@ -491,6 +491,37 @@ export const townMapSchema = z.object({
   })),
 })
 
+/**
+ * 크레딧 3D 무대의 그림 (`import/platinum/creditsArt.ts` · `data/credits/art.json`) — 회상 사진은 경계 상자만 잘라 구웠고
+ * `(x, y)`가 원작 화면(256×192)에서의 왼쪽 위다. 날아다니는 포켓몬은 `(ox, oy)`가 스프라이트 중심에서 그림 왼쪽 위까지다
+ */
+const creditsPhotoSchema = z.object({
+  file: z.string(),
+  x: z.number().int().nonnegative(),
+  y: z.number().int().nonnegative(),
+  w: z.number().int().positive(),
+  h: z.number().int().positive(),
+})
+export const creditsArtSchema = z.object({
+  memory: z.object({ male: z.array(creditsPhotoSchema).length(10), female: z.array(creditsPhotoSchema).length(10) }),
+  night: z.object({ male: z.array(creditsPhotoSchema).length(4), female: z.array(creditsPhotoSchema).length(4) }),
+  sprites: z.array(z.object({
+    file: z.string(),
+    ox: z.number().int(),
+    oy: z.number().int(),
+    w: z.number().int().positive(),
+    h: z.number().int().positive(),
+  })).length(1),
+  /** 밤 하늘 — R이 팔레트 번호 · G가 벌(0 · 1)인 판 한 장, 섞이는 1번 벌 여덟 벌과 안 섞이는 0번 벌(칸 16 · BGR555). 장면 4가 7620틱부터 섞는다 */
+  nightSky: z.object({
+    file: z.string(),
+    w: z.number().int().positive(),
+    h: z.number().int().positive(),
+    palettes: z.array(z.array(z.number().int().min(0).max(0xffff)).length(16)).length(8),
+    fixed: z.array(z.number().int().min(0).max(0xffff)).length(16),
+  }),
+})
+
 /** 크레딧 배경 세 장 (DATA.md §2.26) */
 export const creditsSchema = z.object({
   count: z.number().int().positive(),
@@ -824,6 +855,7 @@ export type MotionTiming = z.infer<typeof motionTimingSchema>
 export type BoxWallpapers = z.infer<typeof boxWallpapersSchema>
 export type DexHeightWeight = z.infer<typeof dexHeightWeightSchema>
 export type CreditsAtlas = z.infer<typeof creditsSchema>
+export type CreditsArt = z.infer<typeof creditsArtSchema>
 export type CreditRows = z.infer<typeof creditRowsSchema>
 export type TownMapFile = z.infer<typeof townMapSchema>
 export type PoketchMapFile = z.infer<typeof poketchMapSchema>

@@ -14,39 +14,38 @@
 // 어긋났고, 한국판은 뱅크 237칸 중 뒤 28칸이 비어서 빈 줄 스물여덟이 흘렀다.
 //
 // ⚠️ **처음 깬 판에서도 바로 넘긴다** (사용자 결정 · 2026-09-29). 원작은 `gameCompleted`일 때만 START를 받아 처음
-// 끝낸 사람은 131초를 다 봐야 한다 — 우리는 Z · X · Enter · Esc · Space 한 번에 롬 목록을 건너뛰고 만든 사람 화면으로 간다.
+// 끝낸 사람은 131초를 다 봐야 한다 — 우리는 Z · X · Enter · Esc · Space 한 번에 3D 장면을 건너뛰고 「The End」로 간다.
 //
-// ⚠️ **3D 장면 일곱은 없다.** 원작은 아래 화면에 장면 일곱을 3D로 돌리고 그 위로
-// 사람이 지나간다(`ov99_021D1A54.c`의 상태 기계 일곱). 우리는 위 화면 배경 세
-// 장만 굽는다 — 바뀌는 자리도 그래서 우리가 정한 것이다 (`creditsScene`).
+// **3D 장면 일곱을 세운다** (`scene/CreditsStage` · `engine/world/creditsStage`) — 원작의 상태 기계(`ov99_021D1A54.c`의 일곱 단계)를 한 틱씩 옮긴
+// 시계(`CreditsClock`)가 장면을 넘기고 밝기를 낸다: 노을 · 낮 · 밤에 나무와 가로등이 지나가고 자전거 탄 주인공이 서는 3D 셋, 회상 사진 두 묶음,
+// 밤의 떡잎마을, 마지막 장면(「The End」). 글 두루마리는 이 화면(DOM)이 같은 틱으로 흘린다 — 원작도 글 BG는 장면의 밝기 변화를 안 받는다.
+// 한 화면인 우리는 원작의 두 화면을 하나로 합친다: 위 화면의 하늘 · 날아다니는 포켓몬이 3D 화면의 하늘 위로 올라온다.
 //
 // ⚠️ **끝에 우리 몫이 붙는다** — 두루마리가 아니라 **따로 서는 한 화면**이다(`MakerScreen`). 롬 목록과 섞어 흘리면
-// 남의 이름 옆에 우리 이름을 얹은 것처럼 읽힌다. 롬 목록이 다 흐르거나 넘기면 그 화면이 서고, 한 번 더 누르면
+// 남의 이름 옆에 우리 이름을 얹은 것처럼 읽힌다. 「The End」가 꺼지면 그 화면이 서고, 한 번 더 누르면
 // 타이틀로 간다(원작 FIN의 자리다).
 //
 // 두루마리의 롬 글 · 자리 · 정렬 · 배경 장면 · 색은 **하나도 안 바꾼다.** 바뀐 것은 둘레(양옆 가장자리 · 진행 선 · 넘기기 안내의
 // 키캡)와 만든 사람 화면의 위계(로고 · 세 칸 맞춤 · 묶음 페이드)다 (`records` §4.5).
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { music } from '../../engine/audio/music'
-import { creditsImage, loadCreditRows, loadCreditsAtlas, type DataLocale } from '../../data/gameData'
-import type { CreditRows, CreditsAtlas } from '../../data/schema'
-import { atlasUrl } from '../../data/providers/atlas'
+import { loadCreditRows, type DataLocale } from '../../data/gameData'
+import type { CreditRows } from '../../data/schema'
 import { loadUiText } from '../../data/uiText'
 import { KeyHints } from '../common/KeyHints'
 import { vars } from '../theme/contract.css'
 import { creditsProgress } from './recordsLayout'
 import { parseMessage } from '../../engine/script/text'
-import {
-  creditsAt, creditsFrames, creditsRows, creditsScene, creditsSceneStart, CREDIT_SCENE_PAN, CREDIT_SCENE_RUN,
-} from '../../engine/world/credits'
+import { creditsAt, creditsRows } from '../../engine/world/credits'
+import { CreditsClock, naturalSchedule } from '../../engine/world/creditsStage'
+import { creditsLive } from '../../scene/creditsLive'
 import { APP_ROOT } from '../../data/assetBase'
 import { useGameLocale } from '../../state/optionsStore'
 import { useMenuStore } from '../../state/menuStore'
 import { footWords } from './footWords'
 import * as css from './credits.css'
 
-/** 원작 화면 크기. 자리를 백분율로 옮기는 데 쓴다 */
-const VIEW_W = 256
+/** 원작 화면 높이. 자리를 백분율로 옮기는 데 쓴다 */
 const VIEW_H = 192
 
 /**
@@ -215,83 +214,48 @@ function runsOf(raw: string): Run[] {
   return out
 }
 
-/**
- * 배경 한 장의 자리.
- *
- * ⚠️ **화면(256×192)보다 큰 그림을 「덮어 늘리지」 않는다.** 원작은 그 큰 판을
- * 그대로 두고 **창을 민다**(BG 오프셋) — 늘려서 맞추면 흐르는 폭이 사라진다.
- * 그래서 그림 한 도트가 화면 한 도트가 되게 두고, 남는 폭은 흐르는 값이 먹는다.
- *
- * ⚠️ **가로와 세로의 자가 다르다.** `%` 배경 크기는 가로가 요소 **폭**의,
- * 세로가 요소 **높이**의 백분율인데 요소는 256×192다 — 둘 다 192로 나누면
- * 가로만 4/3배로 늘어난다. 실제로 그렇게 나가 있었다
- */
-function sceneStyle(at: number, size: { w: number; h: number; backdrop?: string }, frame: number): CSSProperties {
-  const pan = CREDIT_SCENE_PAN[at] ?? { x: 0, y: 0 }
-  // 원작의 BG 오프셋은 「창이 움직인다」라 그림은 반대로 간다.
-  //
-  // ⚠️ **판 크기로 감아 돌리지 않는다.** 원작 BG도 판 크기로 반복하지만,
-  // 흐르는 값이 워낙 작아서(0x40/4096 = 한 프레임에 0.0156도트) 크레딧이 끝날
-  // 때까지 판 한 장을 못 넘긴다 — 이음매를 한 번도 안 지나간다는 뜻이다.
-  // 감아 돌리면 **음수 오프셋이 곧바로 판 오른쪽 끝으로 튀어서**, 첫 프레임부터
-  // 창이 이음매를 물고 있게 된다. 실측: `credits0.png`(512×256)는 좌우 끝
-  // 색 차이가 채널당 평균 16.0인데 바로 옆 칸끼리는 0.0이다 — 가로로 안 이어진
-  // 그림이고, 그래서 크레딧 배경에 세로선이 하나 그어져 있었다.
-  // CSS `repeat`는 음수 자리도 알아서 채우므로 그냥 두면 된다
-  const dx = -pan.x * frame
-  const dy = -pan.y * frame
-  // 원작 화면(256×192)을 1로 잡은 배율. `%` 단위라 창 크기가 바뀌어도 따라간다
-  const kx = 100 / VIEW_W
-  const ky = 100 / VIEW_H
-  return {
-    backgroundImage: `url(${atlasUrl(creditsImage(at))})`,
-    backgroundSize: `${String(size.w * kx)}% ${String(size.h * ky)}%`,
-    // ⚠️ **자리는 `%`로 못 적는다.** `background-position`의 백분율은 밀어낸 거리가 아니라 「그림의 p% 점을 판의
-    // p% 점에 맞춘다」여서, 판보다 큰 그림에서는 **방향이 뒤집히고** 판과 같은 폭이면 아예 안 움직인다. 그래서 첫
-    // 장이 거꾸로 흘러 오른쪽에 뒤판 띠가 섰고 둘째 장 위에 뒤판 띠가 섰다(REPAIR §132). 무대의 크기 단위
-    // (`cqw`·`cqh` — `credits.css`의 `stage`가 크기 컨테이너다)로 도트를 옮긴다
-    backgroundPosition: `${String(dx * kx)}cqw ${String(dy * ky)}cqh`,
-    backgroundRepeat: 'repeat',
-    // 그림의 0번 색이 뚫린 자리에 보이는 뒤판 (`ov99_021D4134.c:197-198`)
-    backgroundColor: size.backdrop,
-  }
-}
-
 /** 엔딩 곡 (`SEQ_BLD_ENDING`) */
 const BGM = 1186
+
+/** 3D 무대가 모델 · 그림을 받는 것을 기다리는 데 걸리는 한도 (ms) — 넘으면 받은 만큼으로 시작한다 */
+const READY_LIMIT = 8000
+
+/** 한 번에 따라잡는 틱의 끝 — 탭을 오래 비웠다 돌아오면 그 사이는 건너뛴다 */
+const CATCH_UP = 120
 
 export function CreditsScreen() {
   const closeAll = useMenuStore((s) => s.closeAll)
   const locale = useGameLocale()
-  /** 롬 목록이 끝났거나 넘겼다 — 만든 사람 화면이 선다 */
+  /** 장면이 다 끝났다 — 만든 사람 화면이 선다 */
   const [maker, setMaker] = useState(false)
 
   const [lines, setLines] = useState<string[] | null>(null)
   /** 그 판의 배치표. 글과 **같은 판**이라야 자리가 맞는다 */
   const [table, setTable] = useState<CreditRows | null>(null)
-  const [atlas, setAtlas] = useState<CreditsAtlas | null>(null)
   const [frame, setFrame] = useState(0)
+  /** 지금 장면 번호 — 글 두루마리를 거둘 때를 본다 */
+  const [scene, setScene] = useState(0)
+  /** 지금 「The End」가 서 있는가 */
+  const [endText, setEndText] = useState(false)
+  /** 3D 장면과 화면 전체를 가리는 검정 — 매 틱 바뀌므로 DOM 값을 직접 쓴다 */
+  const sceneDim = useRef<HTMLDivElement>(null)
+  const screenDim = useRef<HTMLDivElement>(null)
+  const pressed = useRef(false)
 
   useEffect(() => {
     let alive = true
-    void Promise.all([loadUiText('credits', locale), loadCreditRows(locale), loadCreditsAtlas()])
-      .then(([text, rows, meta]) => {
+    void Promise.all([loadUiText('credits', locale), loadCreditRows(locale)])
+      .then(([text, rows]) => {
         if (!alive) return
         setLines(text)
         setTable(rows)
-        setAtlas(meta)
       })
       // ⚠️ **자리표를 못 받아도 미국 표로 안 떨어진다.** 떨어지면 그 판의 화면이
       // 어긋난 채로 130초를 흐르고, 그것은 「안 나오는 것」보다 알아채기 어렵다.
-      // 빈 표면 롬 목록이 한 줄도 안 흐르고 **우리 몫만** 지나간 뒤 타이틀로 나간다
+      // 빈 표면 롬 목록이 한 줄도 안 흐르고 3D 장면만 지나간 뒤 만든 사람 화면으로 나간다
       .catch(() => { if (alive) { setLines([]); setTable({ rows: [] }) } })
     return () => { alive = false }
   }, [locale])
-
-  useEffect(() => {
-    void music.play(BGM)
-    return () => { music.stop() }
-  }, [])
 
   /**
    * 타이틀로 — **통째로 다시 켠다** (`OS_ResetSystem(RESET_CLEAN)` · `clear_game.c:165`).
@@ -306,25 +270,59 @@ export function CreditsScreen() {
     location.assign(APP_ROOT)
   }, [closeAll])
 
-  // 두루마리. 원작이 프레임마다 1픽셀 올리므로 60fps에 맞춘다 —
-  // ⚠️ **경과 시간으로 센다.** 프레임 수로 세면 느린 기계에서 크레딧이 늘어진다
-  const started = useRef<number | null>(null)
+  /**
+   * 장면 시계 — 원작의 한 틱(60Hz)마다 `CreditsClock.step`을 돌린다.
+   *
+   * ⚠️ **경과 시간으로 센다.** 프레임 수로 세면 느린 기계에서 크레딧이 늘어진다.
+   * ⚠️ **글이 오기를 기다린다** — 시계는 글 두루마리와 같은 틱이다(`unk_10FC`). 글 없이 시작하면 줄이 늦게 올라온다.
+   * 3D 무대가 모델 · 그림을 받는 동안(`creditsLive.ready`)도 기다린다. 한도(`READY_LIMIT`)를 넘으면 받은 만큼으로 간다
+   */
   useEffect(() => {
     if (lines === null || table === null || maker) return
-    const until = creditsFrames(table.rows)
+    const clock = new CreditsClock()
+    creditsLive.view = clock.view()
+    // 시작은 검정이다 (`BrightnessController_SetScreenBrightness(-16, …)`) — 받는 동안 3D가 비치지 않는다
+    if (sceneDim.current) sceneDim.current.style.opacity = '1'
     let raf = 0
+    let last: number | null = null
+    let acc = 0
+    const began = performance.now()
+    let playing = false
+    // 개발 전용 손잡이 — 시계를 멈추고 · 앞으로 돌려 장면을 찍는다. 배포 빌드에서는 이 가지가 접힌다
+    const dev = import.meta.env.DEV ? (globalThis as { __credits?: { clock: CreditsClock, hold: boolean } }) : null
+    if (dev) dev.__credits = { clock, hold: false }
     const tick = (now: number): void => {
-      started.current ??= now
-      const at = Math.floor(((now - started.current) / 1000) * 60)
-      if (at >= until) { setMaker(true); return }
-      setFrame(at)
+      if (!playing) {
+        if (!creditsLive.ready && now - began < READY_LIMIT) { raf = requestAnimationFrame(tick); return }
+        playing = true
+        void music.play(BGM)
+      }
+      if (last !== null) acc += Math.min(CATCH_UP / 60, (now - last) / 1000)
+      last = now
+      if (dev?.__credits?.hold) acc = 0
+      while (acc >= 1 / 60) {
+        acc -= 1 / 60
+        clock.step(pressed.current)
+        pressed.current = false
+      }
+      const v = clock.view()
+      creditsLive.view = v
+      if (sceneDim.current) sceneDim.current.style.opacity = String(v.sceneDim)
+      if (screenDim.current) screenDim.current.style.opacity = String(v.screenDim)
+      setFrame(v.tick)
+      setScene(v.scene)
+      setEndText(v.endText)
+      if (v.done) { setMaker(true); return }
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
-    return () => { cancelAnimationFrame(raf) }
+    return () => { cancelAnimationFrame(raf); creditsLive.view = null; if (dev) delete dev.__credits }
   }, [lines, table, maker])
 
-  // 넘기기 — 두루마리에서는 만든 사람 화면으로, 거기서는 타이틀로
+  // 3D 무대가 선 동안만 「받았다」가 의미가 있다 — 닫을 때 비운다
+  useEffect(() => () => { creditsLive.ready = false }, [])
+
+  // 넘기기 — 장면에서는 「The End」로, 거기서는 끝내고 만든 사람 화면으로, 거기서는 타이틀로
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (!['KeyZ', 'KeyX', 'Enter', 'Escape', 'Space'].includes(e.code)) return
@@ -332,37 +330,32 @@ export function CreditsScreen() {
       e.stopPropagation()
       if (e.repeat) return
       if (maker) leave()
-      else setMaker(true)
+      else pressed.current = true
     }
     window.addEventListener('keydown', onKey, true)
     return () => { window.removeEventListener('keydown', onKey, true) }
   }, [maker, leave])
 
-  /** 롬 목록만 흐르는 데 걸리는 프레임. **배경 셋을 나누는 자가 이것이다** */
-  const romFrames = table === null ? 0 : creditsFrames(table.rows)
-  const scene = atlas ? creditsScene(frame, atlas.count, romFrames) : 0
+  /** 장면 5까지 — 글 두루마리가 서 있다 (장면 5를 올릴 때 원작이 글을 거둔다 · `ov99_021D12F0`) */
+  const rollOn = !maker && !endText && scene < 5
   /**
    * ⚠️ **자리를 세는 자가 배치표다.** 뱅크가 표보다 길 수 있다 — 한국 롬의 뱅크는 237칸인데 배치표는 209줄이고
    * 뒤 28칸이 빈 글이다. 뱅크 길이로 세면 빈 줄 스물여덟이 흐른다
    */
   const rows = table === null ? [] : creditsRows(table.rows, [])
-  const shown = creditsAt(frame, rows)
+  // ⚠️ **마지막 줄은 두루마리가 안 흘린다** — 원작이 `unk_0C >= NELEMS - 1`에서 멈추고 그 줄은 「The End」 장면이 찍는다 (`ov99_021D4130`)
+  const shown = rollOn ? creditsAt(frame, rows.slice(0, -1)) : []
   const textOf = (index: number): string => lines?.[index] ?? ''
+  const endLine = textOf(Math.max(0, rows.length - 1))
 
   return (
     // 하네스가 두 장을 가른다 — 두루마리 · 만든 사람 (`story.mjs` ③ · `badgesLeague.mjs`)
     <div className={css.backdrop} data-credits={maker ? 'maker' : 'roll'}>
       <div className={css.stage}>
-        {atlas?.scenes.map((size, i) => (
-          <div
-            key={i}
-            className={`${css.scene} ${i === scene ? css.sceneOn : css.sceneOff}`}
-            style={sceneStyle(i, size, Math.min(CREDIT_SCENE_RUN[i] ?? 0,
-              Math.max(0, frame - creditsSceneStart(i, atlas.count, romFrames))))}
-          />
-        ))}
+        {/* 3D 장면은 뒤의 캔버스가 그린다 (`scene/CreditsStage`) — 밝기 가림은 글 아래에 깐다. 원작도 글 BG는 밝기를 안 받는다 */}
+        <div ref={sceneDim} className={css.dim} aria-hidden />
         {maker && <MakerScreen />}
-        <div className={css.roll} style={{ display: maker ? 'none' : undefined }}>
+        <div className={css.roll} style={{ display: rollOn ? undefined : 'none' }}>
           {shown.map(({ index, y, centered }) => (
             <div
               key={index}
@@ -375,14 +368,26 @@ export function CreditsScreen() {
             </div>
           ))}
         </div>
+        {/* 「The End」 — 가운데 · 위에서 80픽셀 (`ov99_021D2AAC`) */}
+        {endText && (
+          <div
+            className={`${css.line} ${css.align.center}`}
+            style={{ top: `${String((80 / VIEW_H) * 100)}%` }}
+            data-credits-end
+          >
+            {runsOf(endLine).map((run, i) => (
+              <span key={i} style={runStyle(0)}>{run.text}</span>
+            ))}
+          </div>
+        )}
         {/* 양옆 가장자리 — 그림이 칼로 자른 듯 끝나지 않게 */}
         <div className={`${css.edge} ${css.edgeLeft}`} aria-hidden />
         <div className={`${css.edge} ${css.edgeRight}`} aria-hidden />
-        {/* 진행 — 두루마리가 흐른 몫. 글자는 없다 */}
+        {/* 진행 — 장면이 흐른 몫. 글자는 없다 */}
         {!maker && (
           <div
             className={css.progress}
-            style={{ width: `${String(creditsProgress(frame, romFrames) * 100)}%` }}
+            style={{ width: `${String(creditsProgress(frame, naturalSchedule().total) * 100)}%` }}
             aria-hidden
           />
         )}
@@ -390,6 +395,8 @@ export function CreditsScreen() {
         <div className={css.hint} style={{ textShadow: `1px 1px 0 ${vars.scrim.deep}` }}>
           <KeyHints text={maker ? footWords(locale).toTitle : footWords(locale).skip} tone="dark" />
         </div>
+        {/* 화면 전체를 가리는 검정 — 건너뛰기 · 「The End」의 페이드 (글도 같이 꺼진다) */}
+        <div ref={screenDim} className={css.dim} style={{ zIndex: 5 }} aria-hidden />
       </div>
     </div>
   )

@@ -1340,7 +1340,7 @@ if (ACTS.has('3')) {
     // 여기서 가릴 것은 「아무것도 안 그렸는가」 하나다
     if (cpix.colors < 4) throw new Error(`크레딧이 통째로 비었다 (색 ${cpix.colors})`)
 
-    // 처음 깬 판에서도 Z 한 번에 두루마리를 넘겨 만든 사람 화면으로, 한 번 더에 타이틀로 (PARITY §8.12)
+    // 처음 깬 판에서도 Z 한 번에 3D 장면을 넘겨 「The End」로, 한 번 더(페이드인 뒤)에 만든 사람 화면으로, 한 번 더에 타이틀로 (PARITY §8.12)
     // — 타이틀은 통째로 다시 켜진다(`location.assign`)
     const creditsPart = () => page.evaluate(() => document.querySelector('[data-credits]')?.getAttribute('data-credits') ?? null)
       .catch(() => null)

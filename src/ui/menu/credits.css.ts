@@ -13,11 +13,13 @@ const H = 192
 const pctX = (px: number): string => `${String((px / W) * 100)}%`
 const pctY = (px: number): string => `${String((px / H) * 100)}%`
 
+/**
+ * ⚠️ **바탕은 투명이다** — 3D 장면은 뒤의 캔버스가 그린다 (`scene/CreditsStage`). 4:3 무대 밖은 무대의 그림자로 덮는다 (`stage`).
+ */
 export const backdrop = style({
   position: 'fixed',
   inset: 0,
   zIndex: 400,
-  background: vars.scrim.black,
   display: 'grid',
   placeItems: 'center',
   overflow: 'hidden',
@@ -32,23 +34,18 @@ export const stage = style({
   overflow: 'hidden',
   // 원작 글꼴이 8픽셀 높이고 줄 간격이 16이다 — 화면 높이의 1/24
   fontSize: `calc(min(100vh, calc(100vw * ${String(H / W)})) / 24)`,
+  // 4:3 밖은 검정으로 덮는다 — 상자 밖의 3D가 안 비친다 (`overflow`는 자기 그림자를 안 자른다)
+  boxShadow: `0 0 0 100vmax ${vars.scrim.black}`,
 })
 
-/**
- * 배경 세 장. 아틀라스를 `background-position`으로 밀어 고른다.
- *
- * ⚠️ **점을 뭉개지 않는다** — 원작 그림이 256×192 도트라 늘릴 때 보간하면
- * 하늘의 띠가 흐려진다
- */
-export const scene = style({
+/** 검정 가림 — 불투명도를 틱마다 직접 쓴다. 3D 가림은 글 아래, 화면 가림은 맨 위다 */
+export const dim = style({
   position: 'absolute',
   inset: 0,
-  imageRendering: 'pixelated',
-  transition: 'opacity 900ms linear',
+  background: vars.scrim.black,
+  opacity: 0,
+  pointerEvents: 'none',
 })
-
-export const sceneOn = style({ opacity: 1 })
-export const sceneOff = style({ opacity: 0 })
 
 /** 글이 흐르는 판. 배경 위에 얹힌다 */
 export const roll = style({

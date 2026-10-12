@@ -145,8 +145,16 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    *
    * 3 — 넓은 배치를 블록 차례로 읽고 0번 색을 뚫는다 · 장마다 뒤판 색(REPAIR §132). 옛 그림은 하늘이 위
    * 96줄로 접혀 있고 아래가 한 색이다
+   *
+   * 4 — **3D 무대의 그림이 붙는다** (`import/platinum/creditsArt.ts` — 회상 사진 28장 · 별똥별 줄기 · 밤 하늘 번호 판 · `art.json`). 옛 설치본에는
+   * `data/credits/`가 없어 크레딧의 사진 장면이 빈 검정이다
    */
-  credits: 3,
+  credits: 4,
+  /**
+   * 2 — **엔딩 모델 78~84가 붙는다** (`graphic/ending.narc` 78 `endingLight1` · 79 `endingLight2` · 80 `endingTree1a` · 81 `endingTree1b` · 82 `endingTree2a` · 83 `endingTree2a2` · 84 `endingTree2b` — 엔딩 크레딧의 가로등 · 나무, 정적 모델). 옛 설치본에는 이
+   * 이름이 `data/demo/index.json`에 없어 크레딧의 노을 · 낮 · 밤 장면이 모델 없이 선다. 기존 연출 모델 서른둘은 바이트가 그대로다
+   */
+  demoModels: 2,
   /**
    * 2 — 맵 헤더의 글 뱅크 번호를 us 번호로 되돌린다.
    *

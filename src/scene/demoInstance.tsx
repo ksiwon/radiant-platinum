@@ -128,7 +128,7 @@ const seeThrough = (m: MeshBasicMaterial): void => {
 }
 
 /** 한 물체의 재질 — 서브메시마다 따로 (BMA0가 이름으로 건다) */
-function buildMaterials(d: DemoLoaded, lighting: DemoLighting | null): {
+export function buildMaterials(d: DemoLoaded, lighting: DemoLighting | null): {
   materials: Material[], owned: Texture[], swaps: Map<string, Texture>
 } {
   const base = propMaterials(d.mesh, d.sheet)
