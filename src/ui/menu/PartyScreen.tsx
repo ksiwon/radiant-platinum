@@ -56,6 +56,7 @@ import { formTables, withHeldItem } from './formChange'
 import { giveVerdict } from './BagScreen'
 import { SHAYMIN_BEATS } from '../../engine/pokemon/formChangeBeat'
 import { music } from '../../engine/audio/music'
+import { SFX } from '../../engine/audio/sfx'
 import { MenuScreen } from './MenuScreen'
 import { PARTY_SLOT_NONE, partyChoice, partyStartCursor, setPartyReturnSlot, tradeAsksDetach } from './partyChoice'
 import { LevelPanel, type LevelPanelShow } from './LevelPanel'
@@ -806,6 +807,8 @@ export function PartyScreen() {
       // `engine/pokemon/formChangeBeat`에 있다
       const beats = SHAYMIN_BEATS
       const swapped = changeForm(selected, SHAYMIN_SKY, forms)
+      // 입자를 세우는 순간 효과음이 난다 (`LoadParticleResources` — `SEQ_SE_PL_W363`). 울음은 다 흩어진 뒤다
+      void music.playEffect(SFX.SHAYMIN_FORM_CHANGE)
       // ⚠️ **꽃은 안 없어진다.** 원작도 그라시데아를 소모하지 않는다
       clearUsingItem()
       window.setTimeout(() => {

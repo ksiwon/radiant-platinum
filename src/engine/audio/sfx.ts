@@ -83,6 +83,12 @@ export const SFX = {
    * (`EventCmdPlayGiratinaArrival_InitSpriteAndSky`)
    */
   GIRATINA_ARRIVE: 1489,
+  /**
+   * `SEQ_SE_PL_W363`. 쉐이미가 그라시데아로 모습을 바꿀 때 — 입자를 세우는 순간 울린다
+   * (`LoadParticleResources`의 `SPECIES_SHAYMIN` 갈래, `form_change.c`). 울음소리는 입자가 다 흩어진 뒤다.
+   * 번호는 `sdat.txt`의 닻(1282 = 1350)에서 센 1296번째 줄이다 (기라티나 쪽 `…W467109`는 바로 앞 줄, 1363)
+   */
+  SHAYMIN_FORM_CHANGE: 1364,
 
   /**
    * 기술이 맞는 소리 셋. **효과에 따라 다른 소리다** —
