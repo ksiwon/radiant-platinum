@@ -93,7 +93,7 @@ interface MakerText {
   labelGames: string
   labelThanks: string
   /** `MAKER.games`와 같은 차례 */
-  gameAbouts: readonly [string, string]
+  gameAbouts: readonly [string, string, string]
   thanks: string
   notice: readonly [string, string, string]
 }
@@ -101,13 +101,13 @@ interface MakerText {
 export const MAKER_TEXT: Record<DataLocale, MakerText> = {
   ko: {
     tagline: MAKER.tagline, about: MAKER.about, labelMaker: '만든 사람', labelGames: '다른 게임', labelThanks: '원작 해석',
-    gameAbouts: [MAKER.games[0].about, MAKER.games[1].about], thanks: MAKER.thanks, notice: MAKER.notice,
+    gameAbouts: [MAKER.games[0].about, MAKER.games[1].about, MAKER.games[2].about], thanks: MAKER.thanks, notice: MAKER.notice,
   },
   en: {
     tagline: 'An unofficial fan project that rebuilds Pokémon Platinum as browser 3D',
     about: 'KAIST Industrial Design and Computer Science — designing and building AI services for education and healthcare',
     labelMaker: 'Made by', labelGames: 'More games', labelThanks: 'Original analysis',
-    gameAbouts: ['A Pokémon tower defense x TFT game', 'A Pokémon BGM rhythm game'],
+    gameAbouts: ['A Pokémon tower defense x TFT game', 'A Pokémon BGM rhythm game', 'Pokémon HeartGold rebuilt in browser 3D'],
     thanks: 'The pokeplatinum decompilation project by the pret team',
     notice: [
       'This is an unofficial, unaffiliated fan project.',
@@ -119,7 +119,7 @@ export const MAKER_TEXT: Record<DataLocale, MakerText> = {
     tagline: 'ポケットモンスター プラチナをブラウザの3Dで作り直した非公式ファンプロジェクト',
     about: 'KAIST 産業デザイン・コンピュータサイエンス — 教育と医療のためのAIサービスを設計し、作っています',
     labelMaker: '制作', labelGames: '他のゲーム', labelThanks: '原作の解析',
-    gameAbouts: ['ポケモンのタワーディフェンス x TFT ゲーム', 'ポケモンBGMのリズムゲーム'],
+    gameAbouts: ['ポケモンのタワーディフェンス x TFT ゲーム', 'ポケモンBGMのリズムゲーム', 'ポケモン ハートゴールドをブラウザの3Dで'],
     thanks: 'pretチームの pokeplatinum デコンパイルプロジェクト',
     notice: [
       '非公式・非提携のファンプロジェクトです。',
