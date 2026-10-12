@@ -5,7 +5,6 @@
 //
 // ⚠️ **깃발이 서 있는 동안은 배틀이 딴 것이다.** 기술도 경험치도 없고 볼·먹이·
 // 진흙·도망 넷뿐이다 — 그 판정은 배틀 쪽이 이 깃발을 보고 갈린다.
-import { propPlacements } from '../engine/map/propPlacement'
 import { world as mapWorld } from '../engine/map/world'
 import {
   endSafari, leaveSafari, safariStep, SCRIPT_SAFARI_OUT_OF_BALLS, SCRIPT_SAFARI_OUT_OF_STEPS,
@@ -15,6 +14,7 @@ import { fieldScripts, start } from '../engine/script/field'
 import { encounters } from '../engine/battle/encounterSystem'
 import { mapById } from '../engine/map/world'
 import { useSaveStore } from '../state/saveStore'
+import { worldState } from '../state/worldState'
 
 /** `great_marsh_train.nsbmd`의 소품 번호 (`meson.build` 줄 번호 − 2) */
 const TRAM_MODEL = 475
@@ -28,8 +28,17 @@ const TRAM_MODEL = 475
  */
 const TRAM_SECONDS_PER_TILE = 0.125
 
-/** 지금 움직이고 있는 열차. 안 움직이면 null */
-let moving: { fromZ: number; toZ: number; elapsed: number; seconds: number } | null = null
+/** `GREAT_MARSH_TRAM_MOVEMENT_RIDE` — 타고 간다. 열차를 부르는 갈래(`_CALL` 3)와 갈린다 */
+const TRAM_MOVEMENT_RIDE = 4
+
+/**
+ * 열차가 타고 가는 사람의 몸을 열차 한가운데 둔다 (`RideTramToArea`: 열차 z = 주인공 z + 8, 곧 반 칸).
+ * 원작은 거꾸로 주인공이 투명한 채 걸어가고(`sRidingTramNorthMovements`) 열차가 그 z를 따르지만 결과는 같다 — 둘이 늘 같이 간다
+ */
+const RIDER_OFFSET = 0.5
+
+/** 지금 움직이고 있는 열차. 안 움직이면 null. `ride`면 주인공이 타고 있어 같이 간다 */
+let moving: { fromZ: number; toZ: number; elapsed: number; seconds: number; ride: boolean } | null = null
 
 /** 열차가 선 z. 안 움직일 때는 리포트의 자리다 */
 function tramZ(): number {
@@ -40,20 +49,37 @@ function tramZ(): number {
   return TRAM_STOP_Z[useSaveStore.getState().safari.tram] ?? TRAM_STOP_Z[2]!
 }
 
-/** 열차 소품. 배치 기록의 x·y를 그대로 쓰고 z만 갈아 끼운다 */
+/** 대습초원의 여섯 구역 맵 (`D06R0201` ~ `D06R0206`) */
+const GREAT_MARSH_MAPS: readonly number[] = [504, 505, 506, 507, 508, 509]
+
+/** 열차의 자리 x · y (타일). 원작 `GreatMarshTram_DynamicMapFeaturesInit`이 (1056, 16)을 16으로 나눠 놓는다 — 서 · 동 정거장(62 · 69)의 한가운데다 */
+const TRAM_X = 1056 / 16
+const TRAM_Y = 16 / 16
+
+/**
+ * 열차 소품.
+ *
+ * ⚠️ **열차는 배치 기록에 없다.** 원작은 장치가 맵 소품에 한 개를 더 올리므로(`MapPropManager_LoadOne`) 행렬의 건물 목록에는 모델 475가
+ * 한 번도 안 나온다 — 배치 기록을 찾던 옛 길은 늘 null이라 열차가 **어느 구역에서도 안 그려졌다.** 그래서 고정 자리 (66, 1)에 z만 갈아 끼운다
+ */
 export function greatMarshTramProp(): { model: number; x: number; y: number; z: number } | null {
-  const grid = mapWorld.grid
-  if (grid === null) return null
-  const at = propPlacements(grid.meta, mapWorld.mapId, TRAM_MODEL)[0]
-  if (at === undefined) return null
-  return { model: TRAM_MODEL, x: at.x, y: at.y, z: tramZ() }
+  if (!GREAT_MARSH_MAPS.includes(mapWorld.mapId)) return null
+  return { model: TRAM_MODEL, x: TRAM_X, y: TRAM_Y, z: tramZ() }
 }
 
 /** 프레임마다 민다. 도착하면 리포트의 자리가 이미 새 자리다 */
 export function stepTram(dt: number): void {
   if (moving === null) return
   moving.elapsed += dt
-  if (moving.elapsed >= moving.seconds) moving = null
+  const done = moving.elapsed >= moving.seconds
+  // ⚠️ **타고 가는 동안 주인공이 같이 가야 한다.** 안 옮기면 열차만 떠나고 내릴 때 처음 정거장에 서서 걸어 나온다 —
+  // 스크립트의 「내린다」 걸음(`LeaveQuickTram*`)은 도착한 정거장 앞을 가정한다
+  if (moving.ride) {
+    const p = worldState.player
+    p.position.z = (done ? moving.toZ : tramZ()) - RIDER_OFFSET
+    p.velocity.set(0, 0, 0)
+  }
+  if (done) moving = null
 }
 
 /** 열차가 서 있는가. 스크립트가 이걸로 기다린다 */
@@ -81,7 +107,7 @@ export const safariServices = {
    */
   initTram: (): void => { moving = null },
 
-  moveTram: (to: number, _movement: number): void => {
+  moveTram: (to: number, movement: number): void => {
     const save = useSaveStore.getState()
     const from = save.safari.tram
     if (from === to) { moving = null; return }
@@ -92,6 +118,7 @@ export const safariServices = {
       toZ: plan.destZ,
       elapsed: 0,
       seconds: Math.abs(plan.destZ - fromZ) * TRAM_SECONDS_PER_TILE,
+      ride: movement === TRAM_MOVEMENT_RIDE,
     }
     // 자리는 **떠나는 순간** 바뀐다 — 원작도 태스크를 걸기 전에 적어 둔다
     useSaveStore.setState({ safari: { ...save.safari, tram: to } })

@@ -67,6 +67,20 @@ const cross3 = (a: Vec3, b: Vec3): Vec3 => [
   a[0] * b[1] - a[1] * b[0],
 ]
 
+/**
+ * 카메라에서 축을 세운다 — 쓴 쪽과 맞는 쪽이 같은 자리라 두 자리로는 「앞」이 안 설 때.
+ *
+ * 원작 입자 공간이 「+X 화면 오른쪽 · +Y 위 · +Z 화면 앞」이므로 그대로 카메라의 오른쪽 · 위 · 앞이다.
+ * ⚠️ **가로만 본다** — 카메라가 내려다봐도 +X는 땅과 나란하다 (`splBasis`와 같은 까닭)
+ *
+ * @param e 카메라 `matrixWorld.elements` (열 우선 4×4)
+ */
+export function cameraBasis(e: ArrayLike<number>): SplBasis {
+  const flat = Math.hypot(e[0]!, e[2]!)
+  const ex: Vec3 = flat > 1e-6 ? [e[0]! / flat, 0, e[2]! / flat] : [1, 0, 0]
+  return { ex, ey: [0, 1, 0], ez: [-ex[2], 0, ex[0]] }
+}
+
 /** DS 축 셋을 우리 월드 축 셋으로 */
 export interface SplBasis {
   /** DS +X — 쓴 쪽에서 맞는 쪽으로 (원작에서 내 쪽 → 상대 쪽이 +X다) */

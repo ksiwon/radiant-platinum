@@ -25,6 +25,25 @@ const MON_BY_NAME: Readonly<Record<string, readonly [number, number]>> = {
   ROTOM_FAN: [479, 4], ROTOM_MOW: [479, 5],
 }
 
+/**
+ * 배치표에 **한 번도 안 나오는** 포켓몬 그림 — 그래서 그림 표(`npcSprites.json`)에 줄이 없다. 상호교류광장의 따라다니는 마리 스무 종
+ * 중 열이 그렇다 (`scripts_amity_square`의 `AmitySquare_SetFollowerGfx_*` → `VAR_OBJ_GFX_ID_0`). 번호는 `generated/object_events_gfx.txt`의
+ * 차례다: 73 푸린 · 220~222 모부기 계통 · 223~225 불꽃숭이 계통 · 226~228 팽도리 계통.
+ * ⚠️ 그림이 없어서 이름으로는 못 찾는다 — 번호로 직접 가리킨다
+ */
+const MON_BY_GFX: Readonly<Record<number, readonly [number, number]>> = {
+  73: [39, 0],
+  220: [387, 0], 221: [388, 0], 222: [389, 0],
+  223: [390, 0], 224: [391, 0], 225: [392, 0],
+  226: [393, 0], 227: [394, 0], 228: [395, 0],
+}
+
+/** 그림 번호로 찾는다 — 그림 표에 있으면 이름으로, 없으면 위 표로 (`MON_BY_GFX`) */
+export function overworldMonOfGfx(gfx: number, spriteName: string | null): readonly [number, number] | null {
+  if (spriteName !== null) return overworldMon(spriteName)
+  return MON_BY_GFX[gfx] ?? null
+}
+
 /** 이 그림이 실제 포켓몬 모델로 설 수 있는가. 아니면 판때기로 남는다 */
 export function overworldMon(name: string): readonly [number, number] | null {
   return MON_BY_NAME[name] ?? null

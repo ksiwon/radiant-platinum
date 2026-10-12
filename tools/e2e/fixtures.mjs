@@ -132,7 +132,7 @@ export const REQUIRED_PLATINUM_GROUPS = [
   'pokegra', 'encounters', 'trainers', 'spawns', 'items', 'npcSprites', 'itemIcons',
   'pokeIcons', 'boxWallpapers', 'poketchMap', 'signposts', 'starterScene', 'distortionProps',
   'distortion', 'trainerSprites', 'particles', 'trainerCase',
-  'typeIcons', 'startMenuIcons', 'dexShapes', 'dexHeightWeight', 'townMapPlayer', 'mailArt', 'berryArt', 'diplomaArt',
+  'typeIcons', 'partyIcons', 'startMenuIcons', 'dexShapes', 'dexHeightWeight', 'townMapPlayer', 'mailArt', 'berryArt', 'diplomaArt',
   'bagSprite', 'slots',
 ]
 

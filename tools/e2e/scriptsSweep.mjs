@@ -94,26 +94,51 @@ async function boot() {
   page.setDefaultNavigationTimeout(300_000)
   page.setDefaultTimeout(120_000)
   noise = watchNoise(page)
+  if (flag('verbose')) page.on('console', (c) => { if (c.type() !== 'debug') console.log(`    CONSOLE ${c.type()} ${c.text().slice(0, 220)}`) })
+  if (flag('verbose')) page.on('framenavigated', (f) => { if (f === page.mainFrame()) console.log(`    NAV ${f.url()}`) })
+  console.log('  boot: 타이틀을 연다')
   await openTitle(page, base)
+  console.log('  boot: 타이틀 열림 — 리포트를 비운다')
   await page.evaluate(async () => {
     const m = await import('/src/state/saveStore.ts')
     await m.useSaveStore.getState().resetSave({ backup: false })
   })
   await page.waitForFunction(() => 'pt' in globalThis && '__scriptSweep' in globalThis, null, { timeout: 120_000 })
+  console.log('  boot: 확인 지점으로 뛴다')
   await warpTo(page, BASE_CHECKPOINT)
+  console.log('  boot: 도착 장면을 민다')
   await pushScripts(page, 120_000)
   await page.waitForTimeout(1500)
+  console.log('  boot: 준비 끝')
 }
 
-const call = (fn, ...args) => page.evaluate(({ fn: f, args: a }) => globalThis.__scriptSweep[f](...a), { fn, args })
+/**
+ * 페이지 안 함수를 부른다. ⚠️ **시한이 있다** — 페이지가 영영 안 돌아오면(실측: 맵 150에서 14분) 하네스가 같이 선다.
+ * 시한을 넘기면 던지고, 위쪽이 판을 새로 띄운다
+ */
+const CALL_LIMIT_MS = 420_000
+const call = (fn, ...args) => Promise.race([
+  page.evaluate(({ fn: f, args: a }) => globalThis.__scriptSweep[f](...a), { fn, args }),
+  new Promise((_, no) => { setTimeout(() => { no(new Error(`${fn}이 ${String(CALL_LIMIT_MS / 1000)}초 안에 안 돌아왔다`)) }, CALL_LIMIT_MS) }),
+])
 
 const SPOTS = [
   { kind: 'open' }, { kind: 'atWarp', index: 0 }, { kind: 'warp', index: 0 }, { kind: 'grass' },
 ]
 
+/**
+ * 도착 장면이 **정해진 칸에서 걷기 시작하는** 맵은 그 칸에서 서야 한다 — 다른 칸에서 시작하면 원작 이동 값이 문 칸을 지나 맵이 바뀌고
+ * 그 뒤 대사를 새 맵의 글 뱅크로 읽어 빈 대사가 된다 (맵 188을 「열린 칸」에서 시작하면 대사 4줄이 비었고 · 아래 칸에서 시작하면 0이다).
+ * 칸은 장면의 이동표에서 거꾸로 센 것이다 — 파이트에리어 라이벌(`FightArea_OnFrame_Rival`): 라이벌 (628,434) 서쪽 네 칸에서 동 4 → 동 18·북 2·동 9·북 6으로
+ * 볼크너·플린트 앞 (655,426)에 닿는다
+ */
+const START_TILES = new Map([[188, { kind: 'tile', x: 624, z: 434, facing: -Math.PI / 2 }]])
+
 async function enterMap(m, prep) {
-  for (const spot of SPOTS) {
+  for (const spot of [...(START_TILES.has(m.map) ? [START_TILES.get(m.map)] : []), ...SPOTS]) {
+    if (flag('verbose')) console.log(`    gotoMap ${String(m.map)} ${spot.kind}`)
     const r = await call('gotoMap', m.map, spot, prep)
+    if (flag('verbose')) console.log(`    → ok=${String(r.ok)} ${String(Math.round(r.ms))}ms bank=${JSON.stringify(await call('bankInfo'))}`)
     if (r.ok) return { ...r, spot: spot.kind, natural: await call('naturalTrace') }
   }
   return { ok: false, ms: 0, spot: null, natural: null }
@@ -129,7 +154,11 @@ function pickSamples(m) {
   return [first, second].filter((s) => s !== null)
 }
 
-const OPTS = { timeoutMs: 120_000, stallMs: 15_000 }
+/** 돌면 페이지가 게임을 떠나는 스크립트 (파일:진입점) — 명예의 전당 `ClearGame` */
+const SKIP_KEYS = new Map([
+  ['198:0', '게임을 끝내는 스크립트(ClearGame) — 크레딧으로 넘어간다'],
+])
+const OPTS = { timeoutMs: 120_000, stallMs: 15_000, stopAtEnd: true }
 const seenKeys = new Set()
 for (const e of done.maps) for (const s of e.sites) seenKeys.add(s.key)
 
@@ -142,18 +171,40 @@ async function sweepMap(m) {
   row.natural = enter.natural
   if (!enter.ok) { row.errors.push('맵에 못 들어갔다'); return row }
 
-  for (const s of m.sites) {
+  for (const s of flag('walk-only') ? [] : m.sites) {
     if (s.auto === true) continue
     if (seenKeys.has(s.key)) { row.sites.push({ key: s.key, kind: s.kind, dup: true }); continue }
+    // 게임을 끝내는 스크립트는 안 돈다 — 명예의 전당 → 크레딧으로 페이지가 떠난다 (`ClearGame`)
+    if (SKIP_KEYS.has(s.key)) {
+      row.sites.push({ key: s.key, kind: s.kind, fileName: s.fileName, skipped: SKIP_KEYS.get(s.key) })
+      continue
+    }
+    // ⚠️ **도착 장면이 주인공을 다른 맵으로 내보냈을 수 있다** (스타크마운틴 · 되돌림동굴) — 그 채로 돌면 앞 맵의 글 뱅크로 읽는다
+    for (let tries = 0; tries < 2 && await call('currentMap') !== m.map; tries++) await enterMap(m, prep)
+    // 장면 스크립트는 그 칸에서 시작해야 한다 — 앞 판이 주인공을 장면 끝 칸에 세워 두었다
+    if (s.kind === 'frame' && START_TILES.has(m.map)) await enterMap(m, prep)
     seenKeys.add(s.key)
+    if (flag('verbose')) console.log(`    run ${s.key} ${s.kind} bank=${JSON.stringify(await call('bankInfo'))}`)
     const site = { key: s.key, kind: s.kind, script: s.script, mapFile: m.mapFile, local: s.local ?? 0, pre: s.pre }
     const n0 = noise.ours.length
     const runs = [await call('runSite', site, { round: 0, ...OPTS })]
-    if (runs[0].menus > 0 && runs[0].status === 'done') runs.push(await call('runSite', site, { round: 1, ...OPTS }))
+    if (runs[0].menus > 0 && runs[0].status === 'done') {
+      // ⚠️ 첫 판이 맵을 옮겼으면 돌아온 뒤에 둘째 판을 돈다 — 안 그러면 도착 맵의 글 뱅크로 읽어 **빈 대사**로 나온다
+      if (await call('currentMap') !== m.map || (s.kind === 'frame' && START_TILES.has(m.map))) await enterMap(m, prep)
+      runs.push(await call('runSite', site, { round: 1, ...OPTS }))
+    }
     row.sites.push({
       key: s.key, kind: s.kind, script: s.script, at: s.at ?? null, local: s.local ?? null, node: s.node,
       fileName: s.fileName, runs, consoleErrors: noise.ours.slice(n0),
     })
+    // 진짜 배틀이 열려 버렸으면(감싸기를 빠져나간 길) 그 판은 못 쓴다 — 새로 띄워 그 맵부터 다시 선다
+    if (runs.some((r) => r.status === 'battle')) {
+      row.errors.push(`진짜 배틀이 열렸다 (${s.key}) — 다시 띄웠다`)
+      await boot()
+      const again = await enterMap(m, prep)
+      if (!again.ok) break
+      continue
+    }
     // 스크립트가 맵을 옮겼으면 돌아온다
     if (await call('currentMap') !== m.map) {
       const back = await enterMap(m, prep)
@@ -180,7 +231,8 @@ async function sweepMap(m) {
 let restarts = 0
 await boot()
 const t0 = Date.now()
-const todo = maps.filter((m) => !finished.has(m.map))
+// ⚠️ `--walk-only`는 이미 돈 맵의 걷기 표본만 다시 잰다 — 자리는 안 건드린다
+const todo = flag('walk-only') ? maps.filter((m) => finished.has(m.map)) : maps.filter((m) => !finished.has(m.map))
 console.log(`조각 ${String(partN)}/${String(partM)} · 상태 ${state} · 맵 ${String(todo.length)}개 · 시작 자리 ${String(todo.reduce((n, m) => n + m.sites.length, 0))}`)
 for (const [i, m] of todo.entries()) {
   let row
@@ -193,7 +245,10 @@ for (const [i, m] of todo.entries()) {
     row = { map: m.map, name: m.name, warp: null, natural: null, sites: [], walk: [], errors: [`하네스: ${why}`], consoleErrors: [] }
     await boot().catch((e2) => { console.log(`  ! 다시 못 띄웠다 ${String(e2.message ?? e2).slice(0, 200)}`) })
   }
-  done.maps.push(row)
+  if (flag('walk-only')) {
+    const old = done.maps.find((x) => x.map === row.map)
+    if (old !== undefined) { old.walk = row.walk; old.walkAt = new Date().toISOString() }
+  } else done.maps.push(row)
   save()
   const runs = row.sites.flatMap((s) => s.runs ?? [])
   const bad = runs.filter((r) => r.status !== 'done' || r.errors.length > 0 || r.unimpl.length > 0 || r.empty.length > 0)

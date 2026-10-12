@@ -244,6 +244,9 @@ const EXTRA_BANKS = [
   // ⚠️ **조사가 붙은 판(`…_WITH_ARTICLES`)은 한국어 롬에 없다** — 그 명령은
   // 콘테스트 계통이라 안 만든다 (§9)
   'TEXT_BANK_CONTEST_ACCESSORY_NAMES',
+  // 볼 씰 이름(단수 · 복수)과 콘테스트 배경 이름 — `BufferBallSealName(Plural)` · `BufferContestBackdropName`이 읽는다.
+  // 브라우저 쪽은 뱅크를 다 굽는다(`import/platinum/text.ts`) — 여기만 빠지면 개발 서버에서만 이름 칸이 빈다
+  'TEXT_BANK_UNK_0008', 'TEXT_BANK_BALL_SEAL_NAMES', 'TEXT_BANK_BALL_SEAL_NAMES_PLURAL', 'TEXT_BANK_CONTEST_BACKDROP_NAMES',
   // 배틀팩토리 (PARITY §9.3). 시설 안은 필드 스크립트가 아니라 **다른 VM**이
   // 도는 자리라(`overlay104`) 스크립트에서 이 뱅크들이 안 보인다 —
   // 고르는 화면 27줄 · 복도와 배틀룸 40줄 · 빌린 개체의 원트레이너 이름 한 줄

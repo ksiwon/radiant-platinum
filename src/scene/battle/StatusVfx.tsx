@@ -44,7 +44,7 @@ import { torsoY } from './moveAnchor'
 import { SplParticles } from './SplParticles'
 import type { SplCue } from './splDraw'
 import { splFileFor, preloadSplPack, SPL_WAZA } from './splPack'
-import { splMetre, type SplBasis, type Vec3 } from './splPlace'
+import { cameraBasis, splMetre, type Vec3 } from './splPlace'
 import { tallOf } from './stageRefs'
 import { BdspSequence } from './fx/BdspSequence'
 import { preloadStatusSeqs, statusSeqPlan } from './fx/moveSeq'
@@ -282,10 +282,7 @@ function StatusShot({ shot, stage, done }: {
     // (`splBasis(by, by)`는 축을 지어낸다). 원작 입자 공간이 「+X 화면 오른쪽 · +Y 위 ·
     // +Z 화면 앞」이므로 그대로 카메라의 오른쪽 · 위 · 앞이다
     camera.updateMatrixWorld()
-    const e = camera.matrixWorld.elements
-    const flat = Math.hypot(e[0]!, e[2]!)
-    const ex: Vec3 = flat > 1e-6 ? [e[0]! / flat, 0, e[2]! / flat] : [1, 0, 0]
-    const basis: SplBasis = { ex, ey: [0, 1, 0], ez: [-ex[2], 0, ex[0]] }
+    const basis = cameraBasis(camera.matrixWorld.elements)
     return { cues, at, metre, basis }
   }, [anim, shot, camera])
 

@@ -142,9 +142,9 @@ const UNNAMED: NameSource = {
  * 상점이 무엇으로 값을 받는가 (`enum MartType`).
  *
  * 원작은 갈래가 넷인데(일반·프런티어·장식·씰) 우리에게 살아 있는 것은
- * **돈과 BP** 둘이다 — 장식은 §12.1에서 돈으로 팔고 씰은 §9다
+ * **돈 · BP · 씰** 셋이다 — 장식은 §12.1에서 돈으로 판다. `seal`은 돈으로 사되 재고 칸이 씰 번호다 (`ShopScreen`)
  */
-export type ShopCurrency = 'money' | 'bp'
+export type ShopCurrency = 'money' | 'bp' | 'seal'
 
 export interface FieldServices {
   /**
@@ -460,7 +460,7 @@ export interface FieldServices {
    */
   chooseMon?: {
     /** `daycare`면 키우미집 갈래(맡긴다 · 능력치를 본다 · 그만둔다)로 연다. `slot`에서 커서가 시작한다 */
-    open: (opts?: { daycare?: boolean, slot?: number }) => void
+    open: (opts?: { daycare?: boolean, trade?: boolean, slot?: number }) => void
     picked: () => number
     /** 키우미집 갈래에서 「능력치를 본다」로 닫았는가 (`PARTY_MENU_EXIT_CODE_SUMMARY`) */
     summary: () => boolean
@@ -670,6 +670,20 @@ export interface FieldServices {
      * `BufferAccessoryNameWithArticle`은 콘테스트 계통이라 안 만든다 (§9)
      */
     accessory: (accessory: number) => string
+    /** 볼 씰 이름 — 단수 · 복수 (`TEXT_BANK_BALL_SEAL_NAMES` · `_PLURAL`). 번호는 **0부터**다 (명령이 1을 뺀다) */
+    sealName: (seal: number) => string
+    sealNamePlural: (seal: number) => string
+    /** 콘테스트 배경 이름 (`TEXT_BANK_CONTEST_BACKDROP_NAMES`) */
+    backdropName: (backdrop: number) => string
+  }
+  /** 씰케이스 (PARITY §4.11) — 리포트가 곧 케이스라 따로 둘 상태가 없다 */
+  seals?: {
+    /** 그 씰이 몇 장인가 (`SealCase_CountSealOccurrenceAnywhere`) */
+    count: (id: number) => number
+    /** 어디에든 한 장이라도 있는 씰의 종류 수 (`SealCase_CountUniqueSeals`) */
+    unique: () => number
+    /** 더하거나 뺀다. 못 하면 거짓이고 아무것도 안 한다 (`GiveOrTakeSeal`) */
+    giveOrTake: (id: number, quantity: number) => boolean
   }
   /** 보관 시스템. 스크립트가 박스 안을 들여다보는 자리가 몇 군데 있다 */
   boxes?: {
@@ -878,6 +892,8 @@ export interface FieldServices {
    * · 4 비교한다. 어느 갈래로 들어왔는지가 화면의 첫 손짓을 정한다
    */
   openStorage?: (mode: number) => void
+  /** PC의 볼캡슐 편집기를 연다 (`OpenSealCapsuleEditor`). 닫힐 때까지 메뉴가 떠 있다 */
+  openCapsuleEditor?: () => void
   /** 박스에 남은 자리 수 (`GetPCBoxesFreeSlotCount`) */
   boxFreeSlots?: () => number
   /** 파티에서 싸울 수 있는 수 + 박스에 든 수 (`CountAliveMonsAndBoxMons`) */

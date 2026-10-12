@@ -8,6 +8,7 @@
 import type { Species, Stats } from '../../data/schema'
 import { noOrigin, type Origin, type Trainer } from './origin'
 import type { Mail } from '../world/mail'
+import type { MonCapsule } from '../world/ballCapsule'
 import { computeStats } from './stats'
 import { expForLevel, levelForExp } from './exp'
 import { NATURE_COUNT } from './stats'
@@ -92,6 +93,12 @@ export interface PokemonInstance {
    * 여기 있다** — 원작도 `Pokemon` 구조체에 `Mail`을 통째로 넣는다
    */
   mail: Mail | null
+  /**
+   * 붙인 볼캡슐 (`MON_DATA_BALL_CAPSULE_ID` · `MON_DATA_BALL_CAPSULE`, PARITY §4.11). 안 붙었으면 없다.
+   *
+   * ⚠️ **선택 칸이다** — 옛 세이브와 새로 만든 개체가 이 칸 없이 있다. 번호는 1~12이고 사본은 붙일 때의 모습이다
+   */
+  capsule?: MonCapsule
 }
 
 /** 데리고 다닐 수 있는 수 (`MAX_PARTY_SIZE`). 넘치면 박스로 간다 */

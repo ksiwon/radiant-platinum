@@ -28,7 +28,10 @@ import {
   loadBagSprite, loadDialogueBankOrNull, loadItemDescriptions, loadItemIcons, loadItemNames, loadItems,
   loadMoveNames, loadMoves, type ItemTable, type MoveTable,
 } from '../../data/gameData'
-import { fillMenuText, loadUiText, MART_TEXT, MONEY_WINDOW_TEXT, SELL_TEXT, YES_NO } from '../../data/uiText'
+import { fillMenuText, loadUiText, MART_TEXT, MONEY_WINDOW_TEXT, SELL_TEXT, UI_BANK, YES_NO } from '../../data/uiText'
+import { canGiveOrTake, countSeal, giveOrTakeSeal } from '../../engine/world/sealCase'
+import { sealsInUse } from '../../engine/world/ballCapsule'
+import { SEAL_PRICE } from '../../engine/world/sealTables'
 import { ITEM_TABLE } from '../../import/platinum/itemTable'
 import {
   addRecord, RECORD_BATTLE_POINTS_SPENT, RECORD_MONEY_SPENT, RECORD_PREMIER_BALLS_RECEIVED,
@@ -180,6 +183,8 @@ interface Loaded {
   bagSprite: BagSprite | undefined
   /** 「포인트 교환 코너」(롬 195의 21) — BP 가게의 머리. 못 받으면 소지금 이름표로 떨어진다 */
   frontierTitle: string | undefined
+  /** 볼 씰 이름 (롬 12) — 씰 가게의 줄 이름. 못 받으면 이름 없는 줄이 선다 */
+  sealNames: string[]
 }
 
 type Tab = 'buy' | 'sell'
@@ -225,12 +230,22 @@ export function ShopScreen() {
    * ⚠️ **원작은 이 가게에 「판다」가 없다** — 갈래가 「산다·그만둔다」 둘뿐이다
    * (`shop_menu.c`의 `maxOptions = 2`). BP는 되팔 수 없다
    */
-  const isBP = useMenuStore((s) => s.shopCurrency) === 'bp'
+  const currency = useMenuStore((s) => s.shopCurrency)
+  const isBP = currency === 'bp'
+  /**
+   * 해님시티 씰 가게 (`MART_TYPE_SEAL`). 재고 칸이 **도구 번호가 아니라 씰 번호**다 — 값은 씰 표, 가진 수는 씰케이스,
+   * 이름은 롬 12다. 돈으로 사고 되팔지 않는다 (판다 없음 — BP 가게와 같다)
+   */
+  const isSeal = currency === 'seal'
+  const sealCase = useSaveStore((s) => s.sealCase)
   const battlePoints = useSaveStore((s) => s.battlePoints)
   const purse = isBP ? battlePoints : money
   const priceOf = (item: number): number =>
-    isBP ? bpPriceOf(item) : data?.items.get(item).price ?? 0
-  const pocketOf = (item: number): number => data?.items.get(item).pocket ?? 0
+    isSeal ? SEAL_PRICE[item - 1] ?? 0 : isBP ? bpPriceOf(item) : data?.items.get(item).price ?? 0
+  const pocketOf = (item: number): number => (isSeal ? 0 : data?.items.get(item).pocket ?? 0)
+  /** 줄 아이콘 — 씰은 도구 그림이 아니라서 없다 */
+  const iconOf = (item: number, size: number): CSSProperties | undefined =>
+    isSeal ? undefined : itemIcon(data?.icons, item, size)
 
   useEffect(() => {
     let alive = true
@@ -242,12 +257,13 @@ export function ShopScreen() {
       loadMoves().catch(() => undefined),
       loadBagSprite().catch(() => undefined),
       loadDialogueBankOrNull(locale, 195),
+      loadDialogueBankOrNull(locale, UI_BANK.ballSealNames),
     ])
-      .then(([items, names, descriptions, icons, bagText, shopText, menuText, pockets, moveNames, moves, bagSprite, frontier]) => {
+      .then(([items, names, descriptions, icons, bagText, shopText, menuText, pockets, moveNames, moves, bagSprite, frontier, seals]) => {
         if (alive) {
           setData({
             items, names, descriptions, icons, bag: bagText, shop: shopText, menu: menuText, pockets, moveNames,
-            moves, bagSprite, frontierTitle: frontier?.[21] || undefined,
+            moves, bagSprite, frontierTitle: frontier?.[21] || undefined, sealNames: seals ?? [],
           })
         }
       })
@@ -257,7 +273,7 @@ export function ShopScreen() {
 
   /** 줄 모델 — 고를 수 있는 줄. 끝 「그만둔다」 줄이 맨 끝이다 (`shopStock` 차례 = 줄 차례) */
   const rows: ShopRow[] = tab === 'buy'
-    ? buyRows(stock, priceOf, (item) => bag.flat().find((s) => s.item === item)?.count ?? 0, pocketOf)
+    ? buyRows(stock, priceOf, (item) => (isSeal ? countSeal(sealCase, item) : bag.flat().find((s) => s.item === item)?.count ?? 0), pocketOf)
     // 중요한 물건은 못 판다 (`preventToss`) — 값이 0인 도구는 남기고 고르면 「파실 수 없습니다!」가 뜬다
     : sellRows(bag, (item) => data?.items.get(item).preventToss !== 1, (item) => data?.items.get(item).price ?? 0)
 
@@ -266,7 +282,7 @@ export function ShopScreen() {
   const itemRow = row?.kind === 'item' ? row : undefined
   const onEnd = row?.kind === 'end'
   const unit = itemRow?.price ?? 0
-  const name = (item: number): string => data?.names[item] ?? ''
+  const name = (item: number): string => (isSeal ? data?.sealNames[item] ?? '' : data?.names[item] ?? '')
   /** 고를 수 있는 최대 개수 — 사는 쪽은 돈이, 파는 쪽은 가진 수가 막는다 */
   const max = itemRow === undefined ? 0 : tab === 'sell' ? itemRow.have : purchaseMax(purse, unit)
   const amount = (value: number): string => {
@@ -329,8 +345,12 @@ export function ShopScreen() {
   const decideCount = (n: number): void => {
     if (!itemRow) return
     if (tab === 'sell') { setStep({ kind: 'confirm', n, yes: true }); return }
-    if (!canFit(useSaveStore.getState().bag, pocketOf(itemRow.item), itemRow.item, n)) {
-      setStep({ kind: 'finish', line: say(MART_TEXT.noRoom, []), item: itemRow.item, count: 0 })
+    // 씰은 한 종류 99장까지다 (`SealCase_CheckSealCount`) — 넘으면 씰 전용 줄(롬 14)이다
+    const fits = isSeal
+      ? canGiveOrTake(useSaveStore.getState().sealCase, itemRow.item, n, sealsInUse(useSaveStore.getState().capsules, itemRow.item))
+      : canFit(useSaveStore.getState().bag, pocketOf(itemRow.item), itemRow.item, n)
+    if (!fits) {
+      setStep({ kind: 'finish', line: say(isSeal ? MART_TEXT.sealNoRoom : MART_TEXT.noRoom, []), item: itemRow.item, count: 0 })
       return
     }
     setStep({ kind: 'confirm', n, yes: true })
@@ -353,7 +373,14 @@ export function ShopScreen() {
       setStep({ kind: 'finish', line: say(MART_TEXT.noMoney, []), item: itemRow.item, count: 1 })
       return
     }
-    if (!save.addItem(pocket, itemRow.item, n)) {
+    const stored = isSeal
+      ? ((): boolean => {
+        const put = giveOrTakeSeal(useSaveStore.getState().sealCase, itemRow.item, n, sealsInUse(useSaveStore.getState().capsules, itemRow.item))
+        if (put.ok) useSaveStore.setState({ sealCase: [...put.seals] })
+        return put.ok
+      })()
+      : save.addItem(pocket, itemRow.item, n)
+    if (!stored) {
       // 칸은 개수를 정할 때 봤다. 그새 바뀌었으면 값을 되돌린다 — 안 그러면 낸 것만 사라진다
       if (isBP) {
         useSaveStore.setState((st) => ({ battlePoints: addBattlePoints(st.battlePoints, cost) }))
@@ -368,7 +395,8 @@ export function ShopScreen() {
     }))
     setStep({
       kind: 'finish',
-      line: say(MART_TEXT.thanks, [name(itemRow.item), data.pockets[pocket] ?? '']),
+      // 씰은 주머니가 없다 — 롬 13이 이름 한 칸만 받는다 (`Shop_SelectConfirmPurchase`의 씰 갈래)
+      line: isSeal ? say(MART_TEXT.sealThanks, [name(itemRow.item)]) : say(MART_TEXT.thanks, [name(itemRow.item), data.pockets[pocket] ?? '']),
       item: itemRow.item,
       count: n,
     })
@@ -397,7 +425,8 @@ export function ShopScreen() {
    */
   const dismiss = (): void => {
     if (step.kind !== 'finish') { setCursor(at); setStep({ kind: 'list' }); return }
-    const bonus = finishPurchase(step, onPurchase)
+    // ⚠️ 씰 번호는 도구 번호와 겹친다(4번이 몬스터볼) — 씰에는 덤이 없다
+    const bonus = isSeal ? null : finishPurchase(step, onPurchase)
     // 덤은 칸이 있을 때만 준다. 못 넣으면 줄도 기록도 없다 (`Bag_TryAddItem == TRUE`)
     if (bonus !== null && useSaveStore.getState().addItem(pocketOf(bonus), bonus, 1)) {
       useSaveStore.setState((st) => ({ records: addRecord(st.records, RECORD_PREMIER_BALLS_RECEIVED, 1) }))
@@ -431,8 +460,8 @@ export function ShopScreen() {
     return false
   }
   const switchTab = (): boolean => {
-    // BP 가게에는 「판다」가 없다 — 갈래를 안 바꾼다
-    if (isBP) return false
+    // BP 가게와 씰 가게에는 「판다」가 없다 — 갈래를 안 바꾼다
+    if (isBP || isSeal) return false
     setTab((t) => (t === 'buy' ? 'sell' : 'buy'))
     setCursor(0)
     return true
@@ -495,8 +524,8 @@ export function ShopScreen() {
   const confirmAsk = (n: number): string => {
     if (!itemRow || !data) return ''
     if (tab === 'sell') return sayBag(SELL_TEXT.ask, [(unit * n).toLocaleString('ko-KR')])
-    const move = tmMove(data.items.get(itemRow.item), data.items.tmMoves)
-    return say(confirmLine(itemRow.item, isBP), [
+    const move = isSeal ? null : tmMove(data.items.get(itemRow.item), data.items.tmMoves)
+    return say(confirmLine(isSeal ? 0 : itemRow.item, isBP), [
       name(itemRow.item), String(n), (unit * n).toLocaleString('ko-KR'), move === null ? '' : data.moveNames[move] ?? '',
     ])
   }
@@ -527,10 +556,10 @@ export function ShopScreen() {
   // ── 계산대 ───────────────────────────────────────────────────────────────
   const walletLabel = isBP ? (data?.bag[97] ?? '').split('\n')[0] ?? '' : data?.shop[MONEY_WINDOW_TEXT.label] ?? ''
   const wallet = amount(purse)
-  const tmMoveId = itemRow && data ? tmMove(data.items.get(itemRow.item), data.items.tmMoves) : null
+  const tmMoveId = itemRow && data && !isSeal ? tmMove(data.items.get(itemRow.item), data.items.tmMoves) : null
   const moveRow = tmMoveId !== null ? data?.moves?.byId.get(tmMoveId) : undefined
   const heroName = tmMoveId !== null && data?.moveNames[tmMoveId] ? data.moveNames[tmMoveId] : itemRow ? name(itemRow.item) : ''
-  const poolName = itemRow ? data?.pockets[itemRow.pocket] ?? '' : ''
+  const poolName = itemRow && !isSeal ? data?.pockets[itemRow.pocket] ?? '' : ''
   const buying = step.kind === 'count' || step.kind === 'confirm'
   const canAfford = tab === 'sell' || purse >= unit
 
@@ -548,12 +577,12 @@ export function ShopScreen() {
       const n = step.kind === 'count' || step.kind === 'confirm' ? step.n : 1
       const sum = receipt(purse, unit, n, tab === 'sell')
       const sign = sum.delta < 0 ? '−' : '+'
-      const bonus = tab === 'buy' ? premierBonus(itemRow.item, n) : null
+      const bonus = tab === 'buy' && !isSeal ? premierBonus(itemRow.item, n) : null
       const have = tab === 'sell' ? `${String(itemRow.have)} → ${String(itemRow.have - n)}` : `${String(itemRow.have)} → ${String(itemRow.have + n)}`
       return (
         <div className={own.receipt}>
           <div className={own.receiptHead}>
-            <span className={own.heroIcon} style={itemIcon(data?.icons, itemRow.item, RECEIPT_ICON)} aria-hidden />
+            <span className={own.heroIcon} style={iconOf(itemRow.item, RECEIPT_ICON)} aria-hidden />
             <span>
               <div className={own.heroName} style={{ textAlign: 'left' }}>{heroName}</div>
               {/* 롬 20의 숫자 칸에 「5 → 8」을 넣는다 — 우리 말을 안 붙인다 */}
@@ -610,7 +639,7 @@ export function ShopScreen() {
           <span key={purse} className={own.walletValue}>{wallet}</span>
         </div>
         <div className={own.hero}>
-          <span className={own.heroIcon} style={itemIcon(data?.icons, itemRow.item, HERO_ICON)} aria-hidden />
+          <span className={own.heroIcon} style={iconOf(itemRow.item, HERO_ICON)} aria-hidden />
           <GroundShadow w={112} h={14} />
           <div className={own.heroName}>{heroName}</div>
           {/* 기술머신은 이름이 기술이라 도구 이름이 한 줄 밑으로 내려간다 */}
@@ -636,20 +665,21 @@ export function ShopScreen() {
 
   const entries = entriesOf(rows, tab === 'sell')
   const kind = isBP ? 'bp' : tab
+  const noSell = isBP || isSeal
   const foot = step.kind === 'count'
     ? '↑↓ 개수 · ←→ ±10 · Z 결정 · X 그만둔다'
     : step.kind === 'confirm'
       ? '↑↓ 고르기 · Z 결정 · X 그만둔다'
       : step.kind !== 'list'
         ? 'Z 다음'
-        : isBP
+        : noSell
           ? '↑↓ 고르기 · Z 결정 · X 닫기'
           : '←→ 산다/판다 · ↑↓ 고르기 · Z 결정 · X 닫기'
 
   return (
     <MenuScreen
       title={kind === 'sell' ? '판다' : kind === 'bp' ? (data?.frontierTitle ?? walletLabel) : '산다'}
-      {...(isBP ? {} : {
+      {...(noSell ? {} : {
         tabs: {
           pages: [{ key: 'buy', label: '산다' }, { key: 'sell', label: '판다' }],
           at: tab === 'buy' ? 0 : 1,
@@ -694,7 +724,7 @@ export function ShopScreen() {
                   </div>
                 )
               }
-              const item = data?.items.get(r.item)
+              const item = isSeal ? undefined : data?.items.get(r.item)
               const rowMove = item && data ? tmMove(item, data.items.tmMoves) : null
               const tm = rowMove !== null && item !== undefined
               const rowName = tm && data?.moveNames[rowMove] ? data.moveNames[rowMove] : name(r.item)
@@ -719,7 +749,7 @@ export function ShopScreen() {
                       : (
                         <>
                           {berry && <span className={own.number}>No{pad2(berryNumber(r.item))}</span>}
-                          <span className={css.icon} style={itemIcon(data?.icons, r.item, LIST_ICON)} aria-hidden />
+                          {!isSeal && <span className={css.icon} style={itemIcon(data?.icons, r.item, LIST_ICON)} aria-hidden />}
                         </>
                       )}
                     {rowName === '' ? <span className={own.nameSkeleton} aria-hidden /> : <span className={css.label}>{rowName}</span>}
@@ -751,7 +781,7 @@ export function ShopScreen() {
                 {clerk.next && <span className={own.nextMark} aria-hidden />}
               </>
             )
-            : itemRow ? <div className={own.bandText.desc}>{data?.descriptions[itemRow.item] ?? ''}</div> : null}
+            : itemRow && !isSeal ? <div className={own.bandText.desc}>{data?.descriptions[itemRow.item] ?? ''}</div> : null}
         </div>
       </div>
     </MenuScreen>

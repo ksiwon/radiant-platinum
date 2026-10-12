@@ -53,6 +53,9 @@ export const stubParty: NonNullable<FieldServices['party']> = {
 export const stubLabels: NonNullable<FieldServices['labels']> = {
   berry: () => '',
   accessory: () => '',
+  sealName: () => '',
+  sealNamePlural: () => '',
+  backdropName: () => '',
   accessoryWithArticle: () => '',
   move: () => '',
   pocket: () => '',
@@ -121,6 +124,7 @@ export const allDoneServices = {
   },
   trainerInfo: { ...stubTrainerInfo, hasBadge: () => true },
   labels: stubLabels,
+  seals: { count: () => 0, unique: () => 0, giveOrTake: () => true },
   chooseMon: { open: () => {}, picked: () => 0, summary: () => false },
   boxes: { nickname: () => '', lotteryEntries: () => ({ party: [], boxes: [] }) },
   tablet: { name: () => '', open: () => {} },

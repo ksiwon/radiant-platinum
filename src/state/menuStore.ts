@@ -16,6 +16,8 @@ import type { PartyItemUse } from '../engine/bag/fieldUse'
 export type MenuScreen =
   | 'start' | 'bag' | 'party' | 'pokedex' | 'trainerCard' | 'save' | 'options' | 'shop'
   | 'fly' | 'box'
+  // PC의 「볼캡슐」 (PARITY §4.11). 스크립트가 `OpenSealCapsuleEditor`로 열고 닫힐 때까지 선다
+  | 'capsule'
   // 모험노트. 가방의 열쇠도구에서 연다 (`ItemUseFunc_Journal`).
   // 이어하기에서는 **저절로 펼쳐진다** (`Journal_CheckOpenOnContinue`) — 그때만
   // `journalAt`이 지난번 쪽을 가리킨다
@@ -206,6 +208,8 @@ interface MenuStore {
    * 갈래가 뜬다(알이면 뒤의 둘). 커서는 `chooseStart`에서 시작한다
    */
   chooseDaycare: boolean
+  /** NPC 교환으로 고르는 중 — 캡슐 단 마리는 「캡슐이 떨어진다」를 묻는다 (`PARTY_MENU_MODE_NPC_TRADE`) */
+  chooseTrade: boolean
   chooseStart: number
   /**
    * 타운맵을 **보기만** 하는가 (`TOWN_MAP_MODE_WALL_MAP` · `TOWN_MAP_MODE_ITEM`) — 벽 지도와 타운맵 도구다. A는 아무것도 안 하고
@@ -280,7 +284,7 @@ interface MenuStore {
   /** 크레딧으로 넘어간다. 전당이 리포트를 다 쓰면 스스로 부른다 (PARITY §8.12) */
   openCredits: () => void
   /** 스크립트가 한 마리를 고르라고 파티 화면을 연다 */
-  openPartyToChoose: (opts?: { daycare?: boolean, slot?: number }) => void
+  openPartyToChoose: (opts?: { daycare?: boolean, trade?: boolean, slot?: number }) => void
   /** 타운맵을 보기 전용으로 연다 (벽 지도 · 타운맵 도구) */
   openTownMap: () => void
   /** 스크립트가 요약 화면을 기술 고르기로 연다 */
@@ -324,6 +328,7 @@ export const useMenuStore = create<MenuStore>()((set) => ({
   berryList: [],
   choosingMon: false,
   chooseDaycare: false,
+  chooseTrade: false,
   chooseStart: 0,
   townMapView: false,
   trade: null,
@@ -335,7 +340,7 @@ export const useMenuStore = create<MenuStore>()((set) => ({
     capture(stack)
     return {
       stack, top: 'party' as const, choosingMon: true, usingItem: null,
-      chooseDaycare: opts?.daycare === true, chooseStart: opts?.slot ?? 0,
+      chooseDaycare: opts?.daycare === true, chooseTrade: opts?.trade === true, chooseStart: opts?.slot ?? 0,
     }
   }),
 
@@ -518,7 +523,7 @@ export const useMenuStore = create<MenuStore>()((set) => ({
     capture([])
     return {
       stack: [], top: null, usingItem: null, giveTo: null, givingItem: null,
-      choosingMon: false, chooseDaycare: false, townMapView: false, shopOnPurchase: null,
+      choosingMon: false, chooseDaycare: false, chooseTrade: false, townMapView: false, shopOnPurchase: null,
     }
   }),
 }))

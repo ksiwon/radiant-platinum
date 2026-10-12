@@ -646,9 +646,18 @@ export const typeIconSheet = (locale: DataLocale): SpriteSheet => ({
 
 /** 기술 분류 그림 — 32×16이 가로로 셋 (96×16). 차례는 물리 · 특수 · 변화다 (P0b ③) */
 export const MOVE_CLASS_ATLAS = 'data/moveClass.png'
+
 export const MOVE_CLASS_SHEET: SpriteSheet = {
   path: MOVE_CLASS_ATLAS, cellW: 32, cellH: 16, cols: 3, rows: 1,
 }
+/** 파티 화면 표식 셋 — 8×8 × 3칸을 가로로 (`partyIcons.png`). 칸 번호는 원작 애니 번호다 */
+export const PARTY_ICON_ATLAS = 'data/partyIcons.png'
+export const PARTY_ICON_SHEET: SpriteSheet = {
+  path: PARTY_ICON_ATLAS, cellW: 8, cellH: 8, cols: 3, rows: 1,
+}
+/** 표식 → 시트의 칸 번호 (`PartyMenu_Template_HeldIcons`의 `animIdx`) */
+export const PARTY_ICON_CELL = { item: 0, mail: 1, capsule: 2 } as const
+
 /** 기술 분류 → 시트의 칸 번호 */
 export const MOVE_CLASS_CELL = { physical: 0, special: 1, status: 2 } as const
 
@@ -713,6 +722,11 @@ export function loadTypeIcons(locale: DataLocale): Promise<SpriteSheet | null> {
 export function loadMoveClass(): Promise<SpriteSheet | null> {
   const pinned = pinAtlas(MOVE_CLASS_ATLAS)
   return loadSheet(MOVE_CLASS_SHEET, pinned)
+}
+
+export function loadPartyIcons(): Promise<SpriteSheet | null> {
+  const pinned = pinAtlas(PARTY_ICON_ATLAS)
+  return loadSheet(PARTY_ICON_SHEET, pinned)
 }
 
 export function loadStartMenuIcons(locale: DataLocale): Promise<SpriteSheet | null> {

@@ -38,6 +38,7 @@ import { convertDexHeightWeight } from './dexHeightWeight'
 import { convertDexShapes } from './dexShapes'
 import { convertStartMenuIcons } from './startMenuIcons'
 import { convertTypeIcons } from './typeIcons'
+import { convertPartyIcons } from './partyIcons'
 import { convertLibraryTv } from './libraryTv'
 import { convertDemoModels } from './demoModels'
 import { convertFrontierBg } from './frontierBg'
@@ -365,6 +366,13 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: ['data/typeIcons.*.png', 'data/moveClass.png'],
     converter: 1,
     convert: convertTypeIcons,
+  },
+  {
+    // 파티 화면의 도구 · 편지 · 볼캡슐 표식 셋 (`party_menu/sprites.c` · `pl_plist_gra.narc`)
+    name: 'partyIcons',
+    outputs: ['data/partyIcons.png'],
+    converter: 1,
+    convert: convertPartyIcons,
   },
   {
     // 창기둥과 깨어진 세계로 가는 문 — 필드 밖 연출의 모델 (`demoModels.ts`)

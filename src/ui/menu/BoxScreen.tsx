@@ -133,7 +133,7 @@ const MON_TEXT = {
 } as const
 
 /** 묻기 전에 막는 까닭의 줄 (`BoxAppMan_CheckReleaseMonValid`) */
-const REFUSAL_TEXT: Record<ReleaseRefusal, number> = { egg: 31, mail: 30, lastMon: BOX_TEXT.lastMon }
+const REFUSAL_TEXT: Record<ReleaseRefusal, number> = { egg: 31, mail: 30, capsule: 29, lastMon: BOX_TEXT.lastMon }
 
 /** 테마 줄 (`BoxMenu_FillWallpaperMenu`) — 애호가 줄은 푼 벽지가 있어야 서고, 다섯부터 둘째 줄이 선다 */
 function themeItems(unlocked: number): number[] {
@@ -405,6 +405,9 @@ export function BoxScreen() {
         if (target.pane !== 'party') { setMenu(null); return }
         // 박스를 고르기 전에 막는다 (`STORE_MON_CHECK_CAN_STORE_MON`)
         if (onLastAliveMon(party, mon)) { setMenu(null); setSay([msg[BOX_TEXT.lastMon] ?? '']); return }
+        // 편지를 든 마리와 볼캡슐이 달린 마리는 맡기기 전에 막는다 (`BoxAppMan_IsPreviewedMonHoldingMailOrHasBallCapsule`)
+        if (mailTypeOfItem(mon.heldItem) !== null) { setMenu(null); setSay([msg[REFUSAL_TEXT.mail] ?? '']); return }
+        if (mon.capsule !== undefined) { setMenu(null); setSay([msg[REFUSAL_TEXT.capsule] ?? '']); return }
         setMenu({ kind: 'store', items: [...Array(BOX_COUNT).keys()], at: box, target })
         return
       case BOX_MENU.release: {
