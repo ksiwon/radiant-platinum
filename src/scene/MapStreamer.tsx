@@ -662,12 +662,6 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // `devWarp.tick`이 목적지로 옮긴다. 그때까지 설 자리는 있어야 한다
     if (back === null && devWarp.claimed()) {
       enter(initial, spawn.map, spawn.x, spawn.z, 0)
-      // ⚠️ **이 길이 부팅 맵의 콜드 컴파일을 동기로 남겨 두던 자리다.** 이어하기(`startRestore`)와 워프는 덮개 밑에서 비동기로
-      // 굽는데, 확인 지점은 이 갈래로 들어와 첫 장면의 파이프라인이 첫 프레임에 동기로 섰다(코드로 확인).
-      // 0.4초 / 15~17초 갈림(`FOLLOWUP` §4 · §7)이 셰이더 캐시의 데워짐 때문인지는 전후를 아직 못 쟀다 — 비동기 갈래로 같이 맞춘다.
-      // 덮개는 안 건다(곧 `devWarp.tick`이 목적지로 옮긴다) — 안 구워진 물체가 구워질 때까지 안 그려질 뿐 프레임은 안 멎는다
-      beginAsyncPipelines()
-      void settleAsyncPipelines(terrainLanded)
       return () => { forget() }
     }
 
