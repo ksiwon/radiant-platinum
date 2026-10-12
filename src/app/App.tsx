@@ -94,8 +94,12 @@ export function App() {
     // 개발용 손잡이(`window.pt`). 배포본에는 **조각째 안 실린다** — 조건이
     // 빌드 상수라 rollup이 이 가지를 통째로 흔들어 낸다
     if (import.meta.env.DEV) void import('./devConsole').then((m) => { m.installDevConsole() })
-    // 스크립트 전수 점검의 게임 쪽 반 — 엿보기 훅과 몰기 (`tools/e2e/scriptsSweep.mjs`)
-    if (import.meta.env.DEV) void import('./devScriptLog').then((m) => { m.installDevScriptLog() })
+    // 스크립트 전수 점검의 게임 쪽 반 — 엿보기 훅과 몰기 (`tools/e2e/scriptsSweep.mjs`).
+    // ⚠️ **부른 판에서만 단다** (`__wantScriptSweep`, 러너가 `addInitScript`로 세운다). 이 훅은 배틀을 안 열고 이긴 것으로
+    // 돌려주는데, 개발 서버마다 늘 달려 있던 동안(10-11 ~ 10-13) journey · story가 트레이너전 · 관장전을 실제로 안 치렀다
+    if (import.meta.env.DEV && (globalThis as { __wantScriptSweep?: boolean }).__wantScriptSweep === true) {
+      void import('./devScriptLog').then((m) => { m.installDevScriptLog() })
+    }
   }, [])
 
   return (

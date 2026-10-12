@@ -91,6 +91,8 @@ let noise = null
 async function boot() {
   if (page !== null) await page.close().catch(() => {})
   page = await browser.newPage({ viewport: { width: 960, height: 640 } })
+  // 스크립트 점검 훅은 부른 판에서만 달린다 (`src/app/App.tsx`)
+  await page.addInitScript(() => { globalThis.__wantScriptSweep = true })
   page.setDefaultNavigationTimeout(300_000)
   page.setDefaultTimeout(120_000)
   noise = watchNoise(page)

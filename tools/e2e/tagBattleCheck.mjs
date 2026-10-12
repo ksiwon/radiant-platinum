@@ -20,6 +20,8 @@ const maps = JSON.parse(readFileSync(resolve(ROOT, 'public/data/maps.json'), 'ut
 const MAP = 188
 const browser = await chromium.launch({ args: gpuArgs('webgpu'), headless: true })
 const page = await browser.newPage({ viewport: { width: 960, height: 640 } })
+// 스크립트 점검 훅은 부른 판에서만 달린다 (`src/app/App.tsx`)
+await page.addInitScript(() => { globalThis.__wantScriptSweep = true })
 page.setDefaultTimeout(180_000)
 const navs = []
 page.on('framenavigated', (f) => { if (f === page.mainFrame()) navs.push(f.url()) })
