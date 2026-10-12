@@ -50,10 +50,10 @@ function pathsRead(): { paths: Set<string>, unresolved: string[] } {
   const paths = new Set<string>()
   const unresolved: string[] = []
 
-  // `export const NAME = 'data/…'` · `export const fn = (…): string => `data/…``
+  // `export const NAME = 'data/…'` · `const fn = (…): string => `data/…`` (파일 안에서만 쓰는 것도)
   const consts = new Map<string, string>()
   for (const m of SRC.matchAll(
-    /^export const (\w+)(?::[^=]+)?\s*=\s*(?:\([^)]*\)(?::\s*\w+)?\s*=>\s*)?['`](data\/[^'`]+)['`]/gm,
+    /^(?:export )?const (\w+)(?::[^=]+)?\s*=\s*(?:\([^)]*\)(?::\s*\w+)?\s*=>\s*)?['`](data\/[^'`]+)['`]/gm,
   )) {
     consts.set(m[1]!, holes(m[2]!))
   }

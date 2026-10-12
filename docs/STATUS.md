@@ -11,7 +11,7 @@
 |---|---:|---|
 | 공개 배포를 막을 수 있는 자리 | 재는 자리 12 | [DEPLOY.md](DEPLOY.md) §1 |
 | 우리가 만든 자리가 어긋난 것 | 0 (끝난 23은 안 센다) | [REPAIR.md](REPAIR.md) |
-| 원작 대비 반쯤 · 없음 | 7 · 0 | [PARITY.md](PARITY.md) |
+| 원작 대비 반쯤 · 없음 | 8 · 0 | [PARITY.md](PARITY.md) |
 | 화면에 아직 안 서는 것 | 0 | [3D_GAP_AUDIT.md](3D_GAP_AUDIT.md) §5 |
 | 알고 남겨 둔 것 | 10 | [PLAN.md](PLAN.md) §16.11 |
 
@@ -59,11 +59,12 @@
 
 | | 무엇 | 어디까지 됐나 |
 |---|---|---|
-| §1.17 | 스크립트 명령 | 583종 구현, 닿는 자리의 98.8%가 돈다(범위 안으로는 99.4%). 나머지 678자리는 §10에 계통별로 갈라 뒀다 |
+| §1.17 | 스크립트 명령 | 범위 안 시작 자리(맵 556 · 4,371자리)에서 닿는 명령 47,140자리 중 건너뛰는 것은 47자리(25종)뿐이다(`tools/e2e/scriptsSweepHeadless.test.mts` — 정적으로 닿는 곳을 바이트코드째 센다). 그 25종은 하나씩 판정했다 |
 | §2.20 | 배틀타워·프론티어 | 배틀팩토리 하나를 만들었다 (§9.3) — 빌린 여섯에서 셋을 골라 일곱 판을 잇고, 이길 때마다 쓰러뜨린 상대와 한 마리를 바꾼다. 나머지 넷(타워·스테이지·캐슬·룰렛)은 차후 업데이트다 — 문 앞에서 막고 안내를 띄운다 (§9.3 끝). ⚠️ 시설의 멀티도 §9다  |
 | §4.1 | 필드에서 도구 쓰기 | `item_use_functions.c`의 스물다섯 갈래를 표로 옮겼다(`engine/bag/fieldUse.ts`). 열하나가 돈다 — 회복·기술머신·진화의돌·리펠·피리 둘·탈출로프·자전거·포켓몬레이더(155종)·천계의피리·그라시데아꽃·달콤한꿀. 꿀은 달콤한향기와 같 |
-| §8.5 | 문 여닫는 애니 | ⚠️ BDSP가 그리는 맵에서는 문짝이 안 열린다 — `scene/MapStreamer`가 `bdspDraws`일 때 `DoorAnimations`를 세우지 않고, BDSP 건물·방의 문은 구워진 그대로 서 있다. 그 자리에 남는 것은 원작 클립 길이만큼의 기다림과 문 |
-| §8.5b | 소품이 스스로 움직인다 (BTA0 · BTP0) | ⚠️ BDSP가 그리는 맵에서는 하나도 안 돈다 — 이 소품들은 원작 땅과 함께 숨고(`ChunkModels`의 `dsHidden`), BDSP 쪽 그림(`BdspField` · `BdspRoom` · `BdspDungeon`)에는 UV를 미는 것도 애니 믹서도 없다. |
+| §4.11 | 볼 씰 · 볼캡슐 | 케이스와 가게와 캡슐이 있다(`engine/world/sealCase` · `ballCapsule` · `sealTables` · `ShopScreen`의 씰 갈래 · `CapsuleScreen`). 씰은 케이스에 든 것과 캡슐에 붙은 것으로 갈리고 한 종류를 합쳐 9 |
+| §8.5 | 문 여닫는 애니 | BDSP가 그리는 맵의 문짝은 `holdBdspDoors`가 연다(`BdspField` · `BdspRoom` · `BdspDungeon` — `scene/DoorAnimations`). BDSP 방 번들 255벌 중 문짝 재질이 있는 것은 37벌이고(`docs/ord |
+| §8.5b | 소품이 스스로 움직인다 (BTA0 · BTP0) | BDSP가 그리는 맵은 BDSP 원본의 움직임으로 돈다 (`scene/bdspMotion` — 굽는 값은 `import/bdsp/motion.ts` · `field.ts`의 `Moving` · 노드 쪽 `bdspArena.py`의 `motion_extras` · `mo |
 | §8.12 | 크레딧 | 두루마리가 흐르고 끝나면 타이틀로 나간다 (`ui/menu/CreditsScreen`). 글은 롬의 대사 뱅크 548이고 줄 수가 판마다 다르다(미국 237 · 한국 209 · 일본 184). 어느 줄이 몇 픽셀째에 서고 어느 줄이 가운데인지는 사용자 롬의 오버레이 # |
 | §8.15 | 창기둥 → 깨어진 세계 | 빨려 드는 문이 원작대로 돈다(`DoDWWarp` · `dw_warp.c` · `scene/DwWarpStage`) — `titledemo` 16 모델을 원점에, BCA0 · BTA0를 한 틱에 한 프레임, 카메라가 10칸 위에서 곧장 내려다보며 화각이 반각 4004에 |
 

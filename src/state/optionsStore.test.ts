@@ -96,7 +96,7 @@ describe('언어 — 우리가 연 자리', () => {
       const missing = banks.filter((b) => !existsSync(resolve(dir, locale, `${String(b.index)}.json`)))
       const articles = [387, 393, 394, 413, 620]
       expect(missing.map((b) => b.index), locale).toEqual(
-        locale === 'ja' ? [387, 393, 394, 413, 414, 620] : locale === 'ko' ? articles : [],
+        locale === 'ja' ? [13, 387, 393, 394, 413, 414, 620] : locale === 'ko' ? [13, ...articles] : [],
       )
     }
   })

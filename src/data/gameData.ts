@@ -360,6 +360,9 @@ export function loadCreditsAtlas(): Promise<CreditsAtlas> {
     })
 }
 
+/** 크레딧 3D 무대 그림 한 장 — `art.json`의 `file`은 `credits/` 아래다 */
+const creditsArtAtlas = (name: string): string => `data/credits/${name}`
+
 /**
  * 크레딧 3D 무대의 그림 — 회상 사진 28장 · 날아다니는 포켓몬 넷 (`credits/art.json`). 그림을 다 받아 잡아 둔다.
  * ⚠️ **옛 설치본에는 없다** (`GROUP_FORMAT.credits` 4) — 못 받으면 부르는 쪽이 사진 장면을 빈 검정으로 둔다
@@ -368,8 +371,8 @@ export function loadCreditsArt(): Promise<CreditsArt> {
   return fetchJson('credits/art.json', (v) => creditsArtSchema.parse(v)).then(async (art) => {
     const files = [
       ...art.memory.male, ...art.memory.female, ...art.night.male, ...art.night.female, ...art.sprites, art.nightSky,
-    ].map((p) => `data/${p.file}`)
-    await Promise.all(files.map((f) => pinAtlas(f)))
+    ].map((p) => p.file.replace(/^credits\//, ''))
+    await Promise.all(files.map((name) => pinAtlas(creditsArtAtlas(name))))
     return art
   })
 }
