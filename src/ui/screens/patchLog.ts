@@ -5,9 +5,15 @@
 //   이력은 git이 갖고 있다). 한때 `docs/CHANGELOG.md`를 만들었다가 바로 그
 //   규칙에 걸려 지웠다.
 //
-//   그래서 새 판을 낼 때 할 일은 **하나**다: 화면에 보일 것이 있으면 `NOTES`
-//   맨 앞에 한 판을 더한다. 없으면 아무것도 안 한다 — 안쪽 정리만 있는 판은
-//   여기 넣지 않는다(빈 칸으로 보인다). 무엇이 바뀌었는지의 전부는 `git log`다.
+//   그래서 새 판을 낼 때 할 일은 **둘**이다: 화면에 보일 것이 있으면 `NOTES`
+//   맨 앞에 한 판을 더하고, `patchSeen.ts`의 `LATEST`를 그 판으로 바꾼다(둘이
+//   어긋나면 `patchLog.test`가 선다). 없으면 아무것도 안 한다 — 안쪽 정리만 있는
+//   판은 여기 넣지 않는다(빈 칸으로 보인다). 무엇이 바뀌었는지의 전부는 `git log`다.
+//
+// ⚠️ **이 파일은 첫 화면에 안 싣는다.** 노트가 판마다 쌓여 첫 화면 예산(gzip
+//   150kB)을 혼자 밀어 올렸다(v1.3.0에서 151.8kB). 타이틀이 쓰는 것은 판 이름
+//   하나라 그것만 `patchSeen.ts`에 두고, 본문은 패치노트 창 · 더보기 창(둘 다
+//   지연 로드)만 읽는다
 //
 // ⚠️ **여기는 홍보문이 아니라 알림이다.** 판마다 한두 줄이면 된다. 길게 적고
 //   싶어지면 그것은 커밋 메시지가 할 일이다. 정식판(v1.0.0)만 예외로 게임에
@@ -158,23 +164,3 @@ export const NOTES: PatchNote[] = [
     ],
   },
 ]
-
-/** 지금 판 */
-export const VERSION = NOTES[0].v
-
-const SEEN = 'radiant.patch.seen'
-
-/**
- * 안 본 판이 있나 — 차림표 칸에 점을 띄울지 정한다.
- *
- * ⚠️ 사생활 보호 모드에서는 `localStorage`를 **읽는 것만으로도** 던진다. 점 하나
- * 띄우자고 타이틀을 죽일 수는 없다
- */
-export function unreadPatch(): boolean {
-  try { return localStorage.getItem(SEEN) !== VERSION } catch { return false }
-}
-
-/** 봤다고 적어 둔다 */
-export function markPatchSeen(): void {
-  try { localStorage.setItem(SEEN, VERSION) } catch { /* 사생활 보호 모드 — 넘어간다 */ }
-}

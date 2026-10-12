@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { APP_VERSION } from '../../state/save/contract'
-import { KIND_NAME, NOTES, VERSION, markPatchSeen, unreadPatch } from './patchLog'
+import { KIND_NAME, NOTES } from './patchLog'
+import { LATEST, VERSION, markPatchSeen, unreadPatch } from './patchSeen'
 
 /** `1.2.3` · `v1.2` → 세 자리 수. 빈 자리는 0이다 */
 function semver(v: string): [number, number, number] {
@@ -40,6 +41,7 @@ describe('patchLog', () => {
 
   it('지금 판은 NOTES[0]을 따른다 — 그래야 새 판에서 점이 다시 켜진다', () => {
     expect(VERSION).toBe(NOTES[0].v)
+    expect(LATEST.date).toBe(NOTES[0].date)
     expect(VERSION).toBe('v1.3.0')
   })
 
