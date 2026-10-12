@@ -103,9 +103,13 @@ export const safariServices = {
   /**
    * ⚠️ **이미 세워져 있으면 자리를 안 건드린다.** 우리 리포트는 열차 자리를
    * 늘 들고 있으므로, 원작이 갈래 번호로 하던 판정을 「자리가 이미 있다」로 읽는다 —
-   * 어차피 새 리포트가 5·6구역에서 시작한다
+   * 어차피 새 리포트가 5·6구역에서 시작한다.
+   *
+   * ⚠️ **타고 가는 중에는 더 건드리지 않는다.** 열차가 구역 경계를 넘으면 맵이 바뀌며 이 초기화 스크립트(`SafariGame_InitTram`)가
+   * 다시 도는데, 그때 이동을 끊으면 열차가 도착 자리로 튀고 주인공은 경계에 멈춘 채 「내린다」 걸음만 걷는다.
+   * 이동 상태는 `moveTram`만 세운다
    */
-  initTram: (): void => { moving = null },
+  initTram: (): void => { /* 아무것도 안 한다 */ },
 
   moveTram: (to: number, movement: number): void => {
     const save = useSaveStore.getState()

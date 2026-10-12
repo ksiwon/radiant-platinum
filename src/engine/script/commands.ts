@@ -2357,9 +2357,9 @@ function tutorChoices(ctx: ScriptContext, slot: number, at: number): number[] {
  * 갈래 메뉴 없이 A가 곧 고르기다 (`PartyMenu_HandleInput`).
  *
  * ⚠️ 갈리는 곳이 딱 하나 있다. 교환 쪽은 고른 마리에 **볼 캡슐**이 붙어
- * 있으면 "떼어집니다"를 묻고 뗀다 (`CheckForItemApplication`). 우리 개체에는
- * 캡슐 칸이 없어서(PARITY §3.11) 그 가지가 영영 안 열린다 — 캡슐이 생기면
- * 여기가 갈라져야 한다
+ * 있으면 "떼어집니다"를 묻고 뗀다 (`CheckForItemApplication`). 그 가지는 파티 화면이 탄다 —
+ * 개체의 `capsule`이 서 있으면 `tradeAsksDetach`가 물음을 올리고 「네」에서 `detachCapsule`로 뗀다
+ * (`PartyScreen`의 `askDetach`). 여기는 화면을 열고 닫힐 때까지 기다리기만 한다
  */
 on('OpenPartyMenuForTrade', (ctx) => {
   // 캡슐 단 마리를 고르면 「캡슐이 떨어진다」를 묻는다 (`CheckForItemApplication`)

@@ -42,8 +42,8 @@ function expectSame(path: string, bytes: Uint8Array): void {
 }
 
 describe('그룹 표', () => {
-  it('새 그룹 아홉이 변환기와 함께 붙어 있다', () => {
-    for (const name of ['typeIcons', 'partyIcons', 'startMenuIcons', 'dexShapes', 'dexHeightWeight', 'townMapPlayer', 'mailArt', 'berryArt', 'diplomaArt']) {
+  it('새 그룹 열이 변환기와 함께 붙어 있다', () => {
+    for (const name of ['typeIcons', 'partyIcons', 'sealIcons', 'startMenuIcons', 'dexShapes', 'dexHeightWeight', 'townMapPlayer', 'mailArt', 'berryArt', 'diplomaArt']) {
       expect(GROUPS.find((g) => g.name === name)?.convert, name).toBeTypeOf('function')
     }
   })
@@ -63,6 +63,32 @@ withRom('en', 'ko', 'ja')('파티 표식', () => {
       expect(solid, locale).toBeGreaterThan(30)
     }
   }, 120_000)
+})
+
+withRom('en', 'ko', 'ja')('볼 씰 그림', () => {
+  it('세 롬에서 240×192 한 장 · 여든 칸이 다 차 있고 개발 산출물과 픽셀까지 같다', async () => {
+    for (const locale of ['en', 'ko', 'ja']) {
+      const out = await run('sealIcons', locale)
+      expect([...out.keys()], locale).toEqual(['data/sealIcons.png'])
+      for (const [path, bytes] of out) expectSame(path, bytes)
+      const png = decodePngBytes(out.get('data/sealIcons.png')!)
+      expect([png.width, png.height]).toEqual([240, 192])
+      for (let i = 0; i < 80; i++) {
+        let solid = 0
+        const cx = (i % 10) * 24, cy = Math.floor(i / 10) * 24
+        for (let y = 0; y < 24; y++) for (let x = 0; x < 24; x++) if (png.pixels[((cy + y) * 240 + cx + x) * 4 + 3] !== 0) solid++
+        expect(solid, `${locale} 씰 ${String(i + 1)}`).toBeGreaterThan(60)
+      }
+    }
+  }, 120_000)
+
+  it.skipIf(DECOMP === null)('글자 멤버 번호 표가 디컴프 Unk_020F64D0의 첫째 칸과 같다', async () => {
+    const { SEAL_ICON_MEMBER } = await import('../../engine/world/sealTables')
+    const src = readFileSync(resolve(DECOMP!, 'src/unk_02097B18.c'), 'utf8')
+    const body = /Unk_020F64D0\[SEAL_ID_MAX\] = \{([\s\S]*?)\n\};/.exec(src)![1]!
+    const firsts = [...body.matchAll(/\{([^}]*)\}/g)].map((m) => Number(m[1]!.split(',')[0]!.trim()))
+    expect([...SEAL_ICON_MEMBER]).toEqual(firsts.slice(1))
+  })
 })
 
 withRom('en', 'ko', 'ja')('타입 · 분류 그림', () => {

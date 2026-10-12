@@ -9,7 +9,7 @@
 // 「취소」는 바꾼 것이 있으면 「그만둘까요?」를 묻는다. 달기 · 떼기 · 맞바꾸기는 한 번에 끝나는 일이라 바로 쓴다.
 // ⚠️ **캡슐이 한 마리에 달려 있으면 바꾼 모양이 그 마리에게도 간다** — 결정에서 사본을 새로 맞춘다 (`syncCarriers`).
 import { useEffect, useMemo, useState } from 'react'
-import { loadDialogueBankOrNull, loadItemNames, loadSpeciesNames } from '../../data/gameData'
+import { loadDialogueBankOrNull, loadItemNames, loadSealIcons, loadSpeciesNames } from '../../data/gameData'
 import { CAPSULE_TEXT, loadUiText, PARTY_CAPSULE, UI_BANK, YES_NO } from '../../data/uiText'
 import {
   attachCapsule, carrierOf, CAPSULE_SLOTS, detachCapsule, hasSeals, placeSeal, removeSeal, sealsOf, swapCapsules,
@@ -23,7 +23,9 @@ import { useSaveStore } from '../../state/saveStore'
 import { ChoiceMenu, type ChoiceItem } from '../common/ChoiceMenu'
 import { MessageDock } from '../common/MessageDock'
 import { YesNo } from '../common/YesNo'
-import { LINE } from '../theme/scale'
+import { SealIcon } from '../common/SealIcon'
+import { useSheet } from '../common/useSheet'
+import { LINE, PIXEL } from '../theme/scale'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
 import * as css from './capsuleScreen.css'
@@ -59,6 +61,8 @@ export function CapsuleScreen() {
   const [partyText, setPartyText] = useState<readonly string[]>([])
   const [menuText, setMenuText] = useState<readonly string[]>([])
   const [sealNames, setSealNames] = useState<readonly string[]>([])
+  // 씰 그림 시트(롬 `cb_data`). 못 받았으면 글자 칩으로 선다
+  const sealIcons = useSheet(loadSealIcons)
   const [titleName, setTitleName] = useState('')
   const [speciesNames, setSpeciesNames] = useState<readonly string[]>([])
   const [mode, setMode] = useState<Mode>('list')
@@ -234,7 +238,12 @@ export function CapsuleScreen() {
   const shiftItems: ChoiceItem[] = capsules.map((_, i) => ({ key: String(i), label: String(i + 1) }))
   const sealItems: ChoiceItem[] = [
     ...(slotFilled ? [{ key: 'remove', label: say(CAPSULE_TEXT.remove) }] : []),
-    ...available.map((id) => ({ key: String(id), label: `${sealName(id)} ×${String(work?.seals[id - 1] ?? 0)}` })),
+    ...available.map((id) => ({ key: String(id), label: (
+      <span className={css.sealLine}>
+        <SealIcon sheet={sealIcons} id={id} scale={PIXEL.x1} />
+        {`${sealName(id)} ×${String(work?.seals[id - 1] ?? 0)}`}
+      </span>
+    ) })),
   ]
   const pickSeal = (i: number): void => {
     if (slotFilled && i === 0) edit(slotAt, 0)
@@ -261,14 +270,14 @@ export function CapsuleScreen() {
 
   const rows = mode === 'slots' || mode === 'seals' || mode === 'quitAsk'
     ? [
-      ...shownCapsule.map((s, i) => ({ key: `s${String(i)}`, head: String(i + 1), name: s.type === 0 ? '' : sealName(s.type), aside: '' })),
-      { key: 'ok', head: '', name: say(CAPSULE_TEXT.confirm), aside: '' },
-      { key: 'no', head: '', name: say(CAPSULE_TEXT.cancel), aside: '' },
+      ...shownCapsule.map((s, i) => ({ key: `s${String(i)}`, head: String(i + 1), name: s.type === 0 ? '' : sealName(s.type), seal: s.type, aside: '' })),
+      { key: 'ok', head: '', name: say(CAPSULE_TEXT.confirm), seal: 0, aside: '' },
+      { key: 'no', head: '', name: say(CAPSULE_TEXT.cancel), seal: 0, aside: '' },
     ]
     : capsules.map((c, i) => {
       const who = carrierOf(party, i)
       return {
-        key: `c${String(i)}`, head: String(i + 1), name: '',
+        key: `c${String(i)}`, head: String(i + 1), name: '', seal: 0,
         aside: `${String(sealsOf(c).length)}/${String(CAPSULE_SLOTS.length)}${who >= 0 ? ` ${monName(who)}` : ''}`,
       }
     })
@@ -292,6 +301,7 @@ export function CapsuleScreen() {
                 style={{ minHeight: LINE.rowTall }}
               >
                 <span>{r.head}</span>
+                {r.seal > 0 && <SealIcon sheet={sealIcons} id={r.seal} scale={PIXEL.x1} />}
                 <span className={css.label}>{r.name}</span>
                 <span className={css.aside}>{r.aside}</span>
               </div>
@@ -305,7 +315,10 @@ export function CapsuleScreen() {
               const on = (mode === 'slots' || mode === 'seals') && slotAt === i
               return (
                 <div key={i} className={on ? css.slotPicked : css.slot} style={cellOf(i)}>
-                  {type === 0 ? '' : sealName(type)}
+                  {type !== 0 && (sealIcons
+                    ? <SealIcon sheet={sealIcons} id={type} scale={PIXEL.x3} />
+                    // 그림이 없는 설치본 — 글자 칩
+                    : <span className={css.slotName}>{sealName(type)}</span>)}
                 </div>
               )
             })}

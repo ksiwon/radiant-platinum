@@ -71,7 +71,17 @@ const cell = {
   padding: GAP.small,
   fontSize: TEXT.small,
   overflow: 'hidden',
+  flexDirection: 'column',
+  gap: 2,
+  // 줄 높이(`windowRow`)를 풀어 격자 칸이 칸 높이를 다 쓴다 — 씰 그림이 안 잘린다
+  height: 'auto',
 } as const
+
+/** 칸 안 — 씰 그림 아래에 이름 */
+export const slotName = style({ minWidth: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: TEXT.small })
+
+/** 고르는 목록의 줄 — 그림 · 이름 */
+export const sealLine = style({ display: 'inline-flex', alignItems: 'center', gap: GAP.small })
 
 export const slot = style([windowRow, cell])
 export const slotPicked = style([rowOn, cell])

@@ -161,6 +161,12 @@ export const GROUPS = [
     match: oneOf('data/partyIcons.png'),
   },
   {
+    // 볼캡슐 편집기 · 씰 가게의 씰 그림 여든 장 (`overlay076` · `cb_data.narc`)
+    name: 'sealIcons',
+    make: 'pnpm extract:sealIcons',
+    match: oneOf('data/sealIcons.png'),
+  },
+  {
     // 시작 메뉴 아이콘 열 칸 × 컬러·회색과 고른 줄의 움직임 (`start_menu.c` · `menu_gra.narc`)
     name: 'startMenuIcons',
     make: 'pnpm extract:startMenuIcons',

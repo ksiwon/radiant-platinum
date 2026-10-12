@@ -39,6 +39,7 @@ import { convertDexShapes } from './dexShapes'
 import { convertStartMenuIcons } from './startMenuIcons'
 import { convertTypeIcons } from './typeIcons'
 import { convertPartyIcons } from './partyIcons'
+import { convertSealIcons } from './sealIcons'
 import { convertLibraryTv } from './libraryTv'
 import { convertDemoModels } from './demoModels'
 import { convertFrontierBg } from './frontierBg'
@@ -373,6 +374,13 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: ['data/partyIcons.png'],
     converter: 1,
     convert: convertPartyIcons,
+  },
+  {
+    // 볼캡슐 편집기 · 씰 가게의 씰 그림 여든 장 (`overlay076` · `cb_data.narc`)
+    name: 'sealIcons',
+    outputs: ['data/sealIcons.png'],
+    converter: 1,
+    convert: convertSealIcons,
   },
   {
     // 창기둥과 깨어진 세계로 가는 문 — 필드 밖 연출의 모델 (`demoModels.ts`)

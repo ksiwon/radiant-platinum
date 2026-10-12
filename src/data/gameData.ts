@@ -658,6 +658,12 @@ export const PARTY_ICON_SHEET: SpriteSheet = {
 /** 표식 → 시트의 칸 번호 (`PartyMenu_Template_HeldIcons`의 `animIdx`) */
 export const PARTY_ICON_CELL = { item: 0, mail: 1, capsule: 2 } as const
 
+/** 볼 씰 그림 — 24×24 여든 장을 가로 10 · 세로 8로 (`sealIcons.png`). 칸 번호는 씰 번호 − 1이다 */
+export const SEAL_ICON_ATLAS = 'data/sealIcons.png'
+export const SEAL_ICON_SHEET: SpriteSheet = {
+  path: SEAL_ICON_ATLAS, cellW: 24, cellH: 24, cols: 10, rows: 8,
+}
+
 /** 기술 분류 → 시트의 칸 번호 */
 export const MOVE_CLASS_CELL = { physical: 0, special: 1, status: 2 } as const
 
@@ -727,6 +733,11 @@ export function loadMoveClass(): Promise<SpriteSheet | null> {
 export function loadPartyIcons(): Promise<SpriteSheet | null> {
   const pinned = pinAtlas(PARTY_ICON_ATLAS)
   return loadSheet(PARTY_ICON_SHEET, pinned)
+}
+
+export function loadSealIcons(): Promise<SpriteSheet | null> {
+  const pinned = pinAtlas(SEAL_ICON_ATLAS)
+  return loadSheet(SEAL_ICON_SHEET, pinned)
 }
 
 export function loadStartMenuIcons(locale: DataLocale): Promise<SpriteSheet | null> {

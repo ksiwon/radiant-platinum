@@ -315,8 +315,8 @@ let locationNames: readonly string[] = []
 /**
  * 조사가 붙은 판과 복수형.
  *
- * ⚠️ **미국 롬에만 있는 표다.** 한국·일본 판에서는 이 넷이 끝까지 빈 배열로
- * 남고 `orPlain`이 맨 이름표로 떨어뜨린다 — 없는 것을 지어내지 않는다
+ * ⚠️ **미국 롬에만 있는 표다.** 한국·일본 판에서는 이 넷(과 볼 씰 복수형 `sealNamesPlural`)이 끝까지
+ * 빈 배열로 남고 `orPlain`이 맨 이름표로 떨어뜨린다 — 없는 것을 지어내지 않는다
  */
 let itemArticleNames: readonly string[] = []
 let accessoryArticleNames: readonly string[] = []
@@ -1247,7 +1247,8 @@ const services: FieldServices = {
     berry: (item) => berryNames[item - FIRST_BERRY_ITEM] ?? '',
     accessory: (accessory) => accessoryNames[accessory] ?? '',
     sealName: (seal) => sealNames[seal] ?? '',
-    sealNamePlural: (seal) => sealNamesPlural[seal] ?? '',
+    // 한국 · 일본 롬에는 복수 뱅크(13)가 없다 — 그 롬의 `BufferBallSealNamePlural`(arm9)은 단수 뱅크(12)를 읽는다 (`orPlain`)
+    sealNamePlural: (seal) => orPlain(sealNamesPlural, sealNames, seal),
     backdropName: (backdrop) => backdropNames[backdrop] ?? '',
     pocket: (pocket) => pocketNames[pocket] ?? '',
     species: (species) => speciesNames[species] ?? '',

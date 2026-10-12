@@ -30,6 +30,8 @@ function main() {
   // 터지는 입자 — 넷째가 `ball.bin`의 멤버 번호(`sub_02098188`), 다섯째가 「한 자리에 고정」 깃발(`sub_020981AC`)
   const fxRes = rows.slice(1).map((r) => r[3])
   const fxFixed = rows.slice(1).map((r) => r[4])
+  // 그림 — 첫째가 `cb_data.narc`의 글자(NCGR) 멤버 번호다 (`sub_02098140`)
+  const iconMember = rows.slice(1).map((r) => r[0])
 
   // 재고 — 요일마다 일곱
   const stocks = []
@@ -65,6 +67,9 @@ export const SEAL_FX_RES: readonly number[] = [${fxRes.join(', ')}]
 
 /** 입자 시차를 위치로 가르지 않고 늘 같게 두는 씰인가 (\`sub_020981AC\`, 다섯째 칸) */
 export const SEAL_FX_FIXED: readonly number[] = [${fxFixed.join(', ')}]
+
+/** 씰마다 그림 글자 판 — \`cb_data.narc\`의 멤버 번호 (\`sub_02098140\`, 첫째 칸). 24×24 · 16색 한 장씩이다 */
+export const SEAL_ICON_MEMBER: readonly number[] = [${iconMember.join(', ')}]
 
 /** 해님시티 시장의 요일별 씰 가게 — 월요일부터 일곱 날, 날마다 일곱 종 (\`SunyshoreMarketStock*\`) */
 export const SUNYSHORE_SEAL_STOCKS: readonly (readonly number[])[] = [
