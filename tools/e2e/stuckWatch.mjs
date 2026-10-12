@@ -102,28 +102,45 @@ export const readState = (page) => page.evaluate(async () => {
  * @param clock 시각 함수(시험용)
  * @returns `{ stuck, stop }` — `stuck`은 멈춤이면 `{ ...info, evidence }`로 풀리고 **아니면 영영 안 풀린다**(경주에 건다)
  */
-export function startStuckWatch(page, { limitMs, pollMs = 5_000, onStuck = async () => null, read = readState, clock = Date.now } = {}) {
+export function startStuckWatch(page, {
+  limitMs, pollMs = 5_000, readMs = 60_000, onStuck = async () => null, read = readState, clock = Date.now,
+} = {}) {
   const sc = makeStuckClock(limitMs)
   let live = true
   let timer = null
   /** 읽기가 연달아 실패한 횟수 — 페이지가 죽었으면 멈춤이 아니라 **못 읽음**이다. 그것은 다른 장치가 잡는다 */
   let missed = 0
+  /**
+   * 아직 안 돌아온 읽기. ⚠️ **안 돌아오는 읽기도 멈춤이다** — 10-12 칸 1이 모래시티에서 gpu-process만 돌고 `evaluate`가 18분
+   * 안 돌아왔는데, 읽기를 기다리던 이 감시자도 같이 서서 예산을 다 태웠다. `readMs` 안에 안 오면 「응답 없음」이라는 **같은 지문**을
+   * 적고(그대로 두면 한도 뒤에 멈춤), 그 읽기는 버리지 않고 다음 바퀴에 다시 기다린다 — 읽기를 겹쳐 쌓지 않는다
+   */
+  let pending = null
+  const NO_ANSWER = Symbol('no-answer')
+  /** 증거 남기기도 같은 페이지를 만진다 — 그것까지 안 돌아오면 증거 없이 끝낸다 */
+  const capped = (p) => Promise.race([p, new Promise((r) => { setTimeout(() => { r(NO_ANSWER) }, readMs) })])
   const stuck = new Promise((resolve) => {
     const tick = async () => {
       if (!live) return
       try {
-        const fp = fingerprintOf(await read(page))
+        if (pending === null) pending = read(page)
+        const got = await capped(pending)
+        if (got !== NO_ANSWER) pending = null
+        const fp = got === NO_ANSWER ? `응답 없음 — 읽기가 ${String(Math.round(readMs / 1000))}초 넘게 안 돌아온다` : fingerprintOf(got)
         missed = 0
         const r = sc.note(fp, clock())
         if (r.stuck) {
           live = false
           const info = { fingerprint: fp, sameMs: r.sameMs, minutes: Math.round(r.sameMs / 6_000) / 10, limitMs }
           let evidence = null
-          try { evidence = await onStuck(info) } catch (e) { evidence = `증거를 못 남겼다 — ${String(e?.message ?? e).slice(0, 80)}` }
+          try {
+            const e = await capped(onStuck(info))
+            evidence = e === NO_ANSWER ? '증거를 못 남겼다 — 페이지가 대답하지 않는다' : e
+          } catch (e) { evidence = `증거를 못 남겼다 — ${String(e?.message ?? e).slice(0, 80)}` }
           resolve({ ...info, evidence })
           return
         }
-      } catch { missed++ }
+      } catch { pending = null; missed++ }
       if (live) timer = setTimeout(() => { void tick() }, pollMs)
     }
     timer = setTimeout(() => { void tick() }, pollMs)

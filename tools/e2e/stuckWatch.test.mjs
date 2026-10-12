@@ -163,4 +163,20 @@ describe('startStuckWatch', () => {
     const z = await w.stuck
     expect(z.fingerprint).toContain('map=3')
   })
+
+  it('안 돌아오는 읽기도 멈춤이다 — 읽기를 겹쳐 쌓지 않고, 증거가 안 와도 끝난다', async () => {
+    let t = 0
+    let n = 0
+    const w = startStuckWatch({}, {
+      limitMs: 100, pollMs: 1, readMs: 5, clock: () => t,
+      read: () => { n++; return new Promise(() => {}) },
+      onStuck: () => new Promise(() => {}),
+    })
+    await settle()
+    t = 500
+    const z = await w.stuck
+    expect(z.fingerprint).toContain('응답 없음')
+    expect(z.evidence).toContain('대답하지 않는다')
+    expect(n).toBe(1)
+  })
 })
