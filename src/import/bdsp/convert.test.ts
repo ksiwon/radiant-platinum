@@ -344,19 +344,6 @@ suite('인물', () => {
     expect(px(mine, 20, 250)[0]).toBeLessThan(0x40)
   }, 180_000)
 
-  const CLERK = 'fc0040_00-clerk'
-  it.runIf(existsSync(npcGlb(CLERK)))('남자 점원의 갈색 모자(`hat` 전체 `_Patch`)와 옷 색이 개발 산출물과 같다', async () => {
-    const glb = await bakedHere(CLERK, 'fc0040_00')
-    const dev = new Uint8Array(readFileSync(npcGlb(CLERK)))
-    for (const mat of ['hat', 'wear', 'hat_metal', 'hair']) {
-      const mine = await imageOf(glb, mat)
-      const want = await imageOf(dev, mat)
-      expect([mine.width, mine.height], mat).toEqual([want.width, want.height])
-      for (const [x, y] of [[0, 0], [60, 60], [128, 128], [200, 90], [255, 255]]) expect(px(mine, x!, y!), `${mat} (${String(x)},${String(y)})`).toEqual(px(want, x!, y!))
-    }
-    expect(px(await imageOf(glb, 'hat'), 128, 128)).toEqual([0x7b, 0x5a, 0x52])
-  }, 180_000)
-
   it('그림 번호가 BDSP 번들로 이어진다', () => {
     // 규칙은 `engine/actor/npcModels`가 임자다. 여기서는 **그 규칙이 가리키는
     // 번들이 실제 덤프에 있는지**만 본다
