@@ -529,6 +529,13 @@ async function main() {
       }, menu)
       await page.waitForTimeout(Number(flag('menuAfter', 4000)))
     }
+    // 찍기 **전에** 화면 안에서 파일의 `async () => 값`을 돌린다 — `--pre=파일` (`--preAfter=ms` 기다림). 비전기술 연출처럼 찍는 순간에 서 있어야 하는 것을 시작시킨다
+    const preFile = flag('pre')
+    if (preFile) {
+      const { readFileSync } = await import('node:fs')
+      await page.evaluate(`(${readFileSync(preFile, 'utf8')})()`)
+      await page.waitForTimeout(Number(flag('preAfter', 600)))
+    }
     // ⚠️ **마지막 키 뒤의 기다림을 따로 준다** (`--keysAfter`). 짧은 연출은
     // 기본 600ms 안에 이미 끝난다 — 머리 위 느낌표가 37프레임(0.6초)이라
     // 그대로 두면 화면에 한 번도 안 잡힌다
