@@ -303,10 +303,10 @@ suite('인물', () => {
     }
   }, 180_000)
 
-  // ⚠️ **마스크가 빈 자리를 칠하는 `_Patch`도 굽는 쪽이 둘이다.** 핸섬의 목 앞 V 안감(롬 그림에서는 흰 셔츠 깃 · 자주 넥타이)이 노드 쪽에서만
+  // ⚠️ **UV 네모를 칠하는 `_Patch`도 굽는 쪽이 둘이다.** 핸섬의 목 앞 V 속셔츠(롬 그림에서는 흰 셔츠 깃 · 자주 넥타이)가 노드 쪽에서만
   // 칠해지면 개발 서버에서는 멀쩡하고 설치본에서는 회색 삼각형이 남는다 — 눈으로는 안 걸린다
   const LOOKER = 'fc1051_00-looker'
-  it.runIf(existsSync(join(__dirname, `../../../public/models/npc/${LOOKER}.glb`)))('핸섬 목 앞 안감이 개발 산출물과 같다 — `_Patch` 두 네모', async () => {
+  it.runIf(existsSync(join(__dirname, `../../../public/models/npc/${LOOKER}.glb`)))('핸섬 속셔츠(목 앞 V)가 개발 산출물과 같다 — `_Patch` 두 네모', async () => {
     const env = openEnvironment([bytes(person('field', 'fc1051_00')!)])
     const spec = NPC_RECOLOR[LOOKER]!
     const { glb } = await exportModel(env, encodePng, {
@@ -329,13 +329,13 @@ suite('인물', () => {
     const want = await wearOf(new Uint8Array(readFileSync(join(__dirname, `../../../public/models/npc/${LOOKER}.glb`))))
     expect([mine.width, mine.height]).toEqual([want.width, want.height])
     const px = (im: typeof mine, x: number, y: number): number[] => [...im.pixels.subarray((y * im.width + x) * 4, (y * im.width + x) * 4 + 3)]
-    // 셔츠 깃 두 줄 · 넥타이 네 줄 — 아래 여덟 행 (마스크가 빈 행)
-    for (const y of [248, 251, 255]) {
-      for (const x of [60, 63, 65, 68, 70, 73]) expect(px(mine, x, y), `(${String(x)},${String(y)})`).toEqual(px(want, x, y))
+    // 속셔츠 조각(x 166~253 · y 121~147)의 안과 가장자리 — 노드 쪽과 같아야 한다
+    for (const y of [121, 130, 139, 144, 147]) {
+      for (const x of [166, 190, 205, 206, 209, 213, 214, 230, 253]) expect(px(mine, x, y), `(${String(x)},${String(y)})`).toEqual(px(want, x, y))
     }
-    expect(px(mine, 66, 250)).toEqual([0x84, 0x42, 0x73])
-    expect(px(mine, 61, 250)).toEqual([0xef, 0xef, 0xff])
-    // 네모 밖의 안감(뒤쪽)은 그대로 짙은 회색이다
+    expect(px(mine, 209, 135)).toEqual([0x84, 0x42, 0x73])
+    expect(px(mine, 180, 130)).toEqual([0xef, 0xef, 0xff])
+    // 네모 밖(아래쪽 안감)은 그대로 짙은 회색이다
     expect(px(mine, 20, 250)[0]).toBeLessThan(0x40)
   }, 180_000)
 
