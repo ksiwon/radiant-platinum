@@ -236,10 +236,10 @@ export const NPC_MODEL_ALIAS: Readonly<Record<string, string>> = {
  * 눈으로 덮으면 근거가 약해진다 — `npcModels.test`가 이 줄을 지킨다
  */
 export const NPC_MODEL_BUNDLE: Readonly<Record<string, string>> = {
-  // 남자 점원. BDSP의 점원(`clerk`)은 여자 하나뿐이라 남자 점원 스무 명이 여자 몸으로 섰다. BDSP에 이미 있는 남자 몸 중
-  // 제복 입은 일꾼인 작업원(`worker`)을 쓴다 — 모자(`hat`)와 작업복(`wear`) 재질이 있는 남자 어른이다.
-  // 새 몸을 짓지 않는 가장 싼 길이다 (사용자 결정 2026-10-11)
-  CASHIER_M: 'fc0040_00',
+  // 남자 점원. BDSP의 점원(`clerk`)은 여자 하나뿐이라 남자 점원 스무 명이 여자 몸으로 섰다. BDSP에 이미 있는 남자 몸 중 제복 입은 일꾼인
+  // 작업원(`worker`)을 **다시 칠해** 쓴다 — 노란 안전모를 갈색 모자로, 초록 작업복을 롬 점원 그림의 옷 색으로 (아래 `NPC_RECOLOR`).
+  // 새 몸을 짓지 않는 가장 싼 길이다 (사용자 결정 2026-10-11). 작업원 그림(`WORKER`)은 원래 몸 `fc0040_00` 그대로다
+  CASHIER_M: 'fc0040_00-clerk',
   // 체육관 안내원. 갈색 머리·둥근 색안경·베이지 조끼에 보라 소매까지 같다
   GYM_GUIDE: 'fc2014_00',
   // 갤럭시단 무리. 원작은 넷·셋이 **그림 한 장**인데 그 자리에 단원을
@@ -382,6 +382,25 @@ export const NPC_RECOLOR: Readonly<Record<string, Recolor>> = {
       bag: { _SkinColor: '#ffffff' },        // → #c2c2c2
     },
     why: '롬 그림 PT 빛나 ↔ DP 빛나를 맞대어 잰 부위 색 — 치마 주황빨강 · 스카프와 장식 은백 · 장화 분홍 그대로',
+  },
+  // 남자 점원 — 작업원 몸(`fc0040_00`)을 롬 점원 그림(`CASHIER_M` · `shopm1`) 앞모습 색으로 다시 칠한다. 목표는 그 부위 픽셀의 선형 평균이고
+  // 넣는 값은 목표 ÷ 채널 음영 평균을 푼 것이다 (`recolorSolve` 방식 · 눈으로 고르지 않았다).
+  //   옷(`wear._SkinColor` 732정점 — 상의와 바지가 한 채널이다): 앞치마 주황(#f77b5a · #c6525a)과 청록 셔츠(#63bdb5 · #638c7b) 44px의 평균 #c97c71.
+  //     음영 평균이 0.78이라 레이어 색 1에서 막힌다 → #ffa093이 #c77c71로 나온다 (한계에 걸렸다)
+  //   머리(`hair._PrimaryColor`): #7b5a52 68px → #86625a
+  //   장화(`wear._SecondaryColor`): #bd945a 14px → #eebb73
+  //   모자: 안전모의 둥근 윗부분은 `hat_metal`의 Secondary(153정점)고 띠는 그 Skin(24정점)이다 — 윗부분을 롬 머리 갈색 #7b5a52(넣는 값 #966f65),
+  //   띠를 롬의 금색 #bd945a(넣는 값 #deae6b)로. 나머지 `hat` 조각은 마스크가 비어 있어(채널 없음) 색이 밑그림에 박혀 있다 — 조각 전체를 갈색으로 덮는다
+  //   (`_Patch`). 모자를 빼면 머리카락이 앞머리뿐이라 민머리가 된다(`hair`는 모자 밑 머리다)
+  // ⚠️ 롬 그림은 앞치마 아래로 바지가 안 보인다 — 바지는 상의와 같은 채널이라 같은 색이 된다
+  'fc0040_00-clerk': {
+    paint: {
+      hair: { _PrimaryColor: '#86625a' },
+      wear: { _SkinColor: '#ffa093', _SecondaryColor: '#eebb73' },
+      hat: { _Patch0: '#7b5a52@0~0~1~1' },
+      hat_metal: { _SecondaryColor: '#966f65', _SkinColor: '#deae6b' },
+    },
+    why: '롬 그림 CASHIER_M(24) 앞모습에서 잰 부위 색 — 옷 앞치마·셔츠 평균 · 머리 갈색 · 장화 · 모자 갈색에 금색 띠',
   },
   // 플루토 — 갤럭시단 간부. 흰 가운에 안경 쓴 노인이라 연구원 몸에서 뜬다.
   // `hair`는 마스크가 100% Primary라 한 값으로 통째로 바뀐다

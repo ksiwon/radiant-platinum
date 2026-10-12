@@ -303,32 +303,37 @@ suite('인물', () => {
     }
   }, 180_000)
 
-  // ⚠️ **UV 네모를 칠하는 `_Patch`도 굽는 쪽이 둘이다.** 핸섬의 목 앞 V 속셔츠(롬 그림에서는 흰 셔츠 깃 · 자주 넥타이)가 노드 쪽에서만
-  // 칠해지면 개발 서버에서는 멀쩡하고 설치본에서는 회색 삼각형이 남는다 — 눈으로는 안 걸린다
-  const LOOKER = 'fc1051_00-looker'
-  it.runIf(existsSync(join(__dirname, `../../../public/models/npc/${LOOKER}.glb`)))('핸섬 속셔츠(목 앞 V)가 개발 산출물과 같다 — `_Patch` 두 네모', async () => {
-    const env = openEnvironment([bytes(person('field', 'fc1051_00')!)])
-    const spec = NPC_RECOLOR[LOOKER]!
-    const { glb } = await exportModel(env, encodePng, {
-      maxSize: 256, keepClips: false, recolor: spec.paint, ...(spec.drop ? { drop: spec.drop } : {}),
-    })
-    const wearOf = async (g: Uint8Array): Promise<{ width: number, height: number, pixels: Uint8Array | Uint8ClampedArray }> => {
-      const dv = new DataView(g.buffer, g.byteOffset, g.byteLength)
-      const n = dv.getUint32(12, true)
-      const j = JSON.parse(new TextDecoder().decode(g.subarray(20, 20 + n))) as {
-        materials: { name: string, pbrMetallicRoughness: { baseColorTexture: { index: number } } }[]
-        textures: { source: number }[], images: { bufferView: number }[]
-        bufferViews: { byteOffset: number, byteLength: number }[]
-      }
-      const bin = g.subarray(28 + n)
-      const mat = j.materials.find((m) => m.name === 'wear')!
-      const v = j.bufferViews[j.images[j.textures[mat.pbrMetallicRoughness.baseColorTexture.index]!.source]!.bufferView]!
-      return decodePng(bin.subarray(v.byteOffset, v.byteOffset + v.byteLength))
+  // ⚠️ **UV 네모를 칠하는 `_Patch`도 굽는 쪽이 둘이다.** 핸섬의 목 앞 V 속셔츠(롬 그림에서는 흰 셔츠 깃 · 자주 넥타이)와 남자 점원의 갈색 모자가
+  // 노드 쪽에서만 칠해지면 개발 서버에서는 멀쩡하고 설치본에서는 회색 삼각형 · 노란 안전모가 남는다 — 눈으로는 안 걸린다
+  const npcGlb = (bundle: string): string => join(__dirname, `../../../public/models/npc/${bundle}.glb`)
+  const imageOf = async (g: Uint8Array, material: string): Promise<{ width: number, height: number, pixels: Uint8Array | Uint8ClampedArray }> => {
+    const dv = new DataView(g.buffer, g.byteOffset, g.byteLength)
+    const n = dv.getUint32(12, true)
+    const j = JSON.parse(new TextDecoder().decode(g.subarray(20, 20 + n))) as {
+      materials: { name: string, pbrMetallicRoughness: { baseColorTexture: { index: number } } }[]
+      textures: { source: number }[], images: { bufferView: number }[]
+      bufferViews: { byteOffset: number, byteLength: number }[]
     }
-    const mine = await wearOf(glb)
-    const want = await wearOf(new Uint8Array(readFileSync(join(__dirname, `../../../public/models/npc/${LOOKER}.glb`))))
+    const bin = g.subarray(28 + n)
+    const mat = j.materials.find((m) => m.name === material)!
+    const v = j.bufferViews[j.images[j.textures[mat.pbrMetallicRoughness.baseColorTexture.index]!.source]!.bufferView]!
+    return decodePng(bin.subarray(v.byteOffset, v.byteOffset + v.byteLength))
+  }
+  const px = (im: { width: number, pixels: Uint8Array | Uint8ClampedArray }, x: number, y: number): number[] =>
+    [...im.pixels.subarray((y * im.width + x) * 4, (y * im.width + x) * 4 + 3)]
+  const bakedHere = async (bundle: string, base: string): Promise<Uint8Array> => {
+    const env = openEnvironment([bytes(person('field', base)!)])
+    const spec = NPC_RECOLOR[bundle]!
+    return (await exportModel(env, encodePng, {
+      maxSize: 256, keepClips: false, recolor: spec.paint, ...(spec.drop ? { drop: spec.drop } : {}),
+    })).glb
+  }
+
+  const LOOKER = 'fc1051_00-looker'
+  it.runIf(existsSync(npcGlb(LOOKER)))('핸섬 속셔츠(목 앞 V)가 개발 산출물과 같다 — `_Patch` 두 네모', async () => {
+    const mine = await imageOf(await bakedHere(LOOKER, 'fc1051_00'), 'wear')
+    const want = await imageOf(new Uint8Array(readFileSync(npcGlb(LOOKER))), 'wear')
     expect([mine.width, mine.height]).toEqual([want.width, want.height])
-    const px = (im: typeof mine, x: number, y: number): number[] => [...im.pixels.subarray((y * im.width + x) * 4, (y * im.width + x) * 4 + 3)]
     // 속셔츠 조각(x 166~253 · y 121~147)의 안과 가장자리 — 노드 쪽과 같아야 한다
     for (const y of [121, 130, 139, 144, 147]) {
       for (const x of [166, 190, 205, 206, 209, 213, 214, 230, 253]) expect(px(mine, x, y), `(${String(x)},${String(y)})`).toEqual(px(want, x, y))
@@ -337,6 +342,19 @@ suite('인물', () => {
     expect(px(mine, 180, 130)).toEqual([0xef, 0xef, 0xff])
     // 네모 밖(아래쪽 안감)은 그대로 짙은 회색이다
     expect(px(mine, 20, 250)[0]).toBeLessThan(0x40)
+  }, 180_000)
+
+  const CLERK = 'fc0040_00-clerk'
+  it.runIf(existsSync(npcGlb(CLERK)))('남자 점원의 갈색 모자(`hat` 전체 `_Patch`)와 옷 색이 개발 산출물과 같다', async () => {
+    const glb = await bakedHere(CLERK, 'fc0040_00')
+    const dev = new Uint8Array(readFileSync(npcGlb(CLERK)))
+    for (const mat of ['hat', 'wear', 'hat_metal', 'hair']) {
+      const mine = await imageOf(glb, mat)
+      const want = await imageOf(dev, mat)
+      expect([mine.width, mine.height], mat).toEqual([want.width, want.height])
+      for (const [x, y] of [[0, 0], [60, 60], [128, 128], [200, 90], [255, 255]]) expect(px(mine, x!, y!), `${mat} (${String(x)},${String(y)})`).toEqual(px(want, x!, y!))
+    }
+    expect(px(await imageOf(glb, 'hat'), 128, 128)).toEqual([0x7b, 0x5a, 0x52])
   }, 180_000)
 
   it('그림 번호가 BDSP 번들로 이어진다', () => {
