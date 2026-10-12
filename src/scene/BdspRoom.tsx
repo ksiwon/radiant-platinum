@@ -36,6 +36,7 @@ import { FieldFx } from './FieldFx'
 import { holdBdspDoors } from './DoorAnimations'
 import { holdBdspSigns } from './ObjectProps'
 import { shellRoom } from './roomShell'
+import { repaintStains } from './roomStains'
 
 const loader = new GLTFLoader()
 
@@ -269,6 +270,7 @@ export function BdspRoom({ name, mapId }: { name: string, mapId: number }) {
       .then((gltf) => {
         if (!alive) { disposeTree(gltf.scene); return }
         held = gltf.scene
+        repaintStains(gltf.scene, name)
         hideDevices(gltf.scene, mapId)
         liveWater(gltf.scene)
         // 흐르는 그림(TV · PC 화면 · 기계 불빛) · 바람 흔들림 — 물 뒤에 (`bdspMotion`)

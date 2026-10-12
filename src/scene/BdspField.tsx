@@ -15,7 +15,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import {
-  AdditiveBlending, Box3, CircleGeometry, Fog, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3,
+  AdditiveBlending, Box3, BufferAttribute, BufferGeometry, CircleGeometry, DoubleSide, Fog, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3,
   type AnimationClip, type Group, type Material, type Object3D,
 } from 'three'
 import { MeshStandardNodeMaterial, type Node } from 'three/webgpu'
@@ -30,7 +30,8 @@ import { fieldFade, isGround, type FieldFade } from './fieldFade'
 import { bdspLights, type BdspLights } from './bdspLights'
 import { disposeTree } from './disposeTree'
 import { useBdspMark } from './bdspReady'
-import { beginAsyncPipelines, settleAsyncPipelines } from './asyncPipelines'
+import { ALWAYS_ASYNC, beginAsyncPipelines, settleAsyncPipelines } from './asyncPipelines'
+import { SEA_LEVEL, seaRects } from './seaApron'
 import { holdBdspDoors } from './DoorAnimations'
 import { holdBdspSigns } from './ObjectProps'
 import { liveMotion, liveMotionMaterials, type BdspMotion } from './bdspMotion'
@@ -484,7 +485,11 @@ function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
         beginAsyncPipelines()
         attach(b)
         await settleAsyncPipelines(() => b.scene.parent !== null, FIELD_COMPILE_CAP_MS)
-        if (alive) setWarm(true)
+        if (alive) {
+          setWarm(true)
+          // 흐림의 파이프라인은 지역이 다 선 **뒤에** 비동기로 미리 굽는다 — 덮개를 기다리게 하지 않고, 처음 건물 앞에 설 때 동기로 안 굽게
+          b.fade.warm()
+        }
       })()
         .catch((e: unknown) => {
           console.error(`지역 ${name}을 못 세웠다`, e)
@@ -549,6 +554,43 @@ export function lowestGround(root: Object3D): number | null {
   return box.isEmpty() ? null : box.min.y
 }
 
+
+// ── 바깥 바다 ────────────────────────────────────────────────────────────────────────────────────────────
+//
+// BDSP 지역이 안 그리는 대륙 둘레는 바다다(`seaApron`). 안 깔면 안개 바닥의 안개 색 판만 남아 허옇다. BDSP 바다와 같은 물 재질 값을
+// 쓰고 월드 자리로만 물결을 계산하므로 이음매가 없다.
+
+function SeaApron() {
+  const [mesh] = useState(() => {
+    const rects = seaRects()
+    const pos = new Float32Array(rects.length * 18)
+    rects.forEach((r, i) => {
+      const [x0, x1, z0, z1] = [r.x, r.x + r.w, r.z, r.z + r.h]
+      pos.set([x0, 0, z0, x0, 0, z1, x1, 0, z1, x0, 0, z0, x1, 0, z1, x1, 0, z0], i * 18)
+    })
+    const g = new BufferGeometry()
+    g.setAttribute('position', new BufferAttribute(pos, 3))
+    const was = new MeshBasicMaterial({ side: DoubleSide })
+    was.name = 'M_C_001_SeaWater_01'
+    const m = waterMaterial(was, WATER_LOOKS[was.name]!)
+    m.side = DoubleSide
+    m.userData[ALWAYS_ASYNC] = true
+    was.dispose()
+    const o = new Mesh(g, m)
+    o.name = '바깥 바다'
+    o.position.y = SEA_LEVEL - WATER_SINK
+    o.frustumCulled = false
+    o.castShadow = false
+    o.receiveShadow = false
+    return o
+  })
+  useEffect(() => () => {
+    mesh.geometry.dispose()
+    ;(mesh.material as Material).dispose()
+  }, [mesh])
+  return <primitive object={mesh} />
+}
+
 function FogFloor() {
   const scene = useThree((s) => s.scene)
   const [mesh] = useState(() => {
@@ -587,5 +629,6 @@ export function BdspField({ near, hidden = false }: { near: readonly string[], h
   return <>
     {near.map((n) => <FieldArea key={n} name={n} hidden={hidden} />)}
     {near.length > 0 && <FogFloor />}
+    {near.length > 0 && <SeaApron />}
   </>
 }

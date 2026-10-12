@@ -40,6 +40,8 @@ const TALL = 2.4
  * 있어서(주인공 방 TV 자리의 나비 무늬 · 시원의 방 ㄩ자 틀) 그대로 거울에 비추면 정체 모를 무늬가 남쪽 벽 한가운데 박혔다
  */
 const HOLE_MARGIN = 2
+/** 벽 맨 위 지붕선 몰딩의 두께(칸) — 주인공 방 2층 남쪽 벽에서 쟀다(톱니가 0.12칸 안) */
+const ROOF_TRIM = 0.25
 /** 이보다 넓은(짧은 변이 이만큼 넘는) 검은 덮개만 뚜껑으로 친다 — 벽 꼭대기 띠는 0.5칸이다 */
 const BIG_COVER = 0.9
 /** 남쪽 문간 끝을 닫는 판의 색 — 바깥이 안 보이는 어두운 문간 */
@@ -520,6 +522,9 @@ function southWall(root: Object3D, frame: Frame, doors: readonly number[]): Mesh
       if (last && Math.abs(last[1] - k * CELL) < 1e-6) last[1] = (k + 1) * CELL
       else bad.push([k * CELL, (k + 1) * CELL])
     }
+    // 맨 위 칸이 지붕선에 걸리면 그 칸 위쪽 조각까지 메운다 — 칸 단위로 끊으면 박공 아래 비탈이 톱니로 비어 검은 금이 선다
+    const tip = bad[bad.length - 1]
+    if (tip && tip[1] >= c.reach - CELL - 1e-6 && tip[1] < c.reach) tip[1] = c.reach
     const good: [number, number][] = []
     let from = -Infinity
     for (const [a, b] of bad) { good.push([from, a]); from = b }
@@ -536,7 +541,8 @@ function southWall(root: Object3D, frame: Frame, doors: readonly number[]): Mesh
     for (const [a, b] of minusDoor(xa, bad)) {
       if (!src?.plane) { fillCells(plane, cols, xa, a, b, put); continue }
       const dx = xa - src.x
-      const top = Math.min(b, src.reach)
+      // 옮겨 붙일 기둥의 맨 위 `ROOF_TRIM`은 지붕선 몰딩(어두운 띠)이라 빼고 벽 그림으로 메운다 — 몰딩을 평평하게 옮기면 박공 아래에 톱니 검은 금이 선다
+      const top = Math.min(b, src.reach - ROOF_TRIM)
       for (const t of src.plane.band) {
         const poly = clipBox(t, src.x, src.x + CELL, a, top)
         if (!poly.length) continue
@@ -580,12 +586,24 @@ function fillCells(
       const t = plane.face.find((q) => covers(q, 0, 1, xm, ym))
       if (t) best = { t, x: xm }
     }
+    // 같은 높이에서 덮인 기둥이 없으면(박공 지붕선 아래 비탈 — 이웃이 더 낮다) 가까운 기둥의 맨 위 덮인 칸으로 이어 간다.
+    // 안 이으면 그 칸이 비어 박공 아래에 톱니 모양 검은 금이 선다 (주인공 방 2층 남쪽 벽)
+    let yAt = ym
+    if (!best) {
+      for (const c of cols) {
+        if (c.plane !== plane || c.reach <= 0) continue
+        const xm = c.x + CELL / 2
+        if (best && Math.abs(xm - xa) >= Math.abs(best.x - xa)) continue
+        const t = plane.face.find((q) => covers(q, 0, 1, xm, c.reach - CELL / 2))
+        if (t) { best = { t, x: xm }; yAt = c.reach - CELL / 2 }
+      }
+    }
     if (!best) continue
-    const [u0, v0] = uvOn(best.t, 0, 1, best.x, ym)
+    const [u0, v0] = uvOn(best.t, 0, 1, best.x, yAt)
     const [du, dv] = uvPerX(best.t)
     const [, dvdy] = uvPerY(best.t)
     const at = (x: number, y: number): Vert =>
-      [x, y, plane.z, u0 + du * (x - best!.x), v0 + dv * (x - best!.x) + dvdy * (y - ym), 0, 0, 1]
+      [x, y, plane.z, u0 + du * (x - best!.x), v0 + dv * (x - best!.x) + dvdy * (y - yAt), 0, 0, 1]
     put(best.t.mat, [at(xa, y0), at(xb, y0), at(xb, y1), at(xa, y1)], plane.z)
   }
 }

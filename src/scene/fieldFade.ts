@@ -26,12 +26,13 @@
 //
 // ⚠️ **1인칭은 안 건드린다.** 눈이 곧 주인공이라 가릴 사이가 없다 — 코앞의 벽이 사라지면 더 이상하다 (`PropFade`와 같은 규칙)
 import {
-  Box3, InstancedMesh, Matrix4, Mesh, Vector3, type Material, type Object3D,
+  Box3, Group, InstancedMesh, Matrix4, Mesh, Vector3, type BufferGeometry, type Material, type Object3D,
 } from 'three'
 import { nearScale } from './Foliage'
 import { EASE } from './PropFade'
 import { markSeeThrough } from './fx/seeThrough'
 import { isDoorLeaf } from './DoorAnimations'
+import { ALWAYS_ASYNC } from './asyncPipelines'
 
 /** 이보다 낮은 인스턴스(풀 · 꽃 · 낮은 돌)는 가릴 일이 없다 (타일) */
 const TALL = 1.2
@@ -105,7 +106,23 @@ interface Instances {
   moving: Set<number>
 }
 
-interface Rest { transparent: boolean, opacity: number, depthWrite: boolean, alphaTest: number }
+/** `src`는 복제하기 전 재질의 uuid — 같은 재질에서 나온 복제끼리는 셰이더가 같아 미리 굽는 한 벌을 나눈다 (`FieldFade.warm`) */
+interface Rest { transparent: boolean, opacity: number, depthWrite: boolean, alphaTest: number, src: string }
+
+/**
+ * 사본으로 선 건물(`isBuilding` — 같은 메시가 지역에 셋 넘게 서면 인스턴스로 구워진다 · 떡잎마을 집들)의 한 지역 몫. 인스턴스는 재질을 나눠
+ * 쓰니 하나만 흐릴 수 없다 — **가리는 한 채만** 인스턴스에서 빼고(크기 0) 같은 자리에 따로 선 메시(`proxy`)로 바꿔 흐린다. 흐림이 다 걷히면
+ * 도로 인스턴스로 돌려놓는다
+ */
+interface BuildingInstances {
+  mesh: InstancedMesh
+  /** 원래 행렬 (16 × n) */
+  original: Float32Array
+  /** 인스턴스마다 월드 상자 */
+  boxes: Box3[]
+  /** 지금 따로 서 있는 것 — 인스턴스 번호 → 그 한 채 */
+  proxies: Map<number, Solid>
+}
 
 interface Solid {
   mesh: Mesh
@@ -192,6 +209,17 @@ function crossesCap(cap: Cap, a: Vector3, b: Vector3): boolean {
 }
 
 export interface FieldFade {
+  /**
+   * 흐릴 때 쓸 파이프라인을 **미리** 굽는다 (한 번만 · 다시 불러도 아무것도 안 한다).
+   *
+   * ⚠️ **재질의 `transparent` · `depthWrite`를 뒤집으면 파이프라인 열쇠가 바뀐다** (`WebGPUBackend.getRenderCacheKey`) — 건물 앞에 처음
+   * 서는 순간 그 재질의 흐린 쪽 파이프라인이 처음 서고, 비동기가 아니라 동기로 굽는다(리그 로비에서 한 건에 230~410ms). 또 같은
+   * 열쇠를 쓰는 물체가 다 흐림 쪽으로 넘어가 쓰는 이가 0이 되면 three가 그 파이프라인을 버려(`Pipelines._releasePipeline`) 돌아올 때 또
+   * 굽는다. 그래서 **같은 재질 · 같은 정점 배치마다 보이지 않는 한 벌**(크기 0 · `ALWAYS_ASYNC`)을 보통 쪽 · 흐린 쪽으로 하나씩 세워 둔다 —
+   * 파이프라인이 늘 한 명 이상의 사용자를 갖고, 비동기로 미리 선다. 불러야 하는 때는 빛(`bdspLights`)을 편 **뒤**다 — 복제가 그
+   * 재질을 베낀다
+   */
+  warm(): void
   /** 목표를 정한다 — 선분 판정. 무거워서 몇 프레임에 한 번 부른다 */
   aim(camera: Vector3, target: Vector3, third: boolean): void
   /** 목표로 `dt`초만큼 다가간다. 매 프레임 부른다 */
@@ -231,6 +259,7 @@ export function fieldFade(root: Object3D): FieldFade {
   root.updateMatrixWorld(true)
   const lists: Instances[] = []
   const solids: Solid[] = []
+  const buildings: BuildingInstances[] = []
   const m = new Matrix4()
   const v = new Vector3()
   const s = new Vector3()
@@ -238,7 +267,22 @@ export function fieldFade(root: Object3D): FieldFade {
     if (o instanceof InstancedMesh) {
       const own = (Array.isArray(o.material) ? o.material : [o.material]) as Material[]
       // 문짝 · 계단처럼 밟는 것은 나무가 아니다 — 줄면 그 자리가 뚫린다. 사본으로 선 건물도 나무가 아니다 (`isBuilding`)
-      if (own.some(isDoorLeaf) || isGround(own) || isBuilding(own)) return
+      if (own.some(isDoorLeaf) || isGround(own)) return
+      if (isBuilding(own)) {
+        const bg = o.geometry
+        bg.computeBoundingBox()
+        const bb = bg.boundingBox
+        if (!bb || bb.max.y - bb.min.y < TALL) return
+        const boxes: Box3[] = []
+        for (let i = 0; i < o.count; i++) {
+          o.getMatrixAt(i, m)
+          m.premultiply(o.matrixWorld)
+          boxes.push(bb.clone().applyMatrix4(m))
+        }
+        if (boxes.some((b) => b.max.x - b.min.x > LOOSE || b.max.z - b.min.z > LOOSE)) return
+        buildings.push({ mesh: o, original: Float32Array.from(o.instanceMatrix.array), boxes, proxies: new Map() })
+        return
+      }
       const g = o.geometry
       g.computeBoundingSphere()
       g.computeBoundingBox()
@@ -284,7 +328,7 @@ export function fieldFade(root: Object3D): FieldFade {
         const c = x.clone()
         // ⚠️ **원래 값으로 되돌린다.** 1 · 켬으로 되돌리면 원래 반투명한 유리가 흐림을 한 번 겪은 뒤 불투명하게 굳는다
         c.userData.rest = {
-          transparent: x.transparent, opacity: x.opacity, depthWrite: x.depthWrite, alphaTest: x.alphaTest,
+          transparent: x.transparent, opacity: x.opacity, depthWrite: x.depthWrite, alphaTest: x.alphaTest, src: x.uuid,
         } satisfies Rest
         return c
       })
@@ -293,10 +337,99 @@ export function fieldFade(root: Object3D): FieldFade {
     }
   })
 
+
+  /** 정점 배치 — 파이프라인의 정점 버퍼 모양이 같은 형상끼리 한 열쇠다 */
+  const layoutOf = (g: BufferGeometry): string => {
+    const names = Object.keys(g.attributes).sort()
+    return names.map((n) => {
+      const a = g.attributes[n]!
+      return `${n}:${String(a.itemSize)}${a.normalized ? 'n' : ''}${a.array.constructor.name}`
+    }).join(',') + (g.index ? `|${g.index.array.constructor.name}` : '')
+  }
+  let warmGroup: Group | null = null
+  /** 흐림 쪽 깃발만 뒤집은 복제 — 지금 재질의 다른 값(발광 · 문턱)은 그대로 베낀다 */
+  const stateClone = (mat: Material, ghost: boolean): Material => {
+    const rest = mat.userData.rest as Rest
+    const c = mat.clone()
+    c.userData[ALWAYS_ASYNC] = true
+    c.transparent = ghost ? true : rest.transparent
+    c.depthWrite = ghost ? false : rest.depthWrite
+    markSeeThrough(c, ghost || !rest.depthWrite)
+    return c
+  }
+
+  /** 인스턴스 재질을 복제해 흐릴 수 있는 한 벌로 — 지금 값(발광 포함)을 베낀다 */
+  const restClones = (material: Material | Material[]): Material[] =>
+    (Array.isArray(material) ? material : [material]).map((x: Material) => {
+      const c = x.clone()
+      c.userData.rest = {
+        transparent: x.transparent, opacity: x.opacity, depthWrite: x.depthWrite, alphaTest: x.alphaTest, src: x.uuid,
+      } satisfies Rest
+      return c
+    })
+  const zero = new Matrix4().makeScale(0, 0, 0)
+  /** `bi`의 `i`번 한 채를 따로 세운다 */
+  const spawn = (bi: BuildingInstances, i: number): void => {
+    const mats = restClones(bi.mesh.material)
+    const mesh = new Mesh(bi.mesh.geometry, Array.isArray(bi.mesh.material) ? mats : mats[0]!)
+    mesh.name = '흐리는 한 채'
+    mesh.matrixAutoUpdate = false
+    mesh.matrix.fromArray(bi.original, i * 16)
+    mesh.castShadow = bi.mesh.castShadow
+    mesh.receiveShadow = bi.mesh.receiveShadow
+    bi.mesh.add(mesh)
+    bi.mesh.setMatrixAt(i, zero)
+    bi.mesh.instanceMatrix.needsUpdate = true
+    const sol: Solid = {
+      mesh, box: bi.boxes[i]!, materials: mats, cur: 1, goal: GHOST, castShadow: bi.mesh.castShadow, shadowOff: false, cap: null,
+    }
+    solids.push(sol)
+    bi.proxies.set(i, sol)
+  }
+  /** 다 돌아온 한 채를 인스턴스로 돌려놓는다 */
+  const retire = (bi: BuildingInstances, i: number, sol: Solid): void => {
+    bi.mesh.setMatrixAt(i, scaledTmp.fromArray(bi.original, i * 16))
+    bi.mesh.instanceMatrix.needsUpdate = true
+    bi.mesh.remove(sol.mesh)
+    solids.splice(solids.indexOf(sol), 1)
+    bi.proxies.delete(i)
+    for (const mat of sol.materials) mat.dispose()
+  }
+  const scaledTmp = new Matrix4()
   const scaled = new Matrix4()
   const shrink = new Matrix4()
   const ray = new Vector3()
   return {
+    warm() {
+      if (warmGroup !== null) return
+      warmGroup = new Group()
+      warmGroup.name = '흐림 파이프라인 (보이지 않는다)'
+      const seen = new Set<string>()
+      const warmOne = (geometry: BufferGeometry, materials: Material[], array: boolean, receiveShadow: boolean): void => {
+        const key = materials.map((m) => (m.userData.rest as Rest).src).join('+') + '#' + layoutOf(geometry) + (receiveShadow ? '#r' : '')
+        if (seen.has(key)) return
+        seen.add(key)
+        for (const ghost of [false, true]) {
+          const mats = materials.map((m) => stateClone(m, ghost))
+          const mesh = new Mesh(geometry, array ? mats : mats[0]!)
+          mesh.name = ghost ? '흐린 쪽' : '보통 쪽'
+          // 크기 0에 가까운 한 벌 — 그려져 파이프라인이 서지만 화소가 안 나온다. 그림자 패스에는 안 낸다(그림자용 파이프라인이 늘지 않게)
+          mesh.scale.setScalar(1e-5)
+          mesh.frustumCulled = false
+          mesh.castShadow = false
+          mesh.receiveShadow = receiveShadow
+          mesh.matrixAutoUpdate = false
+          mesh.updateMatrix()
+          warmGroup!.add(mesh)
+        }
+      }
+      for (const sol of solids) warmOne(sol.mesh.geometry, sol.materials, Array.isArray(sol.mesh.material), sol.mesh.receiveShadow)
+      // 사본 건물은 따로 설 때(`spawn`) 인스턴스가 아닌 셰이더로 그려지므로 그 쪽도 미리 굽는다
+      for (const bi of buildings) {
+        warmOne(bi.mesh.geometry, restClones(bi.mesh.material), Array.isArray(bi.mesh.material), bi.mesh.receiveShadow)
+      }
+      root.add(warmGroup)
+    },
     aim(camera, target, third) {
       for (const l of lists) {
         for (let i = 0; i < l.radii.length; i++) {
@@ -323,6 +456,15 @@ export function fieldFade(root: Object3D): FieldFade {
           fade = hit !== null && camera.distanceTo(hit) < far - 0.5
         }
         sol.goal = fade ? GHOST : 1
+      }
+      if (!third) return
+      for (const bi of buildings) {
+        for (let i = 0; i < bi.boxes.length; i++) {
+          if (bi.proxies.has(i)) continue
+          const box = bi.boxes[i]!
+          const hit = box.containsPoint(camera) ? camera : rayBox(camera, ray, box)
+          if (hit !== null && camera.distanceTo(hit) < far - 0.5) spawn(bi, i)
+        }
       }
     },
     step(dt) {
@@ -353,6 +495,9 @@ export function fieldFade(root: Object3D): FieldFade {
         for (const mat of sol.materials) applyFade(mat, cur)
         // 다 돌아와야 그림자를 되돌린다 — 원래 안 지던 것은 그대로 안 진다
         if (cur >= 1 && sol.shadowOff) { sol.mesh.castShadow = sol.castShadow; sol.shadowOff = false }
+      }
+      for (const bi of buildings) {
+        for (const [i, sol] of bi.proxies) if (sol.cur >= 1 && sol.goal >= 1) retire(bi, i, sol)
       }
     },
   }
