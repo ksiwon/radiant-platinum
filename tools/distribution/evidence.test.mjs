@@ -440,6 +440,8 @@ describe('하네스가 씌우는 봉투', () => {
       startDigest: start,
       environment: { ...WHERE },
       results: STORY.cases.map((id) => ({ id, what: `자리 ${id}`, status: 'PASS', detail: '' })),
+      // 저장소의 `.audit/build.json`에 기대지 않는다 — 없는 작업트리에서도 같은 시험이다
+      extra: { buildId: 'fixture0' },
     })
     expect(sealed.schemaVersion).toBe(EVIDENCE_SCHEMA)
     expect(sealed.contractVersion).toBe(SUITES.story.contract)
@@ -517,6 +519,7 @@ describe('대표 구간의 정본 목록', () => {
       startDigest: bindingDigest('journey'),
       environment: { browser: 'Chromium 151', os: 'win 10', gpu: 'Arc', backend: 'WebGPUBackend' },
       results: short.map((id) => ({ id, what: id, status: 'PASS', detail: '' })),
+      extra: { buildId: 'fixture0' },
     })
     expect(validateEvidence(env, 'journey', {
       artifact: env.artifactDigest, source: env.sourceDigest,
