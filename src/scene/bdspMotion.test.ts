@@ -63,6 +63,18 @@ describe('motionOf · motionMaterial', () => {
     expect(made!.colorNode).toBeNull()
   })
 
+  it('흔들림 가중치가 없는 메시에는 흔들림을 안 단다 — 흐름은 그대로', () => {
+    const leaf = new MeshStandardMaterial()
+    leaf.userData.swing = { power: 2, speed: 1, dist: 1, uv: 0, scale: [0.01, 0, 0], dir: [1, 0, 0] }
+    expect(motionMaterial(leaf, { weights: false })).toBeNull()
+    const belt = new MeshStandardMaterial({ map: new Texture() })
+    belt.userData.texVel = [0, 0.3]
+    belt.userData.swing = leaf.userData.swing
+    const made = motionMaterial(belt, { weights: false })!
+    expect(made.colorNode).not.toBeNull()
+    expect(made.positionNode).toBeNull()
+  })
+
   it('그림이 있는 흐름 재질은 colorNode를 얻고 색 · 불투명도 · 이름 · userData를 그대로 가진다', () => {
     const belt = new MeshStandardMaterial({ map: new Texture(), color: 0x336699, opacity: 0.5, transparent: true })
     belt.name = 'M_C_001_Belt_01'

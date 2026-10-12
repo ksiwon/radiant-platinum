@@ -16,7 +16,7 @@
 // 민다. 진폭 곱수 `WIND_GAIN`은 원작 값에서 못 구했다(추측) — 풀 한 포기가 눈에 띄게 한두 뼘 흔들리도록 잡은 값이다
 import {
   AnimationMixer, Euler, LoopRepeat, Mesh, Quaternion, Vector2, Vector3,
-  type AnimationClip, type Material, type Object3D, type Texture,
+  type AnimationClip, type BufferGeometry, type Material, type Object3D, type Texture,
 } from 'three'
 import { MeshStandardNodeMaterial, type Node } from 'three/webgpu'
 import {
@@ -116,13 +116,17 @@ function nodeMaterial(was: Material): MeshStandardNodeMaterial {
 }
 
 /** 움직이는 재질 하나 — 그림이 흐르고(`texVel` · `scroll` · `frames`) 정점이 흔들린다(`swing`). 움직일 것이 없으면 `null` */
-export function motionMaterial(was: Material): MeshStandardNodeMaterial | null {
-  const v = motionOf(was)
-  if (!v) return null
+export function motionMaterial(was: Material, { weights = true }: { weights?: boolean } = {}): MeshStandardNodeMaterial | null {
+  const v0 = motionOf(was)
+  if (!v0) return null
+  // ⚠️ **흔들림 가중치(`_swing`)가 없는 메시에는 흔들림을 안 단다.** 달면 three가 「Vertex attribute "_swing" not found」를 경고하고
+  // 0으로 읽는다 — 흔들리지도 않으면서 콘솔만 더럽힌다 (journey ⑯, 10-13 칸 1)
+  const v = weights ? v0 : { ...v0, swing: undefined }
   const map = (was as { map?: Texture | null }).map ?? null
   const flows = v.texVel !== undefined || v.scroll !== undefined || v.frames !== undefined
   if (!(flows && map) && !v.swing) return null
-  const m = nodeMaterial(was)
+  // 이미 노드 재질이면 `nodeMaterial`이 그것을 그대로 돌려준다 — 가중치 있는 메시와 나눠 쓰는 재질이면 흔들림이 새어 들지 않게 떼어 낸다
+  const m = !weights && v0.swing && was instanceof MeshStandardNodeMaterial ? was.clone() : nodeMaterial(was)
   if (flows && map) {
     // 색 · 불투명도는 재질에서 바로 읽는다(`materialReference`) — 흐림(`fieldFade`)이 `opacity`를 매 프레임 바꾼다
     m.colorNode = texture(map, flowUv(v, map)).mul(vec4(
@@ -140,25 +144,38 @@ export function motionMaterial(was: Material): MeshStandardNodeMaterial | null {
  */
 export function liveMotionMaterials(root: Object3D): number {
   if (motionDisabled()) return 0
-  const swapped = new Map<Material, MeshStandardNodeMaterial | null>()
+  /** 가중치가 있는 메시용 · 없는 메시용을 따로 든다 — 같은 재질을 두 갈래가 나눠 쓴다 */
+  const swapped = { with: new Map<Material, MeshStandardNodeMaterial | null>(), without: new Map<Material, MeshStandardNodeMaterial | null>() }
   root.traverse((o) => {
     if (!(o instanceof Mesh)) return
     const list = (Array.isArray(o.material) ? o.material : [o.material]) as Material[]
     if (!list.some((x) => motionOf(x) !== null)) return
+    const weights = (o.geometry as BufferGeometry).hasAttribute('_swing')
+    const book = weights ? swapped.with : swapped.without
     const next = list.map((x) => {
       if (motionOf(x) === null) return x
-      let n = swapped.get(x)
-      if (n === undefined) { n = motionMaterial(x); swapped.set(x, n) }
+      let n = book.get(x)
+      if (n === undefined) { n = motionMaterial(x, { weights }); book.set(x, n) }
       return n ?? x
     })
     o.material = Array.isArray(o.material) ? next : next[0]!
   })
-  let count = 0
-  for (const [old, made] of swapped) {
-    if (made && made !== old) { old.dispose(); count++ }
-    else if (made) count++
+  const made = new Set<MeshStandardNodeMaterial>()
+  const olds = new Set<Material>()
+  for (const book of [swapped.with, swapped.without]) {
+    for (const [old, n] of book) {
+      if (!n) continue
+      made.add(n)
+      if (n !== old) olds.add(old)
+    }
   }
-  return count
+  // 옛 재질은 **어느 메시도 안 쓸 때만** 버린다 — 한 갈래는 갈았는데 다른 갈래는 그대로 쓰는 재질이 있을 수 있다
+  const still = new Set<Material>()
+  root.traverse((o) => {
+    if (o instanceof Mesh) for (const x of (Array.isArray(o.material) ? o.material : [o.material]) as Material[]) still.add(x)
+  })
+  for (const old of olds) if (!still.has(old)) old.dispose()
+  return made.size
 }
 
 // ── 회전 · 마디 클립 ─────────────────────────────────────────────────────────────────────────────────────
