@@ -146,7 +146,7 @@ function readPlaced(glb: Uint8Array): { material: string, instanced: boolean, tr
   const view = new DataView(glb.buffer, glb.byteOffset, glb.byteLength)
   const jsonLength = view.getUint32(12, true)
   const gltf = JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + jsonLength))) as {
-    nodes: { mesh: number, matrix?: number[], extensions?: { EXT_mesh_gpu_instancing: { attributes: { TRANSLATION: number, ROTATION: number, SCALE: number } } } }[]
+    nodes: { mesh?: number, matrix?: number[], extensions?: { EXT_mesh_gpu_instancing: { attributes: { TRANSLATION: number, ROTATION: number, SCALE: number } } } }[]
     meshes: { primitives: { attributes: { POSITION: number }, indices: number, material?: number }[] }[]
     materials: { name: string }[]
     accessors: { bufferView: number, byteOffset?: number, count: number, componentType: number, type: string }[]
@@ -162,6 +162,8 @@ function readPlaced(glb: Uint8Array): { material: string, instanced: boolean, tr
   }
   const out: { material: string, instanced: boolean, tris: number[][][] }[] = []
   for (const node of gltf.nodes) {
+    // 파티클 표식(`fx:<번호>`)은 메시 없는 빈 노드다
+    if (node.mesh === undefined) continue
     // 열 우선 행렬들 — 사본 노드는 자리마다 이동 · 회전(사원수) · 배율로 짓는다
     const mats: number[][] = []
     const inst = node.extensions?.EXT_mesh_gpu_instancing.attributes
@@ -337,7 +339,7 @@ withLocal('BDSP 야외', area001)('야외 지역 — 원본 자료', () => {
   const area008 = AREA ? join(AREA, 'fields', 'area008') : null
   /** glb JSON — 노드 · 메시 · 재질 이름 */
   const readJson = (glb: Uint8Array): {
-    nodes: { mesh: number, extras?: { variant: string, mode: string }, extensions?: { EXT_mesh_gpu_instancing: { attributes: { TRANSLATION: number } } } }[]
+    nodes: { mesh: number, extras?: { variant?: string, mode?: string, fx?: number }, extensions?: { EXT_mesh_gpu_instancing: { attributes: { TRANSLATION: number } } } }[]
     meshes: { primitives: { material?: number }[] }[]
     materials: { name: string }[]
     accessors: { count: number }[]
@@ -371,7 +373,8 @@ withLocal('BDSP 야외', area001)('야외 지역 — 원본 자료', () => {
     }
     const mats = (n: (typeof json.nodes)[number]): string[] => json.meshes[n.mesh]!.primitives
       .flatMap((p) => (p.material === undefined ? [] : [json.materials[p.material]!.name]))
-    const marked = json.nodes.filter((n) => n.extras !== undefined)
+    // 파티클 표식(`extras.fx`) · 도는 소품(`extras.spin`)도 `extras`를 쓴다 — 판 표식만 센다
+    const marked = json.nodes.filter((n) => n.extras?.variant !== undefined)
     expect(marked.every((n) => n.extras!.variant === 'r224b' && (n.extras!.mode === 'show' || n.extras!.mode === 'hide'))).toBe(true)
     const placed = (mode: string): number => marked.filter((n) => n.extras!.mode === mode).reduce((a, n) => a + count(n), 0)
     expect(placed('show')).toBe(142)
