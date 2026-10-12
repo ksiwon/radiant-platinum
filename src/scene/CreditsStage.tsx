@@ -556,6 +556,7 @@ export function CreditsStage() {
     if (star && sprites) { star.geometry = sprites.geos[0]!; star.material = sprites.streak }
   }, [sprites])
 
+  const frameLights = useRef<Group>(null)
   const keyLight = useRef<import('three').DirectionalLight>(null)
   const fill = useRef<import('three').HemisphereLight>(null)
 
@@ -595,6 +596,7 @@ export function CreditsStage() {
     g.position.copy(eye)
 
     const showWorld = kind !== undefined
+    if (frameLights.current) frameLights.current.visible = !showWorld
     // 하늘
     const sg = sky.current
     if (sg) {
@@ -706,8 +708,11 @@ export function CreditsStage() {
     <group position={CINEMATIC_ORIGIN} name="엔딩 크레딧">
       <directionalLight ref={keyLight} />
       <hemisphereLight ref={fill} args={['#ffffff', '#202020', 1]} />
-      <directionalLight position={[3, 6, 8]} intensity={1.1} color="#ffffff" />
-      <ambientLight intensity={0.35} />
+      {/* 액자 장면의 정면 빛 — 3D 장면(0 · 2 · 4)은 원작 빛 하나만 쓴다 */}
+      <group ref={frameLights}>
+        <directionalLight position={[3, 6, 8]} intensity={1.1} color="#ffffff" />
+        <ambientLight intensity={0.35} />
+      </group>
 
       {/* 카메라에 붙은 것 — 하늘 · 날아다니는 입자 · 별똥별 · 주인공 */}
       <group ref={anchor}>

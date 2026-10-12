@@ -287,6 +287,9 @@ export function CreditsScreen() {
     let acc = 0
     const began = performance.now()
     let playing = false
+    // 개발 전용 손잡이 — 시계를 멈추고 · 앞으로 돌려 장면을 찍는다. 배포 빌드에서는 이 가지가 접힌다
+    const dev = import.meta.env.DEV ? (globalThis as { __credits?: { clock: CreditsClock, hold: boolean } }) : null
+    if (dev) dev.__credits = { clock, hold: false }
     const tick = (now: number): void => {
       if (!playing) {
         if (!creditsLive.ready && now - began < READY_LIMIT) { raf = requestAnimationFrame(tick); return }
@@ -295,6 +298,7 @@ export function CreditsScreen() {
       }
       if (last !== null) acc += Math.min(CATCH_UP / 60, (now - last) / 1000)
       last = now
+      if (dev?.__credits?.hold) acc = 0
       while (acc >= 1 / 60) {
         acc -= 1 / 60
         clock.step(pressed.current)
@@ -311,7 +315,7 @@ export function CreditsScreen() {
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
-    return () => { cancelAnimationFrame(raf); creditsLive.view = null }
+    return () => { cancelAnimationFrame(raf); creditsLive.view = null; if (dev) delete dev.__credits }
   }, [lines, table, maker])
 
   // 3D 무대가 선 동안만 「받았다」가 의미가 있다 — 닫을 때 비운다
