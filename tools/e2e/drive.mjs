@@ -2266,86 +2266,93 @@ export async function driveStory(page, {
         // 길로 계획을 내고, 계획이 늘 「17걸음 있다」고 하니 같은 자리를 영영
         // 맴돈다 (실측 2026-09-17 journey17 — 207번도로에서 18분)
         const route = mapRoute(s.map, target, { without: shut })
-        if (!route || route.length < 2) return done(`길이 없다 (${String(s.map)} → ${String(target)})`)
-        // ⚠️ **중간 구역을 하나씩 밟으면 안 된다.** 같은 행렬 안에서는 구역이
-        // 맞닿아 있기만 하면 한 걸음으로 세므로, 맵 그래프가 202번도로에서
-        // 집으로 가는 길을 `[343, 0, 411, 414]`로 냈다 — 그 "0"으로 가는
-        // 51걸음이 하필 **서쪽 잡는 법 관문**을 지났고, 관문은 소포가 없는
-        // 주인공을 되돌려 세운다. 그래서 되돌려 세우고 다시 가기를 되풀이하며
-        // 400바퀴를 돌았다. 지나갈 구역이 아니라 **같은 행렬에 있는 마지막
-        // 구역**을 곧바로 노린다. 멀어서 못 찾으면 한 칸씩 당겨 본다
-        let far = 0
-        while (far + 1 < route.length && matrixOf(route[far + 1]) === here) far++
-        if (far === 0) {
-          const hop = route[1]
-          const all = others.filter((w) => w.to === hop)
-          if (all.length === 0) return done(`${String(s.map)}에서 ${String(hop)}으로 나가는 문이 없다`)
-          /**
-           * **한 맵 안이 여러 구역으로 갈려 있을 수 있다** — 맵 그래프는 맵을 한
-           * 덩어리로 보므로 그 갈림을 모른다.
-           *
-           * ⚠️ 실측(2026-09-22 다리 a): 갤럭시 빌딩 **2F(73)** 가 그렇다. 1F에서
-           * 내려오는 계단이 **둘**인데 왼쪽 (3,3)으로 내려오면 x=4·5가 벽이라
-           * 3F 계단 (14,3)·(20,3)과 **안 이어진다**. 재는 자는 그 방에서 「길을
-           * 못 찾았다」로 서고, 밖에서는 빌딩을 못 올라가는 것으로 보였다.
-           *
-           * 그래서 문을 고를 때 **내려서는 자리**를 본다: 워프의 `anchor`가 상대
-           * 맵의 몇 번째 워프에 내리는지 말해 주므로(`resolveWarp`와 같은 규칙),
-           * 그 칸에서 **그 맵의 다음 문**까지 이어지는 문만 쓴다.
-           *
-           * ⚠️ **모르면 막지 않는다.** 앞을 못 내다보는 갈래는 전부 참을 낸다 —
-           * 이 규칙이 길을 **좁히기만** 하고 새로 막지는 않게 한다. 다 걸러지면
-           * 원래 목록을 그대로 쓴다
-           */
-          const landsWell = (w) => {
-            const land = warpsOf(w.to)[w.anchor]
-            if (land === undefined) return true
-            const on = mapRoute(w.to, target, { without: shut })
-            if (!Array.isArray(on) || on.length < 2) return true
-            const nextDoors = warpsOf(w.to).filter((d) => d.to === on[1])
-            if (nextDoors.length === 0) return true
-            const there = warpsOf(w.to)
-            const r = planPath(matrixOf(w.to), { x: land.x, z: land.z },
-              (x, z) => nextDoors.some((d) => d.x === x && d.z === z),
-              {
-                enterBlockedGoal: true,
-                /**
-                 * ⚠️ **이 다리가 쓰는 비전기술로 잰다** — 안 넣으면 락클라임으로만 이어지는 옳은 문도
-                 * 「안 이어진다」로 빠져서 거름이 통째로 풀린다. 실측(탐침 p6): 천관산 바깥 남(211)에서
-                 * 4F(212)로 들 때 서쪽 문 (7,25)만 락클라임으로 바깥 북(210) 문에 닿는데, 거름이 풀려
-                 * 폭포(0x13)로 막힌 동쪽 주머니 (32,24)로 들었다
-                 */
-                surf: surfMode,
-                climb: climbMode,
-                waterfall: waterfallMode,
-                // 다른 워프는 밟지 않는다 — 노리는 문만 목표다
-                avoid: (x, z) => there.some((o) => o.x === x && o.z === z)
-                  && !nextDoors.some((d) => d.x === x && d.z === z),
-              })
-            return r.keys !== null
-          }
-          const good = all.filter((w) => landsWell(w))
-          /**
-           * **이미 지나온 문은 다시 안 고른다** — 그 문으로 들어가 봤는데 여기로
-           * 되돌아왔다는 뜻이다(구역이 갈린 맵). 남는 것이 없으면 그 기억은 놓는다
-           */
-          const narrowed = good.length > 0 ? good : all
-          const fresh = narrowed.filter((w) => !usedDoors.has(`${String(s.map)}:${String(w.x)},${String(w.z)}`))
-          const doors = fresh.length > 0 ? fresh : narrowed
-          if (verbose && fresh.length !== narrowed.length) {
-            log(`      →${String(hop)} 이미 지나온 문 ${String(narrowed.length - fresh.length)}개를 뺀다`)
-          }
-          if (verbose && good.length !== all.length) {
-            log(`      →${String(hop)} 문 ${String(all.length)}개 중 ${String(good.length)}개만`
-              + ' 내려선 자리에서 길이 이어진다')
-          }
-          // ⚠️ **문만 통행 불가 칸으로 들어선다** (후속 §4.2)
-          keys = use(path((x, z) => doors.some((w) => w.x === x && w.z === z),
-            `문 →${String(hop)}`, true, doors))
-        } else {
-          for (let i = far; i >= 1 && keys === null; i--) {
-            keys = use(path((x, z) => grid.zoneAt(x, z) === route[i],
-              `경유 구역 ${String(route[i])}`))
+        // ⚠️ **채움 지대(zone 0 · 이름 없는 땅)에 서 있으면 맵 그래프에 길이 없는 것이 맞다** — 거기는 이웃도 문도 없다
+        // (`sameMatrixNeighbours`). 그것을 「길이 없다」로 적으면 이야기가 주인공을 풀밭 사이 빈 땅에 세워 둔 판이 게임의 결함처럼
+        // 보인다 — 실측(46a8bc3 전체 판 ㉖): `길이 없다 (0 → 419)`. 이름 있는 구역이 아니니 아래 「닿을 수 있는 다른 구역」이 가까운
+        // 이름 있는 구역으로 걸어 나간다. 실내·문 사이에서 길이 없는 것은 그대로 끝낸다
+        const hasRoute = Array.isArray(route) && route.length >= 2
+        if (!hasRoute && s.map !== 0) return done(`길이 없다 (${String(s.map)} → ${String(target)})`)
+        if (hasRoute) {
+          // ⚠️ **중간 구역을 하나씩 밟으면 안 된다.** 같은 행렬 안에서는 구역이
+          // 맞닿아 있기만 하면 한 걸음으로 세므로, 맵 그래프가 202번도로에서
+          // 집으로 가는 길을 `[343, 0, 411, 414]`로 냈다 — 그 "0"으로 가는
+          // 51걸음이 하필 **서쪽 잡는 법 관문**을 지났고, 관문은 소포가 없는
+          // 주인공을 되돌려 세운다. 그래서 되돌려 세우고 다시 가기를 되풀이하며
+          // 400바퀴를 돌았다. 지나갈 구역이 아니라 **같은 행렬에 있는 마지막
+          // 구역**을 곧바로 노린다. 멀어서 못 찾으면 한 칸씩 당겨 본다
+          let far = 0
+          while (far + 1 < route.length && matrixOf(route[far + 1]) === here) far++
+          if (far === 0) {
+            const hop = route[1]
+            const all = others.filter((w) => w.to === hop)
+            if (all.length === 0) return done(`${String(s.map)}에서 ${String(hop)}으로 나가는 문이 없다`)
+            /**
+             * **한 맵 안이 여러 구역으로 갈려 있을 수 있다** — 맵 그래프는 맵을 한
+             * 덩어리로 보므로 그 갈림을 모른다.
+             *
+             * ⚠️ 실측(2026-09-22 다리 a): 갤럭시 빌딩 **2F(73)** 가 그렇다. 1F에서
+             * 내려오는 계단이 **둘**인데 왼쪽 (3,3)으로 내려오면 x=4·5가 벽이라
+             * 3F 계단 (14,3)·(20,3)과 **안 이어진다**. 재는 자는 그 방에서 「길을
+             * 못 찾았다」로 서고, 밖에서는 빌딩을 못 올라가는 것으로 보였다.
+             *
+             * 그래서 문을 고를 때 **내려서는 자리**를 본다: 워프의 `anchor`가 상대
+             * 맵의 몇 번째 워프에 내리는지 말해 주므로(`resolveWarp`와 같은 규칙),
+             * 그 칸에서 **그 맵의 다음 문**까지 이어지는 문만 쓴다.
+             *
+             * ⚠️ **모르면 막지 않는다.** 앞을 못 내다보는 갈래는 전부 참을 낸다 —
+             * 이 규칙이 길을 **좁히기만** 하고 새로 막지는 않게 한다. 다 걸러지면
+             * 원래 목록을 그대로 쓴다
+             */
+            const landsWell = (w) => {
+              const land = warpsOf(w.to)[w.anchor]
+              if (land === undefined) return true
+              const on = mapRoute(w.to, target, { without: shut })
+              if (!Array.isArray(on) || on.length < 2) return true
+              const nextDoors = warpsOf(w.to).filter((d) => d.to === on[1])
+              if (nextDoors.length === 0) return true
+              const there = warpsOf(w.to)
+              const r = planPath(matrixOf(w.to), { x: land.x, z: land.z },
+                (x, z) => nextDoors.some((d) => d.x === x && d.z === z),
+                {
+                  enterBlockedGoal: true,
+                  /**
+                   * ⚠️ **이 다리가 쓰는 비전기술로 잰다** — 안 넣으면 락클라임으로만 이어지는 옳은 문도
+                   * 「안 이어진다」로 빠져서 거름이 통째로 풀린다. 실측(탐침 p6): 천관산 바깥 남(211)에서
+                   * 4F(212)로 들 때 서쪽 문 (7,25)만 락클라임으로 바깥 북(210) 문에 닿는데, 거름이 풀려
+                   * 폭포(0x13)로 막힌 동쪽 주머니 (32,24)로 들었다
+                   */
+                  surf: surfMode,
+                  climb: climbMode,
+                  waterfall: waterfallMode,
+                  // 다른 워프는 밟지 않는다 — 노리는 문만 목표다
+                  avoid: (x, z) => there.some((o) => o.x === x && o.z === z)
+                    && !nextDoors.some((d) => d.x === x && d.z === z),
+                })
+              return r.keys !== null
+            }
+            const good = all.filter((w) => landsWell(w))
+            /**
+             * **이미 지나온 문은 다시 안 고른다** — 그 문으로 들어가 봤는데 여기로
+             * 되돌아왔다는 뜻이다(구역이 갈린 맵). 남는 것이 없으면 그 기억은 놓는다
+             */
+            const narrowed = good.length > 0 ? good : all
+            const fresh = narrowed.filter((w) => !usedDoors.has(`${String(s.map)}:${String(w.x)},${String(w.z)}`))
+            const doors = fresh.length > 0 ? fresh : narrowed
+            if (verbose && fresh.length !== narrowed.length) {
+              log(`      →${String(hop)} 이미 지나온 문 ${String(narrowed.length - fresh.length)}개를 뺀다`)
+            }
+            if (verbose && good.length !== all.length) {
+              log(`      →${String(hop)} 문 ${String(all.length)}개 중 ${String(good.length)}개만`
+                + ' 내려선 자리에서 길이 이어진다')
+            }
+            // ⚠️ **문만 통행 불가 칸으로 들어선다** (후속 §4.2)
+            keys = use(path((x, z) => doors.some((w) => w.x === x && w.z === z),
+              `문 →${String(hop)}`, true, doors))
+          } else {
+            for (let i = far; i >= 1 && keys === null; i--) {
+              keys = use(path((x, z) => grid.zoneAt(x, z) === route[i],
+                `경유 구역 ${String(route[i])}`))
+            }
           }
         }
       }

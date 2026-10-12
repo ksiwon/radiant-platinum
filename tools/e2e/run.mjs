@@ -239,7 +239,9 @@ async function fresh() {
  * OPFS · 설치 기록은 출처별이라 dist 서버의 자리(127.0.0.1:5199)가 고정이어야 이어진다 — ㉙도 같은 자리에 개발 서버를 띄운다
  */
 const INSTALLED_DIR = resolve(ROOT, '.audit/e2e-installed')
-rmSync(INSTALLED_DIR, { recursive: true, force: true })
+// ⚠️ **판 첫머리에 비운다 — `--only=26`을 따로 돌려도 이어 쓰지 않는다.** 진단으로 한 건만 거듭 돌릴 때는
+// `PT_E2E_KEEP_INSTALLED=1`로 앞 판이 남긴 프로필을 이어 쓴다(설치 15분을 건너뛴다). 판정용 전체 판에는 쓰지 않는다
+if (process.env.PT_E2E_KEEP_INSTALLED !== '1') rmSync(INSTALLED_DIR, { recursive: true, force: true })
 let installedCtx = null
 
 /** 설치본 프로필의 새 페이지 — `fresh()`와 같은 모양이고, 닫으면 페이지만 닫는다 */
@@ -1970,7 +1972,11 @@ await ((haveRom && haveBdsp && haveRoute) ? run : () => {})(
     // 배포물이라 `/src/...` 모듈이 아예 없다 — 예전에는 드라이버가 그것을
     // 열려다 ㉖을 통째로 끊었고(`Failed to fetch dynamically imported module`),
     // 한 자리는 삼켜서 **다른 기술로 싸운 판**을 같은 검사로 셌다
-    const story = await driveStory(page, { totalMs: 900_000, observe: 'dist' })
+    // 진단 때만 길목 로그를 흘린다 — `PT_E2E_DRIVE_LOG=1 pnpm e2e --only=26 | tee …`. 판정에는 안 쓴다
+    const story = await driveStory(page, {
+      totalMs: 900_000, observe: 'dist',
+      ...(process.env.PT_E2E_DRIVE_LOG === '1' ? { log: (m) => console.log(`    [drive] ${m}`) } : {}),
+    })
     assert(story.observer === 'dist', `배포물인데 어댑터가 ${String(story.observer)}다`)
     // ⚠️ **「404를 무시했다」가 아니라 「요청을 안 보냈다」여야 한다.**
     //
