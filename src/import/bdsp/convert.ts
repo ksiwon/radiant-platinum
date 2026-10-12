@@ -31,7 +31,8 @@ import { openEnvironment, type Environment } from './environment'
 import { exportModel } from './model'
 import { bakeAlbedo } from './albedo'
 import { exportArena } from './arena'
-import { exportField } from './field'
+import { exportField, movingOf } from './field'
+import { findRigs, pathHashes } from './rig'
 import { convertBattleFx } from './fx'
 import { className, openBundle, readSerializedFile } from './unityfs'
 import type { UnityValue } from './typetree'
@@ -46,6 +47,14 @@ const ARENA_GROUND = 'Environments/bg/arenas/ground'
 const ROOMS = 'Environments/prefab_map'
 /** 야외 지역 (docs/orders/VISUAL_20260929.md §2 · `scene/BdspField`) */
 const FIELDS = 'Environments/fields'
+/**
+ * 야외 · 던전 재질이 **딴 번들에서** 끌어 쓰는 공용 그림 번들. 유니티 `PPtr`의 `m_FileID`가 0이 아니면 그 파일의 바깥 참조인데, 눈 땅 재질
+ * (`M_C_001_Ground_03` · `…_SnowCover_01` · `…_SnowSeam_01` · `…_CliffSnow_01`)의 `_MainTex` · `_LayerTex`가 이 번들의 `snow`(512)를 가리킨다.
+ * 이 번들을 같이 열지 않으면 그림이 없는 재질이 되어 눈 땅이 회색 0.9 한 색으로 구워졌다 — 천관산(`d05r0104` · `d05r0105`) · 신오 호수
+ * 예지의 호수(`d29r0101` · `d29r0102`) · 키사키(`area009`). 환경이 PathID를 번들 가로질러 찾으므로(`environment.ts`) 그림만 얹으면 된다.
+ * 덤프에 이 번들이 없으면 눈 땅만 그림 없이 굽고 나머지는 그대로 굽는다 — 설치가 막히지는 않는다
+ */
+const COMMON_RESOURCES = 'Dpr/common_resources'
 /**
  * 방 그림 긴 변의 상한 — 노드 쪽 `bdspArena.py`의 `ROOM_TEXTURE`와 같아야 한다. 방 255벌을 원본 해상도(512~1024)로 구우면
  * 설치본이 수백 MB 는다
@@ -205,9 +214,13 @@ const childrenOf = (at: Map<string, string>, dir: string): string[] => {
 const lookup = (at: Map<string, string>, path: string): string | null =>
   at.get(path.toLowerCase()) ?? null
 
-/** 번들 여럿을 한 환경으로. 하나라도 못 읽으면 null */
+/**
+ * 번들 여럿을 한 환경으로. 하나라도 못 읽으면 null.
+ *
+ * `shared`는 **그림만 빌리는** 번들이다(`COMMON_RESOURCES`) — 재질이 딴 번들의 그림을 가리킬 때 PathID로 찾게 하려는 것이라 그림 오브젝트만 얹는다
+ */
 async function environmentOf(
-  src: BdspSource, paths: readonly string[],
+  src: BdspSource, paths: readonly string[], shared: readonly string[] = [],
 ): Promise<Environment | null> {
   const parts: Uint8Array[] = []
   for (const p of paths) {
@@ -215,8 +228,14 @@ async function environmentOf(
     if (!bytes) return null
     parts.push(bytes)
   }
+  const lent: Uint8Array[] = []
+  for (const p of shared) {
+    const bytes = await src.read(p)
+    if (!bytes) return null
+    lent.push(bytes)
+  }
   if (parts.length === 0) return null
-  try { return openEnvironment(parts) } catch { return null }
+  try { return openEnvironment(parts, lent) } catch { return null }
 }
 
 // ── 인물 이름표 ──────────────────────────────────────────────────────────────
@@ -1029,7 +1048,7 @@ async function convertRooms(ctx: ConvertContext): Promise<Produced> {
     if (!env) missing.push(name)
     else {
       try {
-        const { glb } = await exportArena(env, encodePng, { name, maxSize: ROOM_TEXTURE })
+        const { glb } = await exportArena(env, encodePng, { name, maxSize: ROOM_TEXTURE, motion: true, moving: movingOf, rigging: { find: findRigs, hashes: pathHashes } })
         put(ctx, out, `models/room/${name}.glb`, glb)
         made.push(name)
       } catch { missing.push(name) }
@@ -1095,7 +1114,8 @@ async function convertDungeons(ctx: ConvertContext): Promise<Produced> {
   for (const name of names) {
     check(ctx)
     const path = lookup(at, `${ROOMS}/${name}`)
-    const env = path ? await environmentOf(src, [path]) : null
+    const common = lookup(at, COMMON_RESOURCES)
+    const env = path ? await environmentOf(src, [path], common ? [common] : []) : null
     if (!env) missing.push(name)
     else {
       try {
@@ -1144,7 +1164,8 @@ async function convertFields(ctx: ConvertContext): Promise<Produced> {
   for (const name of names) {
     check(ctx)
     const path = lookup(at, `${FIELDS}/${name}`)
-    const env = path ? await environmentOf(src, [path]) : null
+    const common = lookup(at, COMMON_RESOURCES)
+    const env = path ? await environmentOf(src, [path], common ? [common] : []) : null
     if (!env) missing.push(name)
     else {
       try {
@@ -1290,7 +1311,7 @@ export const BDSP_GROUPS: readonly GroupSpec[] = [
   {
     // 포획 · 내보내기 · 기술 이펙트 — 원작 파티클 프리팹 그대로 (docs/orders/BATTLE_FX_20261004.md §4 · `import/bdsp/fx.ts`)
     name: 'battleFx',
-    outputs: ['data/fx/prefab/{프리팹}.json', 'data/fx/tex/{그림}.png', 'data/fx/tex/index.json', 'data/fx/seq/{시퀀스}.json', 'data/fx/model/ew121_egg00.glb', 'data/fx/index.json'],
+    outputs: ['data/fx/prefab/{프리팹}.json', 'data/fx/tex/{그림}.png', 'data/fx/tex/index.json', 'data/fx/seq/{시퀀스}.json', 'data/fx/model/ew121_egg00.glb', 'data/fx/model/substitute_doll.glb', 'data/fx/index.json'],
     converter: 1,
     convert: convertBattleFx,
   },

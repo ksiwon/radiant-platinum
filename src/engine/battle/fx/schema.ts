@@ -301,6 +301,8 @@ export interface FxMesh {
   name: string
   positions: readonly number[]
   normals?: readonly number[]
+  /** 꼭짓점색 RGBA (꼭짓점마다 넷) */
+  colors?: readonly number[]
   uvs?: readonly number[]
   indices: readonly number[]
 }

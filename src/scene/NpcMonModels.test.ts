@@ -50,3 +50,19 @@ describe('오버월드 포켓몬 모델', () => {
     expect(overworldMon('UNKNOWN_EVENT_ACTOR')).toBeNull()
   })
 })
+
+describe('따라다니는 마리 (상호교류광장)', () => {
+  it('그림 표에 없는 열 번호가 번호로 포켓몬에 닿는다', async () => {
+    const { overworldMonOfGfx } = await import('../engine/actor/overworldMon')
+    // 모부기 계통 · 불꽃숭이 계통 · 팽도리 계통 · 푸린
+    expect(overworldMonOfGfx(220, null)).toEqual([387, 0])
+    expect(overworldMonOfGfx(225, null)).toEqual([392, 0])
+    expect(overworldMonOfGfx(228, null)).toEqual([395, 0])
+    expect(overworldMonOfGfx(73, null)).toEqual([39, 0])
+    // 표에 있는 것은 이름이 이긴다
+    expect(overworldMonOfGfx(71, 'PIKACHU')).toEqual([25, 0])
+    // 그림이 있는 사람은 포켓몬이 아니다
+    expect(overworldMonOfGfx(1, 'SAILOR')).toBeNull()
+    expect(overworldMonOfGfx(999, null)).toBeNull()
+  })
+})

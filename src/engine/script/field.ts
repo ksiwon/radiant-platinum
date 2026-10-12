@@ -7,6 +7,7 @@
 // 이 모듈은 React를 모른다. 화면은 `world`를 들여다보기만 한다.
 import { loadDialogueBank, loadScriptBytes, loadScriptMeta, type DataLocale } from '../../data/gameData'
 import { markScript } from '../../app/sceneMark'
+import { scriptSpy } from './spy'
 import {
   BG_EVENT_DIR, BG_EVENT_TYPE, clearWarpOverrides, hideFlagOf, mapById, npcsOf, NO_SCRIPT,
   scriptBridge, signsOf, talkTile, TILE_BEHAVIOR_PC, triggersOf, warpGateBridge, world as mapWorld,
@@ -86,6 +87,7 @@ function noteScriptError(e: unknown, where: string): void {
   const message = e instanceof ScriptError ? e.message : String(e)
   fieldScripts.lastError = message
   fieldScripts.errors += 1
+  scriptSpy.error?.(message, where)
   // ⚠️ `DEV`가 아니라 `MODE`다 — `DEV`로 재면 시험 수천 벌이 이 줄을 찍는다
   // (`battle/sim/bridge.ts`가 같은 자리에서 같은 판단을 한다)
   if (import.meta.env.MODE === 'development') {
@@ -847,11 +849,13 @@ function runFixedInit(mapId: number, type: number): void {
     fileBytes(data, target.file), target.file,
   )
   ctx.start(entryOffset(data, target.file, target.entry))
+  scriptSpy.start?.({ script: scriptID, file: target.file, entry: target.entry, local: 0, kind: 'init' })
   try {
     ctx.step(STEP_CAP)
   } catch (e) {
     noteScriptError(e, `초기 스크립트 파일 ${String(target.file)}#${String(target.entry)}`)
   }
+  scriptSpy.end?.('init')
   if (!keepLocals) vars.resetLocals()
 }
 
@@ -1172,6 +1176,7 @@ function finish(): void {
   fieldScripts.world?.closeBox(true)
   fieldScripts.world?.reset()
   fieldScripts.vars.resetLocals()
+  scriptSpy.end?.()
   fieldScripts.onScriptEnd?.(fieldScripts.vars)
 }
 
@@ -2170,6 +2175,7 @@ export function start(scriptID: number, mapFile: number, localID = 0): boolean {
     fileBytes(data, target.file), target.file,
   )
   ctx.start(entryOffset(data, target.file, target.entry))
+  scriptSpy.start?.({ script: scriptID, file: target.file, entry: target.entry, local: localID })
   fieldScripts.ctx = ctx
   fieldScripts.lastError = null
   return true
@@ -2198,6 +2204,7 @@ const commonScripts: CommonScripts = {
       fileBytes(data, target.file), target.file,
     )
     ctx.start(entryOffset(data, target.file, target.entry))
+    scriptSpy.start?.({ script: id, file: target.file, entry: target.entry, local: 0, kind: 'call' })
     common.ctx = ctx
     return true
   },

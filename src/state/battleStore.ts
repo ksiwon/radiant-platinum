@@ -75,6 +75,7 @@ import {
   safariTurn, type SafariCommand, type SafariOutcome, type SafariState as SafariRun,
 } from '../engine/battle/safariBattle'
 import { newSafariBattle } from '../engine/world/safari'
+import { sealsOf, type BallSeal } from '../engine/world/ballCapsule'
 import { LeadAbility, leadHas, wildGender, wildNature } from '../engine/battle/encounterLead'
 import { gameLocale, useOptionsStore } from './optionsStore'
 import { useSessionStore } from './sessionStore'
@@ -234,6 +235,11 @@ export interface RosterEntry {
    * 0이나 빈 값이면 몬스터볼이다 — 트레이너 개체는 볼을 따로 안 적는다
    */
   ball?: number
+  /**
+   * 붙은 볼캡슐의 씰 (`MON_DATA_BALL_CAPSULE`, PARITY §4.11). 내보낼 때 씰마다 입자가 터진다 (`BattleBallEffects`).
+   * 캡슐이 없거나 씰이 하나도 없으면 비운다
+   */
+  capsule?: readonly BallSeal[]
   /**
    * 몸을 고르는 두 값. 무대가 판이 열린 뒤 **뒤에 나올 마리의 몸을 미리 받는** 데 쓴다
    * (`BattleStage`의 `usePrefetchBodies`) — 몸 캐시는 성별·색까지 열쇠로 든다 (`monModel.loadMonModel`)
@@ -2112,13 +2118,15 @@ type Waiting = '규칙기' | '게임 자료' | '파티' | '심판'
  */
 function bodyEntry(
   mon: PokemonInstance, species: Species,
-): Pick<RosterEntry, 'species' | 'form' | 'level' | 'ball' | 'gender' | 'shiny' | 'moves'> {
+): Pick<RosterEntry, 'species' | 'form' | 'level' | 'ball' | 'capsule' | 'gender' | 'shiny' | 'moves'> {
+  const seals = mon.capsule === undefined ? [] : sealsOf(mon.capsule.seals)
   return {
     species: mon.species,
     moves: mon.moves.map((s) => s.move).filter((m) => m > 0),
     form: mon.form,
     level: mon.level,
     ...(mon.ball > 0 ? { ball: mon.ball } : {}),
+    ...(seals.length > 0 ? { capsule: seals } : {}),
     gender: genderOf(mon.pid, species.genderRatio),
     shiny: isShiny(mon.pid, mon.otId, mon.otSecretId),
   }

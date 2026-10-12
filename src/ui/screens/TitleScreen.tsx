@@ -116,7 +116,7 @@ const ImportWizard = lazy(() =>
   import('../../import/ui/ImportWizard').then((m) => ({ default: m.ImportWizard })))
 
 /**
- * 「이런 게임은 어떠세요?」 — 같은 사람이 만든 나머지 두 게임 (`OtherGames`).
+ * 「이런 게임은 어떠세요?」 — 같은 사람이 만든 나머지 게임 (`OtherGames`).
  *
  * ⚠️ **지연 로드다.** 눌러야 뜨는 창이라 첫 화면이 이것을 지고 뜰 이유가 없다
  */

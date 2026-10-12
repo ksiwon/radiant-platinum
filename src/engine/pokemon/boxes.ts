@@ -159,14 +159,13 @@ export function onLastAliveMon(party: readonly PokemonInstance[], mon: PokemonIn
 }
 
 /** 놓아주기를 묻기도 전에 막는 까닭. 글은 `box_messages`의 31 · 30 · 6이다 */
-export type ReleaseRefusal = 'egg' | 'mail' | 'lastMon'
+export type ReleaseRefusal = 'egg' | 'mail' | 'capsule' | 'lastMon'
 
 /**
  * 물어보기 전에 막는다 (`BoxAppMan_CheckReleaseMonValid`). 차례도 원작대로다 —
  * 알 → 편지 → (파티 자리일 때만) 마지막 한 마리.
  *
- * ⚠️ 원작은 편지 다음에 **볼캡슐**도 본다(`MON_DATA_BALL_CAPSULE_ID`). 우리 마리에는
- * 볼캡슐 칸이 없어서 그 갈래가 설 수 없다
+ * ⚠️ 편지 다음에 **볼캡슐**도 본다 (`MON_DATA_BALL_CAPSULE_ID`) — 달린 마리는 먼저 떼어야 한다 (`BoxText_DetachBallCapsule`)
  *
  * @param inParty 파티 자리에서 고른 것인가. 박스 자리면 마지막 한 마리를 안 본다
  */
@@ -175,6 +174,7 @@ export function releaseRefusal(
 ): ReleaseRefusal | null {
   if (mon.isEgg) return 'egg'
   if (isMailItem(mon.heldItem)) return 'mail'
+  if (mon.capsule !== undefined) return 'capsule'
   if (inParty && onLastAliveMon(party, mon)) return 'lastMon'
   return null
 }

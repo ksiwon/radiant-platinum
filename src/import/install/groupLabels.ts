@@ -49,6 +49,7 @@ const LABELS: Readonly<Record<string, Readonly<Record<Lang, string>>>> = {
   signposts: { ko: '표지판', en: 'Signposts', ja: '看板' },
   particles: { ko: '기술 연출', en: 'Move effects', ja: 'わざの演出' },
   typeIcons: { ko: '타입·분류 그림', en: 'Type and move-class icons', ja: 'タイプ・分類のアイコン' },
+  partyIcons: { ko: '파티 표식', en: 'Party menu markers', ja: 'パーティの目印' },
   startMenuIcons: { ko: '시작 메뉴 아이콘', en: 'Start menu icons', ja: 'スタートメニューのアイコン' },
   dexShapes: { ko: '도감 몸 모양', en: 'Pokédex body shapes', ja: '図鑑のからだの形' },
   dexHeightWeight: { ko: '도감 키·몸무게', en: 'Pokédex height and weight', ja: '図鑑のたかさ・おもさ' },

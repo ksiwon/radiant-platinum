@@ -94,6 +94,8 @@ export function App() {
     // 개발용 손잡이(`window.pt`). 배포본에는 **조각째 안 실린다** — 조건이
     // 빌드 상수라 rollup이 이 가지를 통째로 흔들어 낸다
     if (import.meta.env.DEV) void import('./devConsole').then((m) => { m.installDevConsole() })
+    // 스크립트 전수 점검의 게임 쪽 반 — 엿보기 훅과 몰기 (`tools/e2e/scriptsSweep.mjs`)
+    if (import.meta.env.DEV) void import('./devScriptLog').then((m) => { m.installDevScriptLog() })
   }, [])
 
   return (

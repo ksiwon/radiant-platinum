@@ -1,4 +1,4 @@
-// 「이런 게임은 어떠세요?」 — 같은 사람이 만든 나머지 두 게임으로 가는 창.
+// 「이런 게임은 어떠세요?」 — 같은 사람이 만든 나머지 게임으로 가는 창.
 // 타이틀 차림표의 마지막 칸이 연다 (`TitleScreen`).
 //
 // ⚠️ **새 탭으로 연다.** 타이틀에서만 열리니 하던 모험 중은 아니지만, 이 탭에는
@@ -46,7 +46,7 @@ export function OtherGames({ onClose }: Props) {
         <div className={win.head}>
           <h2 className={win.title}>이런 게임은 어떠세요?</h2>
           <span className={win.note}>
-            같은 사람이 만든 포켓몬 웹 게임입니다. 설치 없이 브라우저에서 바로 열립니다.
+            같은 사람이 만든 포켓몬 웹 게임입니다.
           </span>
         </div>
 

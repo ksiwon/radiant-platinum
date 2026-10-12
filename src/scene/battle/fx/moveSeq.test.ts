@@ -105,4 +105,30 @@ describe('`preloadMoveSeqs` — 쪽마다', () => {
     expect(moveSeqPlan(34, true)).toBeNull()
     expect(moveSeqPlan(34, false)?.particles.map((p) => p.prefab)).toEqual(['ew901_foe'])
   })
+
+  it('프리팹이 롬에 없는 시퀀스는 빠진 입자만 뺀 반쪽 계획을 따로 쥔다 — 몸 동작은 그대로', async () => {
+    files['data/fx/index.json'] = { balls: {}, moves: { 96: { seq: 'ew902' }, 164: { seq: 'ew903' } }, missingPrefabs: ['ew902_ring'] }
+    files['data/fx/seq/ew902.json'] = { name: 'ew902', groups: [{ name: 'x', no: 0, options: [], commands: [
+      particle('ew902/ew902_ring.ptcl'),
+      { start: 2, end: 20, name: 'PokemonMoveRelativePoke', values: { moveTrg: ['0'], posTrg: ['0'], node: ['0'], ofs: ['0', '60', '0'], move: ['1'] } },
+    ] }] }
+    // 빈 시퀀스 + 빠진 입자 — 반쪽도 아무것도 없다
+    files['data/fx/seq/ew903.json'] = { name: 'ew903', groups: [{ name: 'x', no: 0, options: [], commands: [particle('ew902/ew902_ring.ptcl')] }] }
+    const { moveSeqPartial, moveSeqPlan, preloadMoveSeqs } = await fresh()
+    await preloadMoveSeqs([96, 164])
+    expect(moveSeqPlan(96, true)).toBeNull()
+    expect(moveSeqPartial(96, true)?.particles).toEqual([])
+    expect(moveSeqPartial(96, true)?.body[0].commands.length).toBeGreaterThan(0)
+    expect(moveSeqPartial(164, true)).toBeNull()
+  })
+})
+
+describe('배경 프리팹만 빠진 시퀀스', () => {
+  it('`bk…`만 빠지면 그것만 빼고 온전한 계획이 선다 (마그마스톰)', async () => {
+    files['data/fx/index.json'] = { balls: {}, moves: { 463: { seq: 'ew904' } }, missingPrefabs: ['bk019_fog1'] }
+    files['data/fx/seq/ew904.json'] = { name: 'ew904', groups: [{ name: 'x', no: 0, options: [], commands: [particle('ew904/ew904_hit.ptcl'), particle('bk019/bk019_fog1.ptcl')] }] }
+    const { moveSeqPlan, preloadMoveSeqs } = await fresh()
+    await preloadMoveSeqs([463])
+    expect(moveSeqPlan(463, true)?.particles.map((p) => p.prefab)).toEqual(['ew904_hit'])
+  })
 })

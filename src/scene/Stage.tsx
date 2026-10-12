@@ -32,6 +32,7 @@ import { useSpearPillarMovieStore } from '../state/spearPillarMovieStore'
 import { SpearPillarMovieStage } from './SpearPillarMovieStage'
 import { useBoatStore } from '../state/boatStore'
 import { BoatTravelStage } from './BoatTravelStage'
+import { CreditsStage } from './CreditsStage'
 import { useHallOfFameStageStore } from '../state/hallOfFameStageStore'
 import { useIntroStageStore } from '../state/introStageStore'
 import { MusicDirector } from './MusicDirector'
@@ -52,6 +53,8 @@ export function Stage() {
   const dwWarp = useDwWarpStore((s) => s.on)
   const spearPillarMovie = useSpearPillarMovieStore((s) => s.on)
   const boat = useBoatStore((s) => s.on)
+  // 엔딩 크레딧의 3D — 화면이 열려 있는 동안만이다 (`scene/CreditsStage`)
+  const credits = useMenuStore((s) => s.top === 'credits')
   // 입력 리스너는 게임 청크에 속한다 — 초기 청크가 worldState(three 의존)를 끌어오지 않게 한다
   const intro = useIntroStageStore((s) => s.scene !== 'off')
   // 렌더러를 다시 세운 횟수. 정상 경로에서는 0 그대로다 (아래 `key`)
@@ -163,6 +166,7 @@ export function Stage() {
           {dwWarp && <DwWarpStage />}
           {spearPillarMovie && <SpearPillarMovieStage />}
           {boat && <BoatTravelStage />}
+          {credits && <CreditsStage />}
         </SceneBoundary>
         <EngineDriver />
         <MusicDirector />

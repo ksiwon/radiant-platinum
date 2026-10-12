@@ -38,9 +38,10 @@ export function seqMotionLive(pose: SeqBodyPose, clipSeconds: (name: SeqMotionNa
  * 그래서 빛날 때 새 재질이 생기지 않고 파이프라인도 등판 전에 굽힌다(`warmBeforeShow`). 끌 때는 그 재질의 원래 발광으로
  * 되돌린다. 떼어 낸 재질은 몸이 내려갈 때 놓는다(`releaseMaterials`)
  */
-interface OwnedMaterial { mat: MeshStandardMaterial; emissive: [number, number, number]; intensity: number }
+interface OwnedMaterial { mat: MeshStandardMaterial; emissive: [number, number, number]; intensity: number; color: [number, number, number] }
 const owned = new WeakMap<object, OwnedMaterial[]>()
 const glowing = new WeakMap<object, boolean>()
+const darkened = new WeakMap<object, number>()
 
 export function ownMaterials(model: MonBody): void {
   if (owned.has(model.root)) return
@@ -53,7 +54,7 @@ export function ownMaterials(model: MonBody): void {
       const std = m as MeshStandardMaterial
       if (!std.emissive) return m
       const own = std.clone()
-      list.push({ mat: own, emissive: [std.emissive.r, std.emissive.g, std.emissive.b], intensity: std.emissiveIntensity })
+      list.push({ mat: own, emissive: [std.emissive.r, std.emissive.g, std.emissive.b], intensity: std.emissiveIntensity, color: [std.color.r, std.color.g, std.color.b] })
       return own
     })
     mesh.material = Array.isArray(mesh.material) ? next : next[0]!
@@ -65,6 +66,7 @@ export function releaseMaterials(model: MonBody): void {
   for (const o of owned.get(model.root) ?? []) o.mat.dispose()
   owned.delete(model.root)
   glowing.delete(model.root)
+  darkened.delete(model.root)
 }
 
 export function glow(model: MonBody | null, g: { color: [number, number, number]; power: number } | null): void {
@@ -81,4 +83,16 @@ export function glow(model: MonBody | null, g: { color: [number, number, number]
       o.mat.emissiveIntensity = o.intensity
     }
   }
+}
+
+/**
+ * 몸을 검정으로 `k`(0~1)만큼 누른다 — 재질색에 `1 − k`를 곱한다 (`PokemonSprite_StartFade(…, 8, …, 0)`의 검정 섞기 · 기라티나 등장).
+ * 0이면 원래 색으로 되돌리고 그 뒤로는 재질을 안 만진다
+ */
+export function darken(model: MonBody | null, k: number): void {
+  if (!model) return
+  const was = darkened.get(model.root) ?? 0
+  if (k === was) return
+  darkened.set(model.root, k)
+  for (const o of owned.get(model.root) ?? []) o.mat.color.setRGB(o.color[0] * (1 - k), o.color[1] * (1 - k), o.color[2] * (1 - k))
 }

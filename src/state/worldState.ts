@@ -35,7 +35,12 @@ function clock() {
   }
 }
 
+/** 씬이 한 번 터뜨릴 월드 파티클 요청 (`scene/WorldFx`가 비운다) — 프리팹 이름 · 월드 자리 · 바라보는 방향(라디안) */
+export interface FxRequest { name: string, x: number, y: number, z: number, yaw: number }
+
 export const worldState = {
+  /** 엔진이 적고 씬이 비운다 — 비전기술 · 눈덩이 깨짐 */
+  fxRequests: [] as FxRequest[],
   player: {
     position: new Vector3(0, 0, 0),
     prevPosition: new Vector3(0, 0, 0), // 렌더 보간용

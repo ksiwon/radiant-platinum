@@ -6,6 +6,10 @@
 // 그리는 일만 한다. 어느 판을 골랐는가 · 무엇을 집었는가 같은 상태는 `PartyScreen`이 쥔다.
 import type { CSSProperties } from 'react'
 import type { ItemIcons } from '../../data/schema'
+import type { SpriteSheet } from '../../data/spriteSheet'
+import { PARTY_ICON_CELL } from '../../data/gameData'
+import { pixelSprite } from '../common/pixelSprite'
+import { PIXEL } from '../theme/scale'
 import { useAssetImage } from '../../data/providers/useAssetUrl'
 import { infected } from '../../engine/pokemon/pokerus'
 import { spriteKey } from '../../engine/pokemon/form'
@@ -25,7 +29,7 @@ function join(...names: (string | false | null | undefined)[]): string {
 
 export function MonPlate(
   {
-    mon, name, gender, full, lead, right, on, grabbed, still, verdict, verdictText, icons, itemName,
+    mon, name, gender, full, lead, right, on, grabbed, still, verdict, verdictText, icons, itemName, partyIcons,
     plateRef, onPick, onGrab,
   }: {
     mon: PokemonInstance
@@ -50,6 +54,8 @@ export function MonPlate(
     icons: ItemIcons | undefined
     /** 지닌 도구의 이름 */
     itemName: string
+    /** 파티 표식 시트(롬 `pl_plist_gra`) — 못 받았으면 볼캡슐 표식이 안 선다 */
+    partyIcons: SpriteSheet | null | undefined
     plateRef: (node: HTMLDivElement | null) => void
     onPick: () => void
     onGrab: () => void
@@ -111,6 +117,14 @@ export function MonPlate(
                 <i className={own.heldIcon} style={itemIconAt(icons, mon.heldItem, 1) as CSSProperties} aria-hidden />
                 <span className={own.heldName}>{itemName}</span>
               </span>
+            )}
+            {/* 볼캡슐이 달렸다 — 원작이 도구 표식 오른쪽에 붙이는 표식 (`PartyMenu_DrawMemberBallSeal`) */}
+            {mon.capsule !== undefined && partyIcons && (
+              <i
+                className={own.capsuleMark}
+                style={pixelSprite(partyIcons, PARTY_ICON_CELL.capsule, PIXEL.x2) as CSSProperties}
+                aria-hidden
+              />
             )}
             {verdict === null && (
               <span className={own.hpNumbers}>

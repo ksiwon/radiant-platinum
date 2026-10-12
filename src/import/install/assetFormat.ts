@@ -38,6 +38,17 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
   moves: 1,
   marts: 1,
   /**
+   * 8 — **움직임 값과 눈 땅 그림이 같이 붙는다.** 7이 두 갈래에서 따로 올라서(움직임 · 눈 땅) 합치며 8로 올렸다.
+   * ⚠️ **6 · 7은 안 쓴다**(`GROUP_ACCEPTS`에 없다) — 배포된 6에는 움직임 값이 없다. 이미 깐 사람은 이 그룹을 다시 굽는다
+   *
+   * 7 — **움직임 값을 싣는다** (`import/bdsp/motion.ts` · `field.ts`의 `Moving` · `scene/bdspMotion`). 재질 `extras`에 `texVel`(그림 흐름) · `scroll` ·
+   * `frames` · `swing`(바람 흔들림 값 — 풀 · 꽃 · 나무 정점에는 가중치 속성 `_SWING`)이 붙고, 풍차 · 기계(DOTween 회전)는 합치지 않은 노드 둘(닻 · 몸)에
+   * `extras.spin`으로, 석탄 더미(Mecanim 클립)는 몸 노드에 glTF 애니메이션으로 실린다. 옛 지역 glb는 그 값이 없어 맵이 멈춰 있다
+   *
+   * 7 — **눈 땅 그림이 붙는다** (`import/bdsp/convert.ts`의 `COMMON_RESOURCES`). 눈 땅 재질(`M_C_001_Ground_03` · `…_SnowCover_01`)의 그림은 딴 번들
+   * (`Dpr/common_resources`의 `snow`)에 있어서 번들 하나만 열면 회색 0.9 한 색으로 구워졌다. 지역 14벌 중 키사키(area009)만 바뀐다(10,489,060 → 11,584,172)
+   * — 나머지 13벌은 바이트가 그대로다(area012 실측).
+   *
    * 6 — **① 그림 있는 재질도 발광을 싣는다** (`import/bdsp/arena.ts`의 `glowOf` — `emissiveTexture` · `emissiveFactor` · `extras.glow` · `extras.emitOn`).
    * 창 · 집 · 센터 · 가로등은 `_MainTex`에 `_EmissionTex`가 물려 있는데 발광은 그림 없는 재질에만 실어서 밤 창이 안 켜졌고, 그림 없는 입구 빛도
    * `emissiveFactor`가 없어(glTF 기본 발광색 검정) 켜져도 검정이었다. 요스가시티(area004)에서 발광 재질 3벌 → 24벌 · 발광 그림 3장 → 13장.
@@ -65,8 +76,11 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * ⚠️ **이미 깔린 것을 그냥 두면 안 된다.** 옛 지역 glb는 그 재질을 흰 반투명 판으로 들고 있어서 포켓몬센터 · 프렌들리숍 ·
    * 체육관 입구가 하얀 상자로 막힌 채 남는다
    */
-  fields: 6,
+  fields: 8,
   /**
+   * 3 — **움직임 값을 싣는다** (`fields` 7과 같다 — 재질 `extras`의 `texVel` · `scroll` · `frames` · `swing`과 정점 가중치 `_SWING`. 두 굽는 쪽 `arena.ts` ·
+   * `bdspArena.py`가 같은 JSON을 낸다). ⚠️ **2는 안 쓴다**(`GROUP_ACCEPTS`에 없다)
+   *
    * 2 — **방 재질의 색 · 층 그림 · TV 칸을 싣는다** (`import/bdsp/arena.ts` · 노드 쪽 `bdspArena.py --rooms`와 같은 바이트).
    *
    * · 반투명 겹그림(뿌리 그림자 `RootShadow_01` 97벌 · `Grad_01` 14벌 · 유리 …)에 `_Color` × 세기 · 알파를 곱한다 — 그림이 순백이라
@@ -77,7 +91,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    *
    * 실측으로 117벌 중 116벌의 재질이 바뀌고 145.8 → **156.8MB**다
    */
-  rooms: 2,
+  rooms: 3,
   /**
    * 3 — **마스크로 섞는 그림 없는 재질의 섞은 그림을 두 굽는 쪽이 같은 바이트로 굽는다** (`import/bdsp/arena.ts`의 `cascadeMix` ·
    * 노드 쪽 `bdspArena.py`의 `cascade_mix`). 충호 방 무대 g038~g041의 바닥(`M_B_038_Floor_24`) 그림이 RGBA PNG다 — 무대 30벌 중
@@ -90,6 +104,13 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    */
   arenas: 3,
   /**
+   * 5 — **움직임 값과 눈 땅 그림이 같이 붙는다** (`fields` 8과 같다). ⚠️ **3 · 4는 안 쓴다**(`GROUP_ACCEPTS`에 없다)
+   *
+   * 4 — **움직임 값을 싣는다** (`fields` 7과 같다 — 던전도 같은 `exportField`를 쓴다).
+   *
+   * 4 — **눈 땅 그림이 붙는다** (`fields` 7과 같다 — `Dpr/common_resources`의 `snow`). 던전 138벌 중 천관산 둘(`d05r0104` · `d05r0105`) · 예지의 호수 둘
+   * (`d29r0101` · `d29r0102`)만 바뀐다(글 +112~128KB · 그림 한 장 135KB가 공용 그림 자리에 늘어난다) — 나머지는 바이트가 그대로다(`d27r0101` 실측).
+   *
    * 3 — **그림 있는 재질도 발광을 싣는다** (`import/bdsp/arena.ts`의 `glowOf` — 던전도 지역과 같은 `exportField`를 쓴다). 던전 번들 138벌을 새로 구워 개발 산출물과
    * 맞대면 glb 합이 117,726,512 → **117,796,924**(+70KB)이고, 던전이 나눠 쓰는 그림 자리(`share`)가 551 → 625개 파일 · 158,601,664 → **160,264,908**바이트(+1.66MB —
    * 발광 그림 73장이 새로 붙는다)다. 입구 빛 `emissiveFactor`도 붙는다 (DATA.md §2.17.6)
@@ -99,7 +120,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 그림 · 기하가 갈리는 것이 대부분이고 재질 JSON이 갈리는 것은 TV 화면 `M_C_001_Video_03` 둘(`d26r0102` · `d31r0201`)이다.
    * 마스크로 섞는 재질(`cascadeMix`)은 던전 · 지역 번들 모두 0벌이라 그 고침과는 상관없다 (재질 2,434 · 1,500 실측)
    */
-  dungeons: 3,
+  dungeons: 5,
   /**
    * 2 — **능력 변화 무늬 묶음(`statChange.bin`)이 붙는다** (`import/platinum/particles.ts`의 `STAT_CHANGE_BG`). 능력이 오르고
    * 내릴 때 몸 실루엣 안에서 흐르는 배경 무늬 넷(`pl_batt_bg.narc` 멤버 열둘)이다. 옛 판에는 그 묶음이 없다
@@ -124,8 +145,11 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    *
    * 3 — 넓은 배치를 블록 차례로 읽고 0번 색을 뚫는다 · 장마다 뒤판 색(REPAIR §132). 옛 그림은 하늘이 위
    * 96줄로 접혀 있고 아래가 한 색이다
+   *
+   * 4 — **3D 무대의 그림이 붙는다** (`import/platinum/creditsArt.ts` — 회상 사진 28장 · 별똥별 줄기 · 밤 하늘 번호 판 · `art.json`). 옛 설치본에는
+   * `data/credits/`가 없어 크레딧의 사진 장면이 빈 검정이다
    */
-  credits: 3,
+  credits: 4,
   /**
    * 2 — 맵 헤더의 글 뱅크 번호를 us 번호로 되돌린다.
    *
@@ -234,6 +258,10 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 주인공이 계속 절차형으로만 낚시한다
    */
   /**
+   * 19 — **등신 NPC가 주인공의 서 있기 `stand_b`를 꿔 서고, 트레이너 26벌이 말하는 입 `speak01_b`를 싣는다**
+   * (`engine/actor/npcModels`의 `clipFilterFor`). 주인공 둘 번들에 `stand_b`(1.5초)가 늘고, 등신 트레이너 몸 중 `speak01_b`를 가진 26벌에
+   * 그 클립이 실린다. 옛 판(18)에는 둘 다 없어서 서 있는 NPC가 절차형 숨쉬기로 서고 말하는 입이 안 움직인다 — 안 받는다
+   *
    * 18 — **등신 몸에 배틀 클립을 안 싣는다** (`engine/actor/npcModels`의 `clipFilterFor`). 배틀 무대에는 사람이 안 서서(사용자 결정 2026-10-04)
    * 등장 · 쉬기 · 지시 · 패배(`advent_b` · `wait_b` · `order_b` · `lose01_b`)를 부르는 화면이 없다. 주인공 둘만 서 있기 `wait_b`와
    * 걷기 · 뛰기를 남긴다(`PlayerModel`이 서 있는 자세를 거기서 가져온다). 새로 구운 108벌 대 옛 `public/models/npc`로 잰 클립 접근자 합계가
@@ -258,7 +286,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 쪽찐 할머니 · `fc2022`의 옷이 통째로 잘려 머리 · 손 · 발만 떠 있었고, 사이클리스트 헬멧 · 안경알이 사라졌다.
    * 파도타기 · 공중날기 포켓몬(`models/pcParts.glb`)의 눈도 알파가 거의 0이라 잘려 있었다
    */
-  npcModels: 18,
+  npcModels: 19,
   /**
    * 7 — **로토무 오라가 테두리로 선다.** 원판은 깊이만 쓰는 마스크(`FireMask`)와 그 바깥을 그리는 하늘색 껍질(`FireCore`)의 짝인데,
    * 마스크를 버리고 껍질을 불투명으로 세워 몸 전체가 하늘색 덩어리였다. 마스크 조각을 남기고 두 재질에 `extras.role`을 적는다
@@ -389,6 +417,14 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    */
   berryPlants: 2,
   /**
+   * 6 — **지역 · 방에 서는 파티클과 대타 인형이 붙는다.** ① 파티클 (`import/bdsp/fx.ts`의 `FIELD_EFFECT_PREFAB` — `effectdatabase`의 `FieldEffectData`에서 폭포 · 분수 · 횃불 ·
+   * 워프존 · 기계 불빛 · 해변 물결 · 배 항적 `ef_f_bg_*` · `ef_f_ship_*` 프리팹과 `index.json`의 `fieldEffects` 번호표). 맵 glb의 표식 노드(`fx:<번호>` —
+   * `fields` 7 · `rooms` 3 · `dungeons` 4)와 짝이다. 옛 판은 번호표가 없어 표식이 이름을 못 찾는다
+   *
+   * ② **대타 인형 모델** (`data/fx/model/substitute_doll.glb` · `index.json`의 `substituteDoll` — `Characters/objects/ob0301_00`,
+   * 뼈 스물의 정지한 스킨 모델 152KB). 없으면 대타가 우리가 지은 초록 덩이로 선다
+   * · ⚠️ **4 · 5는 안 쓴다**(`GROUP_ACCEPTS`에 없다)
+   *
    * 4 — **진화 · 부화 이펙트 원본과 알 모델이 붙는다** (메뉴 개편). 필드 프리팹 `ef_f_evolution_*` 아홉(`index.json`의 `evolution`) ·
    * `sd9120_*` 열일곱(`hatch`)과 알 모델 `data/fx/model/ew121_egg00.glb`(`eggModel`). 없으면 진화 · 부화 무대가 지금의 도형 알과
    * DS 입자로 선다 — ⚠️ **필수 그룹이라**(`required.ts`) 이미 깐 사람은 이 그룹만 새로 굽는다. 3판은 `GROUP_ACCEPTS`에 안 넣는다
@@ -409,7 +445,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * `ee101~113` · 내보내기 `ee4xx`, 기술 1~467의 시퀀스와 그것이 부르는 프리팹 · 그림. ⚠️ **필수 그룹이라**(`required.ts`)
    * 이미 깐 사람은 이 그룹만 새로 굽는다
    */
-  battleFx: 4,
+  battleFx: 6,
   /**
    * 1 — **바위깨기 · 풀베기 · 괴력 바위 · 꿀나무 · 눈덩이가 BDSP 입체다** (`models/gimmick/obj0001~0006_00.glb` · `index.json`,
    * 다섯 벌 415KB — `import/bdsp/convert.ts`의 `convertGimmicks` · 노드 쪽 `bdspArena.py --gimmicks`). 꿀나무는 뼈 넷과 흔들림
@@ -417,6 +453,18 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 원작 그림(판 · 덩이 · 소품)이 선다
    */
   gimmicks: 1,
+  /**
+   * 3 — **사슬 BMA0과 엔딩 모델이 같이 붙는다.** 2가 두 갈래에서 따로 올라서(사슬 · 엔딩) 합치며 3으로 올렸다.
+   * ⚠️ **1 · 2는 안 쓴다**(`GROUP_ACCEPTS`에 없다)
+   *
+   * 2 — **엔딩 모델 78~84가 붙는다** (`graphic/ending.narc` 78 `endingLight1` · 79 `endingLight2` · 80 `endingTree1a` · 81 `endingTree1b` · 82 `endingTree2a` · 83 `endingTree2a2` · 84 `endingTree2b` — 엔딩 크레딧의 가로등 · 나무, 정적 모델). 옛 설치본에는 이
+   * 이름이 `data/demo/index.json`에 없어 크레딧의 노을 · 낮 · 밤 장면이 모델 없이 선다. 기존 연출 모델 서른둘은 바이트가 그대로다
+   *
+   * 2 — **창기둥 붉은 사슬(`redChain`)이 BMA0(`demo_tengan_gra` 5번 · 재질 알파 201프레임)를 싣는다** (`import/platinum/demoModels`의
+   * `DEMO_MODELS`). 옛 판은 BCA0만 있어 사슬 세 겹이 늘 같은 빛으로 선다. ⚠️ **옛 판(1)을 안 받는다**(`GROUP_ACCEPTS`에 없다) —
+   * 이미 깐 사람도 이 그룹을 다시 굽는다(사용자 결정 10-11)
+   */
+  demoModels: 3,
 }
 
 export function groupFormat(name: string): number {

@@ -294,7 +294,8 @@ def entity_clip_names(env) -> dict[int, str]:
 
 
 def build_animations(env, buf: "Buffer", node_of_hash: dict[int, int],
-                     keep: "re.Pattern | None" = None, entity_names: bool = False) -> tuple[list, dict]:
+                     keep: "re.Pattern | None" = None, entity_names: bool = False,
+                     only: "set[int] | None" = None) -> tuple[list, dict]:
     """클립 전부를 glTF 애니메이션으로. 통계도 함께 돌려준다.
 
     `keep`을 주면 이름이 맞는 클립만 싣는다. **포켓몬 때문에 있다** — 종마다
@@ -305,6 +306,9 @@ def build_animations(env, buf: "Buffer", node_of_hash: dict[int, int],
     named = entity_clip_names(env) if entity_names else {}
     for obj in env.objects:
         if obj.type.name != "AnimationClip":
+            continue
+        # `only` — 이 PathID의 클립만 (야외 · 방 소품이 제 클립 하나만 싣는다 — 브라우저 변환기 `model.ts`의 `buildAnimations`와 같다)
+        if only is not None and obj.path_id not in only:
             continue
         clip = obj.read_typetree()
         if obj.path_id in named:

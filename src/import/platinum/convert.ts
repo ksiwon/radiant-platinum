@@ -38,6 +38,7 @@ import { convertDexHeightWeight } from './dexHeightWeight'
 import { convertDexShapes } from './dexShapes'
 import { convertStartMenuIcons } from './startMenuIcons'
 import { convertTypeIcons } from './typeIcons'
+import { convertPartyIcons } from './partyIcons'
 import { convertLibraryTv } from './libraryTv'
 import { convertDemoModels } from './demoModels'
 import { convertFrontierBg } from './frontierBg'
@@ -367,10 +368,17 @@ export const GROUPS: readonly GroupSpec[] = [
     convert: convertTypeIcons,
   },
   {
+    // 파티 화면의 도구 · 편지 · 볼캡슐 표식 셋 (`party_menu/sprites.c` · `pl_plist_gra.narc`)
+    name: 'partyIcons',
+    outputs: ['data/partyIcons.png'],
+    converter: 1,
+    convert: convertPartyIcons,
+  },
+  {
     // 창기둥과 깨어진 세계로 가는 문 — 필드 밖 연출의 모델 (`demoModels.ts`)
     name: 'demoModels',
     outputs: ['data/demo/{이름}.bin', 'data/demo/{이름}.png', 'data/demo/anims.bin', 'data/demo/index.json'],
-    converter: 1,
+    converter: 2,
     convert: convertDemoModels,
   },
   {
@@ -490,8 +498,9 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: [
       'data/credits.json', 'data/credits.*.json',
       'data/credits0.png', 'data/credits1.png', 'data/credits2.png',
+      'data/credits/{memory,night}-{male,female}{n}.png', 'data/credits/streak.png', 'data/credits/art.json',
     ],
-    converter: 2,
+    converter: 3,
     convert: convertCredits,
   },
   { name: 'frontier', outputs: ['data/frontier.json'], converter: 1, convert: convertFrontier },

@@ -259,7 +259,8 @@ maybe('스크립트 VM', () => {
     const idle = [...Array(meta.commands.length).keys()]
       .filter((op) => !unhandled.has(op) && !seen.has(op))
       .map((op) => meta.commands[op]!.name)
-    expect(idle).toEqual(IDLE_COMMANDS)
+    // 순서가 아니라 **집합**이다 — 새 명령을 표 중간에 붙여도 목록 순서를 안 맞춘다
+    expect([...idle].sort()).toEqual([...IDLE_COMMANDS].sort())
     expect(handledSeen.length).toBe(implemented - IDLE_COMMANDS.length)
   })
 
@@ -495,9 +496,9 @@ const LOOPING_ENTRIES_YES = 30
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_778
-const RUNNING_SITES = 55_137
+const RUNNING_SITES = 55_265
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 599
+const IMPLEMENTED_COMMANDS = 628
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -513,6 +514,8 @@ const IDLE_COMMANDS = [
   // 시작 메뉴를 스크립트가 여는 자리는 초반 안내뿐이고, 그 앞이 통신·이름
   // 짓기라 훑기가 못 닿는다
   'ShowStartMenu',
+  // 신수마을 동쪽 집 — 안농 모양 씰을 건네고 그 이름을 말에 끼우는 갈래다. 훑기에는 안농을 가진 마리가 없어서 밟지 못한다
+  'BufferBallSealName', 'BufferBallSealNamePlural',
   // 필드 스크립트에 **한 번도 안 나온다**. 프런티어 쪽 것이라 닿을 자리가 없다
   'SetSpecialBGM',
   // 수다 녹음(스크립트 8900)의 **배운 갈래**다. 훑기에는 녹음할 곳이 없어서(`services.chatot`이 없다)
@@ -802,6 +805,10 @@ const IDLE_COMMANDS = [
   'LogLinkInfoInWiFiHistory',
   // 위와 같은 자리다 — 전당 항목을 고른 **뒤에** 나오는 줄이라 더 못 닿는다
   'CheckIsHallOfFameCorrupted',
+  // 전수 점검이 이름을 붙인 것 가운데 이 훑기가 못 닿는 일곱 — 지하통로 굿즈 · 드레스업 사진 · TV 기록 · 빈 명령이라
+  // 앞 갈래가 막혀 있다 (`script/sweepGaps.test`가 폭과 답을 따로 잠근다)
+  'CheckHasRoomForGoodsInPC', 'ScrCmd_0A6', 'ShowDressUpPhoto', 'SetDressUpPhotoTitle',
+  'ScrCmd_27C', 'ScrCmd_2B8', 'Dummy316',
 ]
 
 /**

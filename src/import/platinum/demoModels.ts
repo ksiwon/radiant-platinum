@@ -5,6 +5,8 @@
 //   문 (`dw_warp/dw_warp.c`)                  `demo/title/titledemo.narc` 16 모델 · 18 BCA0 · 17 BTA0
 //   붉은 사슬 (`ov6_0223E140.c`의 `ov6_02240104`)  `arc/demo_tengan_gra.narc` 6 모델 · 4 BCA0 (5 BMA0는 아직 안 읽는다)
 //   호수의 구슬 셋 (같은 파일 `v3` 표)            같은 아카이브 12·11 유크시 · 8·7 아그놈 · 10·9 엠라이트
+//   엔딩 크레딧의 3D (`overlay099/ov99_021D1A54.c`) `graphic/ending.narc` 78~84 모델 — 애니 없이 정적이다. 78 `ed_light01`
+//   (낮) · 79 `ed_light02`(밤 — 8번째마다) · 80 · 81 `ed_tree01a/b`(노을) · 82 · 83 · 84 `ed_tree02a/a2/b`(밤)
 //
 // 모델은 소품과 같은 `PT3C`로 굽고, 애니는 맵 소품처럼 **원작 바이트를 그대로** 잇는다(`anims.bin`) — 푸는 것은
 // 화면 쪽이다(`scene/propAnim`). 관절 애니를 되돌리는 데 드는 모델 속살(`propModelInfo`)도 같이 싣는다.
@@ -26,6 +28,7 @@ const TITLE_DEMO = '/demo/title/titledemo.narc'
 const TENGAN = '/arc/demo_tengan_gra.narc'
 const SHIP = '/arc/ship_demo.narc'
 const SHIP_PL = '/arc/ship_demo_pl.narc'
+const ENDING = '/graphic/ending.narc'
 
 interface DemoModel {
   /** 굽는 이름 — `data/demo/<name>.{bin,png}` */
@@ -39,7 +42,7 @@ interface DemoModel {
 /** 구울 것. 번호는 위 머리말의 원작 자리 그대로다 */
 export const DEMO_MODELS: readonly DemoModel[] = [
   { name: 'portal', narc: TITLE_DEMO, model: 16, anims: [18, 17] },
-  { name: 'redChain', narc: TENGAN, model: 6, anims: [4] },
+  { name: 'redChain', narc: TENGAN, model: 6, anims: [4, 5] },
   { name: 'orbUxie', narc: TENGAN, model: 12, anims: [11] },
   { name: 'orbAzelf', narc: TENGAN, model: 8, anims: [7] },
   { name: 'orbMesprit', narc: TENGAN, model: 10, anims: [9] },
@@ -77,6 +80,14 @@ export const DEMO_MODELS: readonly DemoModel[] = [
   // 선단 배 (`snowpoint_ship.c`) — 동 → 서(싸움의섬에서 선단으로) · 서 → 동(선단에서 싸움의섬으로). 0 · 2 · 3번이 같은 벌이다
   { name: 'shipToSnowpoint', narc: SHIP_PL, model: 5, anims: [7, 6, 4] },
   { name: 'shipFromSnowpoint', narc: SHIP_PL, model: 1, anims: [3, 2, 0] },
+  // ── 엔딩 크레딧 (`overlay099`) — 장면 0 노을 · 2 낮 · 4 밤이 이 모델을 길게 늘어놓고 흘린다 ──
+  { name: 'endingLight1', narc: ENDING, model: 78, anims: [] },
+  { name: 'endingLight2', narc: ENDING, model: 79, anims: [] },
+  { name: 'endingTree1a', narc: ENDING, model: 80, anims: [] },
+  { name: 'endingTree1b', narc: ENDING, model: 81, anims: [] },
+  { name: 'endingTree2a', narc: ENDING, model: 82, anims: [] },
+  { name: 'endingTree2a2', narc: ENDING, model: 83, anims: [] },
+  { name: 'endingTree2b', narc: ENDING, model: 84, anims: [] },
 ]
 
 /** 애니 머리 — 맵 소품의 셋(`framesOf`)에 재질 색(BMA0)과 보임(BVA0)을 더한다. 프레임 수 자리는 같다 */

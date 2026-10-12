@@ -15,6 +15,7 @@
 //     pnpm shot champion --keys=z,z,z --boxes   배틀 몸 상자가 화면 어디에 서는지 · 둘의 겹침 %를 잰다
 //     pnpm shot giratina --eval=probe.js   화면 안에서 그 파일의 `async () => 값`을 돌려 찍는다
 //     pnpm shot hearthome --bike       자전거에 태워 놓고 찍는다
+//     pnpm shot lake --warp=312 --surf 가장 가까운 물 칸에 파도타기로 세워 놓고 찍는다
 //     pnpm shot center --give=479:30:2 --menu=party   파티에 넣고 화면을 연다
 //     pnpm shot center --give=... --hof=3 --menu=pcHallOfFame   전당 기록을 열어 본다
 //     pnpm shot center --currency=250            소지금·코인 창을 띄워 본다
@@ -363,6 +364,32 @@ async function main() {
       })
       await page.waitForTimeout(600)
     }
+    // 가장 가까운 물 칸에서 파도타기 — 몸이 수면 위에 어떻게 서는지 찍는다
+    if (args.includes('--surf')) {
+      await page.evaluate(async () => {
+        const W = await import('/src/engine/map/world.ts')
+        const S = await import('/src/state/worldState.ts')
+        const Z = await import('/src/engine/map/zone.ts')
+        const g = W.world.grid
+        const p = S.worldState.player
+        let best = null
+        for (let dz = -60; dz <= 60; dz++) {
+          for (let dx = -60; dx <= 60; dx++) {
+            const x = Math.floor(p.position.x) + dx
+            const z = Math.floor(p.position.z) + dz
+            if (g.isBlocked(x, z) || !Z.isWater(g.behavior(x, z))) continue
+            const d = dx * dx + dz * dz
+            if (!best || d < best.d) best = { x, z, d }
+          }
+        }
+        if (!best) return
+        p.position.x = best.x + 0.5
+        p.position.z = best.z + 0.5
+        p.prevPosition.copy(p.position)
+        p.surfing = true
+      })
+      await page.waitForTimeout(6000)
+    }
     // 파티에 몇 마리를 넣는다 — `--give=479:30:2,413:30:2`(종족:레벨:폼).
     //
     // ⚠️ **폼을 눈으로 보려면 이 길밖에 없다** (PARITY §3.4). 로토무 가전도
@@ -528,6 +555,13 @@ async function main() {
         m.useMenuStore.getState().open(name)
       }, menu)
       await page.waitForTimeout(Number(flag('menuAfter', 4000)))
+    }
+    // 찍기 **전에** 화면 안에서 파일의 `async () => 값`을 돌린다 — `--pre=파일` (`--preAfter=ms` 기다림). 비전기술 연출처럼 찍는 순간에 서 있어야 하는 것을 시작시킨다
+    const preFile = flag('pre')
+    if (preFile) {
+      const { readFileSync } = await import('node:fs')
+      await page.evaluate(`(${readFileSync(preFile, 'utf8')})()`)
+      await page.waitForTimeout(Number(flag('preAfter', 600)))
     }
     // ⚠️ **마지막 키 뒤의 기다림을 따로 준다** (`--keysAfter`). 짧은 연출은
     // 기본 600ms 안에 이미 끝난다 — 머리 위 느낌표가 37프레임(0.6초)이라

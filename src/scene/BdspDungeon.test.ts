@@ -392,7 +392,7 @@ function upFaces(path: string): Float32Array[] {
 }
 
 /** 지나갈 수 있는 칸 한가운데마다 (glb 바닥 − BDHC)를 0.25 단위로 센다 — 가장 많은 차와 그 몫 */
-function liftOf(name: string): { diff: number, share: number, n: number } {
+function liftOf(name: string): { diff: number, share: number, n: number, best: number, within: number } {
   const maps = (read('maps.json') as { maps: MapHeader[] }).maps
   const map = maps.find((m) => m.name.toLowerCase() === name)!
   const meta = (read('matrices/interiors.json') as { matrices: Record<string, MatrixMeta & { byteOffset: number }> }).matrices[String(map.matrix)]!
@@ -432,14 +432,37 @@ function liftOf(name: string): { diff: number, share: number, n: number } {
     const l3 = 1 - l1 - l2
     return l1 < -1e-6 || l2 < -1e-6 || l3 < -1e-6 ? [] : [l1 * f[1]! + l2 * f[4]! + l3 * f[7]!]
   })
+  // ⚠️ **문에서 걸어 닿는 칸만 잰다.** 던전이 청크보다 작으면 나머지는 막히지 않은 빈 칸(기본 높이 1)이라 어디든 BDHC가 한 단으로 깔려 있고,
+  // 그 칸을 세면 같은 던전이 단마다 다른 것처럼 보인다 — 미혹의 동굴이 전 칸으로는 +1 · −1이 섞이고 닿는 칸으로는 1,477칸이 전부 −1이다
+  const events = (read('events.json') as { events: { warps: { x: number, z: number }[] }[] }).events
+  const tileAt = (x: number, z: number): number => tiles.readUInt16LE(meta.byteOffset + (z * meta.tileWidth + x) * 2)
+  const reach = new Set<number>()
+  const queue: [number, number][] = []
+  for (const w of events[map.events]?.warps ?? []) {
+    if (w.x === 0 && w.z === 0) continue
+    reach.add(w.z * meta.tileWidth + w.x)
+    queue.push([w.x, w.z])
+  }
+  for (let i = 0; i < queue.length; i++) {
+    const [x, z] = queue[i]!
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const nx = x + dx, nz = z + dz
+      if (nx < 0 || nz < 0 || nx >= meta.tileWidth || nz >= meta.tileHeight || reach.has(nz * meta.tileWidth + nx)) continue
+      if (tileAt(nx, nz) & 0x8000) continue
+      reach.add(nz * meta.tileWidth + nx)
+      queue.push([nx, nz])
+    }
+  }
   const votes = new Map<number, number>()
+  const seen: { glb: number[], rom: number }[] = []
   let n = 0
   for (const c of meta.chunks) {
     if (c.zone >= 0 && c.zone !== map.id) continue
     for (let z = 0; z < 32; z++) {
       for (let x = 0; x < 32; x++) {
         const wx = c.mx * 32 + x, wz = c.my * 32 + z
-        if (tiles.readUInt16LE(meta.byteOffset + (wz * meta.tileWidth + wx) * 2) & 0x8000) continue
+        if (tileAt(wx, wz) & 0x8000) continue
+        if (!reach.has(wz * meta.tileWidth + wx)) continue
         const rom = heights(c.land, x + 0.5, z + 0.5)
         if (rom.length !== 1) continue
         const glb = glbAt(wx + 0.5, wz + 0.5)
@@ -447,25 +470,41 @@ function liftOf(name: string): { diff: number, share: number, n: number } {
         const near = glb.reduce((p, q) => (Math.abs(q - rom[0]!) < Math.abs(p - rom[0]!) ? q : p))
         const d = Math.round((near - rom[0]!) * 4) / 4
         votes.set(d, (votes.get(d) ?? 0) + 1)
+        seen.push({ glb, rom: rom[0]! })
         n++
       }
     }
   }
   const [diff, count] = [...votes].sort((a, b) => b[1] - a[1])[0]!
-  return { diff, share: count / n, n }
+  // 정수 들어올림마다 「어느 위 보는 면이든 원작 높이 0.5칸 안」인 칸 몫 — 가장 좋은 것(같으면 작은 것)
+  let best = 0, within = -1
+  for (let lift = -8; lift <= 8; lift++) {
+    const ok = seen.filter((c) => c.glb.some((y) => Math.abs(y + lift - c.rom) <= 0.5)).length / n
+    if (ok > within + 1e-9 || (Math.abs(ok - within) < 1e-9 && Math.abs(lift) < Math.abs(best))) { within = ok; best = lift }
+  }
+  return { diff, share: count / n, n, best, within }
 }
 
-withData('maps.json', 'matrices/interiors.json', 'matrices/interiors.bin', 'bdhc.json', 'bdhc.bin')('BDSP 던전 — 높이 맞춤 (I-p15-4)', () => {
+withData('maps.json', 'events.json', 'matrices/interiors.json', 'matrices/interiors.bin', 'bdhc.json', 'bdhc.bin')('BDSP 던전 — 높이 맞춤 (I-p15-4)', () => {
   const lifted = Object.keys(DUNGEON_LIFT)
   withModels(...lifted.map((n) => `dungeon/${n}.glb`), 'dungeon/d25r0102.glb', 'dungeon/d05r0104.glb')('glb 바닥 ↔ BDHC', () => {
-    it.each(lifted)('%s는 glb 바닥이 BDHC보다 통째로 어긋나 있고 표가 그만큼 든다', (name) => {
-      const { diff, share } = liftOf(name)
+    // 시린호(변화 후)는 닿는 칸의 6할이 물 위(호수 바닥이 −4.5 · −2.5 · −2로 깔린 칸)라 땅 칸(−1이 가장 많은 한 무리)만으로 가른다
+    const LAKE = new Set(['d27r0102'])
+    it.each(lifted.filter((n) => !LAKE.has(n)))('%s는 glb 바닥이 BDHC보다 통째로 어긋나 있고 표가 그만큼 든다', (name) => {
+      const { best, within } = liftOf(name)
+      expect(best).toBe(DUNGEON_LIFT[name])
+      // 표대로 들어 올리면 닿는 칸의 8할이 원작 높이 0.5칸 안이다 (남은 것은 BDSP가 지형을 다시 지은 계단 · 턱)
+      expect(within).toBeGreaterThanOrEqual(0.8)
+    })
+
+    it.each([...LAKE])('%s는 땅 칸이 모두 한 단(−1) 낮다 — 물 칸은 호수 바닥이라 잴 수 없다', (name) => {
+      const { diff, share, n } = liftOf(name)
       expect(diff).toBe(-DUNGEON_LIFT[name]!)
-      expect(share).toBeGreaterThan(0.85)
+      expect(share * n).toBeGreaterThan(400)
     })
 
     it.each(['d25r0102', 'd05r0104'])('%s는 어긋나지 않는다 — 표에 없다', (name) => {
-      expect(liftOf(name).diff).toBe(0)
+      expect(liftOf(name).best).toBe(0)
       expect(DUNGEON_LIFT[name]).toBeUndefined()
     })
   })

@@ -351,6 +351,11 @@ export type BattleEvent =
        * 맞는 소리 · 깜박임을 낼 자리들. 그 자리의 첫 데미지는 `hit.voiced`가 서서 게이지에서 또 안 난다 (DATA.md §2.18)
        */
       strike?: { at: number; slots: SlotId[]; level: Effectiveness | 'normal'; crit: boolean }
+      /**
+       * 프로토콜에 없다 — 박자를 만들 때 붙인다(`playback.ts`). 매그니튜드가 굴린 수(4~10). 쇼다운은 굴림 줄(`-activate … Magnitude N`)을
+       * 기술 줄 **뒤에** 보내는데 연출은 기술 줄에서 시작하므로, 뒤따르는 줄을 미리 읽어 기술 사건에 싣는다
+       */
+      magnitude?: number
     }
   /**
    * `hit`은 프로토콜에 없다 — **박자를 만들 때 붙인다**(`playback.ts`).

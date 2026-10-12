@@ -4,6 +4,8 @@
 // 실내는 첫 워프 때 한 번만 받는다 — 269개를 이어 붙여 1.33MB이고 압축하면 20KB대라
 // 행렬마다 따로 두는 것(파일 500개 + 문 열 때마다 왕복)보다 낫다.
 import { MapGrid, type MatrixMeta } from '../engine/map/grid'
+import { IMPASSABLE } from '../engine/map/zone'
+import { paintClosed } from './roomClosed'
 import { sealFloor, type FloorCover } from '../engine/map/floorSeal'
 import { CANALAVE_GYM_MAP } from '../engine/world/canalaveGym'
 import { ETERNA_GYM_MAP } from '../engine/world/eternaGym'
@@ -49,6 +51,25 @@ function bytes(path: string): Promise<ArrayBuffer> {
 
 /** 행렬 격자 캐시. 한 번 만든 것은 버리지 않는다 — 실내는 작고 재방문이 잦다 */
 const grids = new Map<number, MapGrid>()
+/** 행렬마다 통행표 뷰 — 홈을 막고 여는 데 쓴다 (`closeRoomCells`) */
+const tilesOf = new Map<number, Uint16Array>()
+/** 지금 홈을 막아야 하는 행렬 — BDSP 방이 서는 맵에 있을 때만이다 */
+const closedOn = new Set<number>()
+/** 막기 전 칸 값 (`행렬:x,z`) — 열 때 되돌린다. 바닥 덮개(`seal`)가 이미 막은 칸을 열지 않게 */
+const closedWas = new Map<string, number>()
+
+/**
+ * BDSP 방이 벽으로 지은 홈(`roomClosed`)을 막거나 연다. **BDSP 방이 실제로 서는 맵에서만 막는다** — 같은 행렬이라도 원작 그림이 서는 맵
+ * (`c05r0601`)은 원작 충돌 그대로다. 격자가 아직 없으면 바람만 적어 두고 `gridFor`가 올 때 건다
+ */
+export function closeRoomCells(matrixId: number, on: boolean): void {
+  if (on) closedOn.add(matrixId)
+  else closedOn.delete(matrixId)
+  const tiles = tilesOf.get(matrixId)
+  const meta = interiors?.matrices[String(matrixId)]
+  if (!tiles || !meta) return
+  paintClosed(tiles, meta.tileWidth, matrixId, on, closedWas, IMPASSABLE)
+}
 
 /**
  * 「발밑에 그려진 것이 있는가」 표 (`engine/map/floorSeal`).
@@ -215,5 +236,7 @@ export async function gridFor(matrixId: number): Promise<MapGrid> {
   seal(meta, tiles)
   const grid = new MapGrid(meta, tiles)
   grids.set(matrixId, grid)
+  tilesOf.set(matrixId, tiles)
+  if (closedOn.has(matrixId)) closeRoomCells(matrixId, true)
   return grid
 }

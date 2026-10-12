@@ -42,9 +42,23 @@ const SEQUENCES = 'Battle/btlv/waza/sequence'
  */
 const FIELD_PREFABS = 'Effects/effect/prefab/field'
 const EVOLUTION_PREFAB = /^ef_f_evolution_/
+/**
+ * **지역 · 방에 서는 파티클** (`FieldEffect._effectId` → `effectdatabase`의 `FieldEffectData[id]`) — 폭포 · 분수 · 횃불 · 워프존 · 기계 불빛 · 해변 물결 · 배 항적.
+ * 번들(`Environments`)의 `FieldEffect`는 502개 · 66종이고 그중 58종이 `ef_f_bg_*`, 하나가 `ef_f_ship_idle`이다. 나머지 여덟은 지하통로(`ef_f_bg_ugspace_*` · 범위 밖)다.
+ * `index.json`의 `fieldEffects`(번호 → 프리팹 이름)를 실행 쪽 `scene/FieldFx`가 읽는다
+ */
+/** 비전기술(`ef_f_waza_*` 자르기 · 바위깨기 · 괴력 · 바위오르기)과 바위 파편 · 눈덩이 깨짐 — 이름으로 고른다 (`scene/FieldActionEffects` · `scene/WorldFx`) */
+const FIELD_ACTION_PREFAB = /^ef_f_(?:waza_(?:cut|rocksmash|strength|rockclimb(?:_in|_out)?)|bg_(?:rocksplash_01|snowballbreak_01))$/
+const FIELD_EFFECT_DB = 'Effects/masterdatas/effectdatabase'
+const FIELD_EFFECT_PREFAB = /^ef_f_(?:bg_(?!ugspace)|ship_)/
 const HATCH_PREFAB = /^sd9120_/
 /** 알 모델 — `MeshFilter` 하나 · 정점 689 · 재질 하나. 정적 메시라 무대 변환기(`exportArena`)로 굽는다 */
 const EGG_MODEL = 'Effects/effmodel/ew121_egg00'
+/**
+ * 대타 인형 — 폴더 이름이 `ob0301_00_migawariningyou`이고 재질 그림이 초록 인형 얼굴이다(실측: 256² · 눈 · 코 · 이파리 무늬). 뼈 스물에
+ * 클립이 열여덟(볼 클립 이름 그대로 · 길이 0)이라 **정지한 인형**이다. 기술 `ew164`는 빈 시퀀스고 인형은 몸 교체 쪽 자료다
+ */
+const SUBSTITUTE_DOLL = 'Characters/objects/ob0301_00'
 const MASTERDATAS = 'Battle/battle_masterdatas'
 /** 프리팹 2,030벌이 셰이더를 · 1,932벌이 그림을 이 둘에서 끌어 온다 (스크래치 `census.pkl`의 바깥 참조 집계) */
 const SHARED_BUNDLES = ['Effects/fxparticle', 'Effects/effect_common']
@@ -1154,14 +1168,39 @@ export async function convertBattleFx(ctx: ConvertContext): Promise<Produced> {
   const fieldPath = new Map<string, string>()
   const evolutionNames: string[] = []
   const hatchNames: string[] = []
+  const fieldActionNames: string[] = []
+  const fieldDirFiles = new Map<string, string>()
+  for (const [lower, real] of at) {
+    if (lower.startsWith(fieldDir) && lower.indexOf('/', fieldDir.length) < 0) fieldDirFiles.set(lower.slice(fieldDir.length), real)
+  }
   for (const [lower, real] of at) {
     if (!lower.startsWith(fieldDir) || lower.indexOf('/', fieldDir.length) >= 0) continue
     const name = real.slice(fieldDir.length)
     if (EVOLUTION_PREFAB.test(lower.slice(fieldDir.length))) evolutionNames.push(name)
     else if (HATCH_PREFAB.test(lower.slice(fieldDir.length))) hatchNames.push(name)
+    else if (FIELD_ACTION_PREFAB.test(lower.slice(fieldDir.length))) fieldActionNames.push(name)
     else continue
     fieldPath.set(lower.slice(fieldDir.length), real)
     wantPrefab.add(name)
+  }
+  // 지역 · 방 파티클 — 번호 → 프리팹 이름 (`FIELD_EFFECT_DB`). 표가 없으면 그 칸은 비운다(표식 노드는 이름을 못 찾아 안 선다)
+  const fieldEffects: Record<string, string> = {}
+  const effectDbBytes = await read(FIELD_EFFECT_DB)
+  if (effectDbBytes) {
+    const dbEnv = openEnvironment([effectDbBytes])
+    for (const e of dbEnv.ofType('MonoBehaviour')) {
+      const v = dbEnv.readEntry(e)
+      if (!isObj(v) || !Array.isArray(v.FieldEffectData)) continue
+      ;(v.FieldEffectData as UnityValue[]).forEach((row, id) => {
+        const asset = isObj(row) && typeof row.AssetName === 'string' ? row.AssetName : ''
+        const lower = asset.toLowerCase()
+        const real = fieldDirFiles.get(lower)
+        if (!FIELD_EFFECT_PREFAB.test(lower) || !real) return
+        fieldEffects[String(id)] = asset
+        fieldPath.set(lower, real)
+        wantPrefab.add(asset)
+      })
+    }
   }
   if (evolutionNames.length === 0 || hatchNames.length === 0) {
     throw new Error(`BDSP 진화 · 부화 이펙트를 못 찾았습니다 (진화 ${String(evolutionNames.length)} · 부화 ${String(hatchNames.length)}) — ${FIELD_PREFABS}에 없습니다`)
@@ -1223,6 +1262,12 @@ export async function convertBattleFx(ctx: ConvertContext): Promise<Produced> {
   if (egg.stat.problems.length > 0) throw new Error(`알 모델을 못 이었습니다 (${egg.stat.problems.slice(0, 3).join(' · ')})`)
   emit('model/ew121_egg00.glb', egg.glb)
 
+  // 대타 인형 — 정지한 스킨 모델 하나. 클립은 길이 0이라 싣지 않는다
+  const dollBytes = await read(SUBSTITUTE_DOLL)
+  if (!dollBytes) throw new Error(`BDSP ${SUBSTITUTE_DOLL}이 없습니다`)
+  const doll = await exportModel(openEnvironment([dollBytes]), encodePng, { maxSize: FX_TEXTURE })
+  emit('model/substitute_doll.glb', doll.glb)
+
   emit('tex/index.json', textOf(Object.fromEntries([...textures.info].sort(([a], [b]) => a.localeCompare(b)))))
   emit('index.json', textOf({
     balls,
@@ -1232,9 +1277,12 @@ export async function convertBattleFx(ctx: ConvertContext): Promise<Produced> {
     status: bakedSequences.filter((n) => STATUS_SEQ.test(n)),
     weather,
     // 진화 · 부화 (필드 프리팹)와 알 모델 — 부화 · 진화 화면이 부른다
+    fieldEffects,
+    fieldAction: fieldActionNames.sort(),
     evolution: evolutionNames.sort(),
     hatch: hatchNames.sort(),
     eggModel: 'model/ew121_egg00.glb',
+    substituteDoll: 'model/substitute_doll.glb',
     ballModel: { ...ballTable, files: ballFiles },
     moveType,
     sequences: bakedSequences,

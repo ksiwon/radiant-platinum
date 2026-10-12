@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  creditsAt, creditsFrames, creditsRows, creditsScene,
+  creditsAt, creditsFrames, creditsRows,
   CREDITS_BANK, CREDITS_FRAMES, CREDITS_TAIL_GAP,
 } from './credits'
 import {
@@ -124,17 +124,6 @@ describe('우리 몫', () => {
   })
 })
 
-describe('배경 넘기기', () => {
-  it('⚠️ 우리가 정한 값이다 — 세 장을 똑같이 나눈다', () => {
-    expect(creditsScene(0, 3)).toBe(0)
-    expect(creditsScene(Math.floor(CREDITS_FRAMES / 2), 3)).toBe(1)
-    expect(creditsScene(CREDITS_FRAMES - 1, 3)).toBe(2)
-    // 범위를 넘겨도 마지막 장에서 멈춘다
-    expect(creditsScene(CREDITS_FRAMES * 2, 3)).toBe(2)
-    expect(creditsScene(0, 0)).toBe(0)
-  })
-})
-
 const LOCALES = ['en', 'ko', 'ja'] as const
 const maybe = withData(
   'dialogue/index.json', ...LOCALES.map((l) => `credits.${l}.json`))
@@ -220,31 +209,5 @@ maybe('롬의 글과 맞댄다', () => {
       return [...gaps].sort((a, b) => b[1] - a[1])[0]![0]
     }
     expect({ en: pitch('en'), ko: pitch('ko'), ja: pitch('ja') }).toEqual({ en: 21, ko: 22, ja: 24 })
-  })
-})
-
-/**
- * 배경은 **장면마다 처음부터** 흐르고 원작 장면의 길이에서 멈춘다 (REPAIR §132).
- *
- * ⚠️ 두루마리 전체의 프레임을 곱하면 둘째 장이 59~118픽셀 흘러 칠한 자리를 넘었다
- */
-describe('배경 흐름 — 장면마다', () => {
-  it('장면이 시작하는 프레임이 `creditsScene`의 경계와 같다', async () => {
-    const { creditsSceneStart } = await import('./credits')
-    for (const k of [1, 2]) {
-      const start = creditsSceneStart(k, 3)
-      expect(creditsScene(start, 3)).toBe(k)
-      expect(creditsScene(start - 1, 3)).toBe(k - 1)
-    }
-    expect(creditsSceneStart(0, 3)).toBe(0)
-  })
-
-  it('원작의 길이만큼만 흐른다 — 첫 장 −28.6 · 둘째 +27.8픽셀', async () => {
-    const { CREDIT_SCENE_PAN, CREDIT_SCENE_RUN } = await import('./credits')
-    const far = CREDIT_SCENE_PAN.map((p, i) => ({ x: p.x * CREDIT_SCENE_RUN[i]!, y: p.y * CREDIT_SCENE_RUN[i]! }))
-    expect(far[0]!.x).toBeCloseTo(-28.6, 1)
-    expect(far[1]!.y).toBeCloseTo(27.8, 1)
-    // 첫 장의 오른쪽 끝 띠가 32픽셀이다 — 그 안에서 멈춘다
-    expect(Math.abs(far[0]!.x)).toBeLessThan(32)
   })
 })

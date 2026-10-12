@@ -47,7 +47,9 @@ describe('개발용 연장은 개발 서버에서만', () => {
   it('개발 조각을 부르는 자리가 다 빌드 상수 뒤에 있다', async () => {
     const files = await sources()
     /** 개발 서버에서만 받아야 하는 조각들 */
-    const CHUNKS = ['./devConsole', '../app/devWarp', '../ui/dev/DevWarpScreen', '../ui/hud/PerfOverlay']
+    const CHUNKS = [
+      './devConsole', './devScriptLog', '../app/devWarp', '../ui/dev/DevWarpScreen', '../ui/hud/PerfOverlay',
+    ]
     const bad: string[] = []
     let looked = 0
     for (const { rel, text } of files) {
@@ -60,7 +62,7 @@ describe('개발용 연장은 개발 서버에서만', () => {
     }
     expect(bad, '개발 조각을 빌드 상수 없이 받는다').toEqual([])
     // ⚠️ **비어 있으면 뜻이 없다.** 자리를 세는 것이지 파일을 세는 것이 아니다 —
-    // 지금 둘(`app/App` · `scene/useDevWarp`)에 넷이 들어 있다
-    expect(looked, '개발 조각을 받는 자리를 못 찾았다').toBeGreaterThanOrEqual(4)
+    // 지금 둘(`app/App` · `scene/useDevWarp`)에 다섯이 들어 있다
+    expect(looked, '개발 조각을 받는 자리를 못 찾았다').toBeGreaterThanOrEqual(5)
   })
 })

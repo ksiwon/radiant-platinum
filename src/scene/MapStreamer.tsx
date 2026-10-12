@@ -91,11 +91,12 @@ import {
   isDistortionFloor,
   romTileToLocal,
 } from './distortion'
-import { gridFor } from './worldData'
+import { closeRoomCells, gridFor } from './worldData'
 import { useDevWarp } from './useDevWarp'
 import { ChunkModels } from './ChunkModels'
 import { BdspRoom, useBdspRoom } from './BdspRoom'
 import { BdspField, useBdspFields } from './BdspField'
+import { WorldFx } from './WorldFx'
 import { BdspDungeon, openAir, useBdspDungeon } from './BdspDungeon'
 import { OuterFloor } from './OuterFloor'
 import { NpcMonModels } from './NpcMonModels'
@@ -367,6 +368,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   const charKeyRef = useRef<PointLight>(null)
   const [mapId, setMapId] = useState(spawn.map)
   const room = useBdspRoom(mapId)
+  // BDSP 방이 벽으로 지은 홈은 그 방이 서는 맵에서만 막는다 (`closeRoomCells`)
+  const roomMatrix = mapById(mapId)?.matrix ?? 0
+  useEffect(() => {
+    closeRoomCells(roomMatrix, room !== null)
+    return () => { closeRoomCells(roomMatrix, false) }
+  }, [roomMatrix, room])
   const dungeon = useBdspDungeon(mapId)
   const outdoor = mapById(mapId)?.matrix === 0
   const { near: fieldsNear } = useBdspFields(outdoor)
@@ -1437,6 +1444,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         dsHidden={bdspDraws}
       />
       {/* 바깥은 BDSP 지역이 선다 — 원작 좌표 그대로다 (`BdspField`) */}
+      <WorldFx />
       {outdoor && <BdspField near={fieldsNear} hidden={bdspDown} />}
       {/* 실내는 BDSP 방이 있으면 그것이 선다 — 원작 칸 좌표 그대로다 (`BdspRoom`) */}
       {room !== null && <BdspRoom key={`${room}@${String(mapId)}`} name={room} mapId={mapId} />}

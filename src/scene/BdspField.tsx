@@ -15,8 +15,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import {
-  AdditiveBlending, Box3, CircleGeometry, Fog, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3,
-  type Group, type Material, type Object3D,
+  AdditiveBlending, Box3, BufferAttribute, BufferGeometry, CircleGeometry, DoubleSide, Fog, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3,
+  type AnimationClip, type Group, type Material, type Object3D,
 } from 'three'
 import { MeshStandardNodeMaterial, type Node } from 'three/webgpu'
 import {
@@ -30,9 +30,13 @@ import { fieldFade, isGround, type FieldFade } from './fieldFade'
 import { bdspLights, type BdspLights } from './bdspLights'
 import { disposeTree } from './disposeTree'
 import { useBdspMark } from './bdspReady'
-import { beginAsyncPipelines, settleAsyncPipelines } from './asyncPipelines'
+import { ALWAYS_ASYNC, beginAsyncPipelines, settleAsyncPipelines } from './asyncPipelines'
+import { SEA_LEVEL, seaRects } from './seaApron'
+import { trackWater } from './waterLevel'
 import { holdBdspDoors } from './DoorAnimations'
 import { holdBdspSigns } from './ObjectProps'
+import { liveMotion, liveMotionMaterials, type BdspMotion } from './bdspMotion'
+import { FieldFx } from './FieldFx'
 import { applyVariants, variantNodes, type VariantNode } from './fieldVariants'
 import { fieldScripts } from '../engine/script/field'
 import { DAY } from './fx/sky'
@@ -340,6 +344,7 @@ export function liveWater(root: Object3D): number {
     o.castShadow = false
     o.receiveShadow = false
     sinkWater(o)
+    trackWater(o)
   })
   for (const old of swapped.keys()) old.dispose()
   return swapped.size
@@ -357,6 +362,8 @@ interface Built {
   low: number | null
   /** 이야기가 갈아 끼우는 물체 (`fieldVariants`) — 224번도로 `R224b` */
   variants: VariantNode[]
+  /** 풍차 회전 · 석탄 더미 클립 (`bdspMotion`) */
+  motion: BdspMotion
 }
 
 /** 이야기 깃발 하나를 읽는다 — 판 표식(`fieldVariants`)이 쓴다 */
@@ -390,9 +397,9 @@ export function heldFields(): string[] {
   return [...held.keys()]
 }
 
-function dropBuilt(b: Built): void { disposeTree(b.scene) }
+function dropBuilt(b: Built): void { b.motion.dispose(); disposeTree(b.scene) }
 
-function build(scene: Group): Built {
+function build(scene: Group, animations: readonly AnimationClip[] = []): Built {
   scene.traverse((o) => {
     if (!(o instanceof Mesh)) return
     o.receiveShadow = true
@@ -409,13 +416,15 @@ function build(scene: Group): Built {
   })
   liveWater(scene)
   liveFoliage(scene)
+  // 흐르는 그림 · 바람 흔들림 — 물 · 풀 **뒤**에 (`liveMotionMaterials`). 흐림(`fieldFade`) · 빛(`bdspLights`)보다 먼저라 그쪽이 새 재질을 본다
+  liveMotionMaterials(scene)
   // ⚠️ **판은 `lowestGround`보다 먼저 맞춘다** — 접어 둔 땅(`R224b`의 땅)이 안개 바닥 높이를 끌어내리지 않게
   const variants = variantNodes(scene)
   applyVariants(variants, storyFlag)
   // ⚠️ **흐림이 먼저다.** `fieldFade`가 건물 재질을 복제해 갈아 끼우므로, 빛을 먼저 펴면 발광을 맞추는 쪽이 버려진 재질을 쥔다
   const fade = fieldFade(scene)
   const lights = bdspLights(scene)
-  return { scene, fade, lights, low: lowestGround(scene), variants }
+  return { scene, fade, lights, low: lowestGround(scene), variants, motion: liveMotion(scene, animations) }
 }
 
 function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
@@ -429,6 +438,7 @@ function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
   const tick = useRef(0)
   const cam = useRef(new Vector3())
   const aim = useRef(new Vector3())
+  const eye = useRef(new Vector3())
   useBdspMark(name, built !== null && warm, failed)
   useFrame(({ camera }, dt) => {
     const b = built
@@ -445,6 +455,8 @@ function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
       b.fade.aim(cam.current, aim.current, !firstPersonView())
     }
     b.fade.step(dt)
+    // 풍차 · 석탄 더미 — 가까운 것만 민다 (`bdspMotion`)
+    b.motion.update(dt, camera.getWorldPosition(eye.current))
   })
   useEffect(() => {
     let alive = true
@@ -466,7 +478,7 @@ function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
         const url = await provider.objectUrl(path)
         const gltf = await loader.loadAsync(url).finally(() => { provider.releaseObjectUrl(path) })
         if (!alive) { disposeTree(gltf.scene); return }
-        const b = build(gltf.scene)
+        const b = build(gltf.scene, gltf.animations)
         mine = b
         // ⚠️ **제 파이프라인은 비동기로 굽는다** (`asyncPipelines`). 덮개가 걷힌 뒤에 서는 지역이 첫 프레임에 동기로 구우면 GPU
         // 프로세스가 수 초 멎는다 — 먼 지역이 안개 속에서 한두 프레임 늦게 보이는 편이 낫다.
@@ -475,7 +487,11 @@ function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
         beginAsyncPipelines()
         attach(b)
         await settleAsyncPipelines(() => b.scene.parent !== null, FIELD_COMPILE_CAP_MS)
-        if (alive) setWarm(true)
+        if (alive) {
+          setWarm(true)
+          // 흐림의 파이프라인은 지역이 다 선 **뒤에** 비동기로 미리 굽는다 — 덮개를 기다리게 하지 않고, 처음 건물 앞에 설 때 동기로 안 굽게
+          b.fade.warm()
+        }
       })()
         .catch((e: unknown) => {
           console.error(`지역 ${name}을 못 세웠다`, e)
@@ -490,7 +506,7 @@ function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
       if (mine) holdField(name, mine)
     }
   }, [name])
-  return built ? <primitive object={built.scene} visible={!hidden} /> : null
+  return built ? <><primitive object={built.scene} visible={!hidden} /><FieldFx root={built.scene} hidden={hidden} /></> : null
 }
 
 // ── 안개 바닥 ────────────────────────────────────────────────────────────────────────────────────────────
@@ -540,6 +556,43 @@ export function lowestGround(root: Object3D): number | null {
   return box.isEmpty() ? null : box.min.y
 }
 
+
+// ── 바깥 바다 ────────────────────────────────────────────────────────────────────────────────────────────
+//
+// BDSP 지역이 안 그리는 대륙 둘레는 바다다(`seaApron`). 안 깔면 안개 바닥의 안개 색 판만 남아 허옇다. BDSP 바다와 같은 물 재질 값을
+// 쓰고 월드 자리로만 물결을 계산하므로 이음매가 없다.
+
+function SeaApron() {
+  const [mesh] = useState(() => {
+    const rects = seaRects()
+    const pos = new Float32Array(rects.length * 18)
+    rects.forEach((r, i) => {
+      const [x0, x1, z0, z1] = [r.x, r.x + r.w, r.z, r.z + r.h]
+      pos.set([x0, 0, z0, x0, 0, z1, x1, 0, z1, x0, 0, z0, x1, 0, z1, x1, 0, z0], i * 18)
+    })
+    const g = new BufferGeometry()
+    g.setAttribute('position', new BufferAttribute(pos, 3))
+    const was = new MeshBasicMaterial({ side: DoubleSide })
+    was.name = 'M_C_001_SeaWater_01'
+    const m = waterMaterial(was, WATER_LOOKS[was.name]!)
+    m.side = DoubleSide
+    m.userData[ALWAYS_ASYNC] = true
+    was.dispose()
+    const o = new Mesh(g, m)
+    o.name = '바깥 바다'
+    o.position.y = SEA_LEVEL - WATER_SINK
+    o.frustumCulled = false
+    o.castShadow = false
+    o.receiveShadow = false
+    return o
+  })
+  useEffect(() => () => {
+    mesh.geometry.dispose()
+    ;(mesh.material as Material).dispose()
+  }, [mesh])
+  return <primitive object={mesh} />
+}
+
 function FogFloor() {
   const scene = useThree((s) => s.scene)
   const [mesh] = useState(() => {
@@ -578,5 +631,6 @@ export function BdspField({ near, hidden = false }: { near: readonly string[], h
   return <>
     {near.map((n) => <FieldArea key={n} name={n} hidden={hidden} />)}
     {near.length > 0 && <FogFloor />}
+    {near.length > 0 && <SeaApron />}
   </>
 }

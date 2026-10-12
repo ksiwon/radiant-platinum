@@ -118,6 +118,8 @@ export interface BattleView {
    */
   lastMove: {
     by: SlotId; to: SlotId | null; move: number | null; seq: number; spread: readonly SlotId[]
+    /** 매그니튜드가 굴린 수(4~10) — 연출의 흔들림 단계(`engine/battle/moveAnimFuncs`)가 쓴다. 다른 기술에는 없다 */
+    magnitude?: number
     /** 맞는 소리 · 깜박임을 몸이 움찔하는 시각에 낸다 (`BattleEvent` 'move'의 `strike`) */
     strike?: { at: number; slots: readonly SlotId[]; level: Effectiveness | 'normal'; crit: boolean }
   } | null
@@ -281,6 +283,7 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
           move: e.move,
           seq: (view.lastMove?.seq ?? 0) + 1,
           spread: e.spread ?? [],
+          ...(e.magnitude !== undefined ? { magnitude: e.magnitude } : {}),
           ...(e.strike ? { strike: e.strike } : {}),
         },
       }

@@ -192,13 +192,23 @@ export function bikeBlock(
   return null
 }
 
-/** 왜 안 되는지를 사람 말로. 원작의 글은 아직 안 옮겼다 */
-export const BIKE_WHY: Readonly<Record<BikeBlock, string>> = {
-  grass: '여기서는 자전거를 탈 수 없다!',
-  surf: '물 위에서는 자전거를 탈 수 없다!',
-  map: '여기서는 자전거를 탈 수 없다!',
-  stuck: '지금은 내릴 수 없다!',
+/**
+ * 왜 안 되는지를 **롬 글의 어느 줄로** 말하는가 (`BagContext_FormatErrorMessage`).
+ *
+ * 원작은 결과 종류로 글을 고른다 — 못 내리는 자리(자전거 다리 · 자전거로드 · 관문)는 가방 뱅크의 `Bag_Text_CannotDismount`
+ * (56번)고, 나머지(긴 풀 · 진흙 · 자전거 금지 맵 · 파도타는 중)는 **전부 같은 한 줄** 공용 뱅크의
+ * `CommonStrings_Text_CantDoThatRightNow`(36번 — 마박사의 말이 울린다)다. 물 위라고 따로 말하지 않는다.
+ * 동행이 있을 때는 가방 뱅크 111번(`Bag_Text_CannotUseWithPartner`)이다 (`BIKE_PARTNER_LINE`)
+ */
+export const BIKE_WHY_LINE: Readonly<Record<BikeBlock, { bank: 'bag' | 'common', line: number }>> = {
+  grass: { bank: 'common', line: 36 },
+  surf: { bank: 'common', line: 36 },
+  map: { bank: 'common', line: 36 },
+  stuck: { bank: 'bag', line: 56 },
 }
+
+/** `Bag_Text_CannotUseWithPartner` — `CanUseBicycle`의 첫 검사(`hasPartner`)다. 가방 뱅크 111번 */
+export const BIKE_PARTNER_LINE = 111
 
 /**
  * 자전거로드 위인가 (`PlayerAvatar_SetOnCyclingRoad`).

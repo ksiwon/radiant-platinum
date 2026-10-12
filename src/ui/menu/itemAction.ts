@@ -7,7 +7,7 @@
 // ⚠️ **무엇을 할지 정하는 것은 여기가 아니다.** 그쪽은 `engine/bag/fieldUse`가
 // 도구표를 보고 답하고, 여기는 그 답을 **실제로 밟는다**. 나누는 이유는
 // 앞쪽이 순수 함수라 시험이 표 전량을 훑을 수 있어서다
-import { BIKE_WHY, bikeBlock, isOnCyclingRoad } from '../../engine/actor/bike'
+import { BIKE_PARTNER_LINE, BIKE_WHY_LINE, bikeBlock, isOnCyclingRoad } from '../../engine/actor/bike'
 import { onElevatedBridge } from '../../engine/actor/bridge'
 import type { FieldContext, FieldItemAction, PartyItemUse } from '../../engine/bag/fieldUse'
 import { isRadarGrass } from '../../engine/battle/encounter'
@@ -24,6 +24,7 @@ import { worldState } from '../../state/worldState'
 import { useMenuStore } from '../../state/menuStore'
 import { fillMenuText, loadUiText } from '../../data/uiText'
 import { totalAccessories } from '../../engine/world/fashionCase'
+import { totalSeals } from '../../engine/world/sealCase'
 import { berryPatchAhead } from '../../scene/berryPatches'
 import { beginEscapeRope, beginSweetScent } from '../../scene/fieldMoveTask'
 import { withObject } from '../korean'
@@ -34,17 +35,28 @@ const SCRIPT_PARAM_0 = 0x8000
 /** 가방 뱅크(`TEXT_BANK_BAG`)의 한 줄 알림 넷 — 57 코인 · 92 실 · 93 액세서리·벽지 · 97 BP (`BagContext_FormatUsageMessage`) */
 const BAG_MESSAGE_LINE = { coins: 57, seals: 92, fashion: 93, points: 97 } as const
 let bagText: string[] | null = null
+/** 공용 뱅크(`TEXT_BANK_COMMON_STRINGS`) — 도구를 못 쓰는 일반 거절 한 줄이 여기 있다 */
+let commonText: string[] | null = null
 /** 가방을 열 때 한 번 받아 둔다 — 알림은 그 자리에서 바로 떠야 한다 */
 function prefetchBagText(): void {
-  if (bagText !== null) return
-  void loadUiText('bag').then((t) => { bagText = t }).catch(() => { /* 알림이 빈다 */ })
+  if (bagText === null) void loadUiText('bag').then((t) => { bagText = t }).catch(() => { /* 알림이 빈다 */ })
+  if (commonText === null) void loadUiText('common').then((t) => { commonText = t }).catch(() => { /* 알림이 빈다 */ })
+}
+
+/**
+ * 자전거를 못 타는 까닭의 롬 글 (`BagContext_FormatErrorMessage`). 공용 줄은 주인공 이름이 칸 0이다.
+ * 뱅크가 아직 안 왔으면 빈 글이다 — 우리가 지어 쓰지 않는다
+ */
+function bikeRefusalLine(where: { bank: 'bag' | 'common', line: number }): string {
+  const raw = (where.bank === 'bag' ? bagText : commonText)?.[where.line] ?? ''
+  return fillMenuText(raw, [useSaveStore.getState().trainer.name])
 }
 
 function bagMessageLine(what: keyof typeof BAG_MESSAGE_LINE): string {
   const save = useSaveStore.getState()
-  // 실(볼 장식)은 계통이 없어 0장이다. 벽지(콘테스트 배경)도 콘테스트가 범위 밖이라 0장이다
+  // 씰은 케이스에 든 총 장수다. 벽지(콘테스트 배경)는 콘테스트가 범위 밖이라 0장이다
   const values = what === 'coins' ? [String(save.coins)]
-    : what === 'seals' ? ['0']
+    : what === 'seals' ? [String(totalSeals(save.sealCase))]
       : what === 'fashion' ? [String(totalAccessories(save.fashionCase)), '0']
         : [String(save.battlePoints)]
   return fillMenuText(bagText?.[BAG_MESSAGE_LINE[what]] ?? '', values)
@@ -128,9 +140,14 @@ export function performItemAction(action: FieldItemAction, deps: ItemActionDeps)
     case 'bike': {
       const header = mapById(world.mapId)
       const p = worldState.player
+      // 동행이 있으면 첫 검사에서 막힌다 (`CanUseBicycle`의 `hasPartner`) — 타고 있든 아니든이다
+      if (fieldScripts.vars?.checkFlag(SYSTEM_FLAG.hasPartner) === true) {
+        deps.say(bikeRefusalLine({ bank: 'bag', line: BIKE_PARTNER_LINE }))
+        return false
+      }
       const here = world.grid?.behaviorAtWorld(p.position.x, p.position.z) ?? null
       const why = bikeBlock(header, here, p.surfing, p.cycling, isOnCyclingRoad())
-      if (why !== null) { deps.say(BIKE_WHY[why]); return false }
+      if (why !== null) { deps.say(bikeRefusalLine(BIKE_WHY_LINE[why])); return false }
       p.cycling = !p.cycling
       p.pedalling = 0
       deps.back()

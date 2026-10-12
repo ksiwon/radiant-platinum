@@ -155,6 +155,12 @@ export const GROUPS = [
     match: (p) => nameIn('data', 'typeIcons.')(p) || p === 'data/moveClass.png',
   },
   {
+    // 파티 화면의 도구 · 편지 · 볼캡슐 표식 셋 (`party_menu/sprites.c` · `pl_plist_gra.narc`)
+    name: 'partyIcons',
+    make: 'pnpm extract:partyIcons',
+    match: oneOf('data/partyIcons.png'),
+  },
+  {
     // 시작 메뉴 아이콘 열 칸 × 컬러·회색과 고른 줄의 움직임 (`start_menu.c` · `menu_gra.narc`)
     name: 'startMenuIcons',
     make: 'pnpm extract:startMenuIcons',
@@ -259,7 +265,7 @@ export const GROUPS = [
     make: 'pnpm extract:credits',
     // 배치표는 판마다 한 벌이다 (`credits.<판>.json` — PARITY §8.12)
     match: (p) => p === 'data/credits.json' || /^data\/credits\d+\.png$/.test(p)
-      || /^data\/credits\.[a-z]+\.json$/.test(p),
+      || /^data\/credits\.[a-z]+\.json$/.test(p) || p.startsWith('data/credits/'),
   },
   {
     name: 'townMap',

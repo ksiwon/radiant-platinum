@@ -14,6 +14,7 @@ import { usePoketchStore } from '../../state/poketchStore'
 import { ChooseStarter } from '../field/ChooseStarter'
 import { BagScreen } from './BagScreen'
 import { BoxScreen } from './BoxScreen'
+import { CapsuleScreen } from './CapsuleScreen'
 import { EvolutionScreen } from './EvolutionScreen'
 import { FactoryScreen } from './FactoryScreen'
 import { SlotScreen } from './SlotScreen'
@@ -99,6 +100,7 @@ export function MenuLayer() {
     case 'options': return <OptionsScreen />
     case 'shop': return <ShopScreen />
     case 'box': return <BoxScreen />
+    case 'capsule': return <CapsuleScreen />
     case 'journal': return <JournalScreen />
     case 'mail': return <MailScreen />
     case 'easyChat': return <EasyChatScreen />

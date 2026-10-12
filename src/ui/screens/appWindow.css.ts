@@ -38,6 +38,9 @@ export const head = style({
 
 export const title = style({
   margin: 0,
+  // ⚠️ **제목은 줄을 안 바꾼다.** 머리 높이가 44로 못 박혀 있어 두 줄이 되면 위아래로 삐져나간다 — 줄어드는 것은 오른쪽 요약(`note`)이다
+  flex: '0 0 auto',
+  whiteSpace: 'nowrap',
   fontSize: TEXT.title,
   fontWeight: 700,
   color: vars.ink.strong,

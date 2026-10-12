@@ -16,6 +16,8 @@ import {
 } from './pcParts'
 import { assets } from '../data/providers/assetProvider'
 import { cameraSystem } from '../engine/actor/camera'
+import { bakedFxPrefabs } from './WorldFx'
+import { waterLevelAt } from './waterLevel'
 
 interface Props {
   /**
@@ -31,6 +33,17 @@ const start = new Vector3()
 const end = new Vector3()
 const direction = new Vector3()
 const turn = new Quaternion()
+
+/**
+ * 비전기술의 BDSP 파티클 프리팹 (`data/fx`의 `ef_f_waza_*` — `import/bdsp/fx.ts`의 `FIELD_ACTION_PREFAB`). 구워져 있으면 도형 고리 · 조각 대신 이것이 선다.
+ * 파도타기 · 폭포오르기는 BDSP에 필드 프리팹이 없다(타는 몸이 연출이다) — 도형 그대로다
+ */
+export const ACTION_PREFABS: Readonly<Partial<Record<FieldActionFxKind, string>>> = {
+  cut: 'ef_f_waza_cut',
+  rockSmash: 'ef_f_waza_rocksmash',
+  strength: 'ef_f_waza_strength',
+  rockClimb: 'ef_f_waza_rockclimb',
+}
 
 const FIELD_COLORS: Readonly<Record<FieldActionFxKind, string>> = {
   cut: '#8df06c',
@@ -92,6 +105,8 @@ function loadPcParts(): Promise<Object3D | null> {
  */
 export function FieldActionEffects({ bodyRef }: Props) {
   const surfRef = useRef<Group>(null)
+  /** 파도타기 몸을 BDSP 수면에 붙이는 그리는 높이 (걸음 칸 높이는 그대로) — 매끈하게 따라간다 */
+  const waterLiftRef = useRef(0)
   const surfFallbackRef = useRef<Group>(null)
   const surfModelHostRef = useRef<Group>(null)
   const flyRef = useRef<Group>(null)
@@ -120,6 +135,14 @@ export function FieldActionEffects({ bodyRef }: Props) {
   const actionRingRef = useRef<Mesh>(null)
   const actionParticlesRef = useRef<Group>(null)
   const lastActionRef = useRef<FieldActionFxKind | null>(null)
+  /** 구워 둔 BDSP 프리팹 이름들 — 비전기술 연출이 이것으로 서는가 */
+  const bakedRef = useRef<ReadonlySet<string>>(new Set())
+  const where = useMemo(() => ({ pos: new Vector3() }), [])
+  useEffect(() => {
+    let alive = true
+    void bakedFxPrefabs().then((s) => { if (alive) bakedRef.current = s })
+    return () => { alive = false }
+  }, [])
   const actionMaterial = useMemo(
     () =>
       new MeshStandardMaterial({
@@ -252,6 +275,12 @@ export function FieldActionEffects({ bodyRef }: Props) {
 
     const surf = surfRef.current
     if (surf) surf.visible = surfing
+    // 몸의 그리는 높이를 BDSP 수면에 붙인다 — 물에 들어가고 나올 때의 차이는 이 보간과 아래 몸 높이 보간이 맡는다
+    const pp = worldState.player.position
+    const level = surfing ? waterLevelAt(pp.x, pp.z, pp.y) : null
+    const wantLift = level === null ? 0 : Math.max(-1, Math.min(1.5, level - pp.y))
+    waterLiftRef.current += (wantLift - waterLiftRef.current) * Math.min(1, delta * 9)
+    if (surf) surf.position.y = -0.03 + waterLiftRef.current
     const body = bodyRef.current
     if (body) {
       if (flyPose.visible) {
@@ -260,7 +289,7 @@ export function FieldActionEffects({ bodyRef }: Props) {
         body.position.set(flyPose.rider.x, flyPose.rider.y, flyPose.rider.z)
       } else {
         // 서는 높이는 몸 등판 꼭대기다 (`pcParts`의 `SURF_MOUNT.stand`)
-        const targetY = surfing ? SURF_MOUNT.stand * BDSP_TO_WORLD : 0
+        const targetY = surfing ? SURF_MOUNT.stand * BDSP_TO_WORLD + waterLiftRef.current : 0
         body.position.y += (targetY - body.position.y) * Math.min(1, delta * 9)
         body.position.x += (0 - body.position.x) * Math.min(1, delta * 9)
         body.position.z += (0 - body.position.z) * Math.min(1, delta * 9)
@@ -337,8 +366,17 @@ export function FieldActionEffects({ bodyRef }: Props) {
       }
     }
     const kind = fx.kind
-    if (actionRef.current) actionRef.current.visible = kind !== null
-    if (kind === null) return
+    const prefab = kind === null ? undefined : ACTION_PREFABS[kind]
+    const bdsp = prefab !== undefined && bakedRef.current.has(prefab)
+    // BDSP 프리팹이 있으면 도형 연출은 접는다
+    if (actionRef.current) actionRef.current.visible = kind !== null && !bdsp
+    if (kind === null) { lastActionRef.current = null; return }
+    if (bdsp && lastActionRef.current !== kind && actionRef.current) {
+      // 주인공 앞 (도형 연출이 서던 자리) — 월드 자리와 바라보는 방향으로 한 번 터뜨린다
+      actionRef.current.getWorldPosition(where.pos)
+      worldState.fxRequests.push({ name: prefab ?? '', x: where.pos.x, y: where.pos.y, z: where.pos.z, yaw: worldState.player.facing })
+    }
+    if (bdsp) { lastActionRef.current = kind; return }
     if (lastActionRef.current !== kind) {
       actionMaterial.color.set(FIELD_COLORS[kind])
       actionMaterial.emissive.set(FIELD_COLORS[kind])

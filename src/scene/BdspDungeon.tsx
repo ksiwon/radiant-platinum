@@ -33,6 +33,8 @@ import { disposeTree } from './disposeTree'
 import { fieldFade, type FieldFade } from './fieldFade'
 import { useBdspMark } from './bdspReady'
 import { liveWater, lowestGround } from './BdspField'
+import { liveMotion, liveMotionMaterials, type BdspMotion } from './bdspMotion'
+import { FieldFx } from './FieldFx'
 import { setDungeonLow } from './OuterFloor'
 import { holdBdspDoors } from './DoorAnimations'
 import { holdBdspSigns } from './ObjectProps'
@@ -208,6 +210,19 @@ export function dungeonOrigin(
  *   d05r0116 (510)  −1    106 / 106     BDHC 1 ~ 16
  *   d13r0101 (256)  −1  3,044 / 3,044   BDHC 1 · 2
  *   d28r0101 (314)  −6    993 / 1,013   BDHC 0 ~ 6 일곱 단 모두
+ *
+ * ⚠️ **문에서 걸어 닿는 칸만 잰다** (2026-10-12 · `.audit/probe/dungeonAudit.mjs`). 던전이 청크(32칸)보다 작으면 나머지는 막히지 않은 빈 칸이라
+ * 기본 높이 1의 판이 깔려 있고, 그 칸까지 세면 같은 던전이 단마다 다른 것처럼 보인다 — 미혹의 동굴이 전 칸으로는 +1 · −1이 섞이고(3,687칸 중
+ * 최빈 +1이 6할) 닿는 칸으로는 1,477칸이 **전부** −1이다. 그래서 위 판정이 「들어서 맞지 않는다」로 뺀 일곱이 닿는 칸으로는 맞는다 —
+ * 들어 올린 뒤 닿는 칸의 몫이 원작 높이 0.5칸 안인 비율(`liftOf`의 `within`):
+ *
+ *   d11r0101 (253)  −1    780 / 1,000   BDHC 1 · 2 · 3 — 들어 올리면 0.85 (안 올리면 0.05)
+ *   d12r0101 (254)  −1    216 / 382     들어 올리면 1.00 (안 올리면 0.30 — 나머지는 반 칸 턱)
+ *   d21r0101 (284)  −1  1,477 / 1,477   미혹의 동굴 1층. 들어 올리면 1.00
+ *   d21r0102 (285)  −1    251 / 270
+ *   d24r0104 (292)  −1    226 / 231     강철섬
+ *   d27r0101 (311)  −1    126 / 126     시린호 입구 (변화 전)
+ *   d27r0102 (312)  −1  1,296 / 1,296   시린호 (변화 후 — 물 아래 호수 바닥 빼고)
  */
 export const DUNGEON_LIFT: Readonly<Record<string, number>> = {
   d03r0101: 1,
@@ -217,6 +232,13 @@ export const DUNGEON_LIFT: Readonly<Record<string, number>> = {
   d05r0116: 1,
   d13r0101: 1,
   d28r0101: 6,
+  d11r0101: 1,
+  d12r0101: 1,
+  d21r0101: 1,
+  d21r0102: 1,
+  d24r0104: 1,
+  d27r0101: 1,
+  d27r0102: 1,
 }
 
 // ── 메움 면 ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -600,6 +622,8 @@ export function BdspDungeon({ name }: { name: string }) {
   const [failed, setFailed] = useState(false)
   const fade = useRef<FieldFade | null>(null)
   const lights = useRef<BdspLights | null>(null)
+  const motion = useRef<BdspMotion | null>(null)
+  const eye = useRef(new Vector3())
   const tick = useRef(0)
   const cam = useRef(new Vector3())
   const aim = useRef(new Vector3())
@@ -612,6 +636,7 @@ export function BdspDungeon({ name }: { name: string }) {
     // ⚠️ **눈이 실제로 어디 있나로 가른다** (`firstPersonView`) — 설정 값을 보면 컷신 동안 3인칭 카메라가 천장에 막힌다
     const first = firstPersonView()
     for (const c of firstOnly.current) c.visible = first
+    motion.current?.update(dt, camera.getWorldPosition(eye.current))
     if (!fade.current) return
     if (scene && devices.current.map !== world.mapId) {
       for (const m of devices.current.hidden) m.visible = true
@@ -659,8 +684,12 @@ export function BdspDungeon({ name }: { name: string }) {
         root.position.set(origin.x, DUNGEON_LIFT[name] ?? 0, origin.z)
         devices.current = { map: world.mapId, hidden: hideDevices(root, world.mapId) }
         liveWater(root)
+        // 흐르는 그림 · 바람 흔들림 (`bdspMotion`) — 물 뒤 · 흐림 앞
+        liveMotionMaterials(root)
+        motion.current = liveMotion(root)
         // ⚠️ **흐림이 먼저다** — `BdspField`와 같은 까닭이다
-        fade.current = fieldFade(root)
+        const made = fieldFade(root)
+        fade.current = made
         lights.current = bdspLights(root)
         lights.current.update(worldState.time.gameHour)
         for (const c of cover) root.add(c)
@@ -671,6 +700,8 @@ export function BdspDungeon({ name }: { name: string }) {
         for (const c of firstOnly.current) c.visible = firstPersonView()
         release = [holdBdspDoors(root), holdBdspSigns(root)]
         setScene(root)
+        // 흐림의 파이프라인을 비동기로 미리 굽는다 — 처음 벽 앞에 설 때 동기로 안 굽게 (`FieldFade.warm`)
+        made.warm()
       })
       .catch((e: unknown) => {
         console.error(`던전 ${name}을 못 세웠다`, e)
@@ -682,8 +713,10 @@ export function BdspDungeon({ name }: { name: string }) {
       alive = false
       setDungeonLow(null)
       for (const r of release) r()
+      motion.current?.dispose()
+      motion.current = null
       if (built) disposeTree(built)
     }
   }, [name])
-  return scene ? <primitive object={scene} /> : null
+  return scene ? <><primitive object={scene} /><FieldFx root={scene} /></> : null
 }

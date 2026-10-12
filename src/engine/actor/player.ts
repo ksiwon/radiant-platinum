@@ -272,6 +272,8 @@ const iceView: IceView = {
   breakAt: (tx, tz) => {
     if (!breakSnowballAt(tx, tz)) return false
     pushBikeCue(SFX.SNOWBALL_BREAK)
+    // BDSP 눈덩이 깨짐 파티클 — 그 칸 가운데 (`ef_f_bg_snowballbreak_01`)
+    worldState.fxRequests.push({ name: 'ef_f_bg_snowballbreak_01', x: tx + 0.5, y: worldState.player.position.y, z: tz + 0.5, yaw: 0 })
     return true
   },
   edgeBlockedAt: (tx, tz, dx, dz) => {

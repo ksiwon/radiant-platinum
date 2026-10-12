@@ -17,8 +17,12 @@
 // 선형 색 공간 프로젝트가 하는 그대로다. BDSP가 감마 프로젝트라면 덧셈 섞기가
 // 조금 밝게 나온다(`LINEAR` 하나로 뒤집을 수 있다).
 //
-// 아직 안 옮긴 것(한 번씩 알린다): 부드러운 입자(깊이 페이드) · 화면 왜곡 ·
-// 프레넬 · 스피어 맵 · 줄무늬 · 디졸브 외의 특수 컴바이너.
+// 옮긴 것: 깊이 페이드 · 프레넬 · 스피어맵 · 줄무늬 · 그림 왜곡 · 색 버퍼 왜곡 (아래 각 절).
+// ⚠️ **원본 셰이더는 스위치 블롭이라 식을 못 읽는다.** 속성 값의 꼴(`_SoftParticleFadeParams` = (근 · 1/(원−근)) 같은 것)로
+// 읽은 우리 해석이다 — 각 절에 어디까지가 실측이고 어디부터가 해석인지 적었다.
+// 특수 컴바이너(`_COMBINER_*` 218재질 · 128프리팹)와 값 여덟 칸(`_CombinerAnim0_0~7`) · 왜곡 세기 수명 곡선(`_DistortionAnim0~3`)도 옮겼다 —
+// 수명 진행(0~1)은 인스턴스 칸 `iL1.w`다. 컴바이너 식은 키워드 이름과 값의 꼴에서 읽은 **우리 해석**이다(아래 `combine` 절).
+// 아직 안 옮긴 것(한 번씩 알린다): 조명색(`_LightColorEnabled`, 켠 재질 0) · 이름을 못 읽은 컴바이너.
 import {
   AddEquation, BackSide, CustomBlending, DoubleSide, DstAlphaFactor, DstColorFactor,
   FrontSide, LessEqualDepth, MaxEquation, MinEquation, OneFactor, OneMinusDstAlphaFactor,
@@ -30,14 +34,24 @@ import {
 } from 'three'
 import { MeshBasicNodeMaterial, type Node } from 'three/webgpu'
 import {
-  attribute, cameraProjectionMatrix, clamp, cos, float, Fn, max, modelViewMatrix, pow,
-  positionGeometry, sin, sRGBTransferEOTF, texture, uniform, uv, varying, vec2, vec3, vec4,
+  abs, attribute, cameraFar, cameraNear, cameraProjectionMatrix, clamp, cos, dot, float, Fn, length, max, mix, modelViewMatrix,
+  normalGeometry, normalize, perspectiveDepthToViewZ, positionGeometry, pow, saturate, screenUV, sin, sRGBTransferEOTF,
+  texture, uniform, uv, varying, vec2, vec3, vec4, viewportDepthTexture, viewportSharedTexture,
 } from 'three/tsl'
-import type { FxMaterialSpec } from '../../../engine/battle/fx/material'
+import { combinerConstant, distortionFlat, type FxMaterialSpec } from '../../../engine/battle/fx/material'
 import { ALWAYS_ASYNC } from '../../asyncPipelines'
 
 /** 선형 작업 흐름인가 (머리말) */
 const LINEAR = true
+
+/**
+ * **화면을 읽는 기능**(깊이 페이드 · 색 버퍼 왜곡)을 켜는가. 깊이 · 프레임버퍼를 복사해 읽으므로(`viewportDepthTexture` ·
+ * `viewportSharedTexture`) 이 기능이 있는 재질이 그려지는 프레임마다 복사가 든다.
+ * 실측(2026-10-12, WebGPU · 챔피언전, 소프트 입자 7 · 색 버퍼 왜곡 5인 `공간절단` 460 등 네 기술): 켜고 끈 프레임 시간이 소음 안이다
+ * (평균 16.7~24.6ms 대 16.7~20.7ms, 최악 한두 번의 튐은 두 번째 돌림에서 안 나왔다). 셰이더 컴파일 오류 · 흰 판 · 검은 판 없음.
+ * 끄면 깊이 페이드는 안 하고(입자가 그대로 선다) 색 버퍼 왜곡 재질은 안 그린다(전과 같다)
+ */
+export const FX_SCREEN = true
 
 /** 유니티 `BlendMode` → three */
 const FACTOR: readonly (BlendingSrcFactor & BlendingDstFactor)[] = [
@@ -100,8 +114,20 @@ export function buildFxMaterial(spec: FxMaterialSpec, maps: readonly Texture[], 
   const az = attribute<'vec4'>('iL3', 'vec4').xyz
   const p = positionGeometry
   const world = center.add(ax.mul(p.x)).add(ay.mul(p.y)).add(az.mul(p.z))
-  material.vertexNode = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(world, 1)))
+  const viewPos = modelViewMatrix.mul(vec4(world, 1))
+  // 깊이 밀기(`_COMBINER_ZOFFSET_*`) — 눈 쪽으로 5cm. 값은 우리 해석이다(`FxMaterialSpec.combiner`): 연기 · 물 판이 바닥에 파묻히지 않게 하는 이름이다
+  const zBias = spec.combiner.kind === 'zSmoke' || spec.combiner.kind === 'zWater' ? 0.05 : 0
+  material.vertexNode = cameraProjectionMatrix.mul(zBias === 0 ? viewPos : vec4(viewPos.x, viewPos.y, viewPos.z.add(zBias), 1))
 
+  // 눈 공간 위치 · 법선 — 깊이 페이드 · 프레넬 · 스피어맵이 쓴다. 법선은 입자 축으로 돌려 눈 공간에 옮긴다(축 크기는 무시한다)
+  const vView = varying(viewPos.xyz)
+  const nObj = ax.mul(normalGeometry.x).add(ay.mul(normalGeometry.y)).add(az.mul(normalGeometry.z))
+  // ⚠️ **법선은 조각 셰이더에서 정규화한다.** 법선이 없는 메시(코인 `koban` 등)는 0벡터라 정점에서 `normalize`하면 NaN이고 그 재질이 통째로
+  // 검게 나왔다(실측 `기술 6` 코인). 0이면 0 그대로 둬 가장자리 · 조명 항이 0으로 떨어지게 한다
+  const vNormalRaw = varying(modelViewMatrix.mul(vec4(nObj, 0)).xyz)
+  const vNormal = vNormalRaw.div(max(length(vNormalRaw), float(1e-4)))
+
+  const vLife = varying(attribute<'vec4'>('iL1', 'vec4').w)
   const rect = varying(attribute<'vec4'>('iL7', 'vec4'))
   const fxTime = varying(l0.w)
   const vColor = varying(attribute<'vec4'>('iL4', 'vec4'))
@@ -125,6 +151,40 @@ export function buildFxMaterial(spec: FxMaterialSpec, maps: readonly Texture[], 
   const mul = spec.mulColor
   const mulColor = uniform(new Vector4(mul[0], mul[1], mul[2], mul[3]))
   const alphaRef = uniform(spec.alphaRef)
+  const softNear = uniform(spec.soft?.near ?? 0)
+  const softScale = uniform(spec.soft?.scale ?? 1)
+  const fresnelX = uniform(spec.fresnel?.x ?? 1)
+  const fresnelY = uniform(spec.fresnel?.y ?? 0)
+  const stripe0 = uniform(new Vector4(...(spec.stripe?.c0 ?? [1, 1, 1, 1])))
+  const stripe1 = uniform(new Vector4(...(spec.stripe?.c1 ?? [1, 1, 1, 1])))
+  const distortBase = uniform(new Vector2(spec.distortion.x, spec.distortion.y))
+  const distortKeys = spec.distortion.curve.map(([x, y]) => uniform(new Vector2(x, y)))
+  // 왜곡 세기 × 수명 곡선 — 꺾은선 네 점 `(수명, 배율)`. 구간마다 `mix`를 이어 간다(구간 안에서만 변하므로 앞 구간 값이 그대로 남는다)
+  const distort: Node<'vec2'> = distortionFlat(spec)
+    ? distortBase
+    : distortBase.mul((() => {
+      let v: Node<'float'> = distortKeys[0]!.y
+      for (let i = 0; i < 3; i++) {
+        const a = distortKeys[i]!
+        const b = distortKeys[i + 1]!
+        v = mix(v, b.y, saturate(vLife.sub(a.x).div(max(b.x.sub(a.x), float(1e-4))))) as Node<'float'>
+      }
+      return v
+    })())
+  // 특수 컴바이너 값(`_CombinerAnim0_0~7`) — 수명에 걸쳐 고르게 놓인 여덟 열쇠. 여덟이 같으면 상수다
+  const combKeys = spec.combiner.keys.map((k) => uniform(new Vector4(k[0], k[1], k[2], k[3])))
+  const combP: Node<'vec4'> = combinerConstant(spec)
+    ? combKeys[0]!
+    : (() => {
+      let v: Node<'vec4'> = combKeys[0]!
+      for (let k = 1; k < 8; k++) v = mix(v, combKeys[k]!, saturate(vLife.mul(7).sub(k - 1))) as Node<'vec4'>
+      return v
+    })()
+  const lit = spec.combiner.kind === 'light' || spec.combiner.kind === 'lightNormal'
+  // 조명 방향 — 눈 공간에서 위 · 앞쪽 (`LIGHTPARAM01`; 우리 값)
+  const lightDir = vec3(0.25, 0.8, 0.55).normalize()
+  // 눈 쪽으로 향한 정도 — 면이 마주 보면 1, 모서리면 0 (프레넬 · 판 종류는 법선이 없어 쓰지 않는다)
+  const facing = (): Node<'float'> => abs(dot(vNormal, normalize(vView.negate()))) as Node<'float'>
 
   material.colorNode = Fn(() => {
     const raw = uv()
@@ -133,25 +193,49 @@ export function buildFxMaterial(spec: FxMaterialSpec, maps: readonly Texture[], 
 
     let comboRgb: Node<'vec3'> = vec3(1, 1, 1)
     let comboA: Node<'float'> = float(1)
+    // 그림 왜곡(`_DISTORTION_TEXTURE`) — 첫 그림의 RG(0.5 중심)가 뒷그림들의 UV를 민다. 첫 그림 자체는 평소대로 그린다
+    let warp: Node<'vec2'> = vec2(0, 0)
+    // `LIGHTPARAM01_MULVERTEXCOL_NORML`: 첫째 그림이 법선 맵이다 — 색이 아니라 명암의 법선에 넣는다 (아래 `ramp`)
+    let lightN: Node<'vec3'> = vNormal
     spec.textures.forEach((t, i) => {
       const u = uniforms[i]!
       // 그림 칸 → 0.5 둘레 회전 → 타일링 × UV 크기 → 오프셋 + 흘리기
-      const base = t.rawUv ? raw : sheet
+      // 스피어맵 — 법선의 눈 공간 xy를 0~1로 옮긴 것이 UV다 (판은 법선이 없어 평소 UV를 쓴다)
+      const sphere = spec.sphere[i] === true && !billboard
+      const base = sphere ? vNormal.xy.mul(0.5).add(0.5) : t.rawUv ? raw : sheet
       const d = base.sub(0.5)
       const c = cos(u.rotation)
       const s = sin(u.rotation)
       const rot = vec2(d.x.mul(c).sub(d.y.mul(s)), d.x.mul(s).add(d.y.mul(c))).add(0.5)
       const scale = u.uvScale.add(u.uvScaleSpeed.mul(time))
-      const st = rot.mul(u.tiling).mul(scale).add(u.offset).add(u.scroll).add(u.scrollSpeed.mul(time))
+      const st0 = rot.mul(u.tiling).mul(scale).add(u.offset).add(u.scroll).add(u.scrollSpeed.mul(time))
+      // `LIGHTPARAM01`: 둘째 그림은 **빛 띠**(`fxpt_cmn_lt001/002_m` 256×8 — 61재질 중 59가 `lt` 그림, `lt002`는 0.55에서 켜지는 툰 계단)다.
+      // 읽는 자리는 메시 UV가 아니라 명암 `x + y × (법선 · 빛)` — 값 (x, y)가 (바탕, 받는 빛)이라는 해석이다(코인 `koban`: (0.4, 0.5) → (0.9, 0.6)이라
+      // 0.4면 툰 계단 아래 = 그림자, 0.9면 켜짐). 안 이으면 둘째 그림이 메시 UV로 읽혀 코인이 새까맣게 나왔다(실측 기술 6)
+      const ramp = lit && i === 1
+      const rampUv = vec2(saturate(combP.x.add(combP.y.mul(saturate(dot(lightN, lightDir))))), 0.5)
+      const st = ramp ? rampUv : spec.distortion.mode === 2 && i > 0 ? st0.add(warp) : st0
       const tex = texture(maps[i]!, st)
+      if (spec.distortion.mode === 2 && i === 0) warp = tex.rg.sub(0.5).mul(2).mul(distort)
       const rgb = pow(max(tex.rgb, vec3(0, 0, 0)), vec3(u.pow, u.pow, u.pow))
-      const crgb = colorChannel(t.colorChannel, rgb, tex.a)
+      // 법선 맵 갈래의 첫째 그림: 접선 공간 법선(rgb × 2 − 1)을 메시 법선 둘레의 접선 · 종접선에 얹어 명암 법선으로 쓰고, 색 몫은 흰색(1)으로 둔다 —
+      // 색은 정점색 · 재질색(`C0` · `_MulColor`)이 준다. 메시 법선이 0이면(법선 없는 메시) 맵 법선을 눈 공간 그대로 쓴다
+      const asNormal = spec.combiner.kind === 'lightNormal' && i === 0
+      if (asNormal) {
+        const nm = tex.rgb.mul(2).sub(1)
+        const tan = normalize(vec3(0, 1, 0).cross(vNormal).add(vec3(1e-4, 0, 0)))
+        const bit = vNormal.cross(tan)
+        const mixed = tan.mul(nm.x).add(bit.mul(nm.y)).add(vNormal.mul(nm.z))
+        lightN = normalize(length(vNormal).greaterThan(0.5).select(mixed, nm)) as Node<'vec3'>
+      }
+      const crgb = asNormal ? vec3(1, 1, 1) : colorChannel(t.colorChannel, rgb, tex.a)
       const ca = alphaChannel(t.alphaChannel, tex.r, tex.a)
       if (i === 0) {
         comboRgb = crgb
         comboA = ca
       } else {
-        comboRgb = combine(t.colorBlend, comboRgb, crgb)
+        // `LIGHTPARAM01`의 셋째 그림(`..._hlm_..._lta` — 검은 바탕에 흰 윤곽 · 줄)은 하이라이트라 곱하지 않고 더한다(곱하면 코인 속이 새까맣다 — 실측 기술 6)
+        comboRgb = combine(lit && i === 2 ? 1 : t.colorBlend, comboRgb, crgb)
         comboA = combine(t.alphaBlend, comboA, ca)
       }
     })
@@ -182,9 +266,41 @@ export function buildFxMaterial(spec: FxMaterialSpec, maps: readonly Texture[], 
     rgb = combine(spec.primColorExpr, rgb, colorChannel(spec.primColorChannel, prim, vColor.a))
     alpha = combine(spec.primAlphaExpr, alpha, alphaChannel(spec.primAlphaChannel, vColor.r, vColor.a))
 
+    // `LIGHTPARAM01_MULVERTEXCOL_NORML`: 메시 꼭짓점색(바위의 흙빛 0.6)을 곱한다 — 그대로(선형) 곱한다
+    if (spec.combiner.kind === 'lightNormal' && !billboard) rgb = rgb.mul(varying(attribute<'vec4'>('color', 'vec4')).rgb)
     rgb = rgb.mul(colorScale).mul(lin(mulColor.xyz))
     alpha = clamp(alpha.mul(mulColor.w), 0, 1)
     rgb = max(rgb, vec3(0, 0, 0))
+
+    // 줄무늬 — 두 색을 UV 세로로 섞어 곱한다 (우리 해석: 속성은 색 둘뿐이다)
+    // (`FIRE_TWOCOLOR`는 세로 대신 그림의 밝기로 두 색을 섞는다 — 불꽃 그라데이션으로 읽은 우리 해석)
+    if (spec.stripe) rgb = rgb.mul(lin(mix(stripe0.xyz, stripe1.xyz, spec.combiner.kind === 'fire' ? comboA : raw.y)))
+    // 프레넬 알파 — 법선이 있는 메시에만 (우리 해석, `FxMaterialSpec.fresnel`)
+    if (spec.fresnel && !billboard) alpha = alpha.mul(saturate(fresnelX.add(fresnelY.mul(float(1).sub(facing())))))
+    // 특수 컴바이너 — 키워드 이름과 값의 꼴로 읽은 우리 해석 (`FxMaterialSpec.combiner`). 법선이 필요한 갈래는 메시만
+    switch (spec.combiner.kind) {
+      case 'ice':
+      case 'fresnelOne':
+        // `ICE01` · `FRESNEL_ONECOLOR`: 값 (x, y) = (가장자리 지수, 세기) — 얼음 (2, 1) · 불기둥 고리 (1, 2.5). 가장자리일수록 밝다
+        if (!billboard) rgb = rgb.mul(float(1).add(combP.y.mul(pow(max(float(1).sub(facing()), float(1e-3)), max(combP.x, float(0.05))))))
+        break
+      case 'alphaMul':
+        // `ALPHABLEND_MUL_TEX0`: 알파에 그림 알파를 한 번 더 곱한다 (가장자리를 또렷하게)
+        alpha = alpha.mul(comboA)
+        break
+      default:
+        break
+    }
+    // 깊이 페이드 — 장면 깊이가 입자 깊이보다 `near` 넘게 뒤에 있어야 온전히 선다
+    if (FX_SCREEN && spec.soft) {
+      const sceneZ = perspectiveDepthToViewZ(viewportDepthTexture().r, cameraNear, cameraFar)
+      alpha = alpha.mul(saturate(vView.z.sub(sceneZ).sub(softNear).mul(softScale)))
+    }
+    // 색 버퍼 왜곡 — 그림의 RG(0.5 중심)만큼 화면 UV를 밀어 지금까지 그려진 화면을 다시 읽는다. 섞기는 평소 알파 섞기다
+    if (FX_SCREEN && spec.distortion.mode === 1) {
+      const flow = comboRgb.xy.sub(0.5).mul(2).mul(distort)
+      rgb = viewportSharedTexture(screenUV.add(flow.mul(alpha))).rgb as Node<'vec3'>
+    }
 
     alphaTest(spec.alphaTest, alpha, alphaRef)
     // 시험대 `&dbg=` — 한 칸만 불투명하게 내 본다
@@ -197,6 +313,10 @@ export function buildFxMaterial(spec: FxMaterialSpec, maps: readonly Texture[], 
       case 'alpha': return vec4(vec3(alpha, alpha, alpha), 1)
       case 'prim': return vec4(vColor.rgb, 1)
       case 'uv': return vec4(sheet, 0, 1)
+      case 'comb': return vec4(combP.xyz, 1)
+      case 'life': return vec4(vec3(vLife, vLife, vLife), 1)
+      case 'nrm': return vec4(vNormal.mul(0.5).add(0.5), 1)
+      case 'rgb': return vec4(rgb, 1)
       default: return vec4(rgb, alpha)
     }
   })()

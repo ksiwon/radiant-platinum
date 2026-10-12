@@ -20,6 +20,8 @@ interface FxIndex {
   ballModel?: BallMeta & { files: Record<string, string> }
   /** 종 → 내보내기 착지 갈래 (`MoveType`, 0이 아닌 것만) */
   moveType?: Record<string, number>
+  /** 대타 인형 모델 (`import/bdsp/fx.ts` — 5판부터) */
+  substituteDoll?: string
   prefabs?: string[]
   missingPrefabs?: string[]
   /** 구운 시퀀스 이름 전부 */
@@ -34,6 +36,20 @@ let index: Promise<FxIndex | null> | null = null
 const seqs = new Map<string, Promise<SeqData | null>>()
 /** 받아 펴 둔 기술 계획. 열쇠는 `기술:내쪽여부:더블여부:실내여부` */
 const plans = new Map<string, SeqPlan>()
+/**
+ * 빠진 프리팹만 뺀 **반쪽 계획**. 열쇠는 `plans`와 같다.
+ *
+ * BDSP 롬 자체가 없는 프리팹(`missingPrefabs` 32벌 — 게임의 번들 목록 `Effects.bin`에도 없다)을 시퀀스가 부르는 기술이 있다.
+ * 유니티는 못 찾은 입자를 건너뛰고 나머지(몸 동작 · 카메라 · 몸 색 · 흔들림 · 남은 입자)를 그대로 돌린다 — 그것이 원작 연출이다.
+ * DS 입자가 있는 기술은 그쪽이 더 풍부해 그대로 DS로 가고(`plans`에 없으니 DS), **DS 이미터도 없는 기술만** 이 계획을 쓴다
+ * (그렇지 않으면 우리가 지은 도형 틀이 선다 — 명상 `ew096` · 악몽 `ew171`)
+ */
+const partials = new Map<string, SeqPlan>()
+/**
+ * BDSP 시퀀스가 **화면에 아무것도 안 세우는 기술**(`DummyLabel` 한 줄뿐 — 명시적으로 빈 칸이다).
+ * 원작 BDSP가 그 기술에서 몸 동작 말고는 아무것도 안 그린다는 뜻이라, DS 이미터도 없으면 우리 도형 틀을 세우지 않는다
+ */
+const emptyMoves = new Set<number>()
 
 /** 이 판의 무대가 실내인가 — 무대가 설 때 정한다(`setSeqIndoor`). 시퀀스의 무대 갈래(`GroupOption 28`)를 고른다 */
 let indoorField = false
@@ -46,6 +62,8 @@ onProviderSwap(() => {
   installed = null
   seqs.clear()
   plans.clear()
+  partials.clear()
+  emptyMoves.clear()
   statusPlans.clear()
 })
 
@@ -66,6 +84,9 @@ export function fxIndex(): Promise<FxIndex | null> {
 export function bdspFxInstalled(): boolean {
   return installed === true
 }
+
+/** 기술 본연이 아닌 배경 · 공용 프리팹 이름 */
+const BACKDROP = /^(bk\d|cmn_)/i
 
 /** 시퀀스 한 벌. 없으면 `null` */
 export function loadSeq(name: string): Promise<SeqData | null> {
@@ -94,21 +115,42 @@ export async function preloadMoveSeqs(moves: Iterable<number>): Promise<void> {
     // ⚠️ **쪽마다 따로 정한다.** 짝 · 홀 묶음(`GroupOption`)이 쪽마다 다른 프리팹을 골라서, 한쪽만
     // 빠질 수 있다. 빠진 쪽만 DS로 가고 그 쪽의 길이도 DS가 낸다 (`moveFramesOf`가 같은 표를 본다)
     // 싱글 · 더블 갈래(`GroupOption 0`)와 야외 · 실내 갈래(`GroupOption 28`)도 따로 편다 — 그 판에서만 서는 묶음이 있다 (`battleOptions`)
+    let content = false
     for (const mine of [true, false]) {
       for (const doubles of [false, true]) {
         for (const indoor of [false, true]) {
-          const plan = planSequence(seq, { attackerMine: mine, options: battleOptions(doubles, indoor) })
-          // 프리팹이 하나라도 빠졌으면 이 쪽은 DS로 간다 — 반쪽짜리 BDSP 연출보다 낫다
-          if (plan.particles.some((p) => missing.has(p.prefab.toLowerCase()))) continue
+          const full = planSequence(seq, { attackerMine: mine, options: battleOptions(doubles, indoor) })
+          // 배경 안개 · 공용 이펙트(`bk###_…` · `cmn_…`)만 빠진 것은 기술의 연출이 아니라 곁다리다 — 그것만 빼고 온전한 계획으로 둔다
+          // (마그마스톰 `ew463`은 `bk019_fog1` 하나만 롬에 없다. 그 기술은 BDSP에서 배울 수 있으니 BDSP 연출이 정본이다)
+          const plan = full.particles.some((p) => missing.has(p.prefab.toLowerCase()) && BACKDROP.test(p.prefab))
+            ? { ...full, particles: full.particles.filter((p) => !(missing.has(p.prefab.toLowerCase()) && BACKDROP.test(p.prefab))) }
+            : full
+          // 프리팹이 하나라도 빠졌으면 이 쪽은 DS로 간다 — 반쪽짜리 BDSP 연출보다 낫다. 반쪽은 따로 쥔다(`partials`)
+          if (plan.particles.some((p) => missing.has(p.prefab.toLowerCase()))) {
+            content = true
+            const half = { ...plan, particles: plan.particles.filter((p) => !missing.has(p.prefab.toLowerCase())) }
+            if (!showsNothing(half)) {
+              partials.set(`${move}:${mine ? 1 : 0}:${doubles ? 1 : 0}:${indoor ? 1 : 0}`, half)
+              for (const p of half.particles) void loadFxPrefab(p.prefab).catch(() => { /* 그릴 때 다시 */ })
+            }
+            continue
+          }
           // 화면에 아무것도 안 세우는 시퀀스도 DS로 간다 — `DummyLabel` 한 줄뿐인 빈 칸이 49벌 있다(속여때리기 `ew185` ·
           // 진흙폭탄 `ew426` · 유혹 `ew445` …). 계획을 세우면 무대가 DS 몫을 다 끄므로 그 기술은 아무것도 안 보였다
           if (showsNothing(plan)) continue
+          content = true
           plans.set(`${move}:${mine ? 1 : 0}:${doubles ? 1 : 0}:${indoor ? 1 : 0}`, plan)
           for (const p of plan.particles) void loadFxPrefab(p.prefab).catch(() => { /* 그릴 때 다시 */ })
         }
       }
     }
+    if (!content) emptyMoves.add(move)
   }))
+}
+
+/** BDSP 시퀀스가 통째로 빈 기술인가 (`emptyMoves`) — 판이 열릴 때 `preloadMoveSeqs`가 채운다 */
+export function moveSeqIsEmpty(move: number | null): boolean {
+  return move !== null && emptyMoves.has(move)
 }
 
 /**
@@ -176,6 +218,15 @@ export function statusSeqPlan(key: string, mine: boolean): SeqPlan | null {
 export function moveSeqPlan(move: number | null, attackerMine: boolean, doubles = false): SeqPlan | null {
   if (move === null) return null
   return plans.get(`${move}:${attackerMine ? 1 : 0}:${doubles ? 1 : 0}:${indoorField ? 1 : 0}`) ?? null
+}
+
+/**
+ * 반쪽 계획 (동기) — 프리팹이 빠진 기술의 남은 BDSP 연출. DS 이미터가 없는 기술이 도형 대신 쓴다 (`partials`).
+ * 빈 시퀀스(`DummyLabel`뿐)는 반쪽도 없다 — 원작이 아무것도 안 보이는 기술이다
+ */
+export function moveSeqPartial(move: number | null, attackerMine: boolean, doubles = false): SeqPlan | null {
+  if (move === null) return null
+  return partials.get(`${move}:${attackerMine ? 1 : 0}:${doubles ? 1 : 0}:${indoorField ? 1 : 0}`) ?? null
 }
 
 /** 볼 번호의 프리팹 둘. 표에 없으면 몬스터볼(4) */

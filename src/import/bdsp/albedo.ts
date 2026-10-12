@@ -317,6 +317,30 @@ export function plantKind(keywords: string, mainPid: number, layerPid: number): 
  * `재질@조각` 키 중 이 조각(메시 이름에 `조각`이 들었다)에 맞는 것의 이름. 없으면 재질 이름 그대로.
  * 노드 쪽 `bdspGlb.py`의 `scoped_material`과 같은 규칙이다 — 키는 사전순으로 먼저 맞는 것
  */
+/**
+ * **UV 네모를 한 색으로 칠하는 값.** 프로퍼티 이름이 `_Patch`로 시작하면 색 채널이 아니라 이 모양이다:
+ *
+ *     _Patch0: '#efefff@0.648~0.422~0.992~0.527'     색 `@` 유니티 UV 네모 `u0~v0~u1~v1` (v는 아래서 잰다)
+ *
+ * 네모 안의 텍셀을 음영까지 덮어 그 색 한 가지로 만든다 — 레이어 색은 음영에 곱하는 것이라 음영이 낮은 조각은 1로 올려도 그 이상
+ * 못 밝아진다 (핸섬의 속셔츠 조각).
+ * ⚠️ 노드 쪽 `bdsp_bake_albedo.py`의 `parse_patch`와 같아야 한다 (텍셀 가운데로 UV를 잰다)
+ */
+const PATCH_PROP = '_Patch'
+
+interface Patch { rect: [number, number, number, number], rgb: [number, number, number] }
+
+function parsePatch(value: string): Patch {
+  const at = value.indexOf('@')
+  const rect = value.slice(at + 1).split('~').map(Number)
+  if (at < 0 || rect.length !== 4 || rect.some((x) => Number.isNaN(x))) throw new Error(`_Patch 네모를 못 읽었다: ${value}`)
+  const c = hexColor(value.slice(0, at))
+  return {
+    rect: rect as Patch['rect'],
+    rgb: [srgbToLinear(c.r ?? 1), srgbToLinear(c.g ?? 1), srgbToLinear(c.b ?? 1)],
+  }
+}
+
 export function scopedMaterial(
   material: string, meshName: string, recolor: BakeOptions['recolor'],
 ): string {
@@ -672,7 +696,9 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
       }
     }
     // 우리가 적어 둔 색이 제일 세다 — 사람이 정한 것이라 원본을 이긴다
+    const patches: Patch[] = []
     for (const [prop, hex] of Object.entries(options.recolor?.[key] ?? {})) {
+      if (prop.startsWith(PATCH_PROP)) { patches.push(parsePatch(hex)); continue }
       colors.set(prop, hexColor(hex) as unknown as UnityValue)
     }
     const floats = pairs(saved.m_Floats)
@@ -834,6 +860,16 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
         let lr = f32(lin[i * 3]! * tr)
         let lg = f32(lin[i * 3 + 1]! * tg)
         let lb = f32(lin[i * 3 + 2]! * tb)
+        // UV 네모 안을 한 색으로 덮는다 (`PATCH_PROP`)
+        if (patches.length > 0) {
+          const pu = (x + 0.5) / width
+          const pv = 1 - (y + 0.5) / height
+          for (const p of patches) {
+            if (pu >= p.rect[0] && pu < p.rect[2] && pv >= p.rect[1] && pv < p.rect[3]) {
+              lr = p.rgb[0]; lg = p.rgb[1]; lb = p.rgb[2]
+            }
+          }
+        }
         let alpha = -1
         if (water) {
           // 더할 빛 A, 알파 max(A), 색 A / max(A) — `ADDITIVE_WATER`

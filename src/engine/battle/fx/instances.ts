@@ -26,6 +26,8 @@ export interface FxInstances {
   c0: Float32Array // ×4
   c1: Float32Array // ×4
   rect: Float32Array // ×4 그림 칸 [u0, v0, du, dv]
+  /** 수명 진행 0~1 (나이 / 수명) — 컴바이너 값 곡선 · 왜곡 세기 곡선이 읽는다 */
+  life: Float32Array
   count: number
 }
 
@@ -39,6 +41,7 @@ export function makeInstances(cap: number): FxInstances {
     c0: new Float32Array(cap * 4),
     c1: new Float32Array(cap * 4),
     rect: new Float32Array(cap * 4),
+    life: new Float32Array(cap),
     count: 0,
   }
 }
@@ -203,6 +206,8 @@ export function writeInstances(slot: FxSlot, cam: FxCamera, out: FxInstances, or
     out.axisY[o3] = -A[1]!; out.axisY[o3 + 1] = A[4]!; out.axisY[o3 + 2] = A[7]!
     out.axisZ[o3] = -A[2]!; out.axisZ[o3 + 1] = A[5]!; out.axisZ[o3 + 2] = A[8]!
     const o4 = k * 4
+    const span = sys.life[i]!
+    out.life[k] = span > 1e-6 ? Math.min(1, Math.max(0, sys.age[i]! / span)) : 0
     sys.color(i, col)
     out.color.set(col, o4)
     sys.custom(i, 0, col)

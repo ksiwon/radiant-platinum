@@ -42,11 +42,27 @@ function expectSame(path: string, bytes: Uint8Array): void {
 }
 
 describe('그룹 표', () => {
-  it('새 그룹 여덟이 변환기와 함께 붙어 있다', () => {
-    for (const name of ['typeIcons', 'startMenuIcons', 'dexShapes', 'dexHeightWeight', 'townMapPlayer', 'mailArt', 'berryArt', 'diplomaArt']) {
+  it('새 그룹 아홉이 변환기와 함께 붙어 있다', () => {
+    for (const name of ['typeIcons', 'partyIcons', 'startMenuIcons', 'dexShapes', 'dexHeightWeight', 'townMapPlayer', 'mailArt', 'berryArt', 'diplomaArt']) {
       expect(GROUPS.find((g) => g.name === name)?.convert, name).toBeTypeOf('function')
     }
   })
+})
+
+withRom('en', 'ko', 'ja')('파티 표식', () => {
+  it('세 롬에서 24×8 한 장이고 개발 산출물과 픽셀까지 같다', async () => {
+    for (const locale of ['en', 'ko', 'ja']) {
+      const out = await run('partyIcons', locale)
+      expect([...out.keys()], locale).toEqual(['data/partyIcons.png'])
+      for (const [path, bytes] of out) expectSame(path, bytes)
+      const png = decodePngBytes(out.get('data/partyIcons.png')!)
+      expect([png.width, png.height]).toEqual([24, 8])
+      // 볼캡슐 칸(2번)에 칠한 픽셀이 있다
+      let solid = 0
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if (png.pixels[(y * 24 + 16 + x) * 4 + 3] !== 0) solid++
+      expect(solid, locale).toBeGreaterThan(30)
+    }
+  }, 120_000)
 })
 
 withRom('en', 'ko', 'ja')('타입 · 분류 그림', () => {

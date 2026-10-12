@@ -221,6 +221,8 @@ import { berryPatchServices } from './berryPatches'
 import { safariServices } from './safari'
 import { vsSeekerServices } from './vsSeeker'
 import { addAccessory, canFitAccessory, removeAccessory } from '../engine/world/fashionCase'
+import { giveOrTakeSeal } from '../engine/world/sealCase'
+import { leaveCapsuleBehind, sealsAnywhere, sealsInUse, uniqueSealsAnywhere } from '../engine/world/ballCapsule'
 import type { FieldServices } from '../engine/script/world'
 import type { MartTable, Trainer } from '../data/schema'
 
@@ -301,6 +303,10 @@ let natureNames: readonly string[] = []
 /** 나무열매 64 (`TEXT_BANK_BERRY_NAMES`). 차례가 도구 번호 − `FIRST_BERRY_ITEM`이다 */
 let berryNames: readonly string[] = []
 let accessoryNames: readonly string[] = []
+/** 볼 씰 이름(단수 · 복수)과 콘테스트 배경 이름 */
+let sealNames: readonly string[] = []
+let sealNamesPlural: readonly string[] = []
+let backdropNames: readonly string[] = []
 /** 트레이너 이름 928 · 분류 105 */
 let trainerNames: readonly string[] = []
 let trainerClassNames: readonly string[] = []
@@ -715,6 +721,12 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   void loadDialogueBank(locale, UI_BANK.accessoryNames)
     .then((bank) => { accessoryNames = bank })
     .catch(() => { /* 장식 이름만 빈다 */ })
+  void loadDialogueBank(locale, UI_BANK.ballSealNames)
+    .then((bank) => { sealNames = bank }).catch(() => { /* 씰 이름만 빈다 */ })
+  void loadDialogueBank(locale, UI_BANK.ballSealNamesPlural)
+    .then((bank) => { sealNamesPlural = bank }).catch(() => { /* 복수 이름만 빈다 */ })
+  void loadDialogueBank(locale, UI_BANK.backdropNames)
+    .then((bank) => { backdropNames = bank }).catch(() => { /* 배경 이름만 빈다 */ })
   // 아래 넷은 미국 롬에만 있다. 못 받는 것이 정상이라 조용히 넘긴다
   void loadDialogueBank(locale, UI_BANK.itemNamesWithArticles)
     .then((bank) => { itemArticleNames = bank }).catch(() => { /* 맨 이름표로 */ })
@@ -1194,6 +1206,18 @@ const services: FieldServices = {
 
   vsSeeker: vsSeekerServices,
 
+  // 씰케이스 (PARITY §4.11). 리포트가 곧 케이스다
+  seals: {
+    count: (id) => sealsAnywhere(useSaveStore.getState().sealCase, useSaveStore.getState().capsules, id),
+    unique: () => uniqueSealsAnywhere(useSaveStore.getState().sealCase, useSaveStore.getState().capsules),
+    giveOrTake: (id, quantity) => {
+      const at = useSaveStore.getState()
+      const put = giveOrTakeSeal(at.sealCase, id, quantity, sealsInUse(at.capsules, id))
+      if (put.ok) useSaveStore.setState({ sealCase: [...put.seals] })
+      return put.ok
+    },
+  },
+
   // 장식 케이스 (PARITY §7.16). 리포트가 곧 케이스라 따로 둘 상태가 없다
   fashionCase: {
     canFit: (accessory, count) =>
@@ -1222,6 +1246,9 @@ const services: FieldServices = {
     // ⚠️ 도구 표가 아니라 **열매 이름 뱅크**다 — 「체리열매」가 아니라 「체리」
     berry: (item) => berryNames[item - FIRST_BERRY_ITEM] ?? '',
     accessory: (accessory) => accessoryNames[accessory] ?? '',
+    sealName: (seal) => sealNames[seal] ?? '',
+    sealNamePlural: (seal) => sealNamesPlural[seal] ?? '',
+    backdropName: (backdrop) => backdropNames[backdrop] ?? '',
     pocket: (pocket) => pocketNames[pocket] ?? '',
     species: (species) => speciesNames[species] ?? '',
     type: (type) => typeNames[type] ?? '',
@@ -1512,6 +1539,9 @@ const services: FieldServices = {
 
   openShop: (stock, currency, onPurchase) => { useMenuStore.getState().openShop(stock, currency ?? 'money', onPurchase) },
 
+  /** PC의 볼캡슐 편집기 (`OpenSealCapsuleEditor`) */
+  openCapsuleEditor: () => { useMenuStore.getState().open('capsule') },
+
   /** 보관 시스템 다섯 갈래 (`OpenPokemonStorage`) */
   openStorage: (mode) => {
     if (mode < 0 || mode > BOX_MODE.compare) return
@@ -1578,7 +1608,8 @@ const services: FieldServices = {
       if (!mon || at < 0) return
       const slots = [...save.daycare.slots]
       // 맡기면 랜드로 돌아간다 (daycare.c의 BoxPokemon_SetShayminForm)
-      slots[at] = { mon: landShayminForDeposit(mon), steps: 0, levelIn: mon.level }
+      // 볼캡슐 표시는 맡길 때 떨어진다 — 맡긴 자리에 캡슐 칸이 없다 (`BoxPokemon_FromPokemon`)
+      slots[at] = { mon: landShayminForDeposit(leaveCapsuleBehind(mon)), steps: 0, levelIn: mon.level }
       useSaveStore.setState({
         party: save.party.filter((_, i) => i !== partySlot),
         daycare: { ...save.daycare, slots },

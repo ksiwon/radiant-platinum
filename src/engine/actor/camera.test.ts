@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { Vector3 } from 'three'
 import {
   aimPitch, cameraDolly, cameraSystem, clampToRoom, eyeForward, eyeProbeStale, FIELD_FOV, FIELD_NEAR, FIRST_NEAR,
-  firstPersonView, roomAt,
+  firstPersonView, roomAt, SPEAR_PITCH_DEG,
   scriptCameraActive, type EyeProbeMemo, type RoomBox,
 } from './camera'
 import { worldState } from '../../state/worldState'
@@ -227,6 +227,46 @@ describe('렌즈가 갈리는 프레임에는 미끄러지지 않고 앉는다',
     worldState.player.position.set(12, 0, 10)
     cameraSystem.update(1 / 60)
     expect(cameraSystem.drift).toBeGreaterThan(1)
+  })
+})
+
+describe('창기둥 사슬 장면은 원작 내림각으로 올린다 (`pitchHold`)', () => {
+  afterEach(() => {
+    worldState.camera.mode = 'third'
+    cameraSystem.free = null
+    cameraSystem.pitchHold = null
+  })
+  const pitchOf = (): number => {
+    const d = worldState.camera.position.clone().sub(worldState.camera.target)
+    return (Math.atan2(d.y, Math.hypot(d.x, d.z)) * 180) / Math.PI
+  }
+  const settle = (): void => {
+    worldState.player.position.set(10, 0, 10)
+    worldState.player.prevPosition.set(10, 0, 10)
+    for (let i = 0; i < 240; i++) cameraSystem.update(1 / 60)
+  }
+
+  it('원작 갈래 5의 내림각이다 (59.046도)', () => {
+    expect(SPEAR_PITCH_DEG).toBeCloseTo(59.046, 3)
+  })
+
+  it('켜면 그 각으로 내려다보고 빗변(거리)은 그대로다', () => {
+    worldState.camera.mode = 'third'
+    settle()
+    const before = worldState.camera.position.distanceTo(worldState.camera.target)
+    expect(pitchOf()).toBeLessThan(40)
+    cameraSystem.pitchHold = SPEAR_PITCH_DEG
+    settle()
+    expect(pitchOf()).toBeCloseTo(SPEAR_PITCH_DEG, 1)
+    expect(worldState.camera.position.distanceTo(worldState.camera.target)).toBeCloseTo(before, 1)
+  })
+
+  it('끄면 평소 각으로 돌아온다', () => {
+    cameraSystem.pitchHold = SPEAR_PITCH_DEG
+    settle()
+    cameraSystem.pitchHold = null
+    settle()
+    expect(pitchOf()).toBeLessThan(40)
   })
 })
 
