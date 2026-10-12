@@ -385,8 +385,10 @@ export const NPC_RECOLOR: Readonly<Record<string, Recolor>> = {
   },
   // 남자 점원 — 작업원 몸(`fc0040_00`)을 롬 점원 그림(`CASHIER_M` · `shopm1`) 앞모습 색으로 다시 칠한다. 목표는 그 부위 픽셀의 선형 평균이고
   // 넣는 값은 목표 ÷ 채널 음영 평균을 푼 것이다 (`recolorSolve` 방식 · 눈으로 고르지 않았다).
-  //   옷(`wear._SkinColor` 732정점 — 상의와 바지가 한 채널이다): 앞치마 주황(#f77b5a · #c6525a)과 청록 셔츠(#63bdb5 · #638c7b) 44px의 평균 #c97c71.
-  //     음영 평균이 0.78이라 레이어 색 1에서 막힌다 → #ffa093이 #c77c71로 나온다 (한계에 걸렸다)
+  //   옷(`wear._SkinColor` 732정점 — 상의와 바지가 한 채널이다): 롬 그림의 옷은 두 덩어리(주황 앞치마 · 청록 셔츠)인데 채널이 하나다.
+  //     **한 채널에 두 부위가 겹치면 픽셀이 많은 쪽을 목표로 한다** — 두 색의 평균은 둘 다 아닌 연어색이 된다(처음에 그렇게 했다).
+  //     앞치마 #f77b5a · #c6525a 34px의 선형 평균 #dc655a. 채널 음영 평균이 0.78이라 R이 1에서 막힌다(필요 1.25 · 0.23 · 0.18).
+  //     **막히면 색상 · 채도를 지키고 밝기만 내린다** — 세 값을 같은 비율(0.802)로 줄여 #ff776a를 넣으면 #c75b51이 나온다
   //   머리(`hair._PrimaryColor`): #7b5a52 68px → #86625a
   //   장화(`wear._SecondaryColor`): #bd945a 14px → #eebb73
   //   모자: 안전모의 둥근 윗부분은 `hat_metal`의 Secondary(153정점)고 띠는 그 Skin(24정점)이다 — 윗부분을 롬 머리 갈색 #7b5a52(넣는 값 #966f65),
@@ -396,7 +398,7 @@ export const NPC_RECOLOR: Readonly<Record<string, Recolor>> = {
   'fc0040_00-clerk': {
     paint: {
       hair: { _PrimaryColor: '#86625a' },
-      wear: { _SkinColor: '#ffa093', _SecondaryColor: '#eebb73' },
+      wear: { _SkinColor: '#ff776a', _SecondaryColor: '#eebb73' },
       hat: { _Patch0: '#7b5a52@0~0~1~1' },
       hat_metal: { _SecondaryColor: '#966f65', _SkinColor: '#deae6b' },
     },
