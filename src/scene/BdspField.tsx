@@ -30,6 +30,7 @@ import { fieldFade, isGround, type FieldFade } from './fieldFade'
 import { bdspLights, type BdspLights } from './bdspLights'
 import { disposeTree } from './disposeTree'
 import { useBdspMark } from './bdspReady'
+import { trackWater } from './waterLevel'
 import { beginAsyncPipelines, settleAsyncPipelines } from './asyncPipelines'
 import { holdBdspDoors } from './DoorAnimations'
 import { holdBdspSigns } from './ObjectProps'
@@ -340,6 +341,7 @@ export function liveWater(root: Object3D): number {
     o.castShadow = false
     o.receiveShadow = false
     sinkWater(o)
+    trackWater(o)
   })
   for (const old of swapped.keys()) old.dispose()
   return swapped.size
