@@ -235,6 +235,14 @@ export function installDevConsole(): void {
      * `pt.cutIn(1, -1)`로 지운다 — 안 지우면 그 화면이 계속 얹혀 있다
      */
     cutIn: (effect: number, frame = 12) => { pinCutIn(effect, frame) },
+    /**
+     * 실제 배틀 화면에서 기술 연출을 본다 — 내 쪽 · 상대 쪽 · 싱글/더블을 정해 연다 (`app/devFxBattle`).
+     * 한 턴은 `pt.fxTurn({ move, target })` (더블은 앞자리 · 뒷자리 순으로 둘)
+     */
+    fxBattle: async (opts: Parameters<typeof import('./devFxBattle').fxBattle>[0]) =>
+      (await import('./devFxBattle')).fxBattle(opts),
+    fxTurn: async (...picks: Parameters<typeof import('./devFxBattle').fxTurn>) =>
+      (await import('./devFxBattle')).fxTurn(...picks),
     /** 야생전을 연다. 셋째 값은 폼이다 (PARITY §3.4) */
     wild: (species: number, level = 10, form = 0) =>
       useBattleStore.getState().startWild({ species, level, form }),
