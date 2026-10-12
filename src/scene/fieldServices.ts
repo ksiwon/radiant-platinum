@@ -222,7 +222,7 @@ import { safariServices } from './safari'
 import { vsSeekerServices } from './vsSeeker'
 import { addAccessory, canFitAccessory, removeAccessory } from '../engine/world/fashionCase'
 import { giveOrTakeSeal } from '../engine/world/sealCase'
-import { sealsAnywhere, sealsInUse, uniqueSealsAnywhere } from '../engine/world/ballCapsule'
+import { leaveCapsuleBehind, sealsAnywhere, sealsInUse, uniqueSealsAnywhere } from '../engine/world/ballCapsule'
 import type { FieldServices } from '../engine/script/world'
 import type { MartTable, Trainer } from '../data/schema'
 
@@ -1608,7 +1608,8 @@ const services: FieldServices = {
       if (!mon || at < 0) return
       const slots = [...save.daycare.slots]
       // 맡기면 랜드로 돌아간다 (daycare.c의 BoxPokemon_SetShayminForm)
-      slots[at] = { mon: landShayminForDeposit(mon), steps: 0, levelIn: mon.level }
+      // 볼캡슐 표시는 맡길 때 떨어진다 — 맡긴 자리에 캡슐 칸이 없다 (`BoxPokemon_FromPokemon`)
+      slots[at] = { mon: landShayminForDeposit(leaveCapsuleBehind(mon)), steps: 0, levelIn: mon.level }
       useSaveStore.setState({
         party: save.party.filter((_, i) => i !== partySlot),
         daycare: { ...save.daycare, slots },

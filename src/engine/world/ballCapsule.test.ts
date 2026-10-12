@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  attachCapsule, canReceiveSeal, CAPSULE_SLOTS, carrierOf, detachCapsule, emptyCapsule, hasSeals, newCapsules, placeSeal,
+  attachCapsule, canReceiveSeal, CAPSULE_SLOTS, carrierOf, detachCapsule, emptyCapsule, leaveCapsuleBehind, hasSeals, newCapsules, placeSeal,
   removeSeal, SEALS_PER_CAPSULE, sealsOf, sealsAnywhere, sealsInUse, swapCapsules, syncCarriers, TOTAL_CAPSULES, uniqueSealsAnywhere,
   type BallSeal, type MonCapsule,
 } from './ballCapsule'
@@ -138,6 +138,20 @@ describe('볼캡슐', () => {
     c[6] = { ...c[6]!, type: 80 }
     expect(sealsOf(c).map((s) => s.type)).toEqual([7, 80])
     expect(sealsOf(emptyCapsule())).toEqual([])
+  })
+
+  it('키우미집에 맡기면 표시만 떨어지고 캡슐과 씰은 케이스에 남는다', () => {
+    const put = placeSeal(withSeals(1), newCapsules(), 4, 3, 1)!
+    const mon = attachCapsule([{ name: 'a' } as Mon], put.capsules, 4, 0)![0]!
+    expect(mon.capsule?.id).toBe(5)
+    const stored = leaveCapsuleBehind(mon)
+    expect(stored.capsule).toBeUndefined()
+    expect(stored.name).toBe('a')
+    // 캡슐은 그대로고 씰도 여전히 씌워진 채다
+    expect(sealsInUse(put.capsules, 1)).toBe(1)
+    expect(carrierOf([stored], 4)).toBe(-1)
+    // 달린 적 없는 마리는 그대로다
+    expect(leaveCapsuleBehind({ name: 'b' } as Mon)).toEqual({ name: 'b' })
   })
 
   it('빈 캡슐은 칸 자리를 쥔다', () => {

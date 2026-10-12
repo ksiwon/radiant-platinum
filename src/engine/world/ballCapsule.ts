@@ -186,3 +186,13 @@ export function swapCapsules<T extends Carrier>(
   })
   return { capsules: next, party: syncCarriers(moved, next) }
 }
+
+/**
+ * 키우미집에 맡길 때 — 캡슐 표시가 **조용히 사라진다** (`Daycare_MoveToDaycareMonFromParty` → `BoxPokemon_FromPokemon`).
+ *
+ * 맡긴 자리(`BoxPokemon`)에는 캡슐 칸이 없어서 막지도 묻지도 않고 떨어진다. 캡슐과 씰은 케이스에 그대로 남고
+ * (`SealCase`는 마리와 따로다) 찾아온 마리(`Pokemon_FromBoxPokemon`)는 캡슐이 없다
+ */
+export function leaveCapsuleBehind<T extends Carrier>(mon: T): T {
+  return detachCapsule([mon], 0)[0] ?? mon
+}
