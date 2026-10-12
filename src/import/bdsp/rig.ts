@@ -19,7 +19,7 @@ import type { UnityValue } from './typetree'
 type Props = Record<string, UnityValue>
 const num = (v: UnityValue | undefined, fallback = 0): number => (typeof v === 'number' ? v : fallback)
 
-export interface RigNode {
+interface RigNode {
   name: string
   /** 이 마디의 Transform */
   transform: number
@@ -33,7 +33,7 @@ export interface RigNode {
 }
 
 /** 뼈대에 매달린 껍데기 하나 (`SkinnedMeshRenderer`) */
-export interface RigSkin {
+interface RigSkin {
   mesh: number
   materials: number[]
   /** 뼈의 Transform PathID들 — 스킨의 `joints`가 된다 */
@@ -52,7 +52,7 @@ export interface Rig {
 }
 
 /** 클립 이름: 03 오름 · 04 내림 */
-export function escalatorClip(goName: string): 'up' | 'down' | null {
+function escalatorClip(goName: string): 'up' | 'down' | null {
   const m = /Escalator_0([34])/.exec(goName)
   return m ? (m[1] === '3' ? 'up' : 'down') : null
 }

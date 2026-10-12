@@ -25,7 +25,7 @@ import {
 import { ALWAYS_ASYNC } from './asyncPipelines'
 
 /** 재질 `userData`로 오는 움직임 값 — `import/bdsp/motion.ts`의 `motionExtras` */
-export interface MotionValues {
+interface MotionValues {
   texVel?: readonly number[]
   scroll?: readonly number[]
   frames?: { h: number, v: number, start: number, every: number }
@@ -43,7 +43,7 @@ const NO_MOTION = ((): boolean => {
 export function motionDisabled(): boolean { return NO_MOTION }
 
 /** 바람 진폭 곱수 (추측 — 머리말) */
-export const WIND_GAIN = 2
+const WIND_GAIN = 2
 
 /** 이 재질이 움직이는가 */
 export function motionOf(m: Material): MotionValues | null {
@@ -164,7 +164,7 @@ export function liveMotionMaterials(root: Object3D): number {
 // ── 회전 · 마디 클립 ─────────────────────────────────────────────────────────────────────────────────────
 
 /** DOTween 회전 값 — 노드 `userData.spin` */
-export interface Spin { euler: readonly number[], add: readonly number[], secs: number }
+interface Spin { euler: readonly number[], add: readonly number[], secs: number }
 
 const RAD = Math.PI / 180
 const tmpEuler = new Euler()

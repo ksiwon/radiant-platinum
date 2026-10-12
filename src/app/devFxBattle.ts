@@ -11,7 +11,7 @@ import { useBattleStore } from '../state/battleStore'
 import { playerTrainer, useSaveStore } from '../state/saveStore'
 
 /** 한 마리 지정 — 종족 · 레벨 · 기술(최대 4) · 폼 */
-export interface FxMon { species: number; level?: number; moves: readonly number[]; form?: number }
+interface FxMon { species: number; level?: number; moves: readonly number[]; form?: number }
 
 async function build(spec: FxMon): Promise<PokemonInstance> {
   const [table, moves] = await Promise.all([loadSpecies(), loadMoves()])
@@ -41,7 +41,7 @@ export async function fxBattle(opts: { mine: readonly FxMon[]; foe: readonly FxM
 }
 
 /** 어느 자리가 어떤 기술을 어디로 쓰는가. 기술은 롬 번호, 대상은 상대 쪽 1·2 · 내 쪽 −1·−2 (더블에서 대상이 필요한 기술에만) */
-export interface FxPick { move: number; target?: number }
+interface FxPick { move: number; target?: number }
 
 /** 입력을 받을 수 있는 때까지 기다린다 — 이전 턴의 사건이 다 재생되고 후보가 선 뒤 */
 async function ready(timeoutMs: number): Promise<boolean> {

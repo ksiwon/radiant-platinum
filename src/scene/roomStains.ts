@@ -18,7 +18,7 @@ interface Stain {
 }
 
 /** 방 이름 → 얼룩 */
-export const ROOM_STAINS: Readonly<Record<string, readonly Stain[]>> = {
+const ROOM_STAINS: Readonly<Record<string, readonly Stain[]>> = {
   t01r0202: [{ material: /Wall_01_2F/, rect: [313, 63, 41, 78], from: [276, 63] }],
 }
 

@@ -38,7 +38,7 @@ const turn = new Quaternion()
  * 비전기술의 BDSP 파티클 프리팹 (`data/fx`의 `ef_f_waza_*` — `import/bdsp/fx.ts`의 `FIELD_ACTION_PREFAB`). 구워져 있으면 도형 고리 · 조각 대신 이것이 선다.
  * 파도타기 · 폭포오르기는 BDSP에 필드 프리팹이 없다(타는 몸이 연출이다) — 도형 그대로다
  */
-export const ACTION_PREFABS: Readonly<Partial<Record<FieldActionFxKind, string>>> = {
+const ACTION_PREFABS: Readonly<Partial<Record<FieldActionFxKind, string>>> = {
   cut: 'ef_f_waza_cut',
   rockSmash: 'ef_f_waza_rocksmash',
   strength: 'ef_f_waza_strength',

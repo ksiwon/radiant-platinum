@@ -17,10 +17,10 @@ const CHUNK = 32
 /** BDSP 바다 높이 (칸) */
 export const SEA_LEVEL = 0.98
 /** 바깥 둘레 밖으로 이만큼(청크 칸) 더 깐다 — 안개 끝(130칸)을 넘게 */
-export const SEA_MARGIN = 5
+const SEA_MARGIN = 5
 
 /** 바다 칸(`~`) 지도. 줄 = 청크 z, 열 = 청크 x */
-export const SEA_MAP: readonly string[] = [
+const SEA_MAP: readonly string[] = [
   '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
   '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
   '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
@@ -57,7 +57,7 @@ export const SEA_MAP: readonly string[] = [
  * 청크 칸 단위로 못 잡는 물 칸 — DS가 물로 적었는데(거동값 0x15 · 0x16 · 0x10) BDSP가 안 덮는 타일 296개를 직사각형으로 묶은 것이다
  * (운하시티 남쪽 가장자리 · W231 동쪽 끝 한 줄). 화면에서 동쪽 끝이 가로 띠로 허옇게 남은 것을 보고 더했다
  */
-export const SEA_PATCHES: readonly TileRect[] = [
+const SEA_PATCHES: readonly TileRect[] = [
   { x: 60, z: 828, w: 8, h: 4 },
   { x: 60, z: 832, w: 4, h: 4 },
   { x: 922, z: 224, w: 6, h: 248 },
