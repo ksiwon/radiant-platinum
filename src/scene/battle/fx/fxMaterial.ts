@@ -180,6 +180,7 @@ export function buildFxMaterial(spec: FxMaterialSpec, maps: readonly Texture[], 
       for (let k = 1; k < 8; k++) v = mix(v, combKeys[k]!, saturate(vLife.mul(7).sub(k - 1))) as Node<'vec4'>
       return v
     })()
+  const lit = spec.combiner.kind === 'light' || spec.combiner.kind === 'lightNormal'
   // 조명 방향 — 눈 공간에서 위 · 앞쪽 (`LIGHTPARAM01`; 우리 값)
   const lightDir = vec3(0.25, 0.8, 0.55).normalize()
   // 눈 쪽으로 향한 정도 — 면이 마주 보면 1, 모서리면 0 (프레넬 · 판 종류는 법선이 없어 쓰지 않는다)
@@ -194,6 +195,8 @@ export function buildFxMaterial(spec: FxMaterialSpec, maps: readonly Texture[], 
     let comboA: Node<'float'> = float(1)
     // 그림 왜곡(`_DISTORTION_TEXTURE`) — 첫 그림의 RG(0.5 중심)가 뒷그림들의 UV를 민다. 첫 그림 자체는 평소대로 그린다
     let warp: Node<'vec2'> = vec2(0, 0)
+    // `LIGHTPARAM01_MULVERTEXCOL_NORML`: 첫째 그림이 법선 맵이다 — 색이 아니라 명암의 법선에 넣는다 (아래 `ramp`)
+    let lightN: Node<'vec3'> = vNormal
     spec.textures.forEach((t, i) => {
       const u = uniforms[i]!
       // 그림 칸 → 0.5 둘레 회전 → 타일링 × UV 크기 → 오프셋 + 흘리기
@@ -209,20 +212,30 @@ export function buildFxMaterial(spec: FxMaterialSpec, maps: readonly Texture[], 
       // `LIGHTPARAM01`: 둘째 그림은 **빛 띠**(`fxpt_cmn_lt001/002_m` 256×8 — 61재질 중 59가 `lt` 그림, `lt002`는 0.55에서 켜지는 툰 계단)다.
       // 읽는 자리는 메시 UV가 아니라 명암 `x + y × (법선 · 빛)` — 값 (x, y)가 (바탕, 받는 빛)이라는 해석이다(코인 `koban`: (0.4, 0.5) → (0.9, 0.6)이라
       // 0.4면 툰 계단 아래 = 그림자, 0.9면 켜짐). 안 이으면 둘째 그림이 메시 UV로 읽혀 코인이 새까맣게 나왔다(실측 기술 6)
-      const ramp = spec.combiner.kind === 'light' && i === 1
-      const rampUv = vec2(saturate(combP.x.add(combP.y.mul(saturate(dot(vNormal, lightDir))))), 0.5)
+      const ramp = lit && i === 1
+      const rampUv = vec2(saturate(combP.x.add(combP.y.mul(saturate(dot(lightN, lightDir))))), 0.5)
       const st = ramp ? rampUv : spec.distortion.mode === 2 && i > 0 ? st0.add(warp) : st0
       const tex = texture(maps[i]!, st)
       if (spec.distortion.mode === 2 && i === 0) warp = tex.rg.sub(0.5).mul(2).mul(distort)
       const rgb = pow(max(tex.rgb, vec3(0, 0, 0)), vec3(u.pow, u.pow, u.pow))
-      const crgb = colorChannel(t.colorChannel, rgb, tex.a)
+      // 법선 맵 갈래의 첫째 그림: 접선 공간 법선(rgb × 2 − 1)을 메시 법선 둘레의 접선 · 종접선에 얹어 명암 법선으로 쓰고, 색 몫은 흰색(1)으로 둔다 —
+      // 색은 정점색 · 재질색(`C0` · `_MulColor`)이 준다. 메시 법선이 0이면(법선 없는 메시) 맵 법선을 눈 공간 그대로 쓴다
+      const asNormal = spec.combiner.kind === 'lightNormal' && i === 0
+      if (asNormal) {
+        const nm = tex.rgb.mul(2).sub(1)
+        const tan = normalize(vec3(0, 1, 0).cross(vNormal).add(vec3(1e-4, 0, 0)))
+        const bit = vNormal.cross(tan)
+        const mixed = tan.mul(nm.x).add(bit.mul(nm.y)).add(vNormal.mul(nm.z))
+        lightN = normalize(length(vNormal).greaterThan(0.5).select(mixed, nm)) as Node<'vec3'>
+      }
+      const crgb = asNormal ? vec3(1, 1, 1) : colorChannel(t.colorChannel, rgb, tex.a)
       const ca = alphaChannel(t.alphaChannel, tex.r, tex.a)
       if (i === 0) {
         comboRgb = crgb
         comboA = ca
       } else {
         // `LIGHTPARAM01`의 셋째 그림(`..._hlm_..._lta` — 검은 바탕에 흰 윤곽 · 줄)은 하이라이트라 곱하지 않고 더한다(곱하면 코인 속이 새까맣다 — 실측 기술 6)
-        comboRgb = combine(spec.combiner.kind === 'light' && i === 2 ? 1 : t.colorBlend, comboRgb, crgb)
+        comboRgb = combine(lit && i === 2 ? 1 : t.colorBlend, comboRgb, crgb)
         comboA = combine(t.alphaBlend, comboA, ca)
       }
     })

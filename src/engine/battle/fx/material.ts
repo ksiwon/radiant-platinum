@@ -44,10 +44,12 @@ interface FxTextureSpec {
 }
 
 /** 특수 컴바이너 갈래 — 키워드 이름 → 우리가 읽는 갈래 */
-type CombinerKind = 'ice' | 'light' | 'alphaMul' | 'fresnelOne' | 'fire' | 'zSmoke' | 'zWater'
+type CombinerKind = 'ice' | 'light' | 'lightNormal' | 'alphaMul' | 'fresnelOne' | 'fire' | 'zSmoke' | 'zWater'
 
 const COMBINER_KINDS: readonly (readonly [string, CombinerKind])[] = [
   ['_COMBINER_ICE01', 'ice'],
+  // ⚠️ 긴 이름이 앞이다 — `LIGHTPARAM01`이 접두사로 먼저 잡으면 법선 맵 갈래가 빛 띠 갈래로 읽힌다
+  ['_COMBINER_LIGHTPARAM01_MULVERTEXCOL_NORML', 'lightNormal'],
   ['_COMBINER_LIGHTPARAM01', 'light'],
   ['_COMBINER_ALPHABLEND_MUL_TEX0', 'alphaMul'],
   ['_COMBINER_FRESNEL_ONECOLOR', 'fresnelOne'],

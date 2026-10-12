@@ -55,7 +55,7 @@ describe('셰이더 기능 명세', () => {
 
   it('특수 컴바이너 갈래와 값 여덟 칸 · 왜곡 곡선이 읽히고 그래프가 지어진다', () => {
     const kinds: [string, string][] = [
-      ['_COMBINER_ICE01', 'ice'], ['_COMBINER_LIGHTPARAM01_MULVERTEXCOL_NORML', 'light'], ['_COMBINER_ALPHABLEND_MUL_TEX0', 'alphaMul'],
+      ['_COMBINER_ICE01', 'ice'], ['_COMBINER_LIGHTPARAM01', 'light'], ['_COMBINER_LIGHTPARAM01_MULVERTEXCOL_NORML', 'lightNormal'], ['_COMBINER_ALPHABLEND_MUL_TEX0', 'alphaMul'],
       ['_COMBINER_FRESNEL_ONECOLOR_TEX2MULTIPLY', 'fresnelOne'], ['_COMBINER_FIRE_TWOCOLOR', 'fire'],
       ['_COMBINER_ZOFFSET_SMOKE_ALPHAMASK', 'zSmoke'], ['_COMBINER_ZOFFSET_WATER_ALPHA', 'zWater'],
     ]
@@ -85,5 +85,14 @@ describe('셰이더 기능 명세', () => {
     const flat = readMaterial(base({ _Distortion: 2 }, { _DistortionAnim0: [0, 1, 0, 0], _DistortionAnim1: [1, 1, 0, 0] }), null)
     const bent = readMaterial(base({ _Distortion: 2 }, { _DistortionAnim0: [0, 0, 0, 0], _DistortionAnim1: [0.3, 1, 0, 0] }), null)
     expect(materialKey(flat)).not.toBe(materialKey(bent))
+  })
+
+  it('법선 맵 갈래(`LIGHTPARAM01_MULVERTEXCOL_NORML`)는 빛 띠 갈래와 열쇠가 갈린다 (431 · 434 · 439가 쓴다)', () => {
+    const of = (kw: string) => {
+      const m = base({}, { _CombinerAnim0_0: [0.05, 0.28, 0.22, 0] }); (m as unknown as { keywords: string[] }).keywords = [kw]
+      return materialKey(readMaterial(m, null))
+    }
+    expect(of('_COMBINER_LIGHTPARAM01')).not.toBe(of('_COMBINER_LIGHTPARAM01_MULVERTEXCOL_NORML'))
+    expect(of('_COMBINER_LIGHTPARAM01_MULVERTEXCOL_NORML')).toBe(of('_COMBINER_LIGHTPARAM01_MULVERTEXCOL_NORML'))
   })
 })
