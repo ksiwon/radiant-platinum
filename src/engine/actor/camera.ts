@@ -63,6 +63,18 @@ const FIELD_CAMERA_PITCH: readonly number[] = [
  */
 const INDOOR_SLANT = 6.3632
 
+/** 원작 필드 카메라 갈래 5(창단의 기둥)의 내림각 — 창기둥 붉은 사슬 장면이 이 각으로 본다 (`spearPillarFx`) */
+export const SPEAR_PITCH_DEG = FIELD_CAMERA_PITCH[5]!
+
+/**
+ * 3인칭 기본 렌즈의 빗변을 지키고 **내림각만** 갈아 끼운 렌즈 — `cameraSystem.pitchHold`가 켜진 동안 쓴다
+ */
+function holdLens(deg: number): { distance: number, height: number, damping: number } {
+  const slant = Math.hypot(THIRD.distance, THIRD.height)
+  const rad = (deg * Math.PI) / 180
+  return { distance: slant * Math.cos(rad), height: slant * Math.sin(rad), damping: THIRD.damping }
+}
+
 /**
  * **방에 쓸 렌즈** — 원작이 그 맵에 쓰는 내림각에 우리 빗변을 건다.
  * 방이 아니면 `null`.
@@ -512,6 +524,16 @@ export const cameraSystem = {
   free: null as { x: number, z: number } | null,
 
   /**
+   * 3인칭 렌즈의 내림각(도)을 **연출 동안만** 못 박는다. null이면 평소 렌즈다.
+   *
+   * 창기둥 붉은 사슬 장면용이다 (`scene/spearPillarFx`). 원작은 이 장면에서 카메라 각을 안 바꾸고
+   * `AddFreeCamera`로 겨눔점만 아카기에게 옮긴다 — 다만 원작의 필드 카메라는 59도로 내려다보는데
+   * 우리 3인칭 기본은 26.6도라, 땅에 눕힌 사슬 원판이 모서리로만 보인다. 읽히는 쪽을 따라
+   * 장면 동안만 원작 각으로 올린다 (PARITY §8.15). 빗변은 그대로라 거리는 안 멀어진다
+   */
+  pitchHold: null as number | null,
+
+  /**
    * 타고 있는 것이 몸을 **들어 올린 높이** (타일). 1인칭 눈이 그만큼 같이 오른다.
    *
    * 파도타기는 몸을 포켓몬 등판 꼭대기로 올리는데(`SURF_MOUNT.stand` ≈ 0.89칸,
@@ -636,7 +658,8 @@ export const cameraSystem = {
       // 카메라가 홱 도는 자리 스물여섯 곳이 각을 더한다 (PARITY §6.10) —
       // 원작도 `baseAngle`에 구역 각을 더하는 꼴이라 밑각이 맞아야 이것도 맞는다
       const room = inDistortion ? null : roomLens()
-      const lens = inDistortion ? DISTORTION_THIRD : room ?? THIRD
+      const hold = cameraSystem.pitchHold
+      const lens = inDistortion ? DISTORTION_THIRD : hold !== null ? holdLens(hold) : room ?? THIRD
       const swing = distortionBridge.cameraSwing?.() ?? null
       if (swing === null || (swing.x === 0 && swing.y === 0)) {
         tilted(0, lens.height, lens.distance, offset)

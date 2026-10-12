@@ -10,6 +10,7 @@ import { CHAIN_KEY, chainCover, chainStart, chainTick, type ChainFx } from '../e
 import { lakeOrbsStart, lakeOrbsTick, type LakeOrbs } from '../engine/world/lakeOrbs'
 import { music } from '../engine/audio/music'
 import { BINDINGS, consumeTapped } from '../engine/input/keys'
+import { cameraSystem, SPEAR_PITCH_DEG } from '../engine/actor/camera'
 import { facingOfDir } from '../engine/script/field'
 import { worldState } from '../state/worldState'
 import { holdCover, screenTint } from '../engine/script/fade'
@@ -42,6 +43,8 @@ export function startRedChain(): void {
   chainKeys()
   spearPillarLive.chain = chainStart()
   spearPillarLive.acc = 0
+  // 원작은 각을 안 바꾼다(`AddFreeCamera`로 겨눔점만 옮김). 우리 3인칭에서는 땅에 누운 사슬 원판이 안 읽혀 원작 각으로 올린다
+  cameraSystem.pitchHold = SPEAR_PITCH_DEG
   const who = npcActors.byLocalID.get(CHAIN_OBJECT)
   if (who) {
     const x = who.x + 0.5, z = who.z + 0.5
@@ -66,6 +69,7 @@ export function redChainDone(): boolean {
   if (c.state !== 11) return false
   spearPillarLive.chain = null
   spearPillarLive.at = null
+  cameraSystem.pitchHold = null
   screenTint.alpha = 0
   return true
 }
