@@ -17,6 +17,7 @@ import {
 import { assets } from '../data/providers/assetProvider'
 import { cameraSystem } from '../engine/actor/camera'
 import { bakedFxPrefabs } from './WorldFx'
+import { waterLevelAt } from './waterLevel'
 
 interface Props {
   /**
@@ -104,6 +105,8 @@ function loadPcParts(): Promise<Object3D | null> {
  */
 export function FieldActionEffects({ bodyRef }: Props) {
   const surfRef = useRef<Group>(null)
+  /** 파도타기 몸을 BDSP 수면에 붙이는 그리는 높이 (걸음 칸 높이는 그대로) — 매끈하게 따라간다 */
+  const waterLiftRef = useRef(0)
   const surfFallbackRef = useRef<Group>(null)
   const surfModelHostRef = useRef<Group>(null)
   const flyRef = useRef<Group>(null)
@@ -272,6 +275,12 @@ export function FieldActionEffects({ bodyRef }: Props) {
 
     const surf = surfRef.current
     if (surf) surf.visible = surfing
+    // 몸의 그리는 높이를 BDSP 수면에 붙인다 — 물에 들어가고 나올 때의 차이는 이 보간과 아래 몸 높이 보간이 맡는다
+    const pp = worldState.player.position
+    const level = surfing ? waterLevelAt(pp.x, pp.z, pp.y) : null
+    const wantLift = level === null ? 0 : Math.max(-1, Math.min(1.5, level - pp.y))
+    waterLiftRef.current += (wantLift - waterLiftRef.current) * Math.min(1, delta * 9)
+    if (surf) surf.position.y = -0.03 + waterLiftRef.current
     const body = bodyRef.current
     if (body) {
       if (flyPose.visible) {
@@ -280,7 +289,7 @@ export function FieldActionEffects({ bodyRef }: Props) {
         body.position.set(flyPose.rider.x, flyPose.rider.y, flyPose.rider.z)
       } else {
         // 서는 높이는 몸 등판 꼭대기다 (`pcParts`의 `SURF_MOUNT.stand`)
-        const targetY = surfing ? SURF_MOUNT.stand * BDSP_TO_WORLD : 0
+        const targetY = surfing ? SURF_MOUNT.stand * BDSP_TO_WORLD + waterLiftRef.current : 0
         body.position.y += (targetY - body.position.y) * Math.min(1, delta * 9)
         body.position.x += (0 - body.position.x) * Math.min(1, delta * 9)
         body.position.z += (0 - body.position.z) * Math.min(1, delta * 9)

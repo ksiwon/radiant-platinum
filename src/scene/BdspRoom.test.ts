@@ -5,8 +5,9 @@ import { world, type EventFile, type MapHeader } from '../engine/map/world'
 import { BoxGeometry, Group, Mesh, MeshStandardMaterial } from 'three'
 import type { NpcActor } from '../engine/actor/npcs'
 import {
-  deviceMaterials, ELITE_FOUR_DOOR_GFX, eliteDoorShown, hideDevices, MISFIT_ROOMS, placementOf, roomFor,
+  deviceMaterials, ELITE_FOUR_DOOR_GFX, eliteDoorShown, hideDevices, MISFIT_ROOMS, placementOf, ROOM_ALIAS, roomFor,
 } from './BdspRoom'
+import { paintClosed, ROOM_CLOSED_CELLS } from './roomClosed'
 import { roomBundles } from '../import/bdsp/convert'
 import { DATA, withData, withModels } from '../data/romData.testkit'
 
@@ -33,6 +34,35 @@ describe('맵 ↔ BDSP 방 (`roomFor`)', () => {
   it('바깥(행렬 0)은 방을 안 쓴다', () => {
     world.maps = [header(0, 'T01', 0)]
     expect(roomFor(0, new Set(['t01']))).toBeNull()
+  })
+})
+
+describe('BDSP가 건물에 붙여 둔 방 (`ROOM_ALIAS`)', () => {
+  it('제 이름의 방도 같은 행렬의 형제도 없어도 별칭 번들이 있으면 그 방이다', () => {
+    world.maps = [header(0, 'C07R0501', 125), header(1, 'C08R0701', 125)]
+    const rooms = new Set(['c05r0901'])
+    expect(roomFor(0, rooms)).toBe('c05r0901')
+    expect(roomFor(1, rooms)).toBe('c05r0901')
+    // 번들이 안 구워졌으면 원작 그림이다
+    expect(roomFor(0, new Set(['t01r0301']))).toBeNull()
+  })
+
+  it('들어올 문이 없는 자리표시 맵(`c01r0401`)은 별칭이 없다', () => {
+    world.maps = [header(0, 'C01R0401', 125)]
+    expect(roomFor(0, new Set(['c05r0901']))).toBeNull()
+  })
+
+  it('제 이름의 방이 먼저다 · 맞지 않는 방(`MISFIT_ROOMS`)은 별칭이어도 안 쓴다', () => {
+    world.maps = [header(0, 'C06R0401', 125)]
+    expect(roomFor(0, new Set(['c05r0901', 'c06r0401']))).toBe('c06r0401')
+    world.maps = [header(0, 'C06R0401', 125)]
+    const misfit = Object.entries(ROOM_ALIAS).filter(([, room]) => MISFIT_ROOMS.has(room))
+    expect(misfit).toEqual([])
+  })
+
+  it('별칭이 가리키는 방은 구운 방 목록에 든다', () => {
+    const rooms = new Set(['c05r0901', 't01r0301', 't02fs0101', 'c01r0302', 'c05r0301'])
+    expect([...new Set(Object.values(ROOM_ALIAS))].filter((r) => !rooms.has(r))).toEqual([])
   })
 })
 
@@ -72,16 +102,16 @@ describe('원작 방과 생김이 다른 BDSP 방 (`MISFIT_ROOMS`)', () => {
   it('목록 — 실측으로 생김이 다른 방들', () => {
     expect([...MISFIT_ROOMS].sort()).toEqual([
       'c01r0601', 'c02gym0101', 'c04gym0101', 'c04r0201', 'c04r0202', 'c04r0203', 'c04r0401', 'c05gym0101',
-      'c05gym0104', 'c05r0101', 'c05r0801', 'c07gym0101', 'c07r0101', 'c10r0101', 'd31r0201', 'r218r0101',
+      'c05gym0104', 'c05r0101', 'c05r0801', 'c07gym0101', 'c07r0101', 'c10r0101', 'd31r0201',
     ])
   })
 
-  it('맵 110은 같은 행렬의 218번 게이트 방을 빌리지 않는다 — 게이트 제 방도 원작 그림이다(홈 넷이 벽 뒤)', () => {
+  it('맵 110은 같은 행렬의 218번 게이트 방을 빌리지 않는다 — 홈에 사람이 서 있다. 제 게이트는 BDSP 방이다', () => {
     const was = world.maps
     world.maps = [header(0, 'R218R0101', 77), header(1, 'C05R0601', 77)]
     const rooms = new Set(['r218r0101'])
     expect(roomFor(1, rooms)).toBeNull()
-    expect(roomFor(0, rooms)).toBeNull()
+    expect(roomFor(0, rooms)).toBe('r218r0101')
     world.maps = was
   })
 
@@ -161,6 +191,136 @@ withData('maps.json', 'events.json')('구운 방 ↔ 원작 칸', () => {
       // 백화점 2층 문 (10, 12) · 갤럭시단 빌딩 1층 문 (11, 15)
       expect(mat('c07r0201', 'M_C_001_Mat_01') - 12.5).toBeCloseTo(0.21, 1)
       expect(mat('c04r0201', 'M_C_001_Mat_08') - 15.5).toBeCloseTo(0.21, 1)
+    })
+  })
+})
+
+interface TileMeta { tileWidth: number, tileHeight: number, byteOffset: number }
+
+withData('maps.json', 'events.json', 'matrices/interiors.json', 'matrices/interiors.bin')('별칭 짝 ↔ 원작 칸', () => {
+  withModels('room/index.json', ...[...new Set(Object.values(ROOM_ALIAS))].map((r) => `room/${r}.glb`))('방', () => {
+    it('문에서 걸어 닿는 칸이 전부 방 바닥 위다 · 사람 · 워프도 바닥 안이다 (측정: `.audit/probe/pairSearch.mjs`)', () => {
+      const maps = (JSON.parse(readFileSync(resolve(DATA, 'maps.json'), 'utf8')) as { maps: MapHeader[] }).maps
+      const events = (JSON.parse(readFileSync(resolve(DATA, 'events.json'), 'utf8')) as { events: EventFile[] }).events
+      const meta = (JSON.parse(readFileSync(resolve(DATA, 'matrices/interiors.json'), 'utf8')) as {
+        matrices: Record<string, TileMeta>
+      }).matrices
+      const bin = readFileSync(resolve(DATA, 'matrices/interiors.bin'))
+      const bad: string[] = []
+      let walked = 0
+      for (const [name, room] of Object.entries(ROOM_ALIAS)) {
+        const h = maps.find((m) => m.name.toLowerCase() === name)!
+        const mx = meta[String(h.matrix)]!
+        const tile = (x: number, z: number): number => bin.readUInt16LE(mx.byteOffset + (z * mx.tileWidth + x) * 2)
+        const floors = roomParts(room).filter((p) => /_Floor_/.test(p.mat))
+        const at = placementOf(room)
+        const x0 = Math.min(...floors.map((p) => p.min[0]!)) + at.x, x1 = Math.max(...floors.map((p) => p.max[0]!)) + at.x
+        const z0 = Math.min(...floors.map((p) => p.min[2]!)) + at.z, z1 = Math.max(...floors.map((p) => p.max[2]!)) + at.z
+        const inside = (x: number, z: number): boolean => x + 0.5 >= x0 - 0.3 && x + 0.5 <= x1 + 0.3 && z + 0.5 >= z0 - 0.3 && z + 0.5 <= z1 + 0.3
+        const ev = events[h.events]!
+        // 문에서 걸어 닿는 칸 (막힌 칸은 못 지난다)
+        const seen = new Set<number>()
+        const queue: [number, number][] = []
+        for (const w of ev.warps) if (!(w.x <= 1 && w.z <= 1)) { queue.push([w.x, w.z]); seen.add(w.z * mx.tileWidth + w.x) }
+        for (let i = 0; i < queue.length; i++) {
+          const [x, z] = queue[i]!
+          for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+            const nx = x + dx, nz = z + dz
+            if (nx < 0 || nz < 0 || nx >= mx.tileWidth || nz >= mx.tileHeight || seen.has(nz * mx.tileWidth + nx)) continue
+            if (tile(nx, nz) & 0x8000) continue
+            seen.add(nz * mx.tileWidth + nx)
+            queue.push([nx, nz])
+          }
+        }
+        const closed = new Set((ROOM_CLOSED_CELLS[h.matrix] ?? []).map(([x, z]) => `${String(x)},${String(z)}`))
+        for (const [x, z] of queue) {
+          if (closed.has(`${String(x)},${String(z)}`)) continue // 막힌 홈 (`roomClosed`)
+          if (ev.warps.some((w) => w.x === x && w.z === z)) continue // 문 칸은 벽 두께 속이다 (위 문 시험이 센다)
+          walked++
+          if (!inside(x, z)) bad.push(`${name}→${room} 걸음칸 (${String(x)}, ${String(z)})`)
+        }
+        for (const n of ev.npcs) if (!(n.flag !== 0) && !inside(n.x, n.z) && !(tile(n.x, n.z) & 0x8000)) bad.push(`${name}→${room} 사람 (${String(n.x)}, ${String(n.z)})`)
+      }
+      expect(walked).toBeGreaterThan(300)
+      expect(bad).toEqual([])
+    })
+  })
+})
+
+withData('maps.json', 'events.json', 'matrices/interiors.json', 'matrices/interiors.bin')('관문 홈 막기 (`ROOM_CLOSED_CELLS`)', () => {
+  withModels('room/index.json', 'room/r218r0101.glb', 'room/c05r0301.glb')('방', () => {
+    it('막는 칸에는 BDSP 방이 서는 맵의 사람 · 워프 · 표지판 · 트리거가 하나도 없다 — 원작 맵 110의 사람 하나만 홈에 선다', () => {
+      const maps = (JSON.parse(readFileSync(resolve(DATA, 'maps.json'), 'utf8')) as { maps: MapHeader[] }).maps
+      const events = (JSON.parse(readFileSync(resolve(DATA, 'events.json'), 'utf8')) as { events: EventFile[] }).events
+      const rooms = new Set((JSON.parse(readFileSync(resolve(DATA, '../models/room/index.json'), 'utf8')) as { rooms: string[] }).rooms)
+      world.maps = maps
+      const standing: string[] = []
+      let users = 0
+      for (const [matrix, cells] of Object.entries(ROOM_CLOSED_CELLS)) {
+        const closed = new Set(cells.map(([x, z]) => `${String(x)},${String(z)}`))
+        for (const h of maps.filter((m) => m.matrix === Number(matrix))) {
+          const ev = events[h.events]!
+          const here = [...ev.npcs, ...ev.warps, ...ev.signs, ...ev.triggers].filter((e) => closed.has(`${String(e.x)},${String(e.z)}`))
+          if (roomFor(h.id, rooms) === null) { standing.push(...here.map((e) => `${h.name}(${String(e.x)},${String(e.z)})`)); continue }
+          users++
+          expect(here, h.name).toEqual([])
+        }
+      }
+      expect(users).toBe(10)
+      expect(standing).toEqual(['C05R0601(9,4)'])
+    })
+
+    it('맵 110은 BDSP 방이 안 서므로 막힌 칸이 0이다 — 방이 서는 맵에서만 막고, 맵을 떠나면 원래대로 되돌린다', () => {
+      const maps = (JSON.parse(readFileSync(resolve(DATA, 'maps.json'), 'utf8')) as { maps: MapHeader[] }).maps
+      const meta = (JSON.parse(readFileSync(resolve(DATA, 'matrices/interiors.json'), 'utf8')) as { matrices: Record<string, TileMeta> }).matrices
+      const bin = readFileSync(resolve(DATA, 'matrices/interiors.bin'))
+      const rooms = new Set((JSON.parse(readFileSync(resolve(DATA, '../models/room/index.json'), 'utf8')) as { rooms: string[] }).rooms)
+      world.maps = maps
+      const mx = meta['258']!
+      const fresh = (): Uint16Array => new Uint16Array(bin.buffer.slice(bin.byteOffset + mx.byteOffset, bin.byteOffset + mx.byteOffset + mx.tileWidth * mx.tileHeight * 2))
+      const closedCount = (t: Uint16Array): number => ROOM_CLOSED_CELLS[258]!.filter(([x, z]) => (t[z * mx.tileWidth + x]! & 0x8000) !== 0).length
+      const was = new Map<string, number>()
+      for (const id of [109, 110]) {
+        const tiles = fresh()
+        const wantClosed = roomFor(id, rooms) !== null
+        expect(closedCount(tiles), String(id)).toBe(0)
+        paintClosed(tiles, mx.tileWidth, 258, wantClosed, was, 0x8000)
+        expect(closedCount(tiles), String(id)).toBe(wantClosed ? ROOM_CLOSED_CELLS[258]!.length : 0)
+        paintClosed(tiles, mx.tileWidth, 258, false, was, 0x8000)
+        expect(tiles).toEqual(fresh())
+      }
+      expect(roomFor(110, rooms)).toBeNull()
+      expect(roomFor(109, rooms)).toBe('r218r0101')
+    })
+
+    it('문에서 걸어 닿는 칸 중 BDSP 바닥 상자 밖은 전부 막혀 있다', () => {
+      const maps = (JSON.parse(readFileSync(resolve(DATA, 'maps.json'), 'utf8')) as { maps: MapHeader[] }).maps
+      const events = (JSON.parse(readFileSync(resolve(DATA, 'events.json'), 'utf8')) as { events: EventFile[] }).events
+      const meta = (JSON.parse(readFileSync(resolve(DATA, 'matrices/interiors.json'), 'utf8')) as { matrices: Record<string, TileMeta> }).matrices
+      const bin = readFileSync(resolve(DATA, 'matrices/interiors.bin'))
+      for (const [matrix, room] of [[258, 'r218r0101'], [257, 'c05r0301']] as const) {
+        const mx = meta[String(matrix)]!
+        const tile = (x: number, z: number): number => bin.readUInt16LE(mx.byteOffset + (z * mx.tileWidth + x) * 2)
+        const floors = roomParts(room).filter((p) => /_Floor_/.test(p.mat))
+        const x0 = Math.min(...floors.map((p) => p.min[0]!)), x1 = Math.max(...floors.map((p) => p.max[0]!))
+        const z0 = Math.min(...floors.map((p) => p.min[2]!)), z1 = Math.max(...floors.map((p) => p.max[2]!))
+        const closed = new Set(ROOM_CLOSED_CELLS[matrix]!.map(([x, z]) => `${String(x)},${String(z)}`))
+        const warps = new Set<string>()
+        for (const h of maps.filter((m) => m.matrix === matrix)) for (const w of events[h.events]!.warps) warps.add(`${String(w.x)},${String(w.z)}`)
+        const seen = new Set<string>(warps)
+        const queue = [...warps].map((k) => k.split(',').map(Number) as [number, number])
+        for (let i = 0; i < queue.length; i++) {
+          for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+            const nx = queue[i]![0] + dx, nz = queue[i]![1] + dz, k = `${String(nx)},${String(nz)}`
+            if (seen.has(k) || tile(nx, nz) & 0x8000) continue
+            seen.add(k); queue.push([nx, nz])
+          }
+        }
+        const open = queue.filter(([x, z]) => !warps.has(`${String(x)},${String(z)}`)
+          && (x + 0.5 < x0 - 0.3 || x + 0.5 > x1 + 0.3 || z + 0.5 < z0 - 0.3 || z + 0.5 > z1 + 0.3)
+          && !closed.has(`${String(x)},${String(z)}`))
+        expect(open, `${room} 행렬 ${String(matrix)}`).toEqual([])
+      }
     })
   })
 })

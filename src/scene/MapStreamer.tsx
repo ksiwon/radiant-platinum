@@ -91,7 +91,7 @@ import {
   isDistortionFloor,
   romTileToLocal,
 } from './distortion'
-import { gridFor } from './worldData'
+import { closeRoomCells, gridFor } from './worldData'
 import { useDevWarp } from './useDevWarp'
 import { ChunkModels } from './ChunkModels'
 import { BdspRoom, useBdspRoom } from './BdspRoom'
@@ -368,6 +368,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   const charKeyRef = useRef<PointLight>(null)
   const [mapId, setMapId] = useState(spawn.map)
   const room = useBdspRoom(mapId)
+  // BDSP 방이 벽으로 지은 홈은 그 방이 서는 맵에서만 막는다 (`closeRoomCells`)
+  const roomMatrix = mapById(mapId)?.matrix ?? 0
+  useEffect(() => {
+    closeRoomCells(roomMatrix, room !== null)
+    return () => { closeRoomCells(roomMatrix, false) }
+  }, [roomMatrix, room])
   const dungeon = useBdspDungeon(mapId)
   const outdoor = mapById(mapId)?.matrix === 0
   const { near: fieldsNear } = useBdspFields(outdoor)

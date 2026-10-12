@@ -32,6 +32,7 @@ import { disposeTree } from './disposeTree'
 import { useBdspMark } from './bdspReady'
 import { ALWAYS_ASYNC, beginAsyncPipelines, settleAsyncPipelines } from './asyncPipelines'
 import { SEA_LEVEL, seaRects } from './seaApron'
+import { trackWater } from './waterLevel'
 import { holdBdspDoors } from './DoorAnimations'
 import { holdBdspSigns } from './ObjectProps'
 import { liveMotion, liveMotionMaterials, type BdspMotion } from './bdspMotion'
@@ -343,6 +344,7 @@ export function liveWater(root: Object3D): number {
     o.castShadow = false
     o.receiveShadow = false
     sinkWater(o)
+    trackWater(o)
   })
   for (const old of swapped.keys()) old.dispose()
   return swapped.size

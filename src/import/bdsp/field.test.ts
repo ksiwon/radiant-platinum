@@ -388,3 +388,29 @@ withLocal('BDSP 야외', area001)('야외 지역 — 원본 자료', () => {
     expect(stat.box).toEqual([736, 192, 926, 800])
   }, 300_000)
 })
+
+/** glb 재질 JSON — 이름이 `name`인 것 */
+function materialOf(glb: Uint8Array, name: string): { name: string, pbrMetallicRoughness?: { baseColorTexture?: unknown, baseColorFactor?: number[] } } | undefined {
+  const view = new DataView(glb.buffer, glb.byteOffset, glb.byteLength)
+  const json = JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + view.getUint32(12, true)))) as {
+    materials: { name: string, pbrMetallicRoughness?: { baseColorTexture?: unknown, baseColorFactor?: number[] } }[]
+  }
+  return json.materials.find((m) => m.name === name)
+}
+
+// ⚠️ 눈 땅 재질(`M_C_001_Ground_03`)의 `_MainTex`는 **딴 번들**(`Dpr/common_resources`의 `snow`)을 가리킨다 — `PPtr`의 `m_FileID` 3.
+// 번들 하나만 열면 그림 없는 회색 0.9 한 색으로 구워져 천관산 · 예지의 호수 · 키사키 눈 땅이 민둥 회색이었다 (`convert.ts`의 `COMMON_RESOURCES`)
+const SNOW_DUNGEON = AREA ? join(AREA, 'prefab_map', 'd05r0104') : null
+const COMMON = bdspDir('dpr') ? join(bdspDir('dpr')!, 'common_resources') : null
+withLocal('BDSP 던전 눈 땅', SNOW_DUNGEON, COMMON)('던전 — 바깥 번들의 그림', () => {
+  it('공용 그림 번들을 같이 열면 눈 땅에 그림이 붙고 · 안 열면 한 색이다', async () => {
+    const own = new Uint8Array(readFileSync(SNOW_DUNGEON!))
+    const alone = await exportField(openEnvironment([own]), encodePng, { name: 'd05r0104', maxSize: 64 })
+    expect(materialOf(alone.glb, 'M_C_001_Ground_03')?.pbrMetallicRoughness?.baseColorTexture).toBeUndefined()
+    const both = await exportField(openEnvironment([own], [new Uint8Array(readFileSync(COMMON!))]), encodePng, { name: 'd05r0104', maxSize: 64 })
+    expect(materialOf(both.glb, 'M_C_001_Ground_03')?.pbrMetallicRoughness?.baseColorTexture).toBeDefined()
+    expect(both.stat.problems).toEqual([])
+    // 빌린 번들의 재질 · 글꼴은 안 싣는다 — 눈 땅에 그림 하나만 늘고 재질은 그대로다
+    expect(materialOf(both.glb, 'TT_UDMarugo_Large-DB SDF Material')).toBeUndefined()
+  }, 300_000)
+})
