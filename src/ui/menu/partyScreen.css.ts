@@ -243,6 +243,9 @@ export const held = style({
 
 export const heldIcon = style({ flex: '0 0 auto', imageRendering: 'pixelated', backgroundRepeat: 'no-repeat' })
 
+/** 볼캡슐 표식 — 8×8을 2배로 */
+export const capsuleMark = style({ flex: '0 0 auto', marginLeft: GAP.small, imageRendering: 'pixelated', backgroundRepeat: 'no-repeat' })
+
 export const heldName = style({ overflow: 'hidden', textOverflow: 'ellipsis' })
 
 export const hpNumbers = style({

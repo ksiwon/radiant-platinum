@@ -64,6 +64,8 @@ import { choiceHeight, placeInColumn } from './partyPlace'
 import * as own from './partyScreen.css'
 import { PANEL_WIDTH } from './levelPanel.css'
 import { itemIconAt } from './itemIcon'
+import { loadPartyIcons } from '../../data/gameData'
+import { useSheet } from '../common/useSheet'
 import type { Box } from '../common/choicePlace'
 import { ChoiceMenu } from '../common/ChoiceMenu'
 import { MessageDock } from '../common/MessageDock'
@@ -221,6 +223,12 @@ export function PartyScreen() {
    * 레벨업 능력치 창 (`PartyMenu_DrawLevelUpStatIncreases` → `…NewStatValues`).
    * 오른 폭을 먼저 보이고 A·B에 새 값으로 바꾼다
    */
+  // 볼캡슐 표식 시트. 못 받으면 표식만 빠진다
+  const partyIcons = useSheet(loadPartyIcons)
+  // 그림이 없는 설치본의 빈자리를 가리지 않는다 (SYSTEM §6.1 ④) — 못 받았으면 한 번 알린다
+  useEffect(() => {
+    if (partyIcons === null) console.warn('파티 표식 그림(data/partyIcons.png)을 못 받았다 — 볼캡슐 표식을 안 그린다')
+  }, [partyIcons])
   const [levelPanel, setLevelPanel] = useState<
     { slot: number; before: Stats; after: Stats; show: LevelPanelShow; then: () => void } | null
   >(null)
@@ -1149,6 +1157,7 @@ export function PartyScreen() {
                 verdictText={verdict === null ? '' : plainText(partyText[verdictLine(verdict)])}
                 icons={icons}
                 itemName={itemNames[mon.heldItem] ?? ''}
+                partyIcons={partyIcons}
                 plateRef={(node) => { plateEls.current[i] = node }}
                 onPick={() => {
                   // 집은 채로는 마우스가 커서를 안 끈다. 갈래 창이 떠 있을 때도 안 끈다 — 창이 이 판 위에 앉아 있다
