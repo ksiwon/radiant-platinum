@@ -5,7 +5,7 @@
 // 542번 눌러 끝난 배틀이 「얼었다」로 적혔다(시간). 반대로 대사 0/12쪽은
 // 기계가 아무리 붐벼도 결함이다(내용)
 import { describe, expect, it } from 'vitest'
-import { BUSY, classify, isBusy, makePen, makeStall, pct, SHAPE, summarizeLoad } from './budget.mjs'
+import { BUSY, classify, isBusy, makePen, makeStall, pct, perfLoad, SHAPE, summarizeLoad } from './budget.mjs'
 
 describe('가둠 계수기', () => {
   it('되밀림은 진행 계수기를 못 울린다 — 그래서 이것이 있다', () => {
@@ -170,5 +170,36 @@ describe('분류', () => {
 
   it('모르는 모양은 봐주지 않는다', () => {
     expect(classify('뭔가', busy).verdict).toBe('FAIL')
+  })
+})
+
+describe('perfLoad — 성능을 견줄 때 쓸 부하 표본', () => {
+  const load = { n: 3, fps: { n: 3, p50: 40, p10: 30, min: 20 }, cpu: null }
+
+  it('혼자 돈 판의 표본은 그대로 쓴다', () => {
+    expect(perfLoad({ load, concurrent: null })).toEqual({ usable: true, load, why: null })
+  })
+
+  it('동시에 돈 판은 못 쓴다고 말한다 — 표본이 있어도 뺀다', () => {
+    const r = perfLoad({ load, concurrent: { lane: 'c3', cell: 3, with: ['9'] } })
+    expect(r.usable).toBe(false)
+    expect(r.load).toBe(null)
+    expect(r.why).toContain('동시 실행')
+    expect(r.why).toContain('9')
+  })
+
+  it('프레임 기록에만 「동시 실행」이 적혀 있어도 못 쓴다 — load만 떼어 읽어도 따라간다', () => {
+    expect(perfLoad({ load: { ...load, concurrent: true } }).usable).toBe(false)
+  })
+
+  it('표본이 없는 것은 「뺀 것」이 아니라 「없는 것」이다', () => {
+    expect(perfLoad({ load: null })).toMatchObject({ usable: false, why: '부하 표본이 없다' })
+    expect(perfLoad(undefined)).toMatchObject({ usable: false })
+  })
+
+  it('통과 · 실패 분류(classify)는 동시 실행이 안 바꾼다 — 느려졌으면 붐볐다고 적힌다', () => {
+    const busy = { n: 2, fps: { n: 2, p50: 5, p10: 4, min: 4 }, cpu: null }
+    expect(classify(SHAPE.time, busy)).toMatchObject({ verdict: 'BLOCKED', kind: '경합' })
+    expect(classify(SHAPE.content, busy).verdict).toBe('FAIL')
   })
 })

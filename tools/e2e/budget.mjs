@@ -215,6 +215,29 @@ export function isBusy(load) {
 }
 
 /**
+ * **성능을 견줄 때 쓸 부하 표본.** 동시에 돈 판(`environment.concurrent`)이면 `null`이다.
+ *
+ * ⚠️ **한 기계를 둘이 나눠 쓴 판의 프레임 시간은 제품의 것이 아니다** — 우리가 만든 경합을 잰다
+ * (`docs/orders/JOURNEY_SPEED_20261012.md`). 그 표본을 개발 서버 대 배포물의 분포 비교(§2.1)나 성능 판정에 넣으면
+ * 멀쩡한 제품이 느리게 보인다. 그래서 **못 쓴다고 말하는 쪽**으로 접는다: 표본이 없는 것이 아니라 **뺀 것**이다.
+ *
+ * ⚠️ **통과 · 실패 판정은 이것이 안 바꾼다.** 걷기가 이어지는가는 프레임과 무관하고, 시간 모양의 실패를 FAIL과 BLOCKED로
+ * 가르는 `classify`는 부하를 그대로 읽는다 — 동시에 돌아 느려졌으면 기계가 붐볐다고(경합) 적힌다
+ *
+ * @returns `{ usable, load, why }` — `usable:false`면 성능 근거로 못 쓴다
+ */
+export function perfLoad(environment) {
+  const c = environment?.concurrent ?? (environment?.load?.concurrent === true ? {} : null)
+  if (c !== null && c !== undefined) {
+    const peers = Array.isArray(c.with) && c.with.length > 0 ? ` (같이 돈 칸 ${c.with.join(' · ')})` : ''
+    return { usable: false, load: null, why: `동시 실행 판이다${peers} — 프레임 시간은 성능 증거가 아니다` }
+  }
+  const load = environment?.load
+  if (load === null || load === undefined) return { usable: false, load: null, why: '부하 표본이 없다' }
+  return { usable: true, load, why: null }
+}
+
+/**
  * 실패 하나를 FAIL과 BLOCKED로 가른다 (지시서 §1.1 「분류 규칙」).
  *
  * ⚠️ **BLOCKED는 통과가 아니다.** 그 묶음은 다시 돌아야 하고, 다시 돌아서

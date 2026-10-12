@@ -9,6 +9,8 @@
 //
 // ⚠️ **읽기만 한다.** 카메라를 옮기거나 청크를 붙이지 않는다.
 
+import { waitFor } from './waits.mjs'
+
 /** 개발 서버에서 모듈을 열어 무대를 잰다. 못 읽는 값은 `null`로 두고 **접지 않는다** */
 export const stageState = (page) => page.evaluate(async () => {
   const finite = (m) => m !== null && m !== undefined
@@ -217,4 +219,51 @@ export async function waitTerrain(page, capMs = 20_000, tickMs = 3_000) {
     await page.waitForTimeout(250)
   }
   return { ok: false, probeFailed: false, asked, slow, waitedMs: Date.now() - t0, why }
+}
+
+/**
+ * **지금까지 나간 프레임 수** (`perfSnapshot.frames`) — 못 읽으면 `null`이다 (0으로 안 접는다).
+ * 개발 서버 전용이다: `/src`를 연다
+ */
+export const framesNow = (page) => page.evaluate(async () => {
+  const m = await import('/src/scene/sceneRefs.ts')
+  return m.perfSnapshot.frames
+}).then((n) => (Number.isFinite(n) ? n : null), () => null)
+
+/**
+ * **시점 · 시선 · 시각을 바꾼 화면이 실제로 나가기를 기다린다 — 고정 시간이 아니라 상태를.**
+ *
+ * 예전에는 한낮으로 돌리고 600ms · 올려다보고 800ms · 되돌리고 400ms를 **잤다** — 한 컷에 3초가 넘게 들고, 느린 기계(4fps)에서는
+ * 그 시간이 프레임 한두 장이라 모자랐다. 지금은 두 가지를 묻는다:
+ *
+ *   ⓐ 프레임이 `minFrames`장 더 나갔다 (`perfSnapshot.frames` — 바꾼 값이 한 번 그려졌다)
+ *   ⓑ `camera`면 제품의 준비 판정이 선다 (`terrainReady().ok` — 카메라가 가려던 자리에 닿았다(`drift`)까지 든다)
+ *
+ * ⚠️ **상한은 예전 고정 시간의 5배다.** 넘기면 **그대로 이어 간다** — 이 자리는 판정이 아니라 촬영 준비고, 그 뒤의
+ * `judgeTerrain` · 하늘색 기준이 못 그려진 것을 그대로 가른다 (이 기다림이 그 잣대를 안 바꾼다).
+ * 프레임을 못 읽으면(`framesNow`가 `null`) 예전 고정 시간 그대로 잔다.
+ *
+ * @param oldMs 예전 고정 시간 — 못 읽을 때의 잠이고 상한의 바탕이다
+ * @returns `{ ok, known, ms }`
+ */
+export async function settleView(page, oldMs, { minFrames = 3, camera = true } = {}) {
+  const t0 = Date.now()
+  const f0 = await framesNow(page)
+  if (f0 === null) {
+    await page.waitForTimeout(oldMs)
+    return { ok: true, known: false, ms: Date.now() - t0 }
+  }
+  const r = await waitFor(async () => {
+    const got = await page.evaluate(async (wantCamera) => {
+      const sr = await import('/src/scene/sceneRefs.ts')
+      let ready = true
+      if (wantCamera) {
+        const t = await import('/src/scene/terrainMark.ts')
+        ready = t.terrainReady().ok
+      }
+      return { frames: sr.perfSnapshot.frames, ready }
+    }, camera)
+    return got.frames - f0 >= minFrames && got.ready
+  }, { timeout: oldMs * 5, poll: 30 })
+  return { ok: r.ok, known: true, ms: r.ms }
 }

@@ -137,6 +137,22 @@ function devObserver(page) {
       const hit = o.obstacleAt(tx, tz)
       return hit === null ? null : { gfx: hit.gfx, script: hit.info?.script ?? null }
     }, [x, z]),
+    /**
+     * **기다림을 상태로 바꾸려고 읽는 움직임** — 나간 프레임 수 · 주인공 속력(타일/초) · 뛰는 중인가.
+     *
+     * ⚠️ **전부 제품이 이미 가진 값이다** (`perfSnapshot.frames` · `worldState.player.velocity` · `.hop.active`).
+     * 읽기만 한다. 배포물에서는 못 읽는다 — 부르는 쪽은 `known`이 아니면 예전 고정 시간으로 물러난다
+     */
+    motion: () => read('움직임을 못 읽었다', async () => {
+      const sr = await import('/src/scene/sceneRefs.ts')
+      const st = await import('/src/state/worldState.ts')
+      const p = st.worldState.player
+      return {
+        frames: sr.perfSnapshot.frames,
+        speed: Math.hypot(p.velocity.x, p.velocity.z),
+        hop: p.hop?.active === true,
+      }
+    }),
     /** 지금 프레임이 얼마나 걸리나 (`scene/sceneRefs.ts`의 `perfSnapshot`) */
     perf: () => read('계기판을 못 읽었다', async () => {
       const m = await import('/src/scene/sceneRefs.ts')
@@ -895,6 +911,7 @@ function distObserver(page) {
     solidAt: async () => unknown(NO_SRC),
     obstacleAt: async () => unknown(NO_SRC),
     perf: async () => unknown(NO_SRC),
+    motion: async () => unknown(NO_SRC),
     npcSpot: async () => unknown(NO_SRC),
     npcSpots: async () => unknown(NO_SRC),
     facingDir: async () => unknown(NO_SRC),

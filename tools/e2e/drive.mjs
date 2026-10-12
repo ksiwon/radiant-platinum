@@ -28,6 +28,8 @@
 // 걸음**이었다.
 import { makeObserver, watchMapScene } from './observe.mjs'
 import { makePen, makeStall, SLOW, STALLED } from './budget.mjs'
+// 고정 대기를 상태 기다리기로 — 상한은 예전 시간 그대로, 읽을 수 없으면(배포물) 예전 고정 시간 그대로다 (`waits.mjs`)
+import { pauseFrames, pauseIdle, pauseSettled, waitFor as pollUntil } from './waits.mjs'
 import {
   allMaps, CLIMB_PREFIX, PANEL_PREFIX, PLAN, encounterTiles, grassAt, gridOf, mapRoute, matrixOf, nearestFlyable,
   npcsOf, planPath, slopeClimbBan, TILE_TABLE, trainersOn, waterAt, warpsOf,
@@ -122,6 +124,11 @@ export async function driveStory(page, {
   upTo = null, observe = 'auto', obstacles = null, closedMaps = null,
   /** 진단 스크린샷을 둘 곳 (약을 못 본 순간 등). null이면 안 찍는다 */
   shotDir = null,
+  /**
+   * **멈춘 순간의 그림을 둘 곳** (배틀이 안 끝났다 · 같은 칸에서 3분째). 칸 둘이 동시에 돌 때 서로의 그림을 안 덮으려고
+   * `journey.mjs --lane`이 제 자리를 넘긴다 (`docs/orders/JOURNEY_SPEED_20261012.md`). 기본은 예전 그대로다
+   */
+  evidenceDir = 'shots/journey',
 } = {}) {
   const started = Date.now()
   /**
@@ -463,6 +470,19 @@ export async function driveStory(page, {
   }
 
   /**
+   * **기다림을 상태로** (`docs/orders/JOURNEY_SPEED_20261012.md`).
+   *
+   * ⚠️ **`until`의 상한은 어느 자리에서나 예전 고정 시간 이상이다** — 상태가 안 서도 예전만큼은 기다리고 예전처럼 이어 간다.
+   * `settledFor` · `framesFor`는 배포물에서 못 읽으면(`obs.motion` → 관측 불가) **예전 고정 시간 그대로** 잔다
+   */
+  const until = (pred, cap, poll = 40) => pollUntil(pred, { timeout: cap, poll })
+  const framesFor = (n, oldMs) => pauseFrames(() => obs.motion(), n, oldMs)
+  const settledFor = (oldMs, slideTiles = 0.02) => pauseSettled(() => obs.motion(), oldMs, { slideTiles })
+  const hopIdleFor = (oldMs, minFrames = 2) => pauseIdle(() => obs.motion(), oldMs, { minFrames })
+  /** 시작 메뉴를 다시 열기 전 한 박자 — 프레임 여덟 장 (`framesFor`). 배포물에서는 예전 800ms 그대로다 */
+  const backoffFrames = () => framesFor(8, 800)
+
+  /**
    * **그 칸에 서 있는 것을 본** 마지막 시각 — `맵:x,z` → ms.
    *
    * ⚠️ **왜 필요한가.** 좌표 이벤트가 걸린 칸은 밟는 **순간** 장면이 열리고,
@@ -551,7 +571,8 @@ export async function driveStory(page, {
           await page.getByLabel('별명').fill('NICK')
           await page.getByRole('button', { name: '결정' }).click()
         }
-        await page.waitForTimeout(250)
+        // 별명 화면이 닫히기를 기다린다 — 닫히면 곧바로 나온다 (닫혔는지는 날 표식이다)
+        await until(async () => (await now()).menu !== 'naming', 1_500)
         continue
       }
       const { n, at } = await choiceCount()
@@ -946,13 +967,8 @@ export async function driveStory(page, {
       const t0 = Date.now()
       await tap('ArrowDown', 90)
       await tap('Space', 150)
-      const rowUp = async (rounds) => {
-        for (let i = 0; i < rounds; i++) {
-          if ((await panel()).some((t) => t.includes(potion.name))) return true
-          await page.waitForTimeout(200)
-        }
-        return false
-      }
+      // 약 줄이 화면에 뜨기를 기다린다 — 상한은 예전 `rounds × 200ms` 그대로, 뜨면 바로 나온다 (폴링 간격만 50ms로 줄었다)
+      const rowUp = async (rounds) => (await until(async () => (await panel()).some((t) => t.includes(potion.name)), rounds * 200, 50)).ok
       /**
        * **화면이 지금 보여 주는 회복 주머니.** 제품이 줄마다 적어 두는 읽기 전용
        * 표시를 그대로 읽는다 (`ui/battle/BattleBag`의 `data-item-*`) — 스토어를
@@ -1026,7 +1042,8 @@ export async function driveStory(page, {
           const now2 = await panel()
           if (commandReady(now2) || (await now()).scene !== 'battle') break
           await tap('KeyX', 120)
-          await page.waitForTimeout(150)
+          // 한 겹 물러난 화면이 서기를 기다린다 — 명령 단이 서거나 배틀이 끝나면 바로 나온다
+          await until(async () => commandReady(await panel()) || (await now()).scene !== 'battle', 600)
         }
         return false
       }
@@ -1041,7 +1058,7 @@ export async function driveStory(page, {
         for (let i = 0; i < 4; i++) {
           if (commandReady(await panel()) || (await now()).scene !== 'battle') break
           await tap('KeyX', 120)
-          await page.waitForTimeout(150)
+          await until(async () => commandReady(await panel()) || (await now()).scene !== 'battle', 600)
         }
         potion.missTurn = turn
         return false
@@ -1182,7 +1199,7 @@ export async function driveStory(page, {
      * 묻고 있었는지 못 봤다. 그래서 그 순간의 **그림 · 배틀 가게의 단계 · 보이는
      * 단추 글**을 남긴다
      */
-    const stuckShot = `shots/journey/stuck-battle-${String(stuckFights)}.png`
+    const stuckShot = `${evidenceDir}/stuck-battle-${String(stuckFights)}.png`
     await page.screenshot({ path: stuckShot }).catch(() => {})
     const moment = await obs.battleMoment().catch(() => null)
     const buttons = await page.locator('button:visible').allInnerTexts().catch(() => [])
@@ -1301,8 +1318,13 @@ export async function driveStory(page, {
      *
      * 250ms면 `exp(−3)` ≈ 5%다. 걸어서 남는 미끄러짐이 **0.02칸**,
      * 자전거 4단(4배)에서도 0.075칸이라 칸을 못 넘는다
+     *
+     * 이제 **고정 250ms가 아니라 상태**다: 남은 속력이 「남은 미끄러짐 ≤ 0.02칸」(`속력 ≤ 12 × 0.02`)까지 죽을 때까지
+     * (`waits.pauseSettled`). 걷다 뗀 때는 예전과 같은 약 250ms고, 막힌 채로 떼었거나 제자리 돌기였으면 바로 나온다.
+     * 게임 시간(dt)이 벽시계보다 느리게 흐르는 기는 화면에서는 예전 250ms가 모자랐던 자리를 이쪽이 메운다.
+     * 배포물에서는 속력을 못 읽어 예전 250ms 그대로다
      */
-    await page.waitForTimeout(250)
+    await settledFor(250)
     lastRun = { why, ms: Date.now() - lastKeyAt, key, count }
     return at
   }
@@ -1438,8 +1460,8 @@ export async function driveStory(page, {
       await page.waitForTimeout(15)
     }
     await page.keyboard.up(key)
-    // 칸 중심까지 마저 걷기를 기다린다 — 다음 계획이 반 칸에서 시작하면 안 된다
-    await page.waitForTimeout(260)
+    // 칸 중심까지 마저 걷기를 기다린다 — 다음 계획이 반 칸에서 시작하면 안 된다 (속력이 죽을 때까지: `runKeys`와 같은 약속이다)
+    await settledFor(260)
     at = await now()
     lastRun = { why, ms: Date.now() - lastKeyAt, key, count: 1 }
     return at
@@ -1459,14 +1481,14 @@ export async function driveStory(page, {
     await settle()
     await tap('Space', 400)
     await clearTalk()
-    let on = false
-    for (let i = 0; i < 50 && !on; i++) {
+    // 탔는지는 날 상태다 — 서면 바로 나온다 (상한은 예전 50번 × 100ms = 5초 그대로, 폴링만 50ms로 촘촘해졌다)
+    const on = (await until(async () => {
       const f = await obs.fieldState()
-      on = f.known && f.value?.surfing === true
-      if (!on) await page.waitForTimeout(100)
-    }
-    // 물 칸으로 뛰어오르는 동안 기다린다 — 도착 칸에서 다음 계획을 세운다
-    await page.waitForTimeout(700)
+      return f.known && f.value?.surfing === true
+    }, 5_000, 50)).ok
+    // 물 칸으로 뛰어오르는 동안 기다린다 — 도착 칸에서 다음 계획을 세운다.
+    // 제품이 `surfing = true`와 `hopTo`를 같은 호출에서 하므로(`field.ts` 'surf') 뛰기가 끝나고 속력이 죽으면 도착이다
+    await hopIdleFor(700)
     const after = await now()
     const row = {
       ok: on, key, from: { map: before.map, x: before.x, z: before.z },
@@ -1523,7 +1545,7 @@ export async function driveStory(page, {
         if (Date.now() > till) return false
         await page.waitForTimeout(50)
       }
-      await page.waitForTimeout(250)               // 남은 속도가 죽기를 기다린다 (drive.mjs 1140-1152)
+      await settledFor(250)                        // 남은 속도가 죽기를 기다린다 — 상태로 (`runKeys`의 관성 주석)
       return true
     }
     const before = await look()
@@ -1536,7 +1558,7 @@ export async function driveStory(page, {
       await tap(q.key, 80)                           // 막힌 쪽 — 제자리에서 돌기만 한다
     } else if (q.act === 'nudge') {
       await page.keyboard.down(q.key); await page.waitForTimeout(40); await page.keyboard.up(q.key)
-      await page.waitForTimeout(300)
+      await settledFor(300)                          // 살짝 민 뒤 미끄러짐이 죽기를 기다린다
     } else {
       // 걷기·벽·뛰기·폭포·밀기: 칸(벽이면 y)이 바뀌거나 묶이는 순간 손을 뗀다
       await page.keyboard.down(q.key)
@@ -2072,7 +2094,7 @@ export async function driveStory(page, {
         beatSame = here === beatWhere ? beatSame + 1 : 0
         beatWhere = here
         if (beatSame === 2) {
-          const file = `shots/journey/stall-${String(s.map)}-${String(s.x)}-${String(s.z)}.png`
+          const file = `${evidenceDir}/stall-${String(s.map)}-${String(s.x)}-${String(s.z)}.png`
           await page.screenshot({ path: file }).catch(() => {})
           log(`    같은 칸에서 3분째다 — 그림 ${file}`)
         }
@@ -2085,7 +2107,9 @@ export async function driveStory(page, {
       if (s.talk || s.scene === 'menu') { await clearTalk(); continue }
       // 스크립트가 도는 동안은 발이 묶인다 — 밀어 봐야 안 움직인다. 넘겨 준다
       if (s.script) { await tap('Space'); continue }
-      if (!s.ok) { await page.waitForTimeout(200); continue }
+      // 표식이 서기를 기다린다 (`now().ok` — 복원이 끝나고 칸이 읽히면). 서면 바로 나온다. 상한은 예전 200ms의 두 배다 —
+      // 견딤 바퀴(`stall`)가 이 한 바퀴를 한 번으로 세므로 너무 길게 잡아 실패 감지를 늦추지 않는다
+      if (!s.ok) { await until(async () => (await now()).ok, 400, 30); continue }
       maps.add(s.map)
       if (s.map === target) return done('arrived')
       /**
@@ -2125,7 +2149,11 @@ export async function driveStory(page, {
        */
       if (s.x < 0 || s.z < 0 || s.x >= grid.w || s.z >= grid.h) {
         offGrid++
-        if (offGrid <= 20) { await page.waitForTimeout(100); continue }
+        if (offGrid <= 20) {
+          // 표식이 격자 안으로 들어오기를 기다린다 — 들어오면 바로 나온다 (상한은 예전 100ms 그대로)
+          await until(async () => { const t = await now(); return t.ok && t.x >= 0 && t.z >= 0 && t.x < grid.w && t.z < grid.h }, 100, 25)
+          continue
+        }
         return done(`표식이 안 맞는다 — 맵 ${String(s.map)}(행렬 ${String(here)}`
           + ` · ${String(grid.w)}×${String(grid.h)})에 칸 ${String(s.x)},${String(s.z)}`)
       }
@@ -2172,7 +2200,9 @@ export async function driveStory(page, {
       // 오버월드는 칸이 어느 맵인지도 표에 있다. 표식과 안 맞으면 아직 자리를
       // 안 잡은 것이라 기다린다 — 새 게임 첫 프레임의 (0,0)이 그 자리다
       if (here === 0 && grid.zoneAt(s.x, s.z) !== s.map) {
-        await page.waitForTimeout(300); continue
+        // 표식이 칸의 맵과 맞기를 기다린다 — 맞으면 바로 나온다 (상한은 예전 300ms 그대로)
+        await until(async () => { const t = await now(); return t.ok && grid.zoneAt(t.x, t.z) === t.map }, 300, 30)
+        continue
       }
 
       // 이 맵의 **다른 문은 밟지 않는다** — 모래시티는 한 줄에 문이 셋이라,
@@ -2542,7 +2572,9 @@ export async function driveStory(page, {
           + ` · 씬 ${String(s.scene)}${s.script ? ' · 스크립트' : ''}`
           + `${crawled > 0 ? ` · 긴 바퀴 ${String(crawled)}` : ''})`)
       }
-      if (!s.ok) { await page.waitForTimeout(200); continue }
+      // 표식이 서기를 기다린다 (`now().ok` — 복원이 끝나고 칸이 읽히면). 서면 바로 나온다. 상한은 예전 200ms의 두 배다 —
+      // 견딤 바퀴(`stall`)가 이 한 바퀴를 한 번으로 세므로 너무 길게 잡아 실패 감지를 늦추지 않는다
+      if (!s.ok) { await until(async () => (await now()).ok, 400, 30); continue }
       if (s.map !== mapId) {
         /**
          * ⚠️ **구역 경계를 넘은 것과 장면이 데려간 것은 다르다.**
@@ -2575,7 +2607,10 @@ export async function driveStory(page, {
       const sg = gridOf(here)
       if (s.x < 0 || s.z < 0 || s.x >= sg.w || s.z >= sg.h) {
         offGrid++
-        if (offGrid <= 20) { await page.waitForTimeout(100); continue }
+        if (offGrid <= 20) {
+          await until(async () => { const t = await now(); return t.ok && t.x >= 0 && t.z >= 0 && t.x < sg.w && t.z < sg.h }, 100, 25)
+          continue
+        }
         return done(`표식이 안 맞는다 — 맵 ${String(s.map)}(행렬 ${String(here)})에`
           + ` 칸 ${String(s.x)},${String(s.z)}`)
       }
@@ -3023,12 +3058,12 @@ export async function driveStory(page, {
     // 막 걸어 나온 자리에서 두 번 다 안 열려(「시작 메뉴에 공중날기가 없다 ([])」) 물가시티까지 걸어가다 207번도로 비탈에서
     // 30분을 맴돌았다. 시작 메뉴는 글이 오기 전에는 판을 안 그리므로(`StartMenu`) 바쁜 맵에서는 줄이 늦게 선다
     for (let attempt = 0; attempt < 4 && (menu === null || menu.n === 0); attempt++) {
-      if (attempt > 0) { await closeMenus(); await clearTalk(); await settle(); await page.waitForTimeout(800); await tap('KeyC') }
-      for (let i = 0; i < 20 && Date.now() < till; i++) {
+      if (attempt > 0) { await closeMenus(); await clearTalk(); await settle(); await backoffFrames(); await tap('KeyC') }
+      // 시작 메뉴 줄이 서기를 기다린다 — 서면 바로 나온다. 상한은 예전 20번 × 250ms = 5초 그대로(바깥 마감도 그대로 본다)
+      await until(async () => {
         menu = await rowAt().catch(() => null)
-        if (menu !== null && menu.n > 0) break
-        await page.waitForTimeout(250)
-      }
+        return menu !== null && menu.n > 0
+      }, Math.min(5_000, Math.max(0, till - Date.now())), 60)
     }
     if (menu === null || menu.n < 5) {
       for (let i = 0; i < 6; i++) await tap('KeyX', 80)
@@ -3045,7 +3080,7 @@ export async function driveStory(page, {
       await tap(at.at < want ? 'ArrowDown' : 'ArrowUp', 60)
     }
     await tap('Space', 250)
-    for (let i = 0; i < 30 && (await now()).menu !== 'bag'; i++) await page.waitForTimeout(200)
+    await until(async () => (await now()).menu === 'bag', 6_000, 50)
     if ((await now()).menu !== 'bag') {
       for (let i = 0; i < 6; i++) await tap('KeyX', 80)
       return { ok: false, why: '가방이 안 열렸다' }
@@ -3208,12 +3243,12 @@ export async function driveStory(page, {
     // 막 걸어 나온 자리에서 두 번 다 안 열려(「시작 메뉴에 공중날기가 없다 ([])」) 물가시티까지 걸어가다 207번도로 비탈에서
     // 30분을 맴돌았다. 시작 메뉴는 글이 오기 전에는 판을 안 그리므로(`StartMenu`) 바쁜 맵에서는 줄이 늦게 선다
     for (let attempt = 0; attempt < 4 && (menu === null || menu.n === 0); attempt++) {
-      if (attempt > 0) { await closeMenus(); await clearTalk(); await settle(); await page.waitForTimeout(800); await tap('KeyC') }
-      for (let i = 0; i < 20 && Date.now() < till; i++) {
+      if (attempt > 0) { await closeMenus(); await clearTalk(); await settle(); await backoffFrames(); await tap('KeyC') }
+      // 시작 메뉴 줄이 서기를 기다린다 — 서면 바로 나온다. 상한은 예전 20번 × 250ms = 5초 그대로(바깥 마감도 그대로 본다)
+      await until(async () => {
         menu = await rowAt().catch(() => null)
-        if (menu !== null && menu.n > 0) break
-        await page.waitForTimeout(250)
-      }
+        return menu !== null && menu.n > 0
+      }, Math.min(5_000, Math.max(0, till - Date.now())), 60)
     }
     if (menu === null || menu.want < 0) {
       await closeMenus()
@@ -3225,20 +3260,22 @@ export async function driveStory(page, {
       await tap(at.at < menu.want ? 'ArrowDown' : 'ArrowUp', 60)
     }
     await tap('Space', 400)
-    for (let i = 0; i < 30 && (await now()).menu !== 'fly'; i++) await page.waitForTimeout(200)
+    await until(async () => (await now()).menu === 'fly', 6_000, 50)
     if ((await now()).menu !== 'fly') { await closeMenus(); return { ok: false, why: '타운맵이 안 열렸다' } }
-    // 커서는 열린 첫 자리에서 시작한다 — 화면이 그 값을 효과로 세우므로 한 박자 기다린다
-    await page.waitForTimeout(400)
+    // 커서는 열린 첫 자리에서 시작한다 — 화면이 그 값을 효과로 세우므로 한 박자(프레임 두 장) 기다린다.
+    // 배포물에서는 프레임을 못 읽어 예전 400ms 그대로다
+    await framesFor(2, 400)
     const dx = to.x - from.x
     const dz = to.z - from.z
     for (let i = 0; i < Math.abs(dx); i++) await tap(dx > 0 ? 'ArrowRight' : 'ArrowLeft', 70)
     for (let i = 0; i < Math.abs(dz); i++) await tap(dz > 0 ? 'ArrowDown' : 'ArrowUp', 70)
     await tap('Space', 400)
     let at = await now()
-    while (Date.now() < till && !(at.map === target && at.scene === 'overworld' && !at.restoring)) {
-      await page.waitForTimeout(250)
+    // 목적지 맵에 설 때까지 — 서면 바로 나온다 (폴링 간격만 250 → 60ms)
+    await until(async () => {
       at = await now()
-    }
+      return at.map === target && at.scene === 'overworld' && !at.restoring
+    }, Math.max(0, till - Date.now()), 60)
     await settle()
     const ok = at.map === target
     if (!ok) await closeMenus()
@@ -3304,7 +3341,7 @@ export async function driveStory(page, {
           moved = r.known && r.value !== null
         }
         await page.keyboard.up(key)
-        await page.waitForTimeout(300)
+        await settledFor(300)               // 밀고 난 뒤 주인공이 멈춰 서기를 기다린다 — 다음 밀기는 선 자리에서 시작한다
         if (!moved) log(`      괴력 ${String(i + 1)}번째 밀기 — 바위가 안 옮겨졌다 (${String(here.x)},${String(here.z)}) · ${String(retry + 1)}번째`)
       }
       if (!moved) break
@@ -3592,7 +3629,7 @@ export async function driveStory(page, {
       if (!at.ok) { await closeMenus(); return done({ ...at, level: mon.level }) }
       const used = await chooseUse(at.slot)
       if (!used.ok) { await closeMenus(); return done({ ...used, level: mon.level }) }
-      for (let i = 0; i < 30 && (await now()).menu !== 'party'; i++) await page.waitForTimeout(150)
+      await until(async () => (await now()).menu === 'party', 4_500, 50)   // 파티 화면이 서면 바로 나온다 (상한은 예전 30 × 150ms 그대로)
       /**
        * ⚠️ **가방에 그대로면 가방을 닫고 처음부터 다시 연다** (두 번까지). 판마다 가끔 숲 앞 ·
        * 빌딩 앞에서 첫 알이 「쓴다」 뒤에도 가방에 남았다 — 메뉴 bag · 스크립트 없음 · 60fps
@@ -3604,7 +3641,7 @@ export async function driveStory(page, {
         if (!at2.ok) break
         const again = await chooseUse(at2.slot)
         if (!again.ok) break
-        for (let i = 0; i < 60 && (await now()).menu !== 'party'; i++) await page.waitForTimeout(150)
+        await until(async () => (await now()).menu === 'party', 9_000, 50)  // 상한은 예전 60 × 150ms 그대로
       }
       if ((await now()).menu !== 'party') {
         // 그때 화면이 무엇이었는지 같이 적는다 — 앞쪽은 계기판 글이라 끝과 갈래 창을 따로 잡는다
@@ -3654,9 +3691,7 @@ export async function driveStory(page, {
           }
           await tap('Space', 300)         // 예
           // 목록이 실제로 뜬 뒤에 고른다 — 안 기다리면 ↓가 허공으로 간다
-          for (let i = 0; i < 20 && !(await screen()).includes('어느 기술을'); i++) {
-            await page.waitForTimeout(150)
-          }
+          await until(async () => (await screen()).includes('어느 기술을'), 3_000, 50)   // 상한은 예전 20 × 150ms 그대로
           for (let i = 0; i < Number(answer); i++) await tap('ArrowDown', 150)
           await tap('Space', 300)
           continue
@@ -3896,10 +3931,8 @@ export async function driveStory(page, {
         await page.waitForTimeout(250)
         await tap('ArrowDown', 120)
         await tap('Space', 250)
-        for (let w = 0; w < 15 && !opened; w++) {
-          opened = (await page.evaluate(readBattleBag)) !== null
-          if (!opened) await page.waitForTimeout(200)
-        }
+        // 배틀 가방이 뜨기를 기다린다 — 뜨면 바로 나온다 (상한은 예전 15 × 200ms 그대로)
+        opened = (await until(async () => (await page.evaluate(readBattleBag)) !== null, 3_000, 50)).ok
       }
       /**
        * ③④ **몬스터볼이 보일 때까지 주머니를 넘긴다.**
@@ -3913,20 +3946,16 @@ export async function driveStory(page, {
        * ⚠️ **주머니 차례를 세지 않고 글자로 찾는다.** 도구 표는 화면이 그때
        * 받아 오므로(`BattleBag`의 `loadItems`) 한 주머니마다 잠깐 기다려 준다
        */
-      const ballRow = async (rounds) => {
-        for (let i = 0; i < rounds; i++) {
-          if (ball !== null) {
-            const bag = await page.evaluate(readBattleBag)
-            if (bag !== null && bag.rows.some((r) => r.item === ball)) return true
-          } else {
-            const list = await panel()
-            saw = list
-            if (list.some((t) => t.includes('몬스터볼'))) return true
-          }
-          await page.waitForTimeout(200)
+      // 상한은 예전 `rounds × 200ms` 그대로, 줄이 뜨면 바로 나온다 (폴링 간격만 50ms)
+      const ballRow = async (rounds) => (await until(async () => {
+        if (ball !== null) {
+          const bag = await page.evaluate(readBattleBag)
+          return bag !== null && bag.rows.some((r) => r.item === ball)
         }
-        return false
-      }
+        const list = await panel()
+        saw = list
+        return list.some((t) => t.includes('몬스터볼'))
+      }, rounds * 200, 50)).ok
       /**
        * ⚠️ **첫 주머니에서 넉넉히 기다린다.** 도구 표는 가방을 처음 열 때 한 번
        * 받아 오는데(`BattleBag`의 `loadItems`), 그 왕복이 기계 사정에 따라
@@ -4073,14 +4102,17 @@ export async function driveStory(page, {
      */
     const wanted = async () => {
       if (want === null) return true
-      for (let i = 0; i < 20; i++) {
+      // 상대가 읽힐 때까지 — 읽히면 바로 나온다 (상한은 예전 20 × 250ms = 5초 그대로)
+      let foe = null
+      await until(async () => {
         const r = await obs.foeNow()
-        if (r.known && r.value !== null && r.value.species != null) {
-          const yes = want.includes(r.value.species)
-          saw.push({ species: r.value.species, level: r.value.level, threw: yes })
-          return yes
-        }
-        await page.waitForTimeout(250)
+        if (r.known && r.value !== null && r.value.species != null) { foe = r.value; return true }
+        return false
+      }, 5_000, 60)
+      if (foe !== null) {
+        const yes = want.includes(foe.species)
+        saw.push({ species: foe.species, level: foe.level, threw: yes })
+        return yes
       }
       saw.push({ species: null, threw: true, why: `상대를 못 읽었다 (${obs.kind})` })
       return true
@@ -4823,12 +4855,7 @@ export async function playOpening(page, names = OPENING_NAMES) {
   // ⚠️ **먼저 `/intro`에 들어설 때까지 기다린다.** 「시작」은
   // `resetSave().then(() => navigate('/intro'))`라(`ui/screens/TitleScreen`)
   // 저장을 지우는 동안은 아직 타이틀이다 — 그 시간은 기계와 저장 크기를 탄다
-  const till = Date.now() + 60_000
-  while (Date.now() < till) {
-    const at = await where()
-    if (at !== '/') break
-    await page.waitForTimeout(100)
-  }
+  await pollUntil(async () => (await where()) !== '/', { timeout: 60_000, poll: 40 })
 
   let filled = 0
   for (let i = 0; i < 900; i++) {
@@ -4840,10 +4867,16 @@ export async function playOpening(page, names = OPENING_NAMES) {
       await input.fill(list[Math.min(filled, list.length - 1)])
       filled += 1
       await page.getByRole('button', { name: '결정' }).click()
-      await page.waitForTimeout(200); continue
+      // 이름칸이 사라지기를 기다린다 (다음 화면이 선 것) — 사라지면 바로 나온다. 안 사라져도 상한 뒤에 이어 간다
+      await pollUntil(async () => (await input.count()) === 0, { timeout: 400, poll: 30 })
+      continue
     }
     const ball = page.getByLabel('몬스터볼')
-    if (await ball.count() > 0) { await ball.click(); await page.waitForTimeout(200); continue }
+    if (await ball.count() > 0) {
+      await ball.click()
+      await pollUntil(async () => (await ball.count()) === 0, { timeout: 400, poll: 30 })   // 몬스터볼 단추가 걷히기를 기다린다
+      continue
+    }
     const { n, at } = await page.evaluate(() => {
     // ⚠️ **생김새로 어림짐작하지 않는다.** 예전에는 「자식이 전부 글 있는
     // span인 div」로 셌는데, 계기판(`ui/hud/PerfOverlay`)이 자라서 정확히 그

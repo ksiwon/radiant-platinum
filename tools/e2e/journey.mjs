@@ -37,10 +37,12 @@ import {
 import { looksFlat, statsOf } from '../shot/png.mjs'
 import { WATCH_INIT, looksDrawn, missingShots, shootCanvas } from './canvasShot.mjs'
 import { cellStats, judgeTerrain } from './terrainJudge.mjs'
-import { stageState, waitTerrain } from './stageProbe.mjs'
+import { framesNow, settleView, stageState, waitTerrain } from './stageProbe.mjs'
+import { waitFor } from './waits.mjs'
+import { DEFAULT_STUCK_MINUTES, startStuckWatch } from './stuckWatch.mjs'
 import { SPY } from './perfSpy.mjs'
 import { LOAD_SPY, startLoadSpy } from './loadSpy.mjs'
-import { classify, INFRA, SHAPE, SLOW } from './budget.mjs'
+import { classify, INFRA, SHAPE, SLOW, STALLED } from './budget.mjs'
 import { missingData, trainersOn } from './route.mjs'
 import { resumableAt, writeSegment } from './segments.mjs'
 import { CELLS, CELL_COUNT, keepPartEnd, partEnvelope, partStart, PARTS_DIR } from './parts.mjs'
@@ -171,8 +173,42 @@ if (EXPECTED_CASES === null) {
   console.error('\n정본 case 목록을 못 냈다 — tools/distribution/evidence.mjs를 본다\n')
   process.exit(1)
 }
-const SHOTS = resolve(ROOT, 'shots/journey')
-const SAVES = resolve(ROOT, '.audit/journey')
+/**
+ * **같은 시각에 도는 칸의 자리 이름** (`--lane=<이름>`, `pnpm part 3 9 --parallel`이 칸마다 준다).
+ *
+ * 칸 둘이 한 기계에서 동시에 돌 때 **겹치는 것은 파일 경로뿐이다** — 판 시작이 `shots/journey`를 통째로 지우고,
+ * 그림 · 영상 · 리포트 백업이 같은 이름을 쓴다. 그래서 `--lane=c3`이면 그림은 `shots/journey-c3/`, 리포트 백업은
+ * `.audit/journey-c3/`로 간다. 칸의 끝 세이브 · 하네스 기억 · 봉투는 **칸 번호가 이름에 들어 있어** 원래 안 겹친다
+ * (`parts.mjs`의 `.audit/parts/cell-N.*`). 브라우저는 판마다 새로 띄우는 비영속 프로필이라 프로필 디렉터리는 겹치지 않는다.
+ * 안 주면 예전 그대로다 (`shots/journey` · `.audit/journey`)
+ */
+const LANE = flag('lane')
+if (LANE !== null && !/^[A-Za-z0-9_-]+$/.test(LANE)) {
+  console.error(`\n--lane은 글자 · 숫자 · - · _만 쓴다: ${LANE}\n`)
+  process.exit(1)
+}
+/**
+ * **동시에 도는 판인가** (`--concurrent=<같이 도는 칸들>`, 예 `--concurrent=3,9`). 부르는 쪽(`part.mjs`)이 준다.
+ *
+ * ⚠️ **동시에 돈 판의 프레임 시간은 성능 증거가 아니다.** 한 기계의 GPU · CPU를 둘이 나눠 쓰므로 fps가 제품이 아니라
+ * 우리가 만든 경합을 잰다. 봉투 `environment.concurrent`에 적고 `budget.perfLoad`가 그 판의 부하 표본을 성능 비교에서 뺀다.
+ * 통과 · 실패 판정은 그대로다 — 걷기가 이어지는가는 프레임과 무관하다
+ */
+const CONCURRENT = flag('concurrent') === null ? null
+  : { lane: LANE, cell: PART_N, with: flag('concurrent').split(',').filter((x) => x !== '') }
+const SHOTS_REL = LANE === null ? 'shots/journey' : `shots/journey-${LANE}`
+const SAVES_REL = LANE === null ? '.audit/journey' : `.audit/journey-${LANE}`
+const SHOTS = resolve(ROOT, SHOTS_REL)
+const SAVES = resolve(ROOT, SAVES_REL)
+/**
+ * **멈춤 한도** (`--stuck=<분>`, 기본 8분, `0`이면 끈다) — 칸 실행 중 (맵 · 좌표 · 대사 · 스크립트 · 배틀 단계)
+ * 지문이 이만큼 그대로면 그 칸을 「멈췄다」로 바로 실패시킨다 (`stuckWatch.mjs`).
+ */
+const STUCK_MIN = flag('stuck') === null ? DEFAULT_STUCK_MINUTES : Number(flag('stuck'))
+if (!Number.isFinite(STUCK_MIN) || STUCK_MIN < 0) {
+  console.error(`\n--stuck은 0 이상의 분이다: ${String(flag('stuck'))}\n`)
+  process.exit(1)
+}
 const VIEW = { width: 960, height: 640 }
 
 /**
@@ -646,7 +682,7 @@ mkdirSync(SAVES, { recursive: true })
 const url = flag('url') ?? await (async () => {
   const port = await freePort()
   const t0 = Date.now()
-  const { url: at } = await startVite(port, 'node_modules/.vite-journey')
+  const { url: at } = await startVite(port, LANE === null ? 'node_modules/.vite-journey' : `node_modules/.vite-journey-${LANE}`)
   console.log(`  개발 서버(${String(port)}) 준비됐다 — ${String(Math.round((Date.now() - t0) / 1000))}초\n`)
   return at
 })()
@@ -675,7 +711,7 @@ const browserVersion = browser.version()
 const page = await browser.newPage({
   viewport: VIEW,
   acceptDownloads: true,
-  recordVideo: { dir: resolve(ROOT, 'shots/journey/video'), size: VIEW },
+  recordVideo: { dir: resolve(SHOTS, 'video'), size: VIEW },
 })
 page.setDefaultNavigationTimeout(300_000)
 // 찍는 동안 화면이 흔들렸는지 재는 자 (`tools/e2e/canvasShot.mjs`)
@@ -788,7 +824,8 @@ const skyRef = async () => {
   if (was === null) return null
   try {
     await page.evaluate((y) => window.pt.look((y * 180) / Math.PI, 50), was.yaw)
-    await page.waitForTimeout(800)
+    // 올려다본 화면이 나가고 카메라가 닿기를 기다린다 — 예전 고정 800ms (`stageProbe.settleView`)
+    await settleView(page, 800)
     const up = await shootCanvas(page, {})
     return cellStats(up.png).filter((x) => x.r === 0).map((x) => x.rgb)
   } catch { return null } finally {
@@ -796,7 +833,7 @@ const skyRef = async () => {
       window.pt.view(w.view === 'first' ? 1 : 0)
       window.pt.look((w.yaw * 180) / Math.PI, (w.pitch * 180) / Math.PI)
     }, was).catch(() => {})
-    await page.waitForTimeout(400)
+    await settleView(page, 400)       // 되돌린 시점이 나가기를 기다린다 — 예전 고정 400ms
   }
 }
 const atNoon = async (shoot) => {
@@ -806,7 +843,9 @@ const atNoon = async (shoot) => {
     w.worldState.time.gameHour = h
     return old
   }, NOON).catch(() => null)
-  if (was !== null) await page.waitForTimeout(600)
+  // 한낮으로 돌린 빛이 한 번 그려지기를 기다린다 — 예전 고정 600ms. 빛은 세 프레임에 한 번 갱신되므로(`BdspField`) 열두 장이면 네 번이다.
+  // 카메라는 안 움직였으니 카메라 준비는 안 묻는다
+  if (was !== null) await settleView(page, 600, { minFrames: 12, camera: false })
   try { return await shoot() } finally {
     if (was !== null) {
       await page.evaluate(async (h) => {
@@ -858,7 +897,7 @@ let shotNo = 0
  */
 async function shot(name, { world = true } = {}) {
   shotNo += 1
-  const head = `shots/journey/${String(shotNo).padStart(2, '0')}-${name}`
+  const head = `${SHOTS_REL}/${String(shotNo).padStart(2, '0')}-${name}`
   /**
    * **찍기 전에 지형이 서기를 기다린다 — 시간이 아니라 상태를.**
    *
@@ -1080,10 +1119,8 @@ async function writeReport(saveAs) {
     page.waitForEvent('download', { timeout: 120_000 }).catch(() => null),
     (async () => {
       await tap('Space') // 리포트를 연다
-      for (let i = 0; i < 30; i++) {
-        if ((await marks()).menu === 'save') break
-        await page.waitForTimeout(200)
-      }
+      // 리포트 화면이 서기를 기다린다 — 서면 바로 나온다 (상한은 예전 30 × 200ms = 6초 그대로)
+      await waitFor(async () => (await marks()).menu === 'save', { timeout: 6_000, poll: 50 })
       // 「작성할까요?」 · 「덮어써도 괜찮습니까?」 — 기본 칸이 「예」다
       for (let i = 0; i < 20; i++) await tap('Space')
     })(),
@@ -1093,7 +1130,7 @@ async function writeReport(saveAs) {
   await download.saveAs(at)
   // 화면을 닫고 필드로 돌아온다
   for (let i = 0; i < 8 && (await marks()).menu !== undefined; i++) await tap('KeyX')
-  return { ok: true, file: `.audit/journey/${saveAs}`, name: download.suggestedFilename() }
+  return { ok: true, file: `${SAVES_REL}/${saveAs}`, name: download.suggestedFilename() }
 }
 
 /** 첫 화면이 뜰 때까지 (cold) */
@@ -1166,6 +1203,8 @@ const shots = []
 let ranToTheEnd = false
 /** 파트 판의 끝 (`--part`) — ⑬에서 채운다. 터지면 null로 남고 파트는 못 닿은 것이다 */
 let partOut = null
+/** 멈춤 감시가 끝낸 칸이면 그때의 증거 (`stuckWatch.mjs`). 안 멈췄으면 null */
+let stuckHit = null
 
 /**
  * `--from`이 가리키는 구간에서 이어 달려도 되는가 — **신원까지 맞을 때만.**
@@ -1287,10 +1326,29 @@ try {
    * 못 읽는 것을 「열려 있다」로 접지 않는다
    */
   let hasBike = false
+  /**
+   * **멈춤 감시** (`--stuck=<분>`, `stuckWatch.mjs`). 칸이 도는 내내 (맵 · 좌표 · 스크립트 · 대사 · 배틀 단계) 지문을 읽고,
+   * 한도 동안 한 글자도 안 바뀌면 이 경주에서 이겨 그 칸을 **바로 실패**로 끝낸다 — 예산을 다 태우고서야 끝나지 않게.
+   * 마지막 상태와 그림은 `onStuck`이 남긴다
+   */
+  const stuckWatch = STUCK_MIN === 0 ? null : startStuckWatch(page, {
+    limitMs: Math.round(STUCK_MIN * 60_000),
+    onStuck: async (info) => {
+      const shotAt = `${SHOTS_REL}/stuck-cell.png`
+      const stateAt = `${SHOTS_REL}/stuck-cell.json`
+      const png = await page.screenshot({ path: resolve(ROOT, shotAt), timeout: 15_000 }).then(() => shotAt).catch(() => null)
+      const where = await Promise.race([whereNow().catch(() => null), new Promise((r) => { setTimeout(() => { r(null) }, 8_000) })])
+      const m = await Promise.race([marks().catch(() => null), new Promise((r) => { setTimeout(() => { r(null) }, 8_000) })])
+      writeFileSync(resolve(ROOT, stateAt), `${JSON.stringify({ ...info, cell: PART_N, at: new Date().toISOString(), where, marks: m, shot: png }, null, 1)}\n`)
+      return { shot: png, state: stateAt }
+    },
+  })
   const drive = await Promise.race([
+    ...(stuckWatch === null ? [] : [stuckWatch.stuck.then((one) => ({ stuckCell: one }))]),
     driveStory(page, {
     log,
     verbose: flag('verbose') !== null,
+    evidenceDir: SHOTS_REL,
     totalMs: Math.max(600_000, BUDGET_MS - (Date.now() - t1)),
     /**
      * **꽃시계가 막는 칸.** 우리 격자(`route.mjs`)는 타일 통행만 알아서 시계
@@ -1464,7 +1522,7 @@ try {
                 doorIfUp: door ? door.to : null, map: w.world.mapId,
               }
             }).catch((e) => ({ error: String(e?.message ?? e) }))
-            await page.screenshot({ path: resolve(ROOT, `shots/journey/school-door-${String(again)}.png`) }).catch(() => {})
+            await page.screenshot({ path: resolve(SHOTS, `school-door-${String(again)}.png`) }).catch(() => {})
             log(`  트레이너 스쿨 문이 안 열렸다 (${inSchool}) — ${JSON.stringify(seen)} · 떨어졌다 다시 온다`)
             story.schoolDoor = [...(story.schoolDoor ?? []), { why: inSchool, seen }]
             await api.stepOn(3, again === 0 ? { x: 160, z: 781 } : { x: 175, z: 782 }, Math.min(120_000, api.left()))
@@ -1867,7 +1925,13 @@ try {
             await page.waitForFunction(() => location.pathname === '/play', null, { timeout: 120_000 })
             await page.waitForFunction(() => document.documentElement.dataset.renderer === 'live'
               && document.documentElement.dataset.restoring === undefined, null, { timeout: 180_000 })
-            await page.waitForTimeout(2000)
+            // 이어하기로 든 세계가 서고 첫 프레임이 나가기를 기다린다 — 예전 고정 2초. 맵이 서고 · 필드이고 · 복원이 끝나고 · 프레임 셋
+            const f0 = await framesNow(page)
+            await waitFor(async () => {
+              const m = await marks()
+              return m.map !== undefined && m.scene === 'overworld' && m.restoring === undefined
+                && (f0 === null || (await framesNow(page)) - f0 >= 3)
+            }, { timeout: 10_000, poll: 50 })
             return r
           }, async () => {
             const vv = await v()
@@ -2293,7 +2357,7 @@ try {
             const kept = await writeReport(file)
             if (kept.ok) {
               const where = await whereNow()
-              writeSegment(stop.id, `.audit/journey/${file}`, {
+              writeSegment(stop.id, `${SAVES_REL}/${file}`, {
                 map: where.world.map, matrix: where.world.matrix,
                 x: where.player.x, z: where.player.z,
                 poketch: poketch.done, badges: (await readSave()).badges,
@@ -2570,6 +2634,15 @@ try {
     }),
   ])
   if (hardStop !== null) clearTimeout(hardStop)
+  stuckWatch?.stop()
+  if (drive.stuckCell !== undefined) {
+    const z = drive.stuckCell
+    stuckHit = { minutes: z.minutes, fingerprint: z.fingerprint, shot: z.evidence?.shot ?? null, state: z.evidence?.state ?? null }
+    // ⚠️ **없는 시험 번호를 만들지 않는다** — 던지면 밖의 `catch`가 ⑨⑨를 FAIL로 적고(`멈췄다`는 내용 모양이라 BLOCKED로 안 내려간다),
+    // 못 밟은 줄은 **미실행**으로 남는다. 그림과 상태 파일은 그 글에 같이 적는다
+    throw new Error(`${STALLED} — ${String(z.minutes)}분 동안 지문이 그대로다 · 그림 ${String(z.evidence?.shot ?? '못 찍었다')}`
+      + ` · 상태 ${String(z.evidence?.state ?? '못 적었다')} · ${z.fingerprint}`)
+  }
   if (drive.hardStopped === true) {
     // ⚠️ **없는 시험 번호를 만들지 않는다.** 정본 목록에 없는 줄을 넣으면
     // 봉투가 통째로 거절된다 — 여기서는 던지고, 밖의 `catch`가 ⑨⑨를 FAIL로 적는다.
@@ -3070,6 +3143,7 @@ try {
     const t0 = Date.now()
     let last = null
     let still = null
+    let stillF = null
     while (Date.now() - t0 < capMs) {
       const m = await marks()
       const w = await whereNow()
@@ -3093,9 +3167,15 @@ try {
         && w.world.grid && m.scene === 'overworld'
         && m.script === undefined && m.talk === undefined
       const here = `${String(w.player.x)},${String(w.player.z)}`
-      if (ready && still === here) return { ok: true, ms: Date.now() - t0, at: w }
+      /**
+       * ④의 「연달아 두 번」은 **프레임으로** 센다 — 같은 자리를 본 뒤 게임 프레임이 세 장 더 나갔으면 서 있는 것이다
+       * (예전에는 250ms 간격의 두 관측이었다). 프레임 수를 못 읽으면(`framesNow`가 `null`) 예전 250ms 간격 그대로다
+       */
+      const f = await framesNow(page)
+      if (ready && still === here && (f === null || (stillF !== null && f - stillF >= 3))) return { ok: true, ms: Date.now() - t0, at: w }
+      if (!(ready && still === here)) stillF = f
       still = ready ? here : null
-      await page.waitForTimeout(250)
+      await page.waitForTimeout(f === null ? 250 : 60)
     }
     return { ok: false, ms: Date.now() - t0, at: last }
   }
@@ -3254,7 +3334,7 @@ try {
   await browser.close()
   if (clip !== null) {
     try {
-      video = `shots/journey/video/${(await clip.path()).split(/[\/]/).pop()}`
+      video = `${SHOTS_REL}/video/${(await clip.path()).split(/[\/]/).pop()}`
       console.log(`  영상 ${video}`)
     } catch { video = null }
   }
@@ -3284,10 +3364,16 @@ writeFileSync(PART !== null ? partEnvelope(PART_N) : resolve(ROOT, '.audit/journ
     view: VIEW,
     // ⚠️ **이 판이 얼마나 붐볐는지가 봉투 안에 있어야 한다** (지시서 H4).
     // 밖에 적으면 다음 사람이 「그때 기계가 어땠는지」를 못 되짚는다
-    load,
+    // 프레임 기록 자체에도 「동시 실행」을 적는다 — 봉투에서 `load`만 떼어 읽어도 못 쓴다는 것이 따라간다
+    load: load === null ? null : { ...load, concurrent: CONCURRENT !== null },
+    /**
+     * ⚠️ **동시에 돈 판이면 여기에 적힌다** — 위 `load`의 프레임 표본은 한 기계를 둘이 나눠 쓴 값이라 성능 증거가 아니다.
+     * 성능을 견주는 쪽은 `budget.perfLoad(environment)`를 거친다. 혼자 돈 판은 `null`이다
+     */
+    concurrent: CONCURRENT,
   },
   results: rows,
-  extra: { timings, story, shots, video, noise, perfSpy, part: partOut },
+  extra: { timings, story, shots, video, noise, perfSpy, part: partOut, stuck: { limitMin: STUCK_MIN, hit: stuckHit } },
 }), null, 1)}\n`)
 
 process.exit(rows.some((r) => r.status === 'FAIL' || r.status === 'BLOCKED') || (PART !== null && partOut?.ok !== true) ? 1 : 0)

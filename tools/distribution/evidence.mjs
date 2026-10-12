@@ -201,6 +201,8 @@ export const SUITES = {
       // ⚠️ **그만두는 자와 부하 계측도 도구다** — 빠지면 판정의 뜻이 바뀐
       // 판을 봉투가 못 잡는다 (`firstFrameRules`가 빠져 있던 것과 같은 자리다)
       'tools/e2e/budget.mjs', 'tools/e2e/loadSpy.mjs',
+      // 기다림을 상태로 바꾼 자 — `drive.mjs`가 부른다 (`JOURNEY_SPEED_20261012`)
+      'tools/e2e/waits.mjs',
       'tools/devServer.mjs', 'tools/gpuFlags.mjs',
       'tools/distribution/evidence.mjs', 'tools/distribution/csp.mjs',
     ],
@@ -220,7 +222,7 @@ export const SUITES = {
     harness: [
       'tools/e2e/story.mjs',
       'tools/e2e/drive.mjs', 'tools/e2e/observe.mjs', 'tools/e2e/route.mjs',
-      'tools/e2e/budget.mjs',
+      'tools/e2e/budget.mjs', 'tools/e2e/waits.mjs',
       'tools/e2e/sceneWatch.mjs', 'tools/devServer.mjs', 'tools/gpuFlags.mjs',
       'tools/shot/png.mjs', 'tools/distribution/evidence.mjs',
     ],
@@ -280,6 +282,8 @@ export const SUITES = {
       'tools/e2e/drive.mjs', 'tools/e2e/observe.mjs', 'tools/e2e/route.mjs',
       'tools/e2e/budget.mjs', 'tools/e2e/loadSpy.mjs',
       'tools/e2e/canvasShot.mjs', 'tools/e2e/terrainJudge.mjs', 'tools/e2e/stageProbe.mjs',
+      // 기다림을 상태로 · 멈춤 감시 · 칸 끝 점검 (`JOURNEY_SPEED_20261012`) — 빠지면 바뀐 판을 봉투가 못 잡는다
+      'tools/e2e/waits.mjs', 'tools/e2e/stuckWatch.mjs', 'tools/e2e/partChecks.mjs',
       // ⚠️ 페이지에 심는 것도 도구다 — 빠지면 계측이 바뀐 판을 봉투가 못 잡는다
       'tools/e2e/perfSpy.mjs',
       // 칸 표 — 경계 · 결과 줄 · 시작 세이브를 정한다 (`JOURNEY_CELLS_20261011.md`)
