@@ -409,7 +409,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    *
    * ② **대타 인형 모델** (`data/fx/model/substitute_doll.glb` · `index.json`의 `substituteDoll` — `Characters/objects/ob0301_00`,
    * 뼈 스물의 정지한 스킨 모델 152KB). 없으면 대타가 우리가 지은 초록 덩이로 선다
-   * · ⚠️ **4 · 5는 안 쓴다**(`GROUP_ACCEPTS`에 없다)
+   * · ⚠️ **4 · 5는 안 쓴다**(`GROUP_ACCEPTS`에 없다)
    *
    * 4 — **진화 · 부화 이펙트 원본과 알 모델이 붙는다** (메뉴 개편). 필드 프리팹 `ef_f_evolution_*` 아홉(`index.json`의 `evolution`) ·
    * `sd9120_*` 열일곱(`hatch`)과 알 모델 `data/fx/model/ew121_egg00.glb`(`eggModel`). 없으면 진화 · 부화 무대가 지금의 도형 알과
