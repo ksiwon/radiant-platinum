@@ -36,9 +36,11 @@ export interface MotionValues {
  * 개발 · 측정용 끄개 — 주소에 `?nomotion`이 있으면 맵 움직임(흐름 · 흔들림 · 회전 · 클립 · 파티클 표식)을 전부 안 세운다. 같은 판에서 켠 쪽과 끈 쪽의
  * 프레임 시간 · 그리기 호출 · 파이프라인 수를 맞대려는 것이다 (docs/orders/GAPS_20261011.md 성능 규칙)
  */
-export function motionDisabled(): boolean {
+const NO_MOTION = ((): boolean => {
+  // ⚠️ 모듈을 처음 읽을 때 한 번만 본다 — 앱이 길 바꿈(`/play`)으로 주소 뒤 `?nomotion`을 지워도 그 판 내내 꺼 둔다
   try { return typeof location !== 'undefined' && new URLSearchParams(location.search).has('nomotion') } catch { return false }
-}
+})()
+export function motionDisabled(): boolean { return NO_MOTION }
 
 /** 바람 진폭 곱수 (추측 — 머리말) */
 export const WIND_GAIN = 2
