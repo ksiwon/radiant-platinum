@@ -47,6 +47,7 @@ import {
   AMITY_GIFT_COUNT, amityFound, amityGiftId, amityGiftIsAccessory, VAR_AMITY_STEPS,
 } from '../world/amity'
 import { SUNYSHORE_SEAL_STOCKS } from '../world/sealTables'
+import { TRAM_AT, TRAM_NOT_AT } from '../world/safari'
 import { FLAG_FREED_GALACTIC_HQ } from '../world/lakeGuardianUnits'
 import { trainerEncounterBgm } from '../world/trainerEncounterBgm'
 import { rematchTrainerID, VsSeekerResult } from '../world/vsSeeker'
@@ -5868,11 +5869,11 @@ on('MoveGreatMarshTram', (ctx) => {
   return true
 })
 
-/** 열차가 그 자리에 서 있는가 (`ScrCmd_CheckGreatMarshTramLocation`). 1이 「있다」 */
+/** 열차가 그 자리에 서 있는가 (`ScrCmd_CheckGreatMarshTramLocation`). 「있다」는 `TRAM_AT`(5) · 「없다」는 `TRAM_NOT_AT`(6)이다 */
 on('CheckGreatMarshTramLocation', (ctx) => {
   const location = ctx.readHalfWord()
   const dest = ctx.readHalfWord()
-  ctx.host.vars.set(dest, ctx.host.world.services.safari?.tramAt(location) === true ? 1 : 0)
+  ctx.host.vars.set(dest, ctx.host.world.services.safari?.tramAt(location) === true ? TRAM_AT : TRAM_NOT_AT)
   return false
 })
 

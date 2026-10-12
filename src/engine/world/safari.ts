@@ -201,9 +201,13 @@ const TRAM_SLOW_Z = {
   area56: 32 * 3 + 4,
 } as const
 
-/** `GREAT_MARSH_TRAM_AT_LOCATION` · `_NOT_AT_LOCATION` */
-export const TRAM_AT = 1
-export const TRAM_NOT_AT = 0
+/**
+ * `GREAT_MARSH_TRAM_AT_LOCATION` · `_NOT_AT_LOCATION` (`constants/great_marsh_tram.h`).
+ * ⚠️ **0 · 1이 아니라 5 · 6이다** — 스크립트가 `CallIfEq VAR_0x8004, GREAT_MARSH_TRAM_NOT_AT_LOCATION`으로 6과 견준다.
+ * 0 · 1을 쓰면 열차를 정거장으로 부르는 갈래가 한 번도 안 열려, 열차가 안 온 채로 타고 떠난다
+ */
+export const TRAM_AT = 5
+export const TRAM_NOT_AT = 6
 
 /** 처음 세울 때의 자리 (`PersistedMapFeatures_InitForGreatMarsh`) — 5·6구역이다 */
 export const TRAM_START = TRAM_STOP.area56

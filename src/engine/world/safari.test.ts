@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   endSafari, leaveSafari, newSafari, newSafariBattle, SAFARI_BALLS, SAFARI_RATE,
   SAFARI_STAGE_MAX, SAFARI_STAGE_START, SAFARI_STEPS, safariCatchRate, safariFlees, safariStep,
-  startSafari, throwBait, throwMud, TRAM_STOP, TRAM_STOP_Z, tramMove, useSafariBall,
+  startSafari, throwBait, throwMud, TRAM_AT, TRAM_NOT_AT, TRAM_STOP, TRAM_STOP_Z, tramMove, useSafariBall,
 } from './safari'
 
 describe('놀이 판', () => {
@@ -131,6 +131,10 @@ describe('도망', () => {
 describe('습초원 열차', () => {
   it('정거장 셋의 z가 청크 경계에서 온다', () => {
     expect(TRAM_STOP_Z).toEqual([40, 82, 108])
+  })
+
+  it('열차 위치 답은 5 · 6이다 — 스크립트가 NOT_AT(6)과 견줘 열차를 부른다 (constants/great_marsh_tram.h)', () => {
+    expect([TRAM_AT, TRAM_NOT_AT]).toEqual([5, 6])
   })
 
   it('1·2구역에서는 어디로 가든 남쪽이다', () => {
