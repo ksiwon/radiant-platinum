@@ -266,6 +266,8 @@ export function buildFxMaterial(spec: FxMaterialSpec, maps: readonly Texture[], 
     rgb = combine(spec.primColorExpr, rgb, colorChannel(spec.primColorChannel, prim, vColor.a))
     alpha = combine(spec.primAlphaExpr, alpha, alphaChannel(spec.primAlphaChannel, vColor.r, vColor.a))
 
+    // `LIGHTPARAM01_MULVERTEXCOL_NORML`: 메시 꼭짓점색(바위의 흙빛 0.6)을 곱한다 — 그대로(선형) 곱한다
+    if (spec.combiner.kind === 'lightNormal' && !billboard) rgb = rgb.mul(varying(attribute<'vec4'>('color', 'vec4')).rgb)
     rgb = rgb.mul(colorScale).mul(lin(mulColor.xyz))
     alpha = clamp(alpha.mul(mulColor.w), 0, 1)
     rgb = max(rgb, vec3(0, 0, 0))

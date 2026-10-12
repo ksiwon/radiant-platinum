@@ -235,6 +235,9 @@ function meshGeometry(mesh: FxMesh | { name: string; builtin?: string } | null |
   let pos: number[]
   let uvs: number[]
   let idx: number[]
+  // 메시가 실어 온 법선 · 꼭짓점색 — 없으면 법선은 비우고(셰이더가 0으로 읽는다) 꼭짓점색은 흰색이다
+  let normals: readonly number[] | null = null
+  let colors: readonly number[] | null = null
   if (mode !== RenderMode.Mesh) {
     pos = [-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0]
     uvs = [0, 0, 1, 0, 1, 1, 0, 1]
@@ -244,6 +247,8 @@ function meshGeometry(mesh: FxMesh | { name: string; builtin?: string } | null |
     pos = Array.from(mesh.positions)
     uvs = mesh.uvs && mesh.uvs.length >= (pos.length / 3) * 2 ? Array.from(mesh.uvs) : new Array<number>((pos.length / 3) * 2).fill(0)
     idx = Array.from(mesh.indices)
+    if (mesh.normals && mesh.normals.length === pos.length) normals = mesh.normals
+    if (mesh.colors && mesh.colors.length === (pos.length / 3) * 4) colors = mesh.colors
   } else if (mesh && 'builtin' in mesh && (mesh.builtin === 'Cube' || mesh.builtin === 'Quad')) {
     if (mesh.builtin === 'Quad') {
       pos = [-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0]
@@ -264,6 +269,16 @@ function meshGeometry(mesh: FxMesh | { name: string; builtin?: string } | null |
   for (let i = 0; i + 2 < idx.length; i += 3) flipped.push(idx[i]!, idx[i + 2]!, idx[i + 1]!)
   g.setAttribute('position', new BufferAttribute(mirrored, 3))
   g.setAttribute('uv', new BufferAttribute(new Float32Array(uvs), 2))
+  // 법선도 X를 뒤집는다 (위치와 같은 거울). 안 달던 동안 메시는 법선이 0이라 `LIGHTPARAM01` 명암이 한 값으로 납작했다(암석깨기 `ew439_rockbig` 실측)
+  if (normals) {
+    const n = new Float32Array(normals.length)
+    for (let i = 0; i < n.length; i += 3) { n[i] = -normals[i]!; n[i + 1] = normals[i + 1]!; n[i + 2] = normals[i + 2]! }
+    g.setAttribute('normal', new BufferAttribute(n, 3))
+  }
+  const verts = pos.length / 3
+  const col = new Float32Array(verts * 4).fill(1)
+  if (colors) col.set(colors)
+  g.setAttribute('color', new BufferAttribute(col, 4))
   g.setIndex(flipped)
   g.instanceCount = 0
   return g
