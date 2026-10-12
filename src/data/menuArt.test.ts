@@ -77,6 +77,8 @@ describe('시트 칸 구성 (굽는 쪽과의 계약)', () => {
     expect(data.PARTY_ICON_SHEET.cols * data.PARTY_ICON_SHEET.rows).toBe(3)
     expect(data.PARTY_ICON_ATLAS).toBe('data/partyIcons.png')
     expect(data.PARTY_ICON_CELL.capsule).toBe(2)
+    expect(data.SEAL_ICON_SHEET.cols * data.SEAL_ICON_SHEET.rows).toBe(80)
+    expect(data.SEAL_ICON_ATLAS).toBe('data/sealIcons.png')
     expect(data.typeIconAtlas('ko')).toBe('data/typeIcons.ko.png')
     expect(data.startMenuIconAtlas('en')).toBe('data/startMenuIcons.en.png')
     for (const path of [data.DEX_SHAPE_ATLAS, data.TOWN_MAP_PLAYER_ATLAS, data.MAIL_ART_ATLAS, data.BERRY_ART_ATLAS, data.DIPLOMA_ART_ATLAS]) {

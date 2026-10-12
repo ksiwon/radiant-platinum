@@ -26,7 +26,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import {
   loadBagSprite, loadDialogueBankOrNull, loadItemDescriptions, loadItemIcons, loadItemNames, loadItems,
-  loadMoveNames, loadMoves, type ItemTable, type MoveTable,
+  loadMoveNames, loadMoves, loadSealIcons, type ItemTable, type MoveTable,
 } from '../../data/gameData'
 import { fillMenuText, loadUiText, MART_TEXT, MONEY_WINDOW_TEXT, SELL_TEXT, UI_BANK, YES_NO } from '../../data/uiText'
 import { canGiveOrTake, countSeal, giveOrTakeSeal } from '../../engine/world/sealCase'
@@ -59,6 +59,9 @@ import { pickBand } from '../theme/window.css'
 import { clampCursor, scrollIntoView, useMenuKeys } from './useMenuKeys'
 import { itemIcon } from './itemIcon'
 import { pocketIcon } from './bagArt'
+import { pixelSprite } from '../common/pixelSprite'
+import { useSheet } from '../common/useSheet'
+import { PIXEL, type PixelScale } from '../theme/scale'
 import { berryNumber, pad2, tmNumber } from './bagRows'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
@@ -243,9 +246,15 @@ export function ShopScreen() {
   const priceOf = (item: number): number =>
     isSeal ? SEAL_PRICE[item - 1] ?? 0 : isBP ? bpPriceOf(item) : data?.items.get(item).price ?? 0
   const pocketOf = (item: number): number => (isSeal ? 0 : data?.items.get(item).pocket ?? 0)
-  /** 줄 아이콘 — 씰은 도구 그림이 아니라서 없다 */
+  // 씰 그림 시트(롬 `cb_data`) — 씰 가게에서만 받는다. 못 받았으면 그림 없이 이름만 선다
+  const sealIcons = useSheet(isSeal ? loadSealIcons : () => Promise.resolve(null), String(isSeal))
+  /** 씰 그림의 정수 배율 — 24 한 칸이 `size`에 들어가는 가장 큰 배 */
+  const sealScale = (size: number): PixelScale => (Math.max(1, Math.min(4, Math.floor(size / 24))) as PixelScale)
+  /** 줄 아이콘 — 씰은 도구 그림이 아니라 씰 시트다 (없으면 undefined) */
   const iconOf = (item: number, size: number): CSSProperties | undefined =>
-    isSeal ? undefined : itemIcon(data?.icons, item, size)
+    isSeal
+      ? (sealIcons ? pixelSprite(sealIcons, item - 1, sealScale(size)) : undefined)
+      : itemIcon(data?.icons, item, size)
 
   useEffect(() => {
     let alive = true
@@ -750,6 +759,11 @@ export function ShopScreen() {
                         <>
                           {berry && <span className={own.number}>No{pad2(berryNumber(r.item))}</span>}
                           {!isSeal && <span className={css.icon} style={itemIcon(data?.icons, r.item, LIST_ICON)} aria-hidden />}
+                          {isSeal && sealIcons && (
+                            <span className={own.iconSlot} aria-hidden>
+                              <i style={{ display: 'block', margin: '4px', ...pixelSprite(sealIcons, r.item - 1, PIXEL.x1) }} />
+                            </span>
+                          )}
                         </>
                       )}
                     {rowName === '' ? <span className={own.nameSkeleton} aria-hidden /> : <span className={css.label}>{rowName}</span>}

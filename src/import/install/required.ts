@@ -33,6 +33,7 @@ export const REQUIRED_PLATINUM_GROUPS = [
   'signposts',  // 마을 이름표·도로 표지판 그림
   'typeIcons', // 타입 글자 그림과 물리·특수·변화 그림. 없으면 기술 칸이 글자 조각으로 떨어진다
   'partyIcons', // 파티 화면의 도구·편지·볼캡슐 표식. 없으면 볼캡슐 표식이 안 선다
+  'sealIcons', // 볼캡슐 편집기·씰 가게의 씰 그림 여든 장. 없으면 씰이 글자 칩으로 떨어진다
   'startMenuIcons', // 시작 메뉴 아이콘. 없으면 메뉴 줄이 아이콘 없이 글자만 선다
   'dexShapes', // 도감 몸 모양 실루엣. 없으면 모습 검색이 글자로 떨어진다
   'dexHeightWeight', // 도감 키·몸무게 표와 키 비교 자리. 없으면 크기 비교 쪽을 못 연다
