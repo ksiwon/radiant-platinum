@@ -258,6 +258,9 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 주인공이 계속 절차형으로만 낚시한다
    */
   /**
+   * 20 — **남자 점원이 여자 점원 몸으로 돌아간다** (`engine/actor/npcModels`의 `CASHIER_M` → `fc2024_00` · 사용자 결정 2026-10-12). 다시 칠한 작업원 몸
+   * `fc0040_00-clerk`를 더 안 굽는다. ⚠️ **19도 그대로 쓴다**(`GROUP_ACCEPTS`) — 옛 설치본은 남자 점원이 작업원 몸으로 설 뿐이다
+   *
    * 19 — **등신 NPC가 주인공의 서 있기 `stand_b`를 꿔 서고, 트레이너 26벌이 말하는 입 `speak01_b`를 싣는다**
    * (`engine/actor/npcModels`의 `clipFilterFor`). 주인공 둘 번들에 `stand_b`(1.5초)가 늘고, 등신 트레이너 몸 중 `speak01_b`를 가진 26벌에
    * 그 클립이 실린다. 옛 판(18)에는 둘 다 없어서 서 있는 NPC가 절차형 숨쉬기로 서고 말하는 입이 안 움직인다 — 안 받는다
@@ -286,7 +289,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 쪽찐 할머니 · `fc2022`의 옷이 통째로 잘려 머리 · 손 · 발만 떠 있었고, 사이클리스트 헬멧 · 안경알이 사라졌다.
    * 파도타기 · 공중날기 포켓몬(`models/pcParts.glb`)의 눈도 알파가 거의 0이라 잘려 있었다
    */
-  npcModels: 19,
+  npcModels: 20,
   /**
    * 7 — **로토무 오라가 테두리로 선다.** 원판은 깊이만 쓰는 마스크(`FireMask`)와 그 바깥을 그리는 하늘색 껍질(`FireCore`)의 짝인데,
    * 마스크를 버리고 껍질을 불투명으로 세워 몸 전체가 하늘색 덩어리였다. 마스크 조각을 남기고 두 재질에 `extras.role`을 적는다
@@ -487,8 +490,8 @@ const GROUP_ACCEPTS: Readonly<Record<string, readonly number[]>> = {
   species: [1],
   pokegra: [1],
   distortion: [1],
-  // ASTC 반올림 (`GROUP_FORMAT.npcModels` 16) — 1~2/255 차이라 다시 굽게 하지 않는다
-  npcModels: [15],
+  // ASTC 반올림 (`GROUP_FORMAT.npcModels` 16) — 1~2/255 차이라 다시 굽게 하지 않는다 · 19는 남자 점원 몸만 다르다(20)
+  npcModels: [15, 19],
   // 쓰러짐 동작 (`GROUP_FORMAT.monModels` 6 · `monVariants` 3) — 없으면 맞은 자세로 쓰러진다.
   // ⚠️ `monModels`는 7부터 옛 판을 안 받는다 — 로토무 덩어리와 설치본의 밝은 불꽃 · 연기(54종)를 다시 굽게 한다
   monVariants: [1, 2],
