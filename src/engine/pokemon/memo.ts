@@ -95,16 +95,21 @@ export function monthText(month: number, names: MemoNames): string {
   return name.startsWith(String(at)) ? String(at) : name
 }
 
-/** 아홉 칸을 채운다 (`InitializePokemonMetInfoString`) */
-function memoSlots(origin: Origin, names: MemoNames): string[] {
+/**
+ * 아홉 칸을 채운다 (`InitializePokemonMetInfoString` · `InitializeSpecialMetInfoString`).
+ *
+ * ⚠️ **알이 남의 것이면 다섯~여덟째 칸이 만난 날짜·자리다** — `InitializeSpecialMetInfoString`의 둘째 갈래(`param2 == 1`)가
+ * 알 날짜 대신 `MET_*`을 넣는다(17 · 19번 갈래). 문장 틀 102 · 103이 읽는 칸이 다섯~여덟째라 그 틀이 그 값을 찍는다
+ */
+function memoSlots(origin: Origin, names: MemoNames, eggFromMet: boolean): string[] {
   const met = origin.met.date ?? BLANK_DATE
-  const egg = origin.egg.date ?? BLANK_DATE
+  const egg = eggFromMet ? met : origin.egg.date ?? BLANK_DATE
   return [
     pad2(met.year), monthText(met.month, names), String(met.day),
     String(origin.metLevel),
     metName(origin.met.location, names),
     pad2(egg.year), monthText(egg.month, names), String(egg.day),
-    metName(origin.egg.location, names),
+    metName(eggFromMet ? origin.met.location : origin.egg.location, names),
   ]
 }
 
@@ -147,5 +152,6 @@ export function buildMemo(mon: PokemonInstance, otMatches: boolean, names: MemoN
   }
   add(friendAt, eggFriendshipLine(mon.friendship))
 
-  return { lines, slots: memoSlots(mon.origin, names), metLine: metAt }
+  // 남의 알(17 · 19) — 알 칸에 만난 날짜·자리를 넣는다
+  return { lines, slots: memoSlots(mon.origin, names, status === 17 || status === 19), metLine: metAt }
 }

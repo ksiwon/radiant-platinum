@@ -178,6 +178,18 @@ describe('트레이너 메모', () => {
     ).lines[1]?.message).toBe(108)
   })
 
+  it('⚠️ 남의 알(17 · 19)은 다섯~여덟째 칸에 알 날짜가 아니라 만난 날짜·자리가 든다', () => {
+    // `InitializeSpecialMetInfoString`의 `param2 == 1` 갈래 — 문장 틀 102 · 103이 이 칸을 읽는다
+    const origin = { ...eggFrom(ME, MET_DAYCARE, DAY), met: { location: HERE, date: { year: 12, month: 5, day: 9 } } }
+    const theirs = buildMemo(mon({ isEgg: true, origin }), false, NAMES)
+    expect(theirs.lines[0]?.message).toBe(102)
+    expect(theirs.slots.slice(5)).toEqual(['12', '5', '9', theirs.slots[4]])
+    // 내 알(16)은 알 칸 그대로다
+    const mine = buildMemo(mon({ isEgg: true, origin }), true, NAMES)
+    expect(mine.lines[0]?.message).toBe(101)
+    expect(mine.slots.slice(5)).toEqual(['10', '3', '7', '육'])
+  })
+
   it('⚠️ 한국어 달 이름은 단위가 이미 붙어 있어 숫자만 넣는다', () => {
     // 문장 틀이 뒤에 "월"을 또 쓴다 — 이름을 그대로 넣으면 "3월월"이 된다
     const memo = buildMemo(mon({ origin: caughtAt(ME, HERE, 18, DAY) }), true, NAMES)
