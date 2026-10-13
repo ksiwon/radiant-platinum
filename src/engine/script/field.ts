@@ -442,6 +442,11 @@ function stepOurText(world: FieldWorld): void {
   if (!shown || !frameInput.pressed) return
   native = null
   world.closeBox(true)
+  // ⚠️ **닫은 누름을 여기서 쓴다.** 같은 프레임의 `scriptStepSystem`이 `tryStartScripts`를 다시 돌며 아직 참인 `edges.a`를
+  // 새 말 걸기로 읽었다 — 시원의 마지막 쪽을 A로 닫으면 대화가 곧바로 다시 열려 A로는 영영 못 빠져나왔다(2026-10-14 탐침 ·
+  // 「locked」 두 쪽을 A로 열 번 넘겨도 `talk`이 1). 롬 스크립트는 그 프레임에 `ctx`가 남아 있어 안 걸린다
+  edges.a = false
+  edges.b = false
   now?.after?.(0)
 }
 

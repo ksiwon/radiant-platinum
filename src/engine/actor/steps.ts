@@ -244,6 +244,10 @@ export function step(world: StepWorld): StepResult {
     party = party.map((mon) => {
       // 동전 던지기는 **마리마다** 한 번씩이다 — 원작이 개체마다 부른다
       if (world.coin()) return mon
+      // ⚠️ **알은 안 오른다** (`Pokemon_UpdateFriendship` — 동전 다음 줄이 `SPECIES_EGG`면 돌아간다). 알의 친밀도 칸은
+      // **남은 부화 주기**라, 여기서 올리면 걸을수록 알이 안 깬다 — 실측(2026-10-14 탐침): 주기 1을 든 알이 965걸음에도
+      // 1→2→3→2→3으로 오르내리며 안 깼다
+      if (mon.isEgg) return mon
       const delta = walkFriendship(mon, world.label, world.soothing(mon))
       if (delta === 0 || mon.friendship >= MAX_FRIENDSHIP) return mon
       return { ...mon, friendship: clampFriendship(mon.friendship + delta) }

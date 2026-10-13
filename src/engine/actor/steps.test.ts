@@ -89,6 +89,13 @@ describe('걸음', () => {
     expect(walk(FRIENDSHIP_STEPS * 3).party[0]!.friendship).toBe(73)
   })
 
+  it('알은 걸음 친밀도를 안 받는다 — 그 칸이 남은 부화 주기다', () => {
+    // `Pokemon_UpdateFriendship`가 `SPECIES_EGG`면 돌아간다. 올리면 걸을수록 알이 안 깬다
+    const party = walk(FRIENDSHIP_STEPS, { party: [mon({ isEgg: true, friendship: 1 }), mon()] }).party
+    expect(party[0]!.friendship).toBe(1)
+    expect(party[1]!.friendship).toBe(71)
+  })
+
   it('동전이 뒷면이면 그 마리는 그 주기를 건너뛴다', () => {
     // `Pokemon_UpdateFriendship`가 `LCRNG_Next() & 1`로 **절반을 버린다**.
     // 이걸 빠뜨리면 친밀도가 두 배 빨리 오른다
