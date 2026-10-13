@@ -5,7 +5,6 @@ import { NeutralToneMapping, PCFSoftShadowMap } from 'three'
 import { WebGPURenderer } from 'three/webgpu'
 import { EngineDriver } from './EngineDriver'
 import { installAsyncPipelines } from './asyncPipelines'
-import { installGlResourceRelease } from './glResourceRelease'
 import { fieldCamera } from './fieldCamera'
 import { SceneBoundary } from '../ui/screens/SceneBoundary'
 import { PlayerCapsule } from './GreyBox'
@@ -237,8 +236,6 @@ async function makeRenderer(
   // 사라져 죽은 장치에 계속 명령을 보낸다
   // 맵을 갈아 끼우는 동안만 파이프라인을 비동기로 굽는다 (REPAIR §8 · `scene/asyncPipelines`)
   installAsyncPipelines(renderer)
-  // WebGL2 백엔드가 안 놓는 GL 프로그램 · 셰이더 · VAO를 놓는다 — 맵을 옮길 때마다 GPU가 쌓였다 (REPAIR §149 · `scene/glResourceRelease`)
-  installGlResourceRelease(renderer)
   const wasLost = renderer.onDeviceLost.bind(renderer)
   // 인자 타입은 three가 준다 (`DeviceLostInfo`) — 우리가 다시 적지 않는다
   renderer.onDeviceLost = (info) => {

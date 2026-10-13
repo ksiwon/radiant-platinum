@@ -5931,27 +5931,30 @@ src/state/multiBattle.test.ts`.
 (`worldState.featuresFromSave`), 이어하기가 시작될 때 켜고(`state/restoreStore`) 진짜 워프에서 끈다(`scene/MapStreamer`). 실측: 같은
 사본이 이어하기 뒤 상태 3으로 서고, A를 세 번 눌러도 버퍼가 [3] 그대로다. 문 밖 세이브에서 걸어 들어가면 여전히 입장 규칙 [0]이다.
 
-## 149. 맵을 옮길 때마다 **GPU 메모리가 쌓였다** — WebGL2 백엔드가 프로그램 · VAO · 렌더 물체를 안 놓았다
+## 149. 맵을 옮길 때마다 **GPU 메모리가 쌓인다** — 원인을 쟀다 · 아직 안 고쳤다
 
 **원작** — 해당 없음(렌더러 자원 관리).
 
-**우리** — three 0.185의 `WebGLBackend`가 세 군데에서 GL 자원을 안 놓는다.
+**우리** — three 0.185의 `WebGLBackend`가 GL 자원을 세 군데에서 안 놓는다.
 1. 파이프라인마다 `gl.createProgram()`을 짓는데(`createRenderPipeline`), 파이프라인을 놓을 때(`Pipelines._releasePipeline`)는 캐시
    열쇠만 지운다. 셰이더 단계를 놓을 때(`destroyProgram`)도 장부만 지우고 `gl.deleteShader`가 없다.
 2. VAO를 속성 id로 엮은 열쇠로 캐시하는데(`vaoCache`), 속성을 지워도 그 VAO가 남는다.
 3. 렌더 물체(`RenderObject`)는 재질 · 지오메트리의 `dispose`에서만 치운다. 재질 · 지오메트리를 캐시해 나눠 쓰는 물체(맵 소품 ·
    지형 조각)는 장면에서 빠져도 렌더 물체가 남고, 그것이 잡은 파이프라인 · 유니폼 버퍼도 안 놓인다.
 
-실측(2026-10-14 mac 헤드리스 WebGL2 · 게이트 80 → 206번도로 → 영원시티 → 마트를 돌기): 한 바퀴마다 GL 프로그램 약 197 · VAO 약 206 ·
-버퍼 약 151이 살아 남고 GPU 프로세스가 60~100MB 늘었다. 가만히 서 있거나 한 맵 안을 걸을 때는 평평했다 — **맵을 옮길 때만** 쌓였다.
-three의 `info.memory`(텍스처 · 지오메트리)는 내내 그대로라 그 계기판으로는 안 보였다. 재질 · 지오메트리 `dispose`는 제대로 돌았다
-(바퀴마다 약 930 · 410). journey의 50분짜리 칸이 18GB · 4fps까지 갔고, 칸 3 첫 판은 게이트를 오가다 7GB가 됐다.
+실측(2026-10-14 mac 헤드리스 WebGL2 · 게이트 80 → 206번도로 → 영원시티 → 마트를 열 초씩 돌기): 한 바퀴마다 GL 프로그램 약 197 · VAO 약 206 ·
+버퍼 약 151이 살아 남고 GPU 프로세스가 60~100MB 늘었다. 가만히 서기 · 한 맵 안 걷기 · 야생 배틀 열 번은 평평했다 — **맵을 옮길 때만**
+쌓인다. three의 `info.memory`는 내내 그대로라 그 계기판으로는 안 보인다. 재질 · 지오메트리 `dispose`는 제대로 돈다(바퀴마다 약 930 · 410).
+journey의 50분짜리 칸이 18GB · 4fps까지 갔다. 재는 탐침은 `.audit/probe`가 아니라 세션 메모의 `gpuleak*.mjs`다 — GL 생성 · 삭제 호출을
+`WebGL2RenderingContext.prototype`에서 세고 생성 자리의 스택을 모은다.
 
-**고친 것** — `scene/glResourceRelease`를 렌더러가 선 뒤 건다(`Stage`). WebGL 백엔드면 파이프라인 · 셰이더를 놓을 때
-`gl.deleteProgram` · `gl.deleteShader`를, 속성을 지울 때 그 id가 든 VAO의 `gl.deleteVertexArray`를 부른다. 백엔드와 상관없이
-렌더 물체를 장부에 들고, **그려진 장면에서 떨어져 나간 물체**의 것을 5초마다 three의 `RenderObject.dispose()`로 치운다(다시 붙으면
-three가 새로 만든다). 실측: 같은 돌기 열두 바퀴에 프로그램 70 · 버퍼 약 1,550 · GPU 약 480MB로 평평하다(VAO만 바퀴마다 3).
-세 바퀴 뒤 206번도로 · 영원시티 · 마트를 찍어 소품 · 사람 · 가구가 그대로인 것을 봤다.
+**시도한 것과 뺀 까닭** — 위 1 · 2를 three가 스스로 놓는 자리(`_releasePipeline` · `_releaseProgram` · `destroyAttribute`)에서
+`deleteProgram` · `deleteShader` · `deleteVertexArray`로 놓자 같은 돌기에서 바퀴마다 GPU가 약 25MB로 줄었고, 3을 「그려진 장면에서 떨어진
+물체의 렌더 물체를 5초마다 치우기」로 붙이자 평평해졌다(프로그램 70 · GPU 약 480MB). 그런데 journey 칸 1에서 — 쓸기를 붙인 판은 FPS 4 ·
+주인공이 안 그려졌고, 쓸기를 빼고 1 · 2만 둔 판도 201번도로 가방 장면이 안 열려 예진호수 장면까지 못 갔다. 같은 하네스로 그 세 파일만
+앞 커밋으로 되돌린 판은 통과했다(A/B · `cell-1` lane v2 · v3). 짐작: 나눠 쓰는 지오메트리의 VAO를 다른 렌더 물체가 아직 쓰는데
+지웠거나(`attributesData.vaoGPU`가 그것을 들고 있다), 지운 프로그램을 비동기 굽기(`COMPLETION_STATUS_KHR`)가 계속 묻는다. 안 쟀다.
+그래서 셋 다 뺐다 — 고칠 때는 journey 칸 1의 가방 · 호수 장면까지 같이 잰다.
 
 ## 150. 알이 걸을수록 **안 깼다** — 걸음 친밀도가 알에도 붙었다
 
