@@ -504,7 +504,10 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       clearMapFeature()
       // ⚠️ **세이브의 장치 버퍼도 워프할 때 지운다** (`PersistedMapFeatures_Init` · REPAIR §78).
       // 이어하기 중에는 안 지운다 — 새 맵의 초기화가 그 값으로 다시 세운다
-      if (!worldState.restoring) useSaveStore.getState().setMapFeatures(null)
+      if (!worldState.restoring) {
+        useSaveStore.getState().setMapFeatures(null)
+        worldState.featuresFromSave = false
+      }
       resetPlatformLift()
       resetPastoriaGym()
       resetSunyshoreGym()

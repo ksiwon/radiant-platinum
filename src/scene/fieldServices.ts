@@ -236,7 +236,8 @@ import type { MartTable, Trainer } from '../data/schema'
  */
 function restoredFeatures(map: number): readonly number[] | undefined {
   const saved = useSaveStore.getState().mapFeatures
-  return worldState.restoring && saved !== null && saved.map === map ? saved.data : undefined
+  // ⚠️ `restoring`이 아니라 `featuresFromSave`다 — 방의 초기화는 복원 잠금이 풀린 **뒤에** 돈다(`worldState` 주석)
+  return (worldState.restoring || worldState.featuresFromSave) && saved !== null && saved.map === map ? saved.data : undefined
 }
 
 /** 장치 상태를 세이브 스토어에 적는다. 리포트를 쓸 때 그대로 담긴다 */
@@ -2136,7 +2137,10 @@ const services: FieldServices = {
     },
     kickBag: (x, z, dir) => {
       const hit = hitVeilstoneBag(x, z, dir)
-      keepFeatures(mapWorld.mapId, veilstoneSnapshot())
+      // ⚠️ **찼을 때만 적는다.** 이 갈래는 어느 맵에서든 A마다 불린다(`field.ts` `tryTalk` 첫 줄) — 장막 체육관 밖에서는
+      // 스냅숏이 null이라 물가 · 들판 · 운하 체육관의 버퍼를 A 한 번에 지웠다. 실측(2026-10-14 칸 13 계측): 물가 단추를
+      // 누를 때마다 [n] → null, 끝 세이브의 버퍼가 null이었다
+      if (hit) keepFeatures(mapWorld.mapId, veilstoneSnapshot())
       return hit
     },
     initHearthomeGym: () => { initHearthomeGym(mapWorld.mapId, Math.random) },

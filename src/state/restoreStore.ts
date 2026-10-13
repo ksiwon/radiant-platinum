@@ -63,6 +63,8 @@ interface RestoreState {
 /** 잠금은 한 곳에서만 쓴다 — 상태와 입력 게이트가 어긋날 자리를 안 만든다 */
 function lock(on: boolean, phase: RestorePhase): void {
   worldState.restoring = on
+  // 이어하기가 시작되면 첫 맵의 장치는 세이브 값으로 선다 — 끄는 것은 다음 진짜 워프다(`MapStreamer`)
+  if (on) worldState.featuresFromSave = true
   markRestoring(on ? (phase === 'failed' ? 'failed' : 'loading') : null)
 }
 

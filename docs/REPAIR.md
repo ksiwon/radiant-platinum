@@ -5909,3 +5909,24 @@ src/state/multiBattle.test.ts`.
 무시 · 터치와 펜은 그대로). 가방 · 상자 · 파티 · 가게 · 공중날기 · 우편 · 요약 · 배틀 가방 · 배틀 파티 칸 · 타이틀 · 더보기 ·
 다른 게임 · 개발 워프. 포획 강습 동안 사람 포인터를 막는 목록(`battle/TutorialPilot`)에 `pointermove` · `mousemove`를
 더했다 — 안 더하면 강습 중에 마우스로 커서가 움직이는 구멍이 새로 난다.
+
+## 148. 물가 체육관에서 리포트를 쓰고 이어하면 **또 갇혔다** — §78의 버퍼가 쓰는 쪽에서도 읽는 쪽에서도 샜다
+
+**원작** — 장치 버퍼(`PersistedMapFeatures`)는 워프할 때만 지우고 방의 `OnTransition`이 처음 값을 쓴다
+(`PersistedMapFeatures_InitForSunyshoreGym` · `persisted_map_features_init.c` 70줄). 이어하기(`FieldTask_LoadSavedGameMap`)는
+`OnTransition`을 안 돌려서 세이브의 `rotationState`가 그대로 산다.
+
+**우리 — 두 군데가 샜다.**
+
+1. **쓰는 쪽.** 장막시티 체육관의 샌드백 판정(`mapFeatures.kickBag`)이 **어느 맵에서든 A마다** 불리는데(`script/field`의 `tryTalk`
+   첫 줄 — 원작 `field_control.c` 567줄 순서) 찼든 안 찼든 버퍼를 `veilstoneSnapshot()`으로 덮었다. 장막 체육관 밖에서는 그 값이
+   `null`이라, 물가 · 들판 · 운하 체육관에서 단추를 누르거나 말을 걸 때마다 버퍼가 지워졌다. 실측(2026-10-14 journey 칸 13 ·
+   `--diag-trace-features`로 버퍼가 바뀔 때마다 스택을 적었다): 76번 중 단추 뒤마다 `[n] → null`, 부른 자리는 늘 `kickBag ← tryTalk`.
+   끝 세이브의 버퍼가 `null`이었다.
+2. **읽는 쪽.** 초기화가 세이브 값을 쓰는 조건이 `worldState.restoring`이었는데, 그 잠금은 자리가 서면 풀리고 방의 `OnTransition`은
+   그 **뒤에** 돈다. 실측(같은 날 · 세이브에 {156,[3]}을 넣은 사본을 이어하기 하며 5ms마다): 잠금이 2207ms에 풀리고 초기화가 2293ms에
+   돌아 입장 규칙의 0으로 덮였다. 상태 0의 셋째 방은 관장 단에서 닿는 칸이 20이다(상태 1이면 137) — 사람이 못 나간다.
+
+**고친 것** — 샌드백을 **찼을 때만** 버퍼를 적는다(`scene/fieldServices`). 「이 맵의 장치는 세이브 값으로 선다」를 따로 들고
+(`worldState.featuresFromSave`), 이어하기가 시작될 때 켜고(`state/restoreStore`) 진짜 워프에서 끈다(`scene/MapStreamer`). 실측: 같은
+사본이 이어하기 뒤 상태 3으로 서고, A를 세 번 눌러도 버퍼가 [3] 그대로다. 문 밖 세이브에서 걸어 들어가면 여전히 입장 규칙 [0]이다.
