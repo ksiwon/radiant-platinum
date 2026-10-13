@@ -27,7 +27,7 @@ import { createWriteStream, mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { freePort, startVite } from '../devServer.mjs'
-import { CELLS, CELL_COUNT, PARTS_DIR } from './parts.mjs'
+import { CELLS, CELL_COUNT, diagDir, PARTS_DIR } from './parts.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const args = process.argv.slice(2)
@@ -36,8 +36,15 @@ const all = args.includes('--all')
 const from = flag('from') === null ? 1 : Number(flag('from'))
 /** journey에 그대로 넘기는 것 — `--save` · `--headed` 따위. 이 파일이 쓰는 것은 뺀다 */
 const parallel = args.includes('--parallel')
+/**
+ * `--lane`은 칸 하나를 돌 때만 그대로 넘긴다 — 손으로 준 세이브로 뒤 칸을 진단할 때 본 연쇄와 그림 ·
+ * 리포트 · 서버 캐시 · 로그 · 봉투가 안 겹치게 (`pnpm part 9 --save=… --lane=d9`, 2026-10-13).
+ * 동시 실행은 칸마다 `c<N>`을 이 파일이 정한다
+ */
+const LANE = parallel ? null : flag('lane')
+const OUT_DIR = flag('save') === null ? PARTS_DIR : diagDir(LANE)
 const pass = args.filter((a) => a.startsWith('--') && a !== '--all' && a !== '--parallel' && !a.startsWith('--from=') && !a.startsWith('--url=')
-  && !a.startsWith('--lane=') && !a.startsWith('--concurrent='))
+  && (LANE !== null || !a.startsWith('--lane=')) && !a.startsWith('--concurrent='))
 
 const nums = args.filter((a) => /^\d+$/.test(a)).map(Number)
 const which = all
@@ -65,7 +72,7 @@ if (all && pass.some((a) => a.startsWith('--save='))) {
 }
 
 const sha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: ROOT }).toString().trim()
-mkdirSync(PARTS_DIR, { recursive: true })
+mkdirSync(OUT_DIR, { recursive: true })
 
 let vite = null
 let url = flag('url')
@@ -82,7 +89,7 @@ if (parallel) {
     for (const n of nums) lanes.push({ n, vite: null, url })
   }
 } else if (url === null) {
-  vite = await startVite(await freePort(), 'node_modules/.vite-journey')
+  vite = await startVite(await freePort(), LANE === null ? 'node_modules/.vite-journey' : `node_modules/.vite-journey-${LANE}`)
   url = vite.url
 }
 const stop = () => { vite?.child.kill(); for (const l of lanes) l.vite?.child.kill() }
@@ -90,7 +97,7 @@ process.on('SIGINT', () => { stop(); process.exit(130) })
 
 const runOne = (n, serverUrl = url, extra = []) => new Promise((done) => {
   const cell = CELLS[n]
-  const log = resolve(PARTS_DIR, `cell-${String(n)}-${sha}.log`)
+  const log = resolve(OUT_DIR, `cell-${String(n)}-${sha}.log`)
   const out = createWriteStream(log)
   console.log(`\n── 칸 ${String(n)}/${String(CELL_COUNT)} — ${cell.what} · 예산 ${String(Math.round(cell.budget / 60))}분 · 로그 ${log}\n`)
   const child = spawn(process.execPath, [resolve(ROOT, 'tools/e2e/journey.mjs'), `--cell=${String(n)}`,

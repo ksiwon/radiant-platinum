@@ -45,7 +45,7 @@ import { LOAD_SPY, startLoadSpy } from './loadSpy.mjs'
 import { classify, INFRA, SHAPE, SLOW, STALLED } from './budget.mjs'
 import { missingData, trainersOn } from './route.mjs'
 import { resumableAt, writeSegment } from './segments.mjs'
-import { CELLS, CELL_COUNT, keepPartEnd, partEnvelope, partStart, PARTS_DIR } from './parts.mjs'
+import { CELLS, CELL_COUNT, diagDir, keepPartEnd, partEnvelope, partStart, PARTS_DIR } from './parts.mjs'
 // 칸 8~16(깨어진 세계 · 리그 다리)의 걸음 — 예전 탐침 `_dw` · `_league`가 부르던 것을 journey가 그대로 부른다 (사용자 10-11)
 import { MAP as DW_MAP, candiceToAcuity, catchGiratina, coronetToSpear, veilstoneHQ, walkDistortion } from './badgesDW.mjs'
 import { MAP as LEAGUE_MAP, beaconToVictory, eliteFour, sendoffToBeacon, victoryRoad } from './badgesLeague.mjs'
@@ -125,6 +125,8 @@ if (PART !== null && FROM !== null) {
   process.exit(1)
 }
 const PART_START = PART === null ? null : partStart(PART_N, flag('save'))
+/** 칸의 끝 세이브 · 기억 · 봉투를 둘 곳 — 손으로 준 세이브면 연쇄 자리를 안 덮는다 (`parts.diagDir`) */
+const PART_DIR = flag('save') === null ? PARTS_DIR : diagDir(flag('lane'))
 if (PART_START !== null && !PART_START.ok) {
   console.error(`\n칸 ${String(PART_N)}을 못 시작한다 — ${PART_START.why.join(' · ')}\n`)
   process.exit(1)
@@ -3100,7 +3102,7 @@ try {
   /** 파트 판의 끝 — 세이브 · 기억 · 다이제스트. 통과는 배지 수 · 회복 · 세이브 셋이다 */
   if (PART !== null) {
     const pe = story.extra?.partEnd ?? null
-    const digest = endSave.ok && pe !== null ? keepPartEnd(PART_N, resolve(SAVES, `cell-${String(PART_N)}.rpsave`), pe.memory, pe.at) : null
+    const digest = endSave.ok && pe !== null ? keepPartEnd(PART_N, resolve(SAVES, `cell-${String(PART_N)}.rpsave`), pe.memory, pe.at, PART_DIR) : null
     partOut = {
       n: PART_N, what: PART.what, first: PART.first ?? null, last: PART.last ?? null, leg: PART.leg ?? null, reached: pe?.reached ?? null,
       startSave: PART_START.save, startSaveDigest: PART_START.digest ?? null,
@@ -3365,8 +3367,8 @@ mkdirSync(resolve(ROOT, '.audit'), { recursive: true })
 // ⚠️ **`executedCases`를 결과 줄에서 뽑지 않는다.** 도중에 터져 여덟 줄만 남은
 // 파일과 열일곱 줄을 다 돌린 파일이 똑같아 보이면 안 된다 — 실제로 밟은 목록을
 // 여기서 넘기고, 판정은 `validateEvidence`가 정본과 맞대어 한다
-if (PART !== null) mkdirSync(PARTS_DIR, { recursive: true })
-writeFileSync(PART !== null ? partEnvelope(PART_N) : resolve(ROOT, '.audit/journey.json'), `${JSON.stringify(sealEvidence({
+if (PART !== null) mkdirSync(PART_DIR, { recursive: true })
+writeFileSync(PART !== null ? partEnvelope(PART_N, PART_DIR) : resolve(ROOT, '.audit/journey.json'), `${JSON.stringify(sealEvidence({
   dataAtStart,
   suite: 'journey',
   selection: PART !== null ? `cell-${String(PART_N)}` : 'all',

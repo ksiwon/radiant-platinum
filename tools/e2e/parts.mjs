@@ -69,9 +69,16 @@ export const CELLS = Object.fromEntries([
 ])
 export const CELL_COUNT = Object.keys(CELLS).length
 
-export const partSave = (n) => resolve(PARTS_DIR, `cell-${String(n)}.rpsave`)
-export const partMemory = (n) => resolve(PARTS_DIR, `cell-${String(n)}.memory.json`)
-export const partEnvelope = (n) => resolve(PARTS_DIR, `cell-${String(n)}.json`)
+export const partSave = (n, dir = PARTS_DIR) => resolve(dir, `cell-${String(n)}.rpsave`)
+export const partMemory = (n, dir = PARTS_DIR) => resolve(dir, `cell-${String(n)}.memory.json`)
+export const partEnvelope = (n, dir = PARTS_DIR) => resolve(dir, `cell-${String(n)}.json`)
+/**
+ * **손으로 준 세이브(`--save`)로 도는 진단 판의 자리** — `.audit/parts/diag/<lane>/`.
+ *
+ * ⚠️ 연쇄와 같은 `cell-N.*`에 쓰면 진단 판의 끝 세이브가 연쇄의 시작 세이브 자리를 덮는다. 본 연쇄와
+ * 옛 세이브로 뒤 칸을 나란히 돌 때(2026-10-13) 둘이 한 파일을 두고 다투지 않게 따로 둔다
+ */
+export const diagDir = (lane) => resolve(PARTS_DIR, 'diag', lane ?? 'manual')
 
 export const fileDigest = (file) => (existsSync(file)
   ? createHash('sha256').update(readFileSync(file)).digest('hex').slice(0, 16) : null)
@@ -107,9 +114,9 @@ export function partStart(n, saveFlag = null) {
 }
 
 /** 칸 끝: 세이브를 칸 자리로 옮기고 하네스 기억을 옆에 적는다 */
-export function keepPartEnd(n, fromFile, memory, at) {
-  mkdirSync(PARTS_DIR, { recursive: true })
-  copyFileSync(fromFile, partSave(n))
-  writeFileSync(partMemory(n), `${JSON.stringify({ memory, at }, null, 1)}\n`)
-  return fileDigest(partSave(n))
+export function keepPartEnd(n, fromFile, memory, at, dir = PARTS_DIR) {
+  mkdirSync(dir, { recursive: true })
+  copyFileSync(fromFile, partSave(n, dir))
+  writeFileSync(partMemory(n, dir), `${JSON.stringify({ memory, at }, null, 1)}\n`)
+  return fileDigest(partSave(n, dir))
 }
