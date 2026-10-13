@@ -190,7 +190,7 @@ export const worldState = {
   /**
    * **지금 맵의 장치는 세이브 값으로 다시 세운다** (`PersistedMapFeatures` · REPAIR §78).
    *
-   * 이어하기를 시작하면 켜지고(`state/restoreStore`), 진짜 워프에서 꺼진다(`scene/MapStreamer`).
+   * 진짜 이어하기를 시작하면 켜지고(다시 도는 마운트는 아니다), 진짜 워프에서 꺼진다 — 둘 다 `scene/MapStreamer`.
    * ⚠️ **`restoring`으로는 못 가른다** — 그 잠금은 자리가 서면 풀리는데 방의 `OnTransition`은
    * 그 **뒤에** 돈다. 실측(2026-10-14 물가 체육관 156 · 세이브 [3]): 잠금이 2207ms에 풀리고
    * 초기화가 2293ms에 돌아 입장 규칙의 0으로 덮였다 — 관장 단에 갇혔다

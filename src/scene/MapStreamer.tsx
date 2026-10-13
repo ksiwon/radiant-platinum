@@ -687,6 +687,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
 
     // 순서(늦은 응답·정리·재시도)는 `scene/restoreWorld`가 쥔다 — 여기서는
     // **들어서는 일**만 넘겨준다
+    // 장치는 **진짜 이어하기에서만** 세이브 값으로 선다 (REPAIR §148). 다시 도는 것(Suspense)은 예전처럼 입장 규칙으로 선다 —
+    // 세이브 값으로 세우자 장막 체육관에서 다시 돈 뒤 하네스가 샌드백 사이에 갇혔다(2026-10-14 최종 연쇄 칸 4). 끄는 것은 다음 진짜 워프다
+    worldState.featuresFromSave = back === null
     const cancel = startRestore(at, {
       overworld: initial,
       load: gridFor,
