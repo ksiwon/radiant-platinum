@@ -645,10 +645,15 @@ export function slopeClimbBan(matrixId) {
  * (593,590~593)에서 동쪽 땅으로 내려서는 길을 냈고, 막혀서 칸 넷 안에서 네 분씩 되밀렸다.
  * 맞는 길은 다리를 건넌 뒤 돌아 내려와 **밑으로** 동쪽에 가는 것이다.
  *
- * 데크는 일반 다리(0x71~0x75)만이다. 자전거 다리(0x76~0x7d)는 예전처럼 층 없이 둔다
+ * **자전거 다리(0x76~0x7d)는 걸어서는 위층으로 못 든다** — 원작 `PlayerAvatar_WillBeOnBikeBridge`가
+ * 걷는 사람이 다리 위(elevated)에서 자전거 다리 칸에 들어서는 걸음을 막는다. 밑(층 0)에서는 그냥 바닥이다.
+ * 실측(2026-10-13 칸 6 · f338d5f2): 층 없이 두었더니 210번도로 북 (501,522) 어귀로 올라가 남북 널을 걸어
+ * 내려오는 길을 냈고, 널 위(y 8)에서 서쪽 땅(y 4)으로는 단차라 (501,530~533)에서 35분 되밀렸다.
+ * 맞는 길은 통나무 다리 (508..505,531)를 건너 (501,531) 널 **밑**을 동→서로 지나는 것이다
  */
 const BRIDGE_START = 0x70
 const isDeck = (b) => b >= 0x71 && b <= 0x75
+const isBikeDeck = (b) => b >= 0x76 && b <= 0x7d
 /**
  * 한 걸음 뒤의 층. 못 가는 걸음이면 -1이다.
  * @param layer 지금 층 (1 = 데크 위)
@@ -656,7 +661,9 @@ const isDeck = (b) => b >= 0x71 && b <= 0x75
  * @param to    갈 칸 거동값
  */
 export function deckLayer(layer, from, to) {
-  if (to === BRIDGE_START) return layer === 0 && isDeck(from) ? -1 : 1
+  if (to === BRIDGE_START) return layer === 0 && (isDeck(from) || isBikeDeck(from)) ? -1 : 1
+  // 걸어서는 자전거 널 위로 못 든다. 밑으로는 지난다
+  if (isBikeDeck(to)) return layer === 1 ? -1 : 0
   if (isDeck(to)) return isDeck(from) || from === BRIDGE_START ? layer : 0
   // 데크 위에서 옆 땅으로 내려서지 못한다
   if (layer === 1 && isDeck(from)) return -1

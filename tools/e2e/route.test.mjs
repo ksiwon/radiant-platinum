@@ -193,6 +193,33 @@ describe('다리는 두 층이다 (deckLayer)', () => {
     expect(deckLayer(0, 0x71, 0x70)).toBe(-1)
   })
 
+  it('자전거 널은 걸어서 위로 못 들고, 밑으로는 지난다', () => {
+    expect(deckLayer(1, 0x70, 0x76)).toBe(-1)
+    expect(deckLayer(1, 0x70, 0x7a)).toBe(-1)
+    expect(deckLayer(0, 0x00, 0x76)).toBe(0)
+    expect(deckLayer(0, 0x76, 0x00)).toBe(0)
+    expect(deckLayer(0, 0x76, 0x70)).toBe(-1)
+  })
+
+  it.skipIf(!HAVE)('210번도로 북 자전거 널 — 어귀로 올라 널을 걷지 않고 (501,531) 밑으로 서쪽에 간다 (실측 2026-10-13 칸 6)', () => {
+    const p = planPath(0, { x: 547, z: 532 }, (x, z) => x === 500 && z === 531)
+    expect(p.status).toBe(PLAN.found)
+    const grid = gridOf(0)
+    let x = 547
+    let z = 532
+    let layer = 0
+    let prev = grid.at(x, z) & 0x7fff
+    for (const k of p.keys) {
+      x += STEP[k][0]
+      z += STEP[k][1]
+      const beh = grid.at(x, z) & 0x7fff
+      layer = deckLayer(layer, prev, beh)
+      expect(layer, `(${String(x)},${String(z)})`).not.toBe(-1)
+      if (beh >= 0x76 && beh <= 0x7d) expect(layer, `(${String(x)},${String(z)}) 널 위를 걸었다`).toBe(0)
+      prev = beh
+    }
+  })
+
   it.skipIf(!HAVE)('215번도로 통나무 다리 — 남쪽에서 오면 건너 돌아 밑으로 동쪽에 간다 (실측 2026-10-13 칸 4)', () => {
     const m = matrixOf(382)
     const p = planPath(m, { x: 593, z: 596 }, (x) => x >= 641)
