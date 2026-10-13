@@ -630,8 +630,12 @@ try {
     await clear(80)
     await standAt(4, 7)
     log('다시 선 자리', await now())
-    const second = await menus('히트 로토무로 다시 전자레인지(되돌리기 메뉴가 떠야 한다)')
-    log(`${second.some((s) => s.startsWith('script:') && s.endsWith('/3')) ? '✅' : '❌'} 되돌리기가 붙었다`, second)
+    // ⚠️ **들어간 가전은 숨고 그 자리는 `ApplianceSpot`이다** — 원작 메뉴는 「되돌리기」 한 칸이다(`scripts_rotoms_room.s:491`).
+    // 예/아니오/되돌리기 세 칸(`RotomsRoom_EnterMotorMenu`)은 **다른** 가전 앞에서 뜬다. 되돌린 뒤 같은 자리에 다시 선 전자레인지에
+    // A를 이어 누르면 다시 들어가므로(예/아니오) 첫 메뉴만 판정에 쓴다
+    const second = await menus('히트 로토무로 같은 자리(가전 자리 · 되돌리기 한 칸이 떠야 한다)')
+    const firstScript = second.find((s) => s.startsWith('script:')) ?? null
+    log(`${firstScript === 'script:list/1' ? '✅' : '❌'} 가전 자리의 되돌리기 한 칸`, second)
     log('그 뒤', { mon: await mon(), ...(await vf([16667], [119])) })
   }
   if (await turn('wild')) {
