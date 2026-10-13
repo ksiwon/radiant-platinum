@@ -1394,8 +1394,17 @@ export async function driveStory(page, {
   /** 위 목록을 `planPath`의 `avoidStep` 모양으로 */
   const noDoorStep = (mapId, except = []) => {
     const ban = doorStepBan(mapId, except)
+    const steep = stepBans.get(mapId)
     return (x, z, key) => ban.has(`${String(x)},${String(z)},${key}`)
+      || (steep !== undefined && steep.has(`${String(x)},${String(z)},${key}`))
   }
+  /**
+   * **높이 단차로 막힌 걸음** — 맵마다 `x,z,키`(들어설 칸과 방향) 집합. 부르는 쪽이 제품에게
+   * 물어(`stepEdges`) 갈아 끼운다. 격자는 높이를 몰라서 1.25칸 넘는 낙차를 허공으로 건넜다
+   * (2026-10-13 연쇄 칸 5 · 들판 체육관 물 0에서 (3..5,26)→(6,26) 2칸 낙차)
+   */
+  const stepBans = new Map()
+  const setStepBans = (mapId, keys) => { stepBans.set(mapId, new Set(keys)) }
 
   /**
    * **문에서 한 칸 떨어져 걷는다** — 문 앞 칸 넷을 계획에서 아예 뺀다.
@@ -2902,6 +2911,11 @@ export async function driveStory(page, {
   /** @param box `{ x0, z0, x1, z1 }` 훑을 네모 */
   const featureWalls = async (box) => {
     const r = await obs.featureWalls(box)
+    return r.known ? r.value : null
+  }
+  /** 지금 자리에서 닿는 칸과 단차로 막힌 걸음 (`observe.stepEdges`) */
+  const stepEdges = async (box) => {
+    const r = await obs.stepEdges(box)
     return r.known ? r.value : null
   }
   /** 장막 체육관 풀이 — **페이지 안에서** 돈다 (`observe.veilstonePlan`) */
@@ -4551,7 +4565,7 @@ export async function driveStory(page, {
     goTo, stepOn, talkTo, talkToNpc, npcSpot, grindForWild, catchInGrass, throwBalls,
     settle, now, tap, clearTalk,
     partyState, healAt, fullyHealed, buyAt, storyVars, bagState, eternaWalls,
-    veilstoneState, pastoriaState, featureWalls, veilstonePlan,
+    veilstoneState, pastoriaState, featureWalls, stepEdges, setStepBans, veilstonePlan,
     teachHm, feedCandy, smashWay, smashRock, clearWay, rideBike, riding, hearthomeDoor, npcSpots, facing,
     gameBlocked, gameSolid,
     flyTo, strengthPush, setSurf, surfLog, setClimb, setWaterfall, climbLog, fieldState: () => obs.fieldState(),

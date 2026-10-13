@@ -1257,17 +1257,20 @@ export function pastoriaButtons() {
     .map((t) => ({ x: t.x, z: t.z, ...PASTORIA_BUTTON_SCRIPT[t.script] }))
 }
 
-/** 막힌 칸 집합에서 `from`이 닿는 칸들 (네모 안에서만) */
-function reachIn(blocked, from, box) {
+/**
+ * 막힌 칸 집합에서 `from`이 닿는 칸들 (네모 안에서만).
+ * @param bans 단차로 막힌 걸음 `x,z,키` (`stepEdges`) — 칸이 아니라 걸음을 막는다
+ */
+function reachIn(blocked, from, box, bans = new Set()) {
   const seen = new Set([`${String(from.x)},${String(from.z)}`])
   const queue = [from]
   for (let head = 0; head < queue.length; head++) {
     const at = queue[head]
-    for (const [dx, dz] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+    for (const [dx, dz, key] of [[0, -1, 'ArrowUp'], [0, 1, 'ArrowDown'], [-1, 0, 'ArrowLeft'], [1, 0, 'ArrowRight']]) {
       const nx = at.x + dx, nz = at.z + dz
       if (nx < box.x0 || nx > box.x1 || nz < box.z0 || nz > box.z1) continue
       const k = `${String(nx)},${String(nz)}`
-      if (seen.has(k) || blocked.has(k)) continue
+      if (seen.has(k) || blocked.has(k) || bans.has(`${k},${key}`)) continue
       seen.add(k)
       queue.push({ x: nx, z: nz })
     }
@@ -1321,8 +1324,18 @@ export async function pastoriaClimb(api, ctx, { rounds = 16, goal = PASTORIA.fro
     const here = await api.now()
     if (here.map !== PASTORIA.map) { out.why = `체육관 밖이다 (맵 ${String(here.map)})`; return out }
 
+    /**
+     * ⚠️ **높이도 벽이다.** 물 높이마다 발판과 바닥의 높이가 달라 1.25칸 넘는 낙차가 생기고,
+     * 제품은 원작처럼 그 걸음을 막는다(`stepTooHigh`). 칸 벽만 보면 (3..5,26)→(6,26)의 2칸
+     * 낙차를 건너는 지름길을 세워 매번 그 자리에서 막혔다 (2026-10-13 연쇄 칸 5 · 6dc15fe9).
+     * 제품에게 지금 높이에서 막힌 걸음을 받아 닿는 칸 계산과 길 찾기 둘 다에 넣는다
+     */
+    const steep = await api.stepEdges(PASTORIA.box)
+    const bans = new Set(steep?.bans ?? [])
+    api.setStepBans(PASTORIA.map, bans)
+    if (steep === null) out.steps = '단차를 못 읽어 칸 벽만 썼다'
     const blocked = new Set(walls)
-    const spot = reachIn(blocked, { x: here.x, z: here.z }, PASTORIA.box)
+    const spot = reachIn(blocked, { x: here.x, z: here.z }, PASTORIA.box, bans)
     if (spot.has(`${String(goal.x)},${String(goal.z)}`)) {
       const went = await api.stepOn(PASTORIA.map, goal, Math.min(300_000, api.left()))
       out.at = went

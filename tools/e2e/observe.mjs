@@ -442,6 +442,51 @@ function devObserver(page) {
       return out
     }, box),
     /**
+     * **지금 자리에서 걸어 닿는 칸과, 높이 단차로 막힌 걸음** — 제품 규칙 그대로다.
+     *
+     * 격자 · 장치 벽(`featureWalls`와 같은 물음)에 더해 **`stepTooHigh`**(`actor/player` ·
+     * 원작 `GetVerticalDirection` — 갈 칸 바닥이 지금 높이와 1.25칸 넘게 다르면 막는다)를
+     * 지금 높이에서 칸마다 굴려 넓힌다. 높이는 칸을 옮길 때마다 그 칸 바닥으로 바뀐다.
+     * 격자만 보는 플래너는 들판 체육관 물 0에서 2칸 낙차를 허공으로 건넜다
+     * (2026-10-13 연쇄 칸 5)
+     *
+     * @param box `{ x0, z0, x1, z1 }`
+     * @returns `{ reach: ['x,z', …], bans: ['x,z,키', …] }` — 금지는 「들어설 칸 · 방향키」다
+     */
+    stepEdges: (box) => read('단차를 못 읽었다', async (b) => {
+      const mf = await import('/src/engine/world/mapFeatures.ts')
+      const zone = await import('/src/engine/map/zone.ts')
+      const st = await import('/src/state/worldState.ts')
+      const pl = await import('/src/engine/actor/player.ts')
+      const ask = mf.mapFeatureBridge.blocked
+      const grid = zone.activeZone.grid
+      if (grid === null || grid === undefined || typeof pl.stepTooHigh !== 'function') return null
+      const p = st.worldState.player.position
+      const sx = Math.floor(p.x)
+      const sz = Math.floor(p.z)
+      const seen = new Map([[`${sx},${sz}`, p.y]])
+      const queue = [[sx, sz, p.y]]
+      const bans = new Set()
+      const STEPS = [[0, -1, 'ArrowUp'], [0, 1, 'ArrowDown'], [-1, 0, 'ArrowLeft'], [1, 0, 'ArrowRight']]
+      for (let head = 0; head < queue.length && head < 20000; head++) {
+        const [x, z, y] = queue[head]
+        for (const [dx, dz, key] of STEPS) {
+          const nx = x + dx
+          const nz = z + dz
+          if (nx < b.x0 || nx > b.x1 || nz < b.z0 || nz > b.z1) continue
+          if (grid.isBlocked(nx, nz) === true) continue
+          if (typeof ask === 'function' && ask(nx, nz, y) === true) continue
+          if (pl.stepTooHigh(grid, nx + 0.5, nz + 0.5, y)) { bans.add(`${nx},${nz},${key}`); continue }
+          const k = `${nx},${nz}`
+          if (seen.has(k)) continue
+          const ny = grid.heightAtWorld(nx + 0.5, nz + 0.5, y) ?? y
+          seen.set(k, ny)
+          queue.push([nx, nz, ny])
+        }
+      }
+      return { reach: [...seen.keys()], bans: [...bans] }
+    }, box),
+    /**
      * **장막 체육관 풀이를 페이지 안에서 돌린다.**
      *
      * ⚠️ **탐색은 여기서 안 한다** — `tools/e2e/gymSolve.mjs`가 하고, 그것이 쓰는
@@ -933,6 +978,7 @@ function distObserver(page) {
     veilstoneState: async () => unknown(NO_SRC),
     veilstonePlan: async () => unknown(NO_SRC),
     featureWalls: async () => unknown(NO_SRC),
+    stepEdges: async () => unknown(NO_SRC),
     pastoriaState: async () => unknown(NO_SRC),
     canalavePlan: async () => unknown(NO_SRC),
     canalaveState: async () => unknown(NO_SRC),
