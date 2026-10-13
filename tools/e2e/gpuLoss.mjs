@@ -27,7 +27,7 @@ import { resolve } from 'node:path'
 import { chromium } from 'playwright'
 import { observeLossNotice } from './lossNotice.mjs'
 import { freePort, startVite } from '../devServer.mjs'
-import { gpuArgs, probeGpu } from '../gpuFlags.mjs'
+import { gpuArgs, gpuInitScript, probeGpu } from '../gpuFlags.mjs'
 import {
   bindingDigest, dataDigest, describeEnvironment, rosterOf, sealEvidence,
 } from '../distribution/evidence.mjs'
@@ -93,6 +93,8 @@ const browser = await chromium.launch({ args: gpuArgs('gl') })
 // ⚠️ **닫기 전에 받아 둔다.** `browser.close()` 뒤에는 판을 못 묻는다
 browserVersion = browser.version()
 const page = await browser.newPage({ viewport: { width: 960, height: 640 } })
+// ⚠️ **mac에서는 깃발만으로 WebGPU가 안 꺼진다** — `navigator.gpu`를 지워야 WebGL2 길로 선다 (`gpuFlags.gpuInitScript` · 2026-10-14)
+await page.addInitScript(gpuInitScript('gl'))
 // ⚠️ **기본 30초로는 첫 요청을 못 기다린다.** vite가 뜬 뒤에도 브라우저가
 // 실제로 받는 모듈은 그때 변환된다 — `run.mjs`가 같은 까닭으로 300초를 준다
 page.setDefaultNavigationTimeout(300_000)
