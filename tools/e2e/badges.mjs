@@ -1296,7 +1296,7 @@ function reachIn(blocked, from, box, bans = new Set()) {
  *   자리의 물 높이로는 문까지 길이 안 열릴 수 있다. 실측(2026-09-24 배지 6·7 탐침 1판):
  *   맥실러 앞에서 문으로 곧장 `goTo`했더니 (10,3)~(11,5)를 2분 동안 맴돌았다
  */
-export async function pastoriaClimb(api, ctx, { rounds = 16, goal = PASTORIA.front, what = '맥실러 앞' } = {}) {
+export async function pastoriaClimb(api, ctx, { rounds = 24, goal = PASTORIA.front, what = '맥실러 앞' } = {}) {
   const t0 = Date.now()
   const out = { presses: [] }
   const note = (what, detail) => { ctx.log(`  ${what} → ${detail}`) }
@@ -1337,6 +1337,8 @@ export async function pastoriaClimb(api, ctx, { rounds = 16, goal = PASTORIA.fro
     const blocked = new Set(walls)
     const spot = reachIn(blocked, { x: here.x, z: here.z }, PASTORIA.box, bans)
     if (spot.has(`${String(goal.x)},${String(goal.z)}`)) {
+      ctx.setWalls?.(PASTORIA.map, [...walls, ...pastoriaButtons()
+        .filter((b) => b.water !== state.water).map((b) => `${String(b.x)},${String(b.z)}`)])
       const went = await api.stepOn(PASTORIA.map, goal, Math.min(300_000, api.left()))
       out.at = went
       out.ok = went === 'arrived'
@@ -1346,8 +1348,27 @@ export async function pastoriaClimb(api, ctx, { rounds = 16, goal = PASTORIA.fro
       return out
     }
 
+    /**
+     * ⚠️ **앞을 내다본다.** 가까운 단추부터 밟는 욕심 풀이는 물 2에서 닿는 새 단추가 없어
+     * 섰다 (2026-10-13 연쇄 칸 5 — 노랑(3,34) 2→0 · 초록(10,30) 0→2 뒤). 칸 · 높이 · 물을 한
+     * 상태로 페이지 안에서 넓이 우선으로 풀어(`pastoriaPlan`) **첫 단추만** 밟고, 밟은 뒤
+     * 다시 푼다 — 사람이 다가와 선 칸도 그때그때 벽으로 넣는다. 못 풀면(관측 불가)
+     * 아래 욕심 풀이로 내려간다
+     */
+    const plan = await api.pastoriaPlan({
+      box: PASTORIA.box, goal, guards,
+      buttons: pastoriaButtons().map((b) => ({ x: b.x, z: b.z, water: b.water })),
+    })
+    if (plan !== null && plan.presses === null) {
+      out.why = `물 ${String(state.water)}에서 ${what}까지 단추 차례가 없다 (상태 ${String(plan.states)}개를 다 봤다)`
+      out.ms = Date.now() - t0
+      return out
+    }
+    if (plan === null || plan.presses === undefined) out.plan = '풀이를 못 돌려 욕심 풀이로 갈음했다'
+    const planned = plan?.presses?.[0]
+    if (i === 0 && plan?.presses) note('들판 풀이', plan.presses.map((b) => `(${String(b.x)},${String(b.z)})→${String(b.water)}`).join(' '))
     // 닿는 단추 가운데 **이 물 높이에서 아직 안 밟은** 것. 가까운 것부터
-    const options = pastoriaButtons()
+    const options = planned !== undefined ? [pastoriaButtons().find((b) => b.x === planned.x && b.z === planned.z)].filter(Boolean) : pastoriaButtons()
       .filter((b) => spot.has(`${String(b.x)},${String(b.z)}`))
       .filter((b) => !tried.has(`${String(b.x)},${String(b.z)}@${String(state.water)}`))
       // 지금 높이로 다시 가는 단추는 아무 일도 안 한다
@@ -1380,6 +1401,12 @@ export async function pastoriaClimb(api, ctx, { rounds = 16, goal = PASTORIA.fro
       - (Math.abs(b.x - here.x) + Math.abs(b.z - here.z)))
     const pick = options[0]
     tried.add(`${String(pick.x)},${String(pick.z)}@${String(state.water)}`)
+    // 가는 길에 다른 단추를 밟으면 물이 바뀐다 — 그 칸들은 이번 걸음 동안 벽이다
+    if (planned !== undefined) {
+      ctx.setWalls?.(PASTORIA.map, [...walls, ...pastoriaButtons()
+        .filter((b) => b.water !== state.water && !(b.x === pick.x && b.z === pick.z))
+        .map((b) => `${String(b.x)},${String(b.z)}`)])
+    }
     const stood = await api.stepOn(PASTORIA.map, { x: pick.x, z: pick.z }, Math.min(300_000, api.left()))
     // 물이 다 오르내릴 때까지 기다린다 (`pastoriaBusy`)
     let after = null

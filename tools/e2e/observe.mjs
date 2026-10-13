@@ -487,6 +487,135 @@ function devObserver(page) {
       return { reach: [...seen.keys()], bans: [...bans] }
     }, box),
     /**
+     * **들판 체육관 — 단추 차례를 푼다** (칸 · 높이 · 물 높이를 한 상태로 보는 넓이 우선).
+     *
+     * 걸음 규칙은 전부 제품 것이다: 격자 벽 · 장치 벽(`mapFeatureBridge.blocked`) ·
+     * 단차(`stepTooHigh`) · 바닥 높이(`heightAtWorld`). 물 높이 셋의 걸음표를 만들려고
+     * 물을 **실제로** 옮긴다(`pressPastoriaButton` + `pastoriaTick`) — 그래서 이 계산은
+     * import 뒤 **한 동기 구간**에서 끝내고 원래 단추로 되돌린다. 프레임이 끼어들 틈이
+     * 없어 화면 · 세이브에는 안 남는다. 소리는 그동안 끈다.
+     *
+     * 욕심 풀이(가까운 단추부터)는 물 2에서 닿는 새 단추가 없어 섰다 (2026-10-13 연쇄 칸 5).
+     * 실제로는 아홉 번쯤 눌러야 맥실러 앞에 닿는다
+     *
+     * @param arg `{ box, goal: {x,z}, buttons: [{x,z,water}], guards: ['x,z', …] }`
+     * @returns `{ presses: [{x,z,water}], len }` · 못 닿으면 `{ presses: null, states }`
+     */
+    pastoriaPlan: (arg) => read('들판 풀이를 못 돌렸다', async (a) => {
+      const mf = await import('/src/engine/world/mapFeatures.ts')
+      const zone = await import('/src/engine/map/zone.ts')
+      const st = await import('/src/state/worldState.ts')
+      const pl = await import('/src/engine/actor/player.ts')
+      const w = await import('/src/engine/world/pastoriaGym.ts')
+      const g = await import('/src/scene/pastoriaGym.ts')
+      const ask = mf.mapFeatureBridge.blocked
+      const grid = zone.activeZone.grid
+      if (grid === null || grid === undefined || typeof pl.stepTooHigh !== 'function') return null
+      if (g.pastoriaBusy()) return null
+      const pressed0 = g.pastoriaPressed()
+      const water0 = g.pastoriaWaterHeight()
+      if (pressed0 === null || water0 === null) return null
+      const M = w.PASTORIA_BUTTON_MODEL
+      const modelOf = (button) => [M.blue, M.green, M.orange].find((m) => w.pastoriaButtonOf(m) === button)
+      const modelFor = (water) => [M.blue, M.green, M.orange].find((m) => w.pastoriaWaterFor(w.pastoriaButtonOf(m)) === water)
+      const settle = () => { for (let i = 0; i < 400 && g.pastoriaBusy(); i++) g.pastoriaTick(1 / 30) }
+      const guards = new Set(a.guards ?? [])
+      const b = a.box
+      const rq = (y) => Math.round(y * 8)
+      const STEPS = [[0, -1], [0, 1], [-1, 0], [1, 0]]
+      const levels = [...new Set(a.buttons.map((one) => one.water))]
+      const p = st.worldState.player.position
+      // ── 동기 구간: 물을 옮겨 가며 걸음 함수를 굳힌다 ──
+      const sound = g.pastoriaSound.play
+      g.pastoriaSound.play = null
+      const stepsAt = new Map()
+      const floorAt = new Map()
+      try {
+        for (const lv of levels) {
+          g.pressPastoriaButton(modelFor(lv)); settle()
+          if (g.pastoriaWaterHeight() !== lv) return null
+          // 그 물에서 (칸, 바닥 높이)마다 갈 수 있는 이웃
+          const edges = new Map()
+          for (let x = b.x0; x <= b.x1; x++) {
+            for (let z = b.z0; z <= b.z1; z++) {
+              for (let near = -1; near <= 6; near += 0.5) {
+                const y = grid.heightAtWorld(x + 0.5, z + 0.5, near)
+                if (y === null || y === undefined) continue
+                const k = `${x},${z},${rq(y)}`
+                if (edges.has(k)) continue
+                const nb = []
+                for (const [dx, dz] of STEPS) {
+                  const nx = x + dx
+                  const nz = z + dz
+                  if (nx < b.x0 || nx > b.x1 || nz < b.z0 || nz > b.z1) continue
+                  if (grid.isBlocked(nx, nz) === true || guards.has(`${nx},${nz}`)) continue
+                  if (typeof ask === 'function' && ask(nx, nz, y) === true) continue
+                  if (pl.stepTooHigh(grid, nx + 0.5, nz + 0.5, y)) continue
+                  nb.push([nx, nz, grid.heightAtWorld(nx + 0.5, nz + 0.5, y) ?? y])
+                }
+                edges.set(k, nb)
+              }
+            }
+          }
+          stepsAt.set(lv, edges)
+          // 단추를 밟아 물이 바뀌면 선 칸의 높이가 따라 바뀔 수 있다 — 그 물에서 바닥 층들을 읽어 둔다
+          const fl = new Map()
+          for (const one of a.buttons) {
+            const ys = new Set()
+            for (let near = -1; near <= 6; near += 0.5) {
+              const y = grid.heightAtWorld(one.x + 0.5, one.z + 0.5, near)
+              if (y !== null && y !== undefined) ys.add(y)
+            }
+            fl.set(`${one.x},${one.z}`, [...ys])
+          }
+          floorAt.set(lv, fl)
+        }
+      } finally {
+        g.pressPastoriaButton(modelOf(pressed0)); settle()
+        g.pastoriaSound.play = sound
+      }
+      if (g.pastoriaWaterHeight() !== water0 || g.pastoriaPressed() !== pressed0) return { restored: false }
+      // ── 넓이 우선: (x, z, 높이, 물) ──
+      const btn = new Map(a.buttons.map((one) => [`${one.x},${one.z}`, one.water]))
+      const sx = Math.floor(p.x)
+      const sz = Math.floor(p.z)
+      const key = (s) => `${s[0]},${s[1]},${rq(s[2])},${s[3]}`
+      const start = [sx, sz, grid.heightAtWorld(sx + 0.5, sz + 0.5, p.y) ?? p.y, water0]
+      const prev = new Map([[key(start), null]])
+      const queue = [start]
+      let found = null
+      for (let head = 0; head < queue.length && head < 200000; head++) {
+        const cur = queue[head]
+        const [x, z, y, wl] = cur
+        if (x === a.goal.x && z === a.goal.z) { found = cur; break }
+        const to = btn.get(`${x},${z}`)
+        if (to !== undefined && to !== wl) {
+          const ys = floorAt.get(to)?.get(`${x},${z}`) ?? []
+          const ny = ys.reduce((best, one) => (Math.abs(one - y) < Math.abs(best - y) ? one : best), ys[0] ?? y)
+          const n = [x, z, ny, to]
+          if (!prev.has(key(n))) { prev.set(key(n), cur); queue.push(n) }
+          // 단추 칸은 밟으면 눌린다 — 안 누르고 지나가는 걸음은 없다
+          continue
+        }
+        const nbs = stepsAt.get(wl)?.get(`${x},${z},${rq(y)}`) ?? []
+        for (const [nx, nz, ny] of nbs) {
+          const n = [nx, nz, ny, wl]
+          if (prev.has(key(n))) continue
+          prev.set(key(n), cur)
+          queue.push(n)
+        }
+      }
+      if (found === null) return { presses: null, states: prev.size }
+      const path = []
+      for (let c = found; c !== null; c = prev.get(key(c))) path.push(c)
+      path.reverse()
+      const presses = []
+      for (let i = 1; i < path.length; i++) {
+        if (path[i][3] !== path[i - 1][3]) presses.push({ x: path[i][0], z: path[i][1], water: path[i][3] })
+      }
+      return { presses, len: path.length }
+    }, arg),
+    /**
      * **장막 체육관 풀이를 페이지 안에서 돌린다.**
      *
      * ⚠️ **탐색은 여기서 안 한다** — `tools/e2e/gymSolve.mjs`가 하고, 그것이 쓰는
@@ -979,6 +1108,7 @@ function distObserver(page) {
     veilstonePlan: async () => unknown(NO_SRC),
     featureWalls: async () => unknown(NO_SRC),
     stepEdges: async () => unknown(NO_SRC),
+    pastoriaPlan: async () => unknown(NO_SRC),
     pastoriaState: async () => unknown(NO_SRC),
     canalavePlan: async () => unknown(NO_SRC),
     canalaveState: async () => unknown(NO_SRC),

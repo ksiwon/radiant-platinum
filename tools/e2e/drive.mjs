@@ -2918,6 +2918,11 @@ export async function driveStory(page, {
     const r = await obs.stepEdges(box)
     return r.known ? r.value : null
   }
+  /** 들판 체육관 단추 차례 — **페이지 안에서** 돈다 (`observe.pastoriaPlan`) */
+  const pastoriaPlan = async (arg) => {
+    const r = await obs.pastoriaPlan(arg)
+    return r.known ? r.value : null
+  }
   /** 장막 체육관 풀이 — **페이지 안에서** 돈다 (`observe.veilstonePlan`) */
   const veilstonePlan = async (arg) => {
     const r = await obs.veilstonePlan(arg)
@@ -4565,7 +4570,7 @@ export async function driveStory(page, {
     goTo, stepOn, talkTo, talkToNpc, npcSpot, grindForWild, catchInGrass, throwBalls,
     settle, now, tap, clearTalk,
     partyState, healAt, fullyHealed, buyAt, storyVars, bagState, eternaWalls,
-    veilstoneState, pastoriaState, featureWalls, stepEdges, setStepBans, veilstonePlan,
+    veilstoneState, pastoriaState, featureWalls, stepEdges, setStepBans, pastoriaPlan, veilstonePlan,
     teachHm, feedCandy, smashWay, smashRock, clearWay, rideBike, riding, hearthomeDoor, npcSpots, facing,
     gameBlocked, gameSolid,
     flyTo, strengthPush, setSurf, surfLog, setClimb, setWaterfall, climbLog, fieldState: () => obs.fieldState(),
