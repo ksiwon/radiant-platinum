@@ -54,6 +54,24 @@ const SOFTWARE = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']
 const NO_WEBGPU = ['--disable-features=WebGPU,WebGPUExperimentalFeatures']
 
 /**
+ * `gl` 모드에서 페이지가 열리기 전에 `navigator.gpu`를 **지운다.**
+ *
+ * ⚠️ **mac에서는 위 깃발이 안 듣는다** (2026-10-13 실측, M1 Max · 크로미움 151):
+ * `--disable-features=WebGPU` · `--disable-webgpu` · `--disable-blink-features=WebGPU`
+ * 셋 다 `navigator.gpu`가 남고 어댑터까지 잡혔다. 제품은 `navigator.gpu`가 없을
+ * 때만 WebGL2로 내려가므로(three `WebGPURenderer`) journey가 `gl`인 줄 알고
+ * `WebGPUBackend`로 돌았고, 헤드리스 gpu-process가 3분에 12GB · 분당 약 3GB씩
+ * 불어 기계를 세웠다. Windows는 깃발만으로 `WebGLBackend`였다(칸 7 봉투).
+ * 지우는 것은 Windows에서 깃발이 만드는 상태와 같다 — `'gpu' in navigator`가 거짓
+ */
+const NO_WEBGPU_INIT = 'delete Navigator.prototype.gpu'
+
+/** 그 모드에서 `page.addInitScript`로 넣을 것. 없으면 `null` */
+export function gpuInitScript(mode = 'webgpu') {
+  return mode === 'gl' ? NO_WEBGPU_INIT : null
+}
+
+/**
  * 띄울 때 줄 깃발.
  *
  * @param {'webgpu' | 'gl' | 'software' | 'default'} mode

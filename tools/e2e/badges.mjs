@@ -187,10 +187,13 @@ export async function boardWarp(api, mapId, warp, budgetMs) {
     .filter((one) => !others.some((w) => w.x === one.at.x && w.z === one.at.z))
   if (sides.length === 0) return `계단 (${String(warp.x)},${String(warp.z)}) 옆이 사방 벽이다`
   const till = Date.now() + budgetMs
+  const tried = []
   for (const side of sides) {
     if (Date.now() >= till) break
     const stood = await api.stepOn(mapId, side.at,
       Math.max(0, Math.min(300_000, till - Date.now())), { intoDoors: [warp] })
+    const at = await api.now()
+    tried.push(`옆 (${String(side.at.x)},${String(side.at.z)}) ${stood} · 선 칸 ${String(at.x)},${String(at.z)}`)
     if (stood !== 'arrived') continue
     for (let i = 0; i < 8; i++) {
       await api.tap(side.key, 260)
@@ -198,7 +201,7 @@ export async function boardWarp(api, mapId, warp, budgetMs) {
       if (s.map !== mapId) return 'arrived'
     }
   }
-  return `계단 (${String(warp.x)},${String(warp.z)})을 밀었는데 안 넘어갔다`
+  return `계단 (${String(warp.x)},${String(warp.z)})을 밀었는데 안 넘어갔다 — ${tried.join(' / ')}`
 }
 
 export async function enterToward(api, fromMap, toMap, spot, budgetMs, log = null) {

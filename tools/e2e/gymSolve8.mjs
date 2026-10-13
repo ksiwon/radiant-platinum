@@ -23,7 +23,7 @@ const STEPS = [['ArrowUp', 0, -1], ['ArrowDown', 0, 1], ['ArrowLeft', -1, 0], ['
  * @param goal `(x, z) => boolean`
  * @returns `{ steps: [{key, want:{x,z}, press, state}], presses }` 또는 `null`(못 닿는다)
  */
-export function solveSunyshore({ start, state, blocked, buttons, next, goal, cap = 400_000 }) {
+export function solveSunyshore({ start, state, blocked, buttons, next, goal, edge = null, cap = 400_000 }) {
   const keyOf = (x, z, s) => `${x},${z},${s}`
   const first = { x: start.x, z: start.z, s: state, from: null, step: null }
   const seen = new Map([[keyOf(first.x, first.z, first.s), first]])
@@ -40,6 +40,8 @@ export function solveSunyshore({ start, state, blocked, buttons, next, goal, cap
       const nx = at.x + dx
       const nz = at.z + dz
       if (blocked(at.s, nx, nz)) continue
+      // 단차 — 계단 옆으로는 못 오른다 (`edge` · 제품 `stepTooHigh`). 실측 2026-10-13 mac 칸 13: 155번 방 (4,16) 높이 1 → (3,16) 높이 4
+      if (edge !== null && edge(at.x, at.z, nx, nz)) continue
       const button = buttons.get(`${nx},${nz}`)
       const s = button === undefined ? at.s : next(at.s, button)
       const k = keyOf(nx, nz, s)

@@ -401,8 +401,13 @@ export async function beaconToVictory(api, ctx, { potions = 25 } = {}) {
    * 첫째 방 (8,8)에서 섰다(탐침 p4). 입구 칸 (8,14)을 밟는 걸음이 곧 문이다
    */
   if (GEAR_MAPS.includes((await api.now()).map)) {
-    await gearClimb(api, ctx, { goals: GEAR_ENTRY, until: 0 })
-    note('물가 체육관을 나온다', `지금 맵 ${String((await api.now()).map)}`)
+    let back = await gearClimb(api, ctx, { goals: GEAR_ENTRY, until: 0 })
+    // 진단 깃발 — 이어하기가 톱니 상태를 0으로 세워 갇힌 판만 (`journey.mjs`의 `--diag-gear-press`)
+    if (back.ok !== true && ctx.diagGearPress === true && ctx.pressGear) {
+      note('진단: 톱니를 제품 함수로 한 번 돌린다', `상태 → ${String(await ctx.pressGear())}`)
+      back = await gearClimb(api, ctx, { goals: GEAR_ENTRY, until: 0 })
+    }
+    note('물가 체육관을 나온다', `지금 맵 ${String((await api.now()).map)}${back.ok === true ? '' : ` · ${String(back.why)}`}`)
   }
   if (!v.hm07) {
     if ((await api.now()).map !== MAP.sunyshore) {
@@ -694,7 +699,7 @@ export async function eliteFour(api, ctx, page, {
       await prepare(api, ctx, note, { center: MAP.leagueNorthCenter, nurse: LEAGUE_NURSE, levels, what: `사천왕 앞${round > 0 ? ` 재도전 ${String(round)}` : ''}` })
       if (ctx.candyUp && levels.giratina) {
         const g = await ctx.candyUp(null, [487], levels.giratina)
-        note('기라티나 사탕', g.ran ? `${String(g.fed)}알 → L${String(g.level)}` : String(g.why))
+        note('기라티나 사탕', g.ran ? `${String(g.fed)}알 → ${String(g.to)}` : String(g.why))
       }
       v = await vars()
       if (!v.guardMoved) {

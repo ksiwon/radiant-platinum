@@ -1404,6 +1404,11 @@ export async function driveStory(page, {
    * (2026-10-13 연쇄 칸 5 · 들판 체육관 물 0에서 (3..5,26)→(6,26) 2칸 낙차)
    */
   const stepBans = new Map()
+  /**
+   * 층 걸음을 쓴 맵 — 판 전체에서 기억한다(`goTo`의 `layerMaps`). 한 번 다리에 갇힌 맵은 다시 들어와도
+   * 처음부터 층까지 보고 걷는다 — 정체 3분을 맵마다 다시 치르지 않는다
+   */
+  const layeredMaps = new Set()
   const setStepBans = (mapId, keys) => { stepBans.set(mapId, new Set(keys)) }
 
   /**
@@ -2009,6 +2014,16 @@ export async function driveStory(page, {
     let beatAt = Date.now()
     /** 박동이 같은 칸을 몇 번 찍었나 — 그림을 한 번 남기는 데 쓴다 */
     let beatSame = 0
+    /** 정체 3분째에 켠다 — 다음 바퀴 한 번, 계획을 층까지 보는 걸음(`observe.layeredKeys`)으로 갈아 끼운다 */
+    let layerNext = false
+    /**
+     * 층 걸음을 한 번 켠 맵 — 이 `goTo` 동안 그 맵의 계획은 바퀴마다 층 걸음으로 갈아 끼운다.
+     * 한 번만 갈면 배틀로 걸음이 끊긴 뒤 격자 계획이 다시 다리 위로 올렸다(2026-10-13 mac 칸 10 넷째 판 · (16,28) 둘레)
+     */
+    const layerMaps = layeredMaps
+    /** 두 칸 안에 머문 박동 수와 그 기준 자리 (한 칸씩 오가는 정체) */
+    let beatNear = null
+    let beatNearN = 0
     let beatWhere = ''
     const t0Go = Date.now()
     const seenMaps = []
@@ -2108,6 +2123,27 @@ export async function driveStory(page, {
           const file = `${evidenceDir}/stall-${String(s.map)}-${String(s.x)}-${String(s.z)}.png`
           await page.screenshot({ path: file }).catch(() => {})
           log(`    같은 칸에서 3분째다 — 그림 ${file}`)
+          /**
+           * ⚠️ **격자는 높이를 모른다 — 다음 계획을 층까지 보고 걷는다** (`layeredKeys`).
+           * 실측(2026-10-13 mac 칸 10): 천관산 2F(208)는 거동값이 전부 바닥(0x08)인데 통나무 다리가
+           * 아래층 위를 건넌다. 플래너가 다리 (7,36)에서 북으로 내려서는 길을 내고 제품이 단차로 막아
+           * 10분 넘게 되밀렸다. 그 둘레 단차를 금지로만 더하면 격자에는 길이 아예 없어진다
+           * (「(8,38)에서 길을 못 찾았다」) — 맞는 길은 다리 **밑**이라 층을 알아야 나온다
+           */
+          layerNext = true
+        }
+        /**
+         * ⚠️ **한 칸씩 오가는 것도 정체다.** 같은 칸만 세면 (7,36) ↔ (8,36)을 오간 판이 26분 동안
+         * 한 번도 안 걸렸다(2026-10-13 mac 칸 10 둘째 판). 같은 맵 두 칸 안에 박동 셋이면 층 걸음을
+         * 켜고, 그 뒤로도 머물면 두 박동마다 다시 켠다
+         */
+        const near = beatNear !== null && beatNear.map === s.map
+          && Math.abs(beatNear.x - s.x) + Math.abs(beatNear.z - s.z) <= 2
+        beatNearN = near ? beatNearN + 1 : 0
+        if (!near) beatNear = { map: s.map, x: s.x, z: s.z }
+        if (beatNearN >= 2 && beatNearN % 2 === 0 && !layerNext) {
+          log(`    두 칸 안에서 ${String(beatNearN + 1)}분째다 (맵 ${String(s.map)} · ${String(beatNear.x)},${String(beatNear.z)} 둘레) — 층 걸음을 켠다`)
+          layerNext = true
         }
       }
       if (seenMaps.at(-1) !== s.map) {
@@ -2497,6 +2533,25 @@ export async function driveStory(page, {
         await runKeys(back.key, 1, back.at)
         continue
       }
+      if (layerNext || layerMaps.has(s.map)) {
+        const first = layerNext
+        layerNext = false
+        layerMaps.add(s.map)
+        const tiles = []
+        // 방향키가 아닌 칸(`climb:` · 패널 따위)에서 끊는다 — 그 뒤는 층 걸음이 셈할 수 없다
+        for (let i = 0, x = s.x, z = s.z; i < keys.length && STEPV[keys[i]] !== undefined; i++) {
+          x += STEPV[keys[i]][0]; z += STEPV[keys[i]][1]
+          tiles.push([x, z])
+        }
+        const lk = await obs.layeredKeys({ path: tiles })
+        if (lk.known && lk.value?.keys != null && lk.value.keys.length > 0) {
+          if (first || verbose) log(`    층 걸음으로 간다 — 계획 ${String(tiles.length)}칸 중 ${String(lk.value.reached + 1)}번째까지 ${String(lk.value.keys.length)}걸음 (상태 ${String(lk.value.states)}개)`)
+          // 계획의 방향키 끝(락클라임 · 판 칸 앞)까지 닿았으면 그 뒤 특수 걸음을 잇는다 — 안 이으면 바위 밑에서 영영 선다
+          keys = lk.value.reached === tiles.length - 1 ? [...lk.value.keys, ...keys.slice(tiles.length)] : lk.value.keys
+        } else {
+          log(`    층 걸음 — ${lk.known ? `계획한 칸에 하나도 못 닿는다 (상태 ${String(lk.value?.states)}개)` : '못 읽었다'}`)
+        }
+      }
       planLeft = keys.length
       const how = await walk(keys, { x: s.x, z: s.z }, s.map, shun)
       noteMove(how, await now())
@@ -2658,11 +2713,47 @@ export async function driveStory(page, {
         continue
       }
       blind = 0
-      const keys = r.keys
+      let keys = r.keys
+      /**
+       * ⚠️ **밟기도 층을 본다** (`goTo`의 `layerMaps`와 같은 손). 실측(2026-10-13 mac 칸 15): 챔피언로드 1F(244)의
+       * 계단 (4,37) 옆칸은 높이 1 단 위인데, 격자 계획은 아래층(−1·−3)에서 곧장 들이밀어 네 번 45분을 「밀었는데
+       * 안 넘어갔다」로 썼다. 두 바퀴 못 나아갔거나 이미 층 걸음을 쓴 맵이면 층까지 보고 걷는다
+       */
+      if (layeredMaps.has(mapId) || stall.idle >= 2) {
+        const first = !layeredMaps.has(mapId)
+        layeredMaps.add(mapId)
+        const tiles = []
+        for (let i = 0, x = s.x, z = s.z; i < keys.length && STEPV[keys[i]] !== undefined; i++) {
+          x += STEPV[keys[i]][0]; z += STEPV[keys[i]][1]
+          tiles.push([x, z])
+        }
+        // 먼저 그 칸으로 곧장(락클라임 포함) — 없을 때만 격자 계획을 따라 닿는 데까지
+        const direct = await obs.layeredKeys({ goal: { x: spot.x, z: spot.z } })
+        if (direct.known && direct.value?.keys != null && direct.value.keys.length > 0) {
+          if (first || verbose) log(`    층 걸음으로 밟으러 간다 (${String(spot.x)},${String(spot.z)}) — 곧장 ${String(direct.value.keys.length)}걸음 · 바위 ${String(direct.value.keys.filter((k) => k.startsWith(CLIMB_PREFIX)).length)}번 (상태 ${String(direct.value.states)}개)`)
+          keys = direct.value.keys
+          tiles.length = 0
+        }
+        const lk = tiles.length === 0 ? { known: false } : await obs.layeredKeys({ path: tiles })
+        if (tiles.length === 0) {
+          // 곧장 길을 썼다
+        } else if (lk.known && lk.value?.keys != null && lk.value.keys.length > 0) {
+          if (first || verbose) log(`    층 걸음으로 밟으러 간다 (${String(spot.x)},${String(spot.z)}) — 계획 ${String(tiles.length)}칸 중 ${String(lk.value.reached + 1)}번째까지 ${String(lk.value.keys.length)}걸음`)
+          keys = lk.value.reached === tiles.length - 1 ? [...lk.value.keys, ...keys.slice(tiles.length)] : lk.value.keys
+        } else if (first) {
+          log(`    층 걸음 (밟기 ${String(spot.x)},${String(spot.z)}) — ${lk.known ? '계획한 칸에 하나도 못 닿는다' : '못 읽었다'}`)
+        }
+      }
       planLeft = keys.length
       const how = await walk(keys, { x: s.x, z: s.z }, mapId, shun)
-      noteMove(how, await now())
-      if (how === 'done') { ep.via = 'stood'; return done('arrived') }
+      const after = await now()
+      noteMove(how, after)
+      /**
+       * ⚠️ **`done`은 「계획을 다 걸었다」지 「그 칸에 섰다」가 아니다.** 계획에 락클라임 · 판 칸이 끼면 `walk`는
+       * 그것을 탄 뒤 곧장 `done`을 낸다. 실측(2026-10-13 mac 칸 15): 챔피언로드 1F에서 계단 옆 (4,38)을 밟으러 가다
+       * (18,64) 바위를 내려가 (18,69)에 섰는데 `arrived`로 돌아가, 계단 밀기가 엉뚱한 자리에서 45분을 썼다
+       */
+      if (how === 'done' && after.map === mapId && after.x === spot.x && after.z === spot.z) { ep.via = 'stood'; return done('arrived') }
       if (passed()) return done('arrived')
       if (verbose) log(`      ${String(spot.x)},${String(spot.z)}까지 ${how}`)
     }
@@ -3224,6 +3315,16 @@ export async function driveStory(page, {
     const t0 = Date.now()
     const till = Math.min(Date.now() + budgetMs, started + totalMs)
     let before = await now()
+    /**
+     * ⚠️ **칸 첫머리에서는 세계가 아직 안 섰다** — 세이브를 불러오는 동안 `map`이 `NaN`이라
+     * 아래 `fly` 표에 안 걸리고 「걸어 나갈 곳도 없다」로 공중날기를 통째로 건너뛰었다.
+     * 실측(2026-10-13 mac 칸 9): 그 뒤 예지호수에서 장막시티까지 걸어서 다리 예산을 다 쓰고
+     * 창고열쇠 그런트 앞에서 멈췄다. 설 때까지(최대 60초) 기다린다
+     */
+    for (const until = Math.min(Date.now() + 60_000, till); !before.ok && Date.now() < until;) {
+      await new Promise((r) => { setTimeout(r, 500) })
+      before = await now()
+    }
     if (before.map === target) return { ok: true, already: true, ms: 0 }
     /**
      * ⚠️ **헤더가 막는 맵에서는 제품이 안 난다** (`FieldMoves_CheckFly` · REPAIR §91) — 시작 메뉴에

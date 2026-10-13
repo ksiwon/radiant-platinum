@@ -487,6 +487,94 @@ function devObserver(page) {
       return { reach: [...seen.keys()], bans: [...bans] }
     }, box),
     /**
+     * **층까지 보고 걷는 길** — 격자 플래너가 낸 칸 줄(`path`)에서 지금 자리로부터 실제로 닿는
+     * **가장 먼 칸**까지의 방향키.
+     *
+     * 걸음 규칙은 `stepEdges`와 같이 전부 제품 것이다. 상태가 (칸, 높이)라 다리 위와 밑을 가른다.
+     * 실측(2026-10-13 mac 칸 10): 천관산 2F(208)는 거동값이 전부 바닥(0x08)이라 `deckLayer`가
+     * 못 거는 통나무 다리가 둘이다 — (7~8,36~38) 남북 · (15~23,28~30) 동서, 위 높이 3 · 밑 1.
+     * 격자 플래너는 옆(높이 3)에서 다리 **위**로 올라 북으로 내려서려 했고 제품이 단차로 막았다.
+     * 맞는 길은 높이 2 길로 돌아 다리 **밑**(1)을 지나는 것이다(두 입구 어디서나 485칸 · C(7,23) 닿음)
+     *
+     * @param arg `{ path: [[x, z], …] }` — 격자 플래너가 낸 칸 줄 (지금 칸 다음부터)
+     * @returns `{ keys, reached, of, states }` · 하나도 못 닿으면 `keys`가 null
+     */
+    layeredKeys: (arg) => read('층 걸음을 못 읽었다', async (a) => {
+      const mf = await import('/src/engine/world/mapFeatures.ts')
+      const zone = await import('/src/engine/map/zone.ts')
+      const st = await import('/src/state/worldState.ts')
+      const pl = await import('/src/engine/actor/player.ts')
+      const ask = mf.mapFeatureBridge.blocked
+      const grid = zone.activeZone.grid
+      if (grid === null || grid === undefined || typeof pl.stepTooHigh !== 'function') return null
+      const want = new Map((a.path ?? []).map(([x, z], i) => [`${x},${z}`, i]))
+      const p = st.worldState.player.position
+      const sx = Math.floor(p.x)
+      const sz = Math.floor(p.z)
+      const id = (x, z, y) => `${x},${z},${Math.round(y * 4)}`
+      const start = id(sx, sz, p.y)
+      const prev = new Map([[start, null]])
+      const queue = [[sx, sz, p.y, start]]
+      const STEPS = [[0, -1, 'ArrowUp'], [0, 1, 'ArrowDown'], [-1, 0, 'ArrowLeft'], [1, 0, 'ArrowRight']]
+      let best = null
+      /**
+       * **목표 칸을 주면 락클라임까지 타고 그 칸으로 곧장 푼다** (`a.goal`). 격자 계획이 고른 바위가 막다른 아래층으로
+       * 내려가는 판이 있다 — 실측(2026-10-13 mac 칸 15): 챔피언로드 1F 계단 옆 (4,38)로 가는 계획이 (18,64) 바위를 내려가
+       * −3 층 막다른 띠에 섰다. 맞는 길은 높이 1 다리를 건너 (36,49) 바위를 내려가는 106걸음이다. 바위 한 번은
+       * `climb:<방향키>` 하나로 내고(`walk`가 거기서 끊고 탄다), 내린 자리는 그 칸의 두 바닥(위 · 아래) 중 닿는 쪽이다
+       */
+      const goal = a.goal ?? null
+      const CLIMB = { 0x4b: 'ns', 0x4c: 'ew' }
+      for (let head = 0; head < queue.length && head < 200000; head++) {
+        const [x, z, y, k] = queue[head]
+        if (goal !== null && best !== null) break
+        for (const [dx, dz, key] of STEPS) {
+          const nx = x + dx
+          const nz = z + dz
+          if (goal !== null) {
+            const beh = (grid.behavior?.(nx, nz) ?? 0) & 0x7fff
+            const axis = CLIMB[beh]
+            if ((axis === 'ns' && dz !== 0) || (axis === 'ew' && dx !== 0)) {
+              let ex = nx
+              let ez = nz
+              while (((grid.behavior(ex + dx, ez + dz) ?? 0) & 0x7fff) === beh) { ex += dx; ez += dz }
+              const lx = ex + dx
+              const lz = ez + dz
+              if (grid.isBlocked(lx, lz) === true) continue
+              for (const yy of [y - 20, y + 20]) {
+                const ly = grid.heightAtWorld(lx + 0.5, lz + 0.5, yy)
+                if (ly === null || ly === undefined) continue
+                const lk = id(lx, lz, ly)
+                if (prev.has(lk)) continue
+                prev.set(lk, [k, `climb:${key}`])
+                queue.push([lx, lz, ly, lk])
+                if (lx === goal.x && lz === goal.z && best === null) best = { at: 0, k: lk }
+              }
+              continue
+            }
+          }
+          if (grid.isBlocked(nx, nz) === true) continue
+          if (typeof ask === 'function' && ask(nx, nz, y) === true) continue
+          if (pl.stepTooHigh(grid, nx + 0.5, nz + 0.5, y)) continue
+          const ny = grid.heightAtWorld(nx + 0.5, nz + 0.5, y) ?? y
+          const nk = id(nx, nz, ny)
+          if (prev.has(nk)) continue
+          prev.set(nk, [k, key])
+          queue.push([nx, nz, ny, nk])
+          if (goal !== null) {
+            if (nx === goal.x && nz === goal.z && best === null) best = { at: 0, k: nk }
+            continue
+          }
+          const at = want.get(`${nx},${nz}`)
+          if (at !== undefined && (best === null || at > best.at)) best = { at, k: nk }
+        }
+      }
+      if (best === null) return { keys: null, reached: -1, of: a.path?.length ?? 0, states: prev.size }
+      const keys = []
+      for (let k = best.k; prev.get(k) !== null; k = prev.get(k)[0]) keys.unshift(prev.get(k)[1])
+      return { keys, reached: best.at, of: a.path?.length ?? 0, states: prev.size }
+    }, arg),
+    /**
      * **들판 체육관 — 단추 차례를 푼다** (칸 · 높이 · 물 높이를 한 상태로 보는 넓이 우선).
      *
      * 걸음 규칙은 전부 제품 것이다: 격자 벽 · 장치 벽(`mapFeatureBridge.blocked`) ·
@@ -712,8 +800,22 @@ function devObserver(page) {
       const buttons = new Map(a.buttons.map((b) => [`${b.x},${b.z}`, b.button]))
       const goalSet = new Set(a.goal.map(([x, zz]) => `${x},${zz}`))
       const start = { x: Math.floor(p.x), z: Math.floor(p.z) }
+      /**
+       * ⚠️ **단차도 막는다** — 방마다 계단이 있다. 실측(2026-10-13 mac 칸 13): 155번 방 (4,16)은 높이 1,
+       * 옆 (3,16)은 높이 4다(x 1~3이 z 21→16으로 오르는 계단). 풀이가 높이를 몰라 옆으로 곧장 건너려 했고
+       * 제품이 단차로 막아 세 판을 40바퀴씩 되밀렸다. 칸 바닥 높이는 지금 높이 근처 층으로 읽는다(한 층 방)
+       */
+      const pl = await import('/src/engine/actor/player.ts')
+      // ⚠️ **바닥이 없는 칸은 묻지 않는다** — 톱니 다리가 아직 안 온 자리다(지금 회전 상태의 판이 없다).
+      // 그 칸까지 지금 높이로 막으면 단추를 눌러 다리가 올 길이 통째로 사라진다 — 실측(2026-10-13 mac 칸 14):
+      // 셋째 방 관장 단 (11,4) 높이 7에서 옆 (8,4)·(14,4)가 null이라 「길이 없다」로 곧장 끝났다. 그 칸은 `blocked`(톱니 규칙)가 맡는다
+      const edge = typeof pl.stepTooHigh !== 'function' ? null : (fx, fz, x, zz) => {
+        const fy = grid.heightAtWorld(fx + 0.5, fz + 0.5, p.y)
+        const ty = grid.heightAtWorld(x + 0.5, zz + 0.5, fy ?? p.y)
+        return fy !== null && ty !== null && pl.stepTooHigh(grid, x + 0.5, zz + 0.5, fy)
+      }
       const plan = s.solveSunyshore({
-        start, state, blocked, buttons, next: g.sunyshoreNextState, goal: (x, zz) => goalSet.has(`${x},${zz}`),
+        start, state, blocked, buttons, next: g.sunyshoreNextState, goal: (x, zz) => goalSet.has(`${x},${zz}`), edge,
       })
       return { room, state, start, plan }
     }, arg),

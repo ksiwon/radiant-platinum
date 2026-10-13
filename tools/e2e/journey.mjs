@@ -22,7 +22,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { chromium } from 'playwright'
 import { freePort, knock, startVite } from '../devServer.mjs'
-import { gpuArgs, probeGpu } from '../gpuFlags.mjs'
+import { gpuArgs, gpuInitScript, probeGpu } from '../gpuFlags.mjs'
 import { driveStory, playOpening } from './drive.mjs'
 import {
   eternaToBike, FANTINA, hearthomeDoors, hearthomeToVeilstone, ITEM as B3, JUPITER,
@@ -151,6 +151,13 @@ if (PART_START !== null && !PART_START.ok) {
  */
 /** 켠 지름길 깃발 — 지금은 없다. 사탕은 지름길이 아니라 **늘 밟는 걸음**이다 */
 const SHORTCUTS = []
+/**
+ * **진단 깃발 `--diag-gear-press`** (기본 꺼짐 · 봉투 `scope.shortcuts`에 적힌다).
+ * 켜면 칸 14 첫머리에서 물가 체육관을 거꾸로 못 건넜을 때 **제품 함수로 톱니를 한 번 돌린다**(단추를 안 밟는다).
+ * 까닭: 이어하기가 세이브의 회전 상태를 안 쓰고 0으로 세워 관장 단(닿는 칸 20)에 갇힌다 — 제품 결함 후보
+ * (`.audit/parts/mac-diag/FINDINGS.md` 1). 상태 1이면 137칸이 닿는다. 그 뒤 칸을 진단하려는 것이지 통과가 아니다
+ */
+if (args.includes('--diag-gear-press')) SHORTCUTS.push('diag-gear-press')
 /** 유채 앞에서 찌르꼬를 올릴 레벨 — L14 진화 · 날개치기는 L9 */
 const CANDY_STARLY_LEVEL = 16
 /** 이상한사탕 (`items.json` 50 · 약 주머니) */
@@ -721,6 +728,9 @@ const page = await browser.newPage({
   ...(NO_VIDEO ? {} : { recordVideo: { dir: resolve(SHOTS, 'video'), size: VIEW } }),
 })
 page.setDefaultNavigationTimeout(300_000)
+// mac에서는 깃발로 WebGPU가 안 꺼진다 — `gl`이면 페이지 쪽에서 지운다 (`tools/gpuFlags.mjs` `gpuInitScript`)
+const GPU_INIT = gpuInitScript(flag('gpu') ?? 'gl')
+if (GPU_INIT !== null) await page.addInitScript(GPU_INIT)
 // 찍는 동안 화면이 흔들렸는지 재는 자 (`tools/e2e/canvasShot.mjs`)
 await page.addInitScript(WATCH_INIT)
 /**
@@ -1889,6 +1899,35 @@ try {
         const have = ((await api.bagState())?.items ?? []).filter((one) => one.item === SUPER_POTION).reduce((n, one) => n + one.count, 0)
         if (have > 0) potionBuy = { ok: true, bought: have, from: '가방 (칸 시작)' }
         log(`  칸 시작 — 가방의 좋은상처약 ${String(have)}개`)
+        /**
+         * ⚠️ **세계가 다 설 때까지 기다린 뒤 다리를 건다** (`now().ok` — 맵 · 칸이 읽히고 복원이 끝났다).
+         * 실측(2026-10-13 mac): 칸 12가 「맵 undefined」에서 「깨어진 세계를 나왔다」로 읽고 10ms 만에 떨어졌고,
+         * 칸 9는 공중날기를 맵 NaN으로 건너뛰어 다리 예산을 걸어서 다 썼다. 걸음 함수마다 막지 않고 여기서 한 번 막는다
+         */
+        let stood = await api.now()
+        for (const until = Date.now() + 90_000; !stood.ok && Date.now() < until;) {
+          await new Promise((r) => { setTimeout(r, 500) })
+          stood = await api.now()
+        }
+        log(`  세계가 섰다 — ${stood.ok ? `맵 ${String(stood.map)} · ${String(stood.x)},${String(stood.z)}` : '90초 안에 안 섰다'}`)
+      }
+      /**
+       * **진단 계측 `--diag-trace-features`** (기본 꺼짐 · 관측만 한다 — 걸음도 상태도 안 바꾼다).
+       * 세이브 스토어의 장치 버퍼(`mapFeatures`)가 바뀔 때마다 값과 **부른 자리의 스택**을 적는다. 칸 13 끝 세이브의 버퍼가
+       * `null`이었는데 체육관에 걸어 들어갈 때는 [0]이 바로 적혔다(10-14 탐침) — 그 사이 누가 지웠는지를 잰다
+       */
+      if (args.includes('--diag-trace-features')) {
+        await page.evaluate(async () => {
+          const ss = await import('/src/state/saveStore.ts')
+          const st = await import('/src/state/worldState.ts')
+          window.__mfTrace = []
+          ss.useSaveStore.subscribe((s, prev) => {
+            if (s.mapFeatures === prev.mapFeatures) return
+            const stack = (new Error().stack ?? '').split('\n').slice(2, 9).map((l) => l.trim().replace(/https?:\/\/[^/]+/, '')).join(' ← ')
+            window.__mfTrace.push(`${new Date().toISOString().slice(11, 19)} 맵 ${document.documentElement.dataset.map ?? '?'} · 장면 ${document.documentElement.dataset.scene ?? '?'} · 복원 ${String(st.worldState.restoring)} · ${JSON.stringify(prev.mapFeatures)} → ${JSON.stringify(s.mapFeatures)} · ${stack}`)
+          })
+        }).catch((e) => { log(`  장치 버퍼 계측을 못 걸었다 — ${String(e).slice(0, 120)}`) })
+        log('  장치 버퍼 계측을 걸었다 (--diag-trace-features)')
       }
       /**
        * **다리 칸** (칸 8~16) — 예전 탐침 `_dw` · `_league`의 다리 하나를 그대로 걷는다. 구간은 안 걷는다.
@@ -1901,6 +1940,13 @@ try {
           log, setWalls,
           candyUp: (slot, family, level) => candyUp(slot, family, level),
           screen: () => page.evaluate(() => (document.body.innerText ?? '').replace(/\s+/g, ' ')).catch(() => ''),
+          diagGearPress: SHORTCUTS.includes('diag-gear-press'),
+          pressGear: () => page.evaluate(async () => {
+            const sc = await import('/src/scene/sunyshoreGym.ts')
+            sc.pressSunyshoreButton(0)
+            for (let k = 0; k < 100 && sc.sunyshoreBusy(); k++) await new Promise((r) => { setTimeout(r, 100) })
+            return sc.sunyshoreState()
+          }).catch(() => null),
           menuState: () => page.evaluate(async () => {
             const m = await import('/src/state/menuStore.ts')
             const st = m.useMenuStore.getState()
@@ -3115,6 +3161,11 @@ try {
       + ` · 끝 세이브 ${String(digest)}`)
   }
   const endState = await readSave()
+  if (args.includes('--diag-trace-features')) {
+    const trace = await page.evaluate(() => window.__mfTrace ?? null).catch(() => null)
+    log(`  장치 버퍼 계측 — ${trace === null ? '관측 불가' : `${String(trace.length)}번 바뀌었다`}`)
+    for (const row of trace ?? []) log(`    ${row}`)
+  }
   add('13', '끝 자리에서 리포트를 쓰고 파일로 받는다', endSave.ok ? 'PASS' : 'FAIL',
     endSave.ok ? `${endSave.file} (${endSave.name}) · ${JSON.stringify(endState)}`
       : String(endSave.why))
