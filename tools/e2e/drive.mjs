@@ -2027,6 +2027,8 @@ export async function driveStory(page, {
     let beatWhere = ''
     const t0Go = Date.now()
     const seenMaps = []
+    /** 두 맵 번갈이가 이어진 박동 수 */
+    let beatPing = 0
     /**
      * **이번 여행에서 실제로 지나온 문**. `맵:x,z` 꼴이다.
      *
@@ -2116,6 +2118,18 @@ export async function driveStory(page, {
          * 구간 9판): 209번도로 (562,693)에서 20분을 같은 칸으로 찍었는데 배틀도
          * 대사도 없었고, 무엇이 막았는지 볼 것이 하나도 없었다
          */
+        /**
+         * ⚠️ **두 맵 사이를 오가는 것도 정체다.** 같은 칸 · 두 칸 안만 세면 게이트 80 ↔ 206번도로(350)를 20분 오간 판이
+         * 한 번도 안 걸렸다(2026-10-14 최종 연쇄 칸 3) — 맵을 옮길 때마다 GPU가 쌓여 7GB가 됐다. 지나온 맵 여섯이 두 맵의 번갈이고
+         * 그것이 박동 셋 이어지면 이 걸음을 그만둔다(부르는 쪽이 다른 길을 고른다)
+         */
+        const last6 = seenMaps.slice(-6)
+        const pingPong = last6.length === 6 && new Set(last6).size === 2 && last6.every((m, i) => i === 0 || m !== last6[i - 1])
+        beatPing = pingPong ? beatPing + 1 : 0
+        if (beatPing >= 3 && !seenMaps.includes(target)) {
+          return done(`${STALLED} — 두 맵 ${JSON.stringify([...new Set(last6)])} 사이를 3분 넘게 오간다`
+            + ` (맵 ${String(s.map)} · 칸 ${String(s.x)},${String(s.z)})`)
+        }
         const here = `${String(s.map)}:${String(s.x)},${String(s.z)}`
         beatSame = here === beatWhere ? beatSame + 1 : 0
         beatWhere = here

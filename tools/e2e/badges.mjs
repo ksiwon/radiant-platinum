@@ -673,7 +673,19 @@ export async function rideToHearthome(api, ctx,
      * 350을 20분 넘게 오갔다 (`journey-from25-diag`). 9-24 판들은 이 걸음 없이 닿았다 — 9-28에
      * 자료를 다시 구운 뒤로 달라진 까닭은 아직 못 밝혔다 (FOLLOWUP §1.1). 사람은 풀베기로 벤다
      */
-    const out350 = await api.goTo(MAP.route206, Math.min(300_000, api.left()))
+    /**
+     * ⚠️ **먼저 자전거로드 남쪽 게이트(351)를 지난다.** 제품 걸음 규칙(단차 포함)으로 재면 북쪽 게이트(80)에서 닿는 206번도로는
+     * 게이트 351의 북쪽 문 (300~305,681)에서 끝나고, 그 남쪽 문 (302,689)에서 나서야 207번도로까지 2,894칸이 이어진다
+     * (2026-10-14 mac 탐침). 격자 계획은 [350,353]을 곧장 잇는다고 보고 동쪽 나무 길로 가다 게이트 80과 350을 20분 오갔다
+     * (최종 연쇄 칸 3 첫 판 · GPU가 맵 전환마다 쌓여 7GB). 나무 길은 이 길이 안 될 때만 쓴다
+     */
+    const south = await api.goTo(MAP.gate206South, Math.min(600_000, api.left()))
+    if (south === 'arrived') {
+      const through = await boardWarp(api, MAP.gate206South, { x: 7, z: 12 }, Math.min(300_000, api.left()))
+      note('자전거로드 남쪽 게이트(351)를 지난다', `${through} · 지금 맵 ${String((await api.now()).map)} 칸 ${String((await api.now()).z)}`)
+    } else note('자전거로드 남쪽 게이트(351)', String(south))
+    const out350 = (await api.now()).map === MAP.route206 && (await api.now()).z > 685
+      ? 'south' : await api.goTo(MAP.route206, Math.min(300_000, api.left()))
     if (out350 === 'arrived') {
       out.cut206 = await api.clearWay(MAP.route206, MAP.route207, Math.min(900_000, api.left()), { sprite: 86, maxHits: 3 })
       note('206번도로 아래 나무', out.cut206.ok ? `베고 지났다 (${String(out.cut206.broke.length)}그루)` : String(out.cut206.why))

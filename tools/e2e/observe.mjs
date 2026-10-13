@@ -1210,6 +1210,7 @@ function distObserver(page) {
     veilstonePlan: async () => unknown(NO_SRC),
     featureWalls: async () => unknown(NO_SRC),
     stepEdges: async () => unknown(NO_SRC),
+    layeredKeys: async () => unknown(NO_SRC),
     pastoriaPlan: async () => unknown(NO_SRC),
     pastoriaState: async () => unknown(NO_SRC),
     canalavePlan: async () => unknown(NO_SRC),
