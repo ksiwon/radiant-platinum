@@ -809,11 +809,15 @@ function devObserver(page) {
       // ⚠️ **바닥이 없는 칸은 묻지 않는다** — 톱니 다리가 아직 안 온 자리다(지금 회전 상태의 판이 없다).
       // 그 칸까지 지금 높이로 막으면 단추를 눌러 다리가 올 길이 통째로 사라진다 — 실측(2026-10-13 mac 칸 14):
       // 셋째 방 관장 단 (11,4) 높이 7에서 옆 (8,4)·(14,4)가 null이라 「길이 없다」로 곧장 끝났다. 그 칸은 `blocked`(톱니 규칙)가 맡는다
-      const edge = typeof pl.stepTooHigh !== 'function' ? null : (fx, fz, x, zz) => {
+      const high = typeof pl.stepTooHigh !== 'function' ? null : (fx, fz, x, zz) => {
         const fy = grid.heightAtWorld(fx + 0.5, fz + 0.5, p.y)
         const ty = grid.heightAtWorld(x + 0.5, zz + 0.5, fy ?? p.y)
         return fy !== null && ty !== null && pl.stepTooHigh(grid, x + 0.5, zz + 0.5, fy)
       }
+      // 부르는 쪽이 「제품이 실제로 막았다」고 잰 걸음(그 회전 상태에서) — 높이 표가 지금 상태만 알아 놓치는 자리다
+      const ban = new Set(a.ban ?? [])
+      const edge = (fx, fz, x, zz, st) => ban.has(`${String(st)}:${String(fx)},${String(fz)}>${String(x)},${String(zz)}`)
+        || (high !== null && high(fx, fz, x, zz))
       const plan = s.solveSunyshore({
         start, state, blocked, buttons, next: g.sunyshoreNextState, goal: (x, zz) => goalSet.has(`${x},${zz}`), edge,
       })

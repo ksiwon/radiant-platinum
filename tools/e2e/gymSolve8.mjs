@@ -41,7 +41,7 @@ export function solveSunyshore({ start, state, blocked, buttons, next, goal, edg
       const nz = at.z + dz
       if (blocked(at.s, nx, nz)) continue
       // 단차 — 계단 옆으로는 못 오른다 (`edge` · 제품 `stepTooHigh`). 실측 2026-10-13 mac 칸 13: 155번 방 (4,16) 높이 1 → (3,16) 높이 4
-      if (edge !== null && edge(at.x, at.z, nx, nz)) continue
+      if (edge !== null && edge(at.x, at.z, nx, nz, at.s)) continue
       const button = buttons.get(`${nx},${nz}`)
       const s = button === undefined ? at.s : next(at.s, button)
       const k = keyOf(nx, nz, s)

@@ -134,6 +134,13 @@ export async function gearClimb(api, ctx, { rounds = 40, goals = GEAR_GOAL, unti
   const t0 = Date.now()
   const out = { rooms: [], replans: 0, presses: 0 }
   const note = (what, detail) => { ctx.log(`  ${what} → ${detail}`) }
+  /**
+   * ⚠️ **제품이 두 번 막은 걸음은 그 회전 상태에서 금지로 넘긴다** (`sunyshorePlan`의 `ban`). 높이 표가 지금 상태의 판만 알아서
+   * 풀이가 같은 걸음을 되풀이했다 — 실측(2026-10-14 최종 연쇄 칸 13 · c82fac3b): 셋째 방 (6,4) → (7,4)를 108번 되밀려
+   * 세 판을 다 썼다. 통과한 판은 상태 0에서 (6,8) 단추 쪽으로 돌아갔다
+   */
+  const refused = new Map()
+  const ban = []
   for (let i = 0; i < rounds && api.left() > 0; i++) {
     const here = await api.now()
     const room = GEAR_MAPS.indexOf(here.map)
@@ -143,7 +150,7 @@ export async function gearClimb(api, ctx, { rounds = 40, goals = GEAR_GOAL, unti
       out.ok = true
       break
     }
-    const read = await api.sunyshorePlan({ goal, buttons: gearButtons(room) })
+    const read = await api.sunyshorePlan({ goal, buttons: gearButtons(room), ban })
     if (read === null || read.plan === null) {
       out.why = read === null ? '물가 풀이를 못 돌렸다'
         : `${String(room + 1)}번 방 (${String(here.x)},${String(here.z)}) 상태 ${String(read.state)}에서 목표로 가는 길이 없다`
@@ -151,6 +158,8 @@ export async function gearClimb(api, ctx, { rounds = 40, goals = GEAR_GOAL, unti
       break
     }
     out.replans++
+    let from = { x: here.x, z: here.z }
+    let stateNow = read.state
     for (const step of read.plan.steps) {
       const at = await api.stepKey(step.key, step.want)
       if (at === null) break
@@ -159,8 +168,14 @@ export async function gearClimb(api, ctx, { rounds = 40, goals = GEAR_GOAL, unti
       if (at.talk || at.scene !== 'overworld') { await api.clearTalk(); await api.settle(); break }
       if (at.x !== step.want.x || at.z !== step.want.z) {
         note(`걸음 ${step.key} (${String(step.want.x)},${String(step.want.z)})`, `계획과 다른 칸 (${String(at.x)},${String(at.z)}) — 다시 푼다`)
+        if (at.x === from.x && at.z === from.z) {
+          const key = `${String(stateNow)}:${String(from.x)},${String(from.z)}>${String(step.want.x)},${String(step.want.z)}`
+          refused.set(key, (refused.get(key) ?? 0) + 1)
+          if (refused.get(key) === 2) { ban.push(key); note('톱니 걸음 금지', `${key} — 제품이 두 번 막았다`) }
+        }
         break
       }
+      from = { x: at.x, z: at.z }
       if (step.press !== null) {
         // 톱니가 다 돌 때까지 — 도는 동안은 스크립트가 주인공을 묶는다
         let st = null
@@ -172,6 +187,7 @@ export async function gearClimb(api, ctx, { rounds = 40, goals = GEAR_GOAL, unti
         out.presses++
         note(`단추 (${String(step.want.x)},${String(step.want.z)})`, `회전 상태 → ${String(st?.state)} (계획 ${String(step.state)})`)
         if (st?.state !== step.state) break
+        stateNow = st.state
       }
     }
   }
