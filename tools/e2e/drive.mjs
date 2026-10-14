@@ -282,6 +282,32 @@ export async function driveStory(page, {
     standingObstacles.delete(key)
     clearedObstacles.add(key)
   }
+  /**
+   * 선 자리 둘레(두 칸)의 큰바위를 **지금 있는 그대로** 제품에게 다시 묻는다 — 밀려 간 것을 찾는다.
+   * 고친 칸을 돌려준다(`+x,z` 생김 · `-x,z` 없어짐)
+   */
+  const senseObstacles = async (mapId, px, pz) => {
+    const changed = []
+    const m = String(matrixOf(mapId))
+    for (let dz = -2; dz <= 2; dz++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        const x = px + dx, z = pz + dz
+        const r = await obs.obstacleAt(x, z)
+        if (!r.known) continue
+        const key = `${m}:${String(x)},${String(z)}`
+        // 큰바위(84)만 고친다 — 깰 바위 · 벨 나무는 되살아나도 부딪혀 다시 치우며 지난다(`askObstacles`)
+        if (r.value !== null && r.value.gfx === 84 && !standingObstacles.has(key)) {
+          standingObstacles.add(key)
+          clearedObstacles.delete(key)
+          changed.push(`+${String(x)},${String(z)}`)
+        } else if (r.value === null && standingObstacles.has(key)) {
+          obstacleGone(mapId, x, z)
+          changed.push(`-${String(x)},${String(z)}`)
+        }
+      }
+    }
+    return changed
+  }
 
   /**
    * **목적지 하나가 한 episode다** (후속 §4.1).
@@ -2155,9 +2181,20 @@ export async function driveStory(page, {
           && Math.abs(beatNear.x - s.x) + Math.abs(beatNear.z - s.z) <= 2
         beatNearN = near ? beatNearN + 1 : 0
         if (!near) beatNear = { map: s.map, x: s.x, z: s.z }
-        if (beatNearN >= 2 && beatNearN % 2 === 0 && !layerNext) {
-          log(`    두 칸 안에서 ${String(beatNearN + 1)}분째다 (맵 ${String(s.map)} · ${String(beatNear.x)},${String(beatNear.z)} 둘레) — 층 걸음을 켠다`)
-          layerNext = true
+        if (beatNearN >= 2 && beatNearN % 2 === 0) {
+          /**
+           * ⚠️ **괴력이 켜진 채로 걸으면 큰바위를 길 앞으로 밀고 간다.** 원작대로 괴력은 맵을 나갈 때까지
+           * 켜져 있고, 바위 쪽으로 걷는 걸음이 그대로 민다. 하네스는 제가 민 자리만 알아서 바위가 없다고 믿는
+           * 칸으로 계획을 내고, 그 바위에 부딪혀 섰다 — 실측(2026-10-14 최종 연쇄 칸 7): 천관산 1F 북 방1(218)
+           * 큰바위를 (29,27)까지 민 뒤 북으로 걷다 (29,21)까지 밀어 올렸고, (29,22)↔(29,23)을 오가다 세 번 접었다.
+           * 탐침(walk218)으로 같은 밀림을 재현했다. 둘레 장애물을 제품에게 다시 물어 표를 고친다
+           */
+          const moved = await senseObstacles(s.map, s.x, s.z)
+          if (moved.length > 0) log(`    둘레 장애물을 다시 읽었다 — ${moved.join(' · ')}`)
+          if (!layerNext) {
+            log(`    두 칸 안에서 ${String(beatNearN + 1)}분째다 (맵 ${String(s.map)} · ${String(beatNear.x)},${String(beatNear.z)} 둘레) — 층 걸음을 켠다`)
+            layerNext = true
+          }
         }
       }
       if (seenMaps.at(-1) !== s.map) {
