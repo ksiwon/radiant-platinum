@@ -23,6 +23,7 @@ import { frameTableScript } from './initScripts'
 import { npcActors } from '../actor/npcs'
 import { printedText } from './printer'
 import { VarStore } from './vars'
+import { HIDDEN_ITEMS } from '../world/hiddenItemTable'
 import { MENU_NO, type FieldWorld } from './world'
 import { withData } from '../../data/romData.testkit'
 
@@ -295,6 +296,23 @@ maybe('떡잎마을에서 말 걸기', () => {
     worldState.player.facing = Math.PI // 등을 돌린다
     run(3, true)
     expect(scriptBusy()).toBe(false)
+  })
+
+  it('숨은 도구 자리마다 무엇을 줄지 표에 있다 (REPAIR §154)', () => {
+    // 스크립트는 도구 · 개수를 안 들고 있고 `start`가 표에서 넣는다 — 표에 없는 자리는 도구 0을 준다
+    const rows = new Set(HIDDEN_ITEMS.map((r) => r.script))
+    const missing: number[] = []
+    let seen = 0
+    for (let id = 0; id < 600; id++) {
+      if (mapById(id) === null) continue
+      for (const sign of signsOf(id)) {
+        if (sign.type !== 2) continue
+        seen++
+        if (!rows.has(sign.script - 8000)) missing.push(sign.script)
+      }
+    }
+    expect(seen).toBeGreaterThan(200)
+    expect(missing).toEqual([])
   })
 
   it('떡잎마을의 숨은 도구는 주우면 사라진다', () => {

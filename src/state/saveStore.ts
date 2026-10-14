@@ -793,7 +793,9 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     wallpapers: s.wallpapers,
     unlockedWallpapers: s.unlockedWallpapers,
     boxNames: s.boxNames,
-    bag: s.bag,
+    // ⚠️ **빈 칸(도구 0 · 개수 0)은 적지 않는다.** 하나라도 섞이면 스키마가 리포트 전체를 거절해 그 뒤로 영영 못 쓴다
+    // (REPAIR §154 — 숨은 도구가 값 없이 돌던 때). 넣는 쪽(`bag.addItem`)도 막지만, 이미 든 판을 구하는 자리다
+    bag: s.bag.map((pocket) => pocket.filter((slot) => slot.item >= 1 && slot.count >= 1)),
     badges: s.badges,
     pokedex: s.pokedex,
     nationalDex: s.nationalDex,

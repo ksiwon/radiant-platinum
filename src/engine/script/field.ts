@@ -40,6 +40,7 @@ import {
 } from './siwonScene'
 import { SIWON_CAMEO_MAP, SIWON_SCRIPT } from '../world/siwonPlace'
 import { obstacleAt } from '../actor/obstacles'
+import { HIDDEN_ITEMS } from '../world/hiddenItemTable'
 import { HOP_RISE, HOP_TIME } from '../actor/ledge'
 import { OVERWORLD_WEATHER, overworldWeather } from '../world/overworldWeather'
 // ⚠️ 오르는 길이는 **연출 쪽과 같은 자리**에서 온다. 갈리면 꼭대기에 선 채로
@@ -1829,6 +1830,29 @@ function hiddenItemFlag(scriptID: number): number {
 
 /** `include/constants/scripts.h` */
 const SCRIPT_ID_OFFSET_HIDDEN_ITEMS = 8000
+/** 숨은 도구 구역의 끝 — 그다음이 사파리 게임이다 (`SCRIPT_ID_OFFSET_SAFARI_GAME`) */
+const SCRIPT_ID_OFFSET_SAFARI_GAME = 8800
+
+/** 자리 번호 → 숨은 도구 한 줄. 257개를 매번 훑지 않는다 */
+const hiddenItemByScript = new Map(HIDDEN_ITEMS.map((row) => [row.script, row]))
+
+/**
+ * 숨은 도구 스크립트에 **무엇을 몇 개**인지 넣는다 (`ScriptManager_SetHiddenItem` · `script_manager.c:601`).
+ *
+ * ⚠️ **스크립트는 그 값을 안 들고 있다.** `scripts_hidden_items.s`는 `VAR_0x8000`(도구) · `0x8001`(개수) ·
+ * `0x8002`(플래그)를 읽기만 하고, 넣는 것은 원작에서 스크립트를 세우는 C 쪽이다. 이 줄이 없어서 숨은 도구를
+ * 주우면 `AddItem 0, 0`이 돌아 가방에 **도구 0 · 개수 0** 칸이 생겼고, 그 칸이 세이브 스키마(도구 ≥ 1)를 어겨
+ * **그 뒤로 리포트를 한 번도 못 썼다** — 실측(2026-10-14 최종 연쇄 칸 7 · 탐침 `hidden.mjs`: 떡잎마을 8201을 걸자
+ * 0x8000~0x8002가 0이고 주머니 0에 `{ item: 0, count: 0 }`). REPAIR §154
+ */
+function setHiddenItemParams(scriptID: number): void {
+  if (scriptID < SCRIPT_ID_OFFSET_HIDDEN_ITEMS || scriptID >= SCRIPT_ID_OFFSET_SAFARI_GAME) return
+  const row = hiddenItemByScript.get(scriptID - SCRIPT_ID_OFFSET_HIDDEN_ITEMS)
+  if (row === undefined) return
+  fieldScripts.vars.set(0x8000, row.item)
+  fieldScripts.vars.set(0x8001, row.qty)
+  fieldScripts.vars.set(0x8002, hiddenItemFlag(scriptID))
+}
 /** `generated/vars_flags.txt`의 `HIDDEN_ITEM_FLAGS_START` */
 const HIDDEN_ITEM_FLAGS_START = 730
 
@@ -2163,6 +2187,7 @@ export function start(scriptID: number, mapFile: number, localID = 0): boolean {
 
   vars.resetLocals()
   vars.set(VAR_LAST_TALKED, localID)
+  setHiddenItemParams(scriptID)
   staleHold = frameInput.held
   world.reset()
   world.target = npcActors.byLocalID.get(localID) ?? null

@@ -60,6 +60,9 @@ export function canFit(pockets: Pockets, pocket: number, item: number, count: nu
 
 /** 넣는다 (`Bag_TryAddItem`). 성공하면 새 주머니를, 실패하면 null */
 export function addItem(pockets: Pockets, pocket: number, item: number, count: number): Pockets | null {
+  // ⚠️ **도구 0(없음) · 개수 0 이하는 칸으로 안 들어간다.** 들어가면 세이브 스키마(도구 ≥ 1)를 어겨 그 뒤로 리포트를
+  // 못 쓴다 — 숨은 도구가 값 없이 돌던 때(REPAIR §154)가 그 길이었다. 원작은 도구 0 칸을 빈 칸으로 읽어 안 보인다
+  if (item <= 0 || count <= 0) return null
   if (!canFit(pockets, pocket, item, count)) return null
   const next = pockets.map((p) => p.map((s) => ({ ...s })))
   const slots = next[pocket]!

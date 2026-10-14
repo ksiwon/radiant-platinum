@@ -24,6 +24,13 @@ describe('가방', () => {
     expect(emptyBag().every((p) => p.length === 0)).toBe(true)
   })
 
+  it('도구 0 · 개수 0은 칸으로 안 들어간다 (REPAIR §154)', () => {
+    // 숨은 도구가 값 없이 돌던 때 `{ item: 0, count: 0 }` 칸이 생겨 그 뒤로 리포트를 못 썼다
+    expect(addItem(emptyBag(), POCKET_ITEMS, 0, 0)).toBeNull()
+    expect(addItem(emptyBag(), POCKET_ITEMS, 0, 1)).toBeNull()
+    expect(addItem(emptyBag(), POCKET_ITEMS, 17, 0)).toBeNull()
+  })
+
   it('같은 도구는 한 칸에 쌓인다', () => {
     let bag = addItem(emptyBag(), POCKET_ITEMS, 17, 3)!
     bag = addItem(bag, POCKET_ITEMS, 17, 2)!
