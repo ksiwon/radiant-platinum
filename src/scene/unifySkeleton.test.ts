@@ -3,7 +3,7 @@ import {
   Bone, BufferAttribute, BufferGeometry, Group, Matrix4, Mesh, MeshBasicMaterial,
   Skeleton, SkinnedMesh,
 } from 'three'
-import { unifySkeletons } from './unifySkeleton'
+import { WEBGL_BONE_LIMIT, fitBoneLimit, unifySkeletons } from './unifySkeleton'
 
 /**
  * 조각 하나. `bones`가 그 조각이 쓰는 뼈고, `weights`가 각 정점이 가리키는
@@ -13,7 +13,7 @@ function part(bones: Bone[], weights: number[], invScale = 1): SkinnedMesh {
   const g = new BufferGeometry()
   g.setAttribute('position', new BufferAttribute(new Float32Array(weights.length * 3), 3))
   g.setAttribute('skinIndex', new BufferAttribute(new Uint16Array(weights), 4))
-  g.setAttribute('skinWeight', new BufferAttribute(new Float32Array(weights.length), 4))
+  g.setAttribute('skinWeight', new BufferAttribute(new Float32Array(weights.length).fill(0.25), 4))
   const mesh = new SkinnedMesh(g, new MeshBasicMaterial())
   // ⚠️ **bindMatrix를 꼭 넘긴다.** 안 넘기면 three가 `calculateInverses()`로
   // 역행렬을 **다시 계산해서** 여기서 준 값이 통째로 덮인다 — 그러면 「바인드
@@ -110,6 +110,29 @@ describe('unifySkeletons', () => {
     expect(out.was).toBe(1)
     expect(a.skeleton).toBe(before)
     expect(indexOf(b)).toEqual([0, 1, 0, 0])
+  })
+
+  it('WebGL 한도를 넘는 스킨은 그 조각이 쓰는 뼈만으로 다시 묶는다', () => {
+    // ⚠️ 무청(tr1078_00)이 joints 268이라 WebGL 유니폼 블록 16KB를 넘어 안 그려졌다
+    const all = bones(WEBGL_BONE_LIMIT + 12)
+    const root = new Group()
+    const a = part(all, [3, 260, 3, 100])
+    root.add(a)
+
+    expect(fitBoneLimit(root)).toBe(1)
+    expect(a.skeleton.bones).toEqual([all[3], all[100], all[260]])
+    expect(indexOf(a)).toEqual([0, 2, 0, 1])
+  })
+
+  it('한도 안의 스킨은 그대로 둔다', () => {
+    const all = bones(8)
+    const root = new Group()
+    const a = part(all, [0, 7, 1, 0])
+    const before = a.skeleton
+    root.add(a)
+
+    expect(fitBoneLimit(root)).toBe(0)
+    expect(a.skeleton).toBe(before)
   })
 
   it('두 번 걸어도 자리 번호가 또 안 밀린다', () => {

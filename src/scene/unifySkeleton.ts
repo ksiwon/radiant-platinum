@@ -20,7 +20,7 @@
 // ⚠️ **복제하기 전에, 갈래마다 한 번만 돌려야 한다.** `skinIndex`를 고쳐 쓰는데
 // `Object3D.clone`은 지오메트리를 **참조로** 물려주므로, 복제본에 돌리면 이미
 // 고친 것을 또 고친다. 받아 온 원본 씬에 한 번 거는 것이 맞는 자리다.
-import { Skeleton, type BufferAttribute, type Matrix4, type Object3D, type SkinnedMesh } from 'three'
+import { Matrix4, Skeleton, type BufferAttribute, type Object3D, type SkinnedMesh } from 'three'
 
 /** 같은 뼈의 바인드 역행렬이 이만큼 어긋나면 다른 것으로 본다 */
 const SAME = 1e-4
@@ -47,6 +47,12 @@ interface UnifyResult {
  * 두고 까닭을 돌려준다 — 조용히 근사하지 않는다.
  */
 export function unifySkeletons(root: Object3D): UnifyResult {
+  const out = unifyPieces(root)
+  fitBoneLimit(root)
+  return out
+}
+
+function unifyPieces(root: Object3D): UnifyResult {
   if (root.userData[MARK] === true) return { meshes: 0, bones: 0, was: 0, skipped: '이미 합쳤다' }
   const meshes: SkinnedMesh[] = []
   root.traverse((o) => { if ((o as SkinnedMesh).isSkinnedMesh) meshes.push(o as SkinnedMesh) })
@@ -115,4 +121,58 @@ export function unifySkeletons(root: Object3D): UnifyResult {
   }
 
   return { meshes: meshes.length, bones: order.length, was, skipped: null }
+}
+
+/**
+ * WebGL 유니폼 블록 하나에 들어가는 뼈 행렬 수 — `MAX_UNIFORM_BLOCK_SIZE`의 하한 16384바이트 ÷ mat4 64바이트.
+ *
+ * three 노드 빌더는 뼈 행렬을 유니폼 블록 하나에 담고(`Skinning.js`의 `buffer(boneMatrices)`) 크기를 안 잰다.
+ * WebGPU는 한도가 64KB라 넘지 않지만 WebGL 길에서는 이 수를 넘는 순간 셰이더 링크가 실패해 그 조각이 안 그려진다
+ */
+export const WEBGL_BONE_LIMIT = 16384 / 64
+
+/** 이미 줄인 `skinIndex` 표식 — 조각이 지오메트리를 나눠 쓰면 두 번 고치지 않는다 */
+const FIT = '__boneLimitFit'
+
+/**
+ * 뼈가 `WEBGL_BONE_LIMIT`보다 많은 스킨 조각을 **그 조각이 실제로 쓰는 뼈만으로** 다시 묶는다.
+ *
+ * ⚠️ **실측(2026-10-14 최종 연쇄 칸 7): 무청(`tr1078_00`)의 스킨은 joints가 268이다.** 실제 뼈는 168인데 100개가
+ * **다른 바인드 자세로** 한 번 더 들어 있어 합칠 수 없다. 268 × 64 = 17,152바이트가 16384를 넘어, WebGL 길에서
+ * 선단 체육관 관장이 안 그려졌다(콘솔 「Size of uniform block NodeBuffer … exceeds GL_MAX_UNIFORM_BLOCK_SIZE」).
+ * 조각 일곱이 저마다 쓰는 것은 163개라 조각별 뼈대로 나누면 들어간다. 설치본 전체에서 256을 넘는 모델은 이것 하나다.
+ *
+ * 줄여도 안 들어가는 조각은 그대로 둔다 — 근사하지 않는다. 손댄 조각 수를 돌려준다
+ */
+export function fitBoneLimit(root: Object3D): number {
+  let fitted = 0
+  root.traverse((o) => {
+    const mesh = o as SkinnedMesh
+    if (!mesh.isSkinnedMesh || mesh.skeleton.bones.length <= WEBGL_BONE_LIMIT) return
+    const index = mesh.geometry.getAttribute('skinIndex') as BufferAttribute | undefined
+    const weight = mesh.geometry.getAttribute('skinWeight') as BufferAttribute | undefined
+    if (index === undefined || weight === undefined) return
+    const a = index.array as unknown as { [k: number]: number, length: number }
+    const w = weight.array as unknown as { [k: number]: number, length: number }
+    const { bones, boneInverses } = mesh.skeleton
+    const marked = (index as unknown as Record<string, unknown>)[FIT] as number[] | undefined
+    // 지오메트리를 나눠 쓰는 조각이 이미 줄였으면 그 뼈 목록을 그대로 쓴다
+    let used = marked
+    if (used === undefined) {
+      const seen = new Set<number>()
+      for (let i = 0; i < a.length; i++) if ((w[i] ?? 0) > 0) seen.add(a[i] ?? 0)
+      if (seen.size === 0) seen.add(0)
+      if (seen.size > WEBGL_BONE_LIMIT) return
+      used = [...seen].sort((x, y) => x - y)
+      const seat = new Map(used.map((old, i) => [old, i]))
+      for (let i = 0; i < a.length; i++) a[i] = seat.get(a[i] ?? 0) ?? 0
+      ;(index as unknown as Record<string, unknown>)[FIT] = used
+      index.needsUpdate = true
+    }
+    const picked = used.map((i) => bones[i]).filter((b): b is NonNullable<typeof b> => b !== undefined)
+    const inverses = used.map((i) => boneInverses[i]?.clone() ?? new Matrix4())
+    mesh.bind(new Skeleton(picked, inverses), mesh.bindMatrix)
+    fitted++
+  })
+  return fitted
 }
