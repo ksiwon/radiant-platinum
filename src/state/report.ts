@@ -1,9 +1,15 @@
 // 리포트 — 세이브 파일 한 벌.
 //
-// **자동 저장이 아니다.** 원작은 리포트를 쓴 그 순간의 상태만 남기고, 그래서
+// **리포트는 자동 저장이 아니다.** 원작은 리포트를 쓴 그 순간의 상태만 남기고, 그래서
 // 리포트를 안 쓰고 끄면 지난 진행이 사라진다. 그 규칙이 게임의 긴장 절반을
 // 만들기 때문에 그대로 둔다 — 그리고 "리포트한 자리에서 다시 시작한다"가
 // 성립하려면 저장 시점이 하나여야 한다.
+//
+// ⚠️ **자동 저장은 그 옆의 다른 칸이다** (`AUTO` · `scene/autosave`). 오래 하면 GPU 메모리가 쌓여(REPAIR §149)
+// 탭이 죽을 수 있어서, 리포트를 안 쓴 진행을 잃지 않게 맵을 옮기거나 배틀이 끝날 때 따로 한 벌 남긴다.
+// **리포트 칸은 절대 안 덮는다** — 「이어하기」는 여전히 리포트한 자리고, 자동 저장은 타이틀에서
+// 사람이 골라야만 열린다(그 칸이 더 최근일 때만 단추가 선다). 시각은 칸 옆 `*.meta`에 따로 적는다 —
+// 세이브 모양(`SAVE_VERSION`)을 안 바꾸려고다
 //
 // ⚠️ JSON으로 안 바꾼다. 도감·플래그가 `Uint8Array`고 JSON을 거치면 평범한
 // 객체가 되어 비트 연산이 조용히 망가진다. IndexedDB의 structured clone은
@@ -32,6 +38,12 @@ const SLOT = 'report'
 const TMP = 'report.tmp'
 /** 지우기 직전에 한 벌 옮겨 두는 자리 (IMPORT.md §11-8) */
 const BACKUP = 'report.bak'
+/** 자동 저장 칸 — 리포트 칸과 따로다. 쓰는 순서는 리포트와 같다(임시 → 검증 → 교체) */
+const AUTO = 'report.auto'
+const AUTO_TMP = 'report.auto.tmp'
+/** 두 칸을 쓴 시각 (`{ savedAt }`). 둘 중 무엇이 더 최근인지 가르는 데만 쓴다 */
+const SLOT_META = 'report.meta'
+const AUTO_META = 'report.auto.meta'
 
 /**
  * ⚠️ **이름만 바꾸면 이미 저장된 리포트를 못 찾는다.** IndexedDB는 데이터베이스
@@ -115,6 +127,44 @@ type WriteResult =
  * 말할 수 있다
  */
 export async function writeReportVerified(data: SaveData): Promise<WriteResult> {
+  const got = await writeSlotVerified(data, SLOT, TMP)
+  if (got.ok) await set(SLOT_META, { savedAt: Date.now() }, dbStore).catch(() => undefined)
+  return got
+}
+
+/** 자동 저장 칸에 쓴다 — 리포트와 같은 검증을 거치고, 리포트 칸은 안 건드린다 */
+export async function writeAutosaveVerified(data: SaveData): Promise<WriteResult> {
+  const got = await writeSlotVerified(data, AUTO, AUTO_TMP)
+  if (got.ok) await set(AUTO_META, { savedAt: Date.now() }, dbStore).catch(() => undefined)
+  return got
+}
+
+export function readAutosaveDetailed(expectVersion: number): Promise<ReportRead> {
+  return readSlotDetailed(AUTO, expectVersion)
+}
+
+/**
+ * 두 칸을 마지막으로 쓴 시각. 없으면 null.
+ *
+ * ⚠️ **시각 기록이 생기기 전에 쓴 리포트는 시각이 없다** — 그때는 0으로 쳐서, 자동 저장이 있으면 그쪽이 더 최근이다
+ */
+export async function readSaveTimes(): Promise<{ report: number | null, auto: number | null }> {
+  await migrate()
+  const at = async (slot: string, meta: string): Promise<number | null> => {
+    if (await get(slot, dbStore) === undefined) return null
+    const m = await get<{ savedAt?: unknown }>(meta, dbStore)
+    return typeof m?.savedAt === 'number' ? m.savedAt : 0
+  }
+  return { report: await at(SLOT, SLOT_META), auto: await at(AUTO, AUTO_META) }
+}
+
+/** 자동 저장을 지운다 — 새 모험을 열 때 옛 판의 자동 저장이 「더 최근」으로 남지 않게 */
+export async function clearAutosave(): Promise<void> {
+  await del(AUTO, dbStore)
+  await del(AUTO_META, dbStore)
+}
+
+async function writeSlotVerified(data: SaveData, slot: string, tmp: string): Promise<WriteResult> {
   // 디스크를 건드리기 전에 먼저 본다. 못 쓸 것을 임시 슬롯에라도 남길 이유가 없다
   const { safeParseSave } = await import('./save/schema')
   const before = safeParseSave(data)
@@ -133,12 +183,12 @@ export async function writeReportVerified(data: SaveData): Promise<WriteResult> 
   const want = checksum(encodePayload(canonical))
 
   try {
-    await set(TMP, canonical, dbStore)
+    await set(tmp, canonical, dbStore)
   } catch (e) {
     return { ok: false, why: `임시 슬롯에 못 썼다 — ${message(e)}` }
   }
 
-  const back: unknown = await get(TMP, dbStore)
+  const back: unknown = await get(tmp, dbStore)
   const after = safeParseSave(back)
   if (!after.ok) {
     return { ok: false, why: `다시 읽은 리포트가 스키마를 어긴다 — ${after.why}` }
@@ -149,12 +199,12 @@ export async function writeReportVerified(data: SaveData): Promise<WriteResult> 
   }
 
   try {
-    await set(SLOT, after.save, dbStore)
+    await set(slot, after.save, dbStore)
   } catch (e) {
     return { ok: false, why: `현재 슬롯을 못 바꿨다 — ${message(e)}` }
   }
   // 여기서 실패해도 리포트는 이미 제자리다. 다음 쓰기가 덮는다
-  await del(TMP, dbStore).catch(() => undefined)
+  await del(tmp, dbStore).catch(() => undefined)
   return { ok: true }
 }
 

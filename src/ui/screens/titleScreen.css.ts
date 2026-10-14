@@ -385,3 +385,19 @@ export const dimmed = style({
 export const callout = style({
   display: 'flex', flexDirection: 'column', maxHeight: '70vh', overflowY: 'auto', pointerEvents: 'auto',
 })
+
+/** 「자동 저장에서 이어하기」 — 줄 2의 한 줄 단추. 글처럼 보이되 눌린다 */
+export const autoLink = style({
+  flex: '0 0 auto',
+  whiteSpace: 'nowrap',
+  margin: 0,
+  padding: 0,
+  border: 'none',
+  background: 'transparent',
+  font: 'inherit',
+  textAlign: 'left',
+  color: vars.ink.normal,
+  lineHeight: 1.4,
+  cursor: 'pointer',
+  selectors: { '&:hover': { color: vars.pick.text } },
+})

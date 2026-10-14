@@ -8,8 +8,8 @@
 import { addPlaytimeCapped } from '../engine/world/playTime'
 import { create } from 'zustand'
 import {
-  backupReport, clearReport, readBackupDetailed, readReport, readReportDetailed,
-  writeReportVerified,
+  backupReport, clearAutosave, clearReport, readAutosaveDetailed, readBackupDetailed, readReport, readReportDetailed,
+  writeAutosaveVerified, writeReportVerified,
 } from './report'
 import { downloadPortable, saveFileName, type DownloadOutcome } from './save/download'
 import {
@@ -634,7 +634,12 @@ interface SaveStore extends SaveData {
    */
   report: (position: SaveData['position']) => Promise<ReportOutcome>
   /** 리포트를 읽어 그 자리에서 이어한다. 없으면 false */
-  loadReport: () => Promise<boolean>
+  /**
+   * 자동 저장 칸에 한 벌 쓴다 (`state/report`의 `AUTO` · `scene/autosave`). 리포트 칸도 파일도 안 건드린다
+   */
+  autosave: (position: SaveData['position']) => Promise<{ saved: boolean, why?: string }>
+  /** 리포트(기본)나 자동 저장을 스토어로 붓는다 */
+  loadReport: (from?: 'report' | 'auto') => Promise<boolean>
   /**
    * 지금 리포트를 `.rpsave` 파일로 받는다.
    *
@@ -1025,8 +1030,16 @@ export const useSaveStore = create<SaveStore>()(
         return { saved: true, backup: downloadPortable(buildPortable(data, at), fileName), fileName }
       },
 
-      loadReport: async () => {
-        const data = await readReport(SAVE_VERSION)
+      autosave: async (position) => {
+        const data = snapshot(useSaveStore.getState(), position)
+        const written = await writeAutosaveVerified(data)
+        return written.ok ? { saved: true } : { saved: false, why: written.why }
+      },
+
+      loadReport: async (from = 'report') => {
+        const data = from === 'auto'
+          ? await readAutosaveDetailed(SAVE_VERSION).then((got) => (got.kind === 'ok' ? got.save : null))
+          : await readReport(SAVE_VERSION)
         set({ hydrated: true })
         if (!data) return false
         // ⚠️ **새 판 표식을 내린다** — 가져오기·되찾기와 같다. 남아 있으면 필드가 뜰 때
@@ -1142,6 +1155,8 @@ export const useSaveStore = create<SaveStore>()(
       resetSave: async (options) => {
         if (options?.backup !== false) await backupBeforeOverwrite()
         await clearReport()
+        // 옛 판의 자동 저장이 새 모험보다 「더 최근」으로 타이틀에 남지 않게 같이 지운다
+        await clearAutosave().catch(() => undefined)
         set({ ...createNewSave(), hydrated: true, loaded: false })
       },
     }),

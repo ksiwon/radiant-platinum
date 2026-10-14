@@ -23,7 +23,7 @@
 import { Fragment, lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useNavigate } from 'react-router'
 import { loadUiText, MAIN_MENU } from '../../data/uiText'
-import { readReportDetailed } from '../../state/report'
+import { readAutosaveDetailed, readReportDetailed, readSaveTimes } from '../../state/report'
 import { useMenuStore } from '../../state/menuStore'
 import { useSessionStore } from '../../state/sessionStore'
 import { APP_ROOT } from '../../data/assetBase'
@@ -169,6 +169,11 @@ function TitleMenu() {
   const navigate = useNavigate()
   const [text, setText] = useState<string[]>([])
   const [report, setReport] = useState<SaveData | null | undefined>(undefined)
+  /**
+   * 리포트보다 **더 최근인** 자동 저장 (`scene/autosave`). 없거나 리포트가 더 최근이면 null.
+   * 리포트 칸은 안 바뀌므로 「이어하기」는 그대로 리포트로 가고, 이것은 따로 고르는 길이다
+   */
+  const [auto, setAuto] = useState<SaveData | null>(null)
   /** 저장돼 있지만 **이 판이 못 읽는** 리포트. 없는 것과 다른 일이다 */
   const [unreadable, setUnreadable] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -278,6 +283,11 @@ function TitleMenu() {
       // 것처럼 보이던 자리다 (IMPORT.md §11 끝) — 원본을 파일로 돌려줄 수 있다
       setUnreadable(got.kind === 'unreadable' ? explainStored(got.reason.kind) : null)
     }).catch(() => { if (alive) setReport(null) })
+    void readSaveTimes().then(async (t) => {
+      if (t.auto === null || (t.report !== null && t.report >= t.auto)) return
+      const got = await readAutosaveDetailed(SAVE_VERSION)
+      if (alive && got.kind === 'ok') setAuto(got.save)
+    }).catch(() => { /* 자동 저장이 없는 것으로 친다 */ })
     // 남겨 둔 한 벌이 있는가. **여기서는 열어 보기만 한다** — 되찾는 것은
     // 사람이 단추를 누른 뒤고, 그때까지 저장된 것은 한 바이트도 안 바뀐다
     void useSaveStore.getState().previewBackup()
@@ -299,6 +309,10 @@ function TitleMenu() {
       return
     }
     void save.loadReport().then(() => { navigate('/play') })
+  }
+  /** 자동 저장에서 이어하기 — 리포트 칸은 그대로 두고 스토어만 자동 저장으로 붓는다 */
+  const goAuto = (): void => {
+    void useSaveStore.getState().loadReport('auto').then((ok) => { if (ok) navigate('/play') })
   }
 
   // ⚠️ **파일 이름만 띄우지 않는다.** 한때 알림 칸에 `이름-날짜.rpsave` 한 줄만
@@ -761,6 +775,21 @@ function TitleMenu() {
                         + '「세이브 파일 불러오기」로 갖고 있는 세이브 파일을 불러오세요'}
                 </p>
               )
+            )}
+            {/*
+              ⚠️ **자동 저장은 고르는 사람만 연다.** 리포트보다 더 최근일 때만 선다 — 탭이 죽어 리포트 뒤의 진행을 잃은 사람이
+              찾는 길이다. 「이어하기」를 바꾸지 않는다(그것은 리포트한 자리다)
+            */}
+            {auto !== null && (
+              <button
+                type="button"
+                className={css.autoLink}
+                onClick={goAuto}
+                aria-label="자동 저장에서 이어하기"
+                title={`리포트보다 최근인 자동 저장이 있습니다 — ${auto.trainer.name || '이름 없음'} · ${clock(auto.trainer.playtimeMs)}`}
+              >
+                <u>자동 저장에서 이어하기</u>{` ${clock(auto.trainer.playtimeMs)}`}
+              </button>
             )}
             {/* 조작 안내 — 조작 쪽지(`controlRows`)는 창 폭을 넘어 여기서는 안 쓴다 */}
             <span className={css.keys}><KeyHints text="←→ 고르기 · Z 결정" /></span>

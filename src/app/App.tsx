@@ -24,6 +24,8 @@ const Stage = lazy(() => import('../scene/Stage').then((m) => ({ default: m.Stag
 const BattleScreen = lazy(() =>
   import('../ui/battle/BattleScreen').then((m) => ({ default: m.BattleScreen })))
 const PlayRoute = lazy(() => import('./PlayRoute').then((m) => ({ default: m.PlayRoute })))
+/** 오래 한 판 경고 (`scene/autosave`) — 필드에서만 받는다. 엔진을 끌고 오므로 타이틀 첫 청크에 안 얹는다 */
+const PlayNotice = lazy(() => import('../ui/hud/PlayNotice'))
 // 인트로는 three를 안 쓴다. 그래도 타이틀 청크에 안 넣는 이유는 대사 인쇄기와
 // 뱅크 로더를 끌고 오기 때문이다 — "이어하기"로 들어오면 한 번도 안 쓴다
 const IntroRoute = lazy(() =>
@@ -65,6 +67,15 @@ export function App() {
   //
   // ⚠️ **여기가 무한 재시도가 되기 제일 쉬운 자리다.** 상한을 넘으면
   // `retry(true)`가 세우지 않고 `failed`로 옮긴다 — 그때부터는 사람이 누른다
+  // 자동 저장 · 오래 한 판 경고를 필드에서만 건다 (`scene/autosave` · REPAIR §153)
+  useEffect(() => {
+    if (phase !== 'overworld') return
+    let off: (() => void) | null = null
+    let alive = true
+    void import('../scene/autosave').then((m) => { if (alive) off = m.installAutosave() })
+    return () => { alive = false; off?.() }
+  }, [phase])
+
   const rendererPhase = useRendererStore((s) => s.phase)
   useEffect(() => {
     if (rendererPhase !== 'lost') return
@@ -137,6 +148,7 @@ export function App() {
       {/* 이펙트 시험대는 화면 전체가 찍는 판이라 계기판을 안 얹는다 */}
       {devTools && !window.location.pathname.startsWith('/fxlab') && <PerfOverlayHost />}
       <ZoneBanner />
+      {phase === 'overworld' && <Suspense fallback={null}><PlayNotice /></Suspense>}
       {/*
         그래픽이 멈췄을 때의 창 (기획서 RP-03). 3D를 한 조각도 안 잡으므로
         **3D가 못 서는 상황에서도 뜬다** — 여기가 뜨는 상황이 곧 그것이다.
