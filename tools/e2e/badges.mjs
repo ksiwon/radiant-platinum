@@ -390,12 +390,21 @@ export async function eternaToBike(api, ctx, {
   const came = await api.goTo(MAP.eterna, Math.min(600_000, api.left()))
   if (came !== 'arrived') { out.why = `영원시티에 못 갔다 (${came})`; return out }
   v = await api.storyVars()
-  if ((v?.eterna ?? 0) < 1) {
+  /**
+   * ⚠️ **한 번 못 서면 다시 선다.** 실측(2026-10-14 최종 연쇄 칸 3 · 182813fb 둘째 판): (303,524)로 가는 `stepOn`이 둘레 집
+   * 문(81 · 83)을 드나들다 5분 예산을 다 써 태홍 장면이 안 돌았고, 그 뒤 난천 · 비전머신01이 통째로 빠졌다
+   */
+  for (let t = 0; t < 3 && (v?.eterna ?? 0) < 1 && api.left() > 0; t++) {
+    if (t > 0) {
+      const back = await api.goTo(MAP.eterna, Math.min(300_000, api.left()))
+      note('태홍 장면 다시 — 영원시티로', back)
+    }
     const stood = await api.stepOn(MAP.eterna, ETERNA_CYRUS, Math.min(300_000, api.left()))
     await api.clearTalk(); await api.settle()
     v = await api.storyVars()
-    note('태홍 장면 (303,524)', `${stood} · 영원 상태 ${String(v?.eterna)}`)
-  } else note('태홍 장면', `이미 지났다 (상태 ${String(v.eterna)})`)
+    note(`태홍 장면 (303,524)${t > 0 ? ` ${String(t + 1)}번째` : ''}`, `${stood} · 영원 상태 ${String(v?.eterna)}`)
+  }
+  if ((v?.eterna ?? 0) >= 1 && out.steps.every((st) => !st.what.startsWith('태홍 장면 ('))) note('태홍 장면', `이미 지났다 (상태 ${String(v.eterna)})`)
   out.cyrus = v?.eterna ?? null
 
   // ② 난천 — 상태 1 → 2 · 비전머신01
@@ -541,6 +550,16 @@ export async function eternaToBike(api, ctx, {
   v = await api.storyVars()
   if (v?.galacticLeft !== true) { out.why = `쥬피터를 아직 안 이겼다 (영원 상태 ${String(v?.eterna)})`; return out }
   // ⑤ 자전거 · ⑥ 탐사세트
+  /**
+   * ⚠️ **빌딩을 나서면 문 앞 나무가 되살아나 있다.** 맵(65)을 다시 들어오면 벤 나무가 돌아오는데 하네스는 「치웠다」로 믿고
+   * 걷다가 문 앞 (305,520)에서 섰다 — 실측(2026-10-14 최종 연쇄 칸 3 · 182813fb 첫 판): 쥬피터 뒤 10분 넘게 72 ↔ 65를 오갔다.
+   * 영원시티로 나온 뒤 나무를 베고(`clearWay`) 사이클숍으로 간다. 이미 길이 열려 있으면 첫 `goTo`로 닿는다
+   */
+  const outside = await api.goTo(MAP.eterna, Math.min(300_000, api.left()))
+  if (outside === 'arrived') {
+    const way = await api.clearWay(MAP.eterna, MAP.cycleShop, Math.min(600_000, api.left()), { sprite: 86, maxHits: 3 })
+    note('빌딩 앞 나무 → 사이클숍', way.ok ? `닿았다 (${String(way.broke.length)}그루 건드렸다)` : String(way.why))
+  }
   const shop = await api.goTo(MAP.cycleShop, Math.min(600_000, api.left()))
   const owner = shop === 'arrived' && await api.talkToNpc(MAP.cycleShop, CYCLE_OWNER, Math.min(180_000, api.left()))
   await api.clearTalk(); await api.settle()
