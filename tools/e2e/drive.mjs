@@ -2561,7 +2561,12 @@ export async function driveStory(page, {
         if (lk.known && lk.value?.keys != null && lk.value.keys.length > 0) {
           if (first || verbose) log(`    층 걸음으로 간다 — 계획 ${String(tiles.length)}칸 중 ${String(lk.value.reached + 1)}번째까지 ${String(lk.value.keys.length)}걸음 (상태 ${String(lk.value.states)}개)`)
           // 계획의 방향키 끝(락클라임 · 판 칸 앞)까지 닿았으면 그 뒤 특수 걸음을 잇는다 — 안 이으면 바위 밑에서 영영 선다
-          keys = lk.value.reached === tiles.length - 1 ? [...lk.value.keys, ...keys.slice(tiles.length)] : lk.value.keys
+          // ⚠️ **마지막 칸이 문이면 그 한 걸음도 잇는다.** 문 칸은 격자에서 막힌 칸이라 층 걸음이 그 앞에서 끝난다 — 실측(2026-10-14
+          // 최종 연쇄 칸 4): 장막 체육관 문 앞 (702,628)에서 9분을 되밀렸다(「42칸 중 41번째까지」)
+          const lastIsDoor = lk.value.reached === tiles.length - 2
+            && warpsOf(s.map).some((w) => w.x === tiles[tiles.length - 1][0] && w.z === tiles[tiles.length - 1][1])
+          keys = lk.value.reached === tiles.length - 1 ? [...lk.value.keys, ...keys.slice(tiles.length)]
+            : lastIsDoor ? [...lk.value.keys, keys[tiles.length - 1]] : lk.value.keys
         } else {
           log(`    층 걸음 — ${lk.known ? `계획한 칸에 하나도 못 닿는다 (상태 ${String(lk.value?.states)}개)` : '못 읽었다'}`)
         }
