@@ -816,8 +816,18 @@ function devObserver(page) {
       }
       // 부르는 쪽이 「제품이 실제로 막았다」고 잰 걸음(그 회전 상태에서) — 높이 표가 지금 상태만 알아 놓치는 자리다
       const ban = new Set(a.ban ?? [])
+      /**
+       * ⚠️ **지금 회전 상태의 걸음은 제품 규칙 그대로 잰다** — 바닥이 없는 칸(null)을 제품은 높이 0으로 친다(`stepTooHigh`).
+       * 다른 상태의 걸음만 너그럽게 둔다(그 상태에선 다리가 올 수 있다). 실측(2026-10-15 최종 연쇄 칸 13): 셋째 방 (6,z) → (7,z)를
+       * 풀이가 열린 걸음으로 보고 상태 0 · 2에서 거듭 되밀렸다 — 그 칸은 지금 상태에서 바닥이 없다
+       */
+      const now = (fx, fz, x, zz) => {
+        if (typeof pl.stepTooHigh !== 'function') return false
+        const fy = grid.heightAtWorld(fx + 0.5, fz + 0.5, p.y)
+        return fy !== null && pl.stepTooHigh(grid, x + 0.5, zz + 0.5, fy)
+      }
       const edge = (fx, fz, x, zz, st) => ban.has(`${String(st)}:${String(fx)},${String(fz)}>${String(x)},${String(zz)}`)
-        || (high !== null && high(fx, fz, x, zz))
+        || (st === state ? now(fx, fz, x, zz) : high !== null && high(fx, fz, x, zz))
       const plan = s.solveSunyshore({
         start, state, blocked, buttons, next: g.sunyshoreNextState, goal: (x, zz) => goalSet.has(`${x},${zz}`), edge,
       })
