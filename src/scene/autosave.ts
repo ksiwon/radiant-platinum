@@ -26,7 +26,7 @@ import { avatarState, worldState } from '../state/worldState'
 import { fieldTaskRunning } from './fieldTask'
 
 /** 자동 저장 사이 최소 간격. 맵을 몇 번 오가도 이 안에서는 한 번이다 */
-export const AUTOSAVE_GAP_MS = 5 * 60_000
+const AUTOSAVE_GAP_MS = 5 * 60_000
 /** 맵이 바뀌거나 배틀이 끝난 뒤 저장할 수 있는 순간을 기다리는 상한 — 넘으면 다음 계기에 맡긴다 */
 const WAIT_MS = 30_000
 const POLL_MS = 1_000
@@ -55,7 +55,7 @@ export function whyNotSaveNow(): string | null {
 }
 
 /** 리포트가 적는 자리 — `SaveScreen`과 같은 모양이다 */
-export function reportPosition(): SaveData['position'] {
+function reportPosition(): SaveData['position'] {
   const p = worldState.player.position
   return {
     map: world.mapId,
@@ -70,7 +70,7 @@ export function reportPosition(): SaveData['position'] {
 }
 
 /** 한 번 쓴다. 스크립트가 세운 플래그를 먼저 스토어로 끌어온다(`SaveScreen`의 `write`와 같다) */
-export async function autosaveNow(): Promise<{ saved: boolean, why?: string }> {
+async function autosaveNow(): Promise<{ saved: boolean, why?: string }> {
   const why = whyNotSaveNow()
   if (why !== null) return { saved: false, why }
   const save = useSaveStore.getState()
@@ -99,9 +99,9 @@ export const usePlayNotice = create<NoticeState>()((set) => ({
  *
  * 실측(2026-10-14 mac · REPAIR §149): 맵을 백 번쯤 오가면 GPU 메모리가 1.5~2.5GB 쌓인다. 그 언저리에서 한 번 알린다
  */
-export const LONG_PLAY_MAPS = 100
+const LONG_PLAY_MAPS = 100
 /** 느려짐 — 프레임 중간값이 이만큼(ms)을 넘는 판이 연달아 셋이면 알린다(20초마다 잰다 · 60fps면 16.7) */
-export const SLOW_MEDIAN_MS = 40
+const SLOW_MEDIAN_MS = 40
 const SLOW_STREAK = 3
 const SLOW_POLL_MS = 20_000
 
