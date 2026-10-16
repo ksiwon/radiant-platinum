@@ -694,6 +694,12 @@ async function watchEnding(api, ctx, page) {
  */
 export async function eliteFour(api, ctx, page, {
   potions = 30, tries = 3, levels = { lead: 88, bird: 85, third: 85, giratina: 75 },
+  /**
+   * **재대결** (칸 21 · `badgesPost.eliteRematch`) — 180 `FLAG_DEFEATED_CYNTHIA`는 한 번 서면 안 지워진다(롬 어디에도 `ClearFlag`가 없다).
+   * 사천왕 넷은 북 센터 `OnTransition`이 지운다(`scripts_pokemon_league_north_pokecenter_1f.s:26-29`). 그래서 재대결은 난천 깃발 대신
+   * **전당 화면이 떴는가 · 앱이 다시 켜졌는가**로 이겼는지를 본다
+   */
+  rematch = false,
 } = {}) {
   const t0 = Date.now()
   const out = { steps: [], rooms: [], rounds: 0 }
@@ -702,7 +708,9 @@ export async function eliteFour(api, ctx, page, {
   const vars = async () => (await api.storyVars()) ?? {}
   let v = await vars()
 
-  for (let round = 0; round < tries && api.left() > 0 && !v.cynthia; round++) {
+  /** 난천을 이겼는가 — 첫 판은 깃발, 재대결은 엔딩에 들어섰는가 */
+  const champ = (x) => (rematch ? out.champion === true : x.cynthia === true)
+  for (let round = 0; round < tries && api.left() > 0 && !champ(v); round++) {
     out.rounds = round + 1
     if ((await api.now()).map === MAP.leagueNorthCenter) {
       /**
@@ -751,7 +759,7 @@ export async function eliteFour(api, ctx, page, {
     if (lost) { await untilMap(api, (m) => m === MAP.leagueNorthCenter, 60_000); await api.clearTalk(); await api.settle(); continue }
 
     v = await vars()
-    if (!v.cynthia && (await api.now()).map === MAP.liftChampion) {
+    if (!champ(v) && (await api.now()).map === MAP.liftChampion) {
       const r = await rideLift(api, ctx, MAP.liftChampion, MAP.champion)
       note('챔피언 승강기 → 난천', `맵 ${String(r.map)}`)
     }
@@ -770,9 +778,15 @@ export async function eliteFour(api, ctx, page, {
      */
     const offPlay = async () => (await page.evaluate(() => location.pathname).catch(() => '/')) !== '/play'
     try {
-      for (let i = 0; i < 20 && !(await vars()).cynthia; i++) {
+      for (let i = 0; i < 20 && !(rematch ? false : (await vars()).cynthia); i++) {
         if (await offPlay()) { navigated = true; break }
         if ((await api.now()).map === MAP.leagueNorthCenter) break
+        // 재대결은 깃발이 이미 서 있다 — 복도 · 전당에 들어섰거나 전당 화면이 떴으면 이긴 것이다
+        if (rematch) {
+          const m = await page.evaluate(() => document.documentElement.dataset.menu).catch(() => undefined)
+          const here = (await api.now()).map
+          if (m === 'hallOfFame' || m === 'credits' || here === MAP.hallway || here === MAP.hallOfFame) { out.champion = true; break }
+        }
         await api.clearTalk(); await api.settle()
       }
       if (!navigated && await offPlay()) navigated = true
@@ -781,6 +795,7 @@ export async function eliteFour(api, ctx, page, {
       navigated = true
     }
     if (navigated) {
+      out.champion = true
       await page.waitForLoadState('load').catch(() => {})
       note('챔피언 난천', '이긴 뒤 엔딩을 지나 앱이 다시 켜졌다 (타이틀에서 이어 잰다)')
       out.rooms.push({ round, who: '난천', won: true, party: null, via: 'navigated' })
@@ -789,11 +804,11 @@ export async function eliteFour(api, ctx, page, {
     }
     v = await vars()
     const party = await api.partyState()
-    out.rooms.push({ round, who: '난천', won: v.cynthia === true, party: party?.map((m) => `${String(m.species)} L${String(m.level)} ${String(m.hp)}`) })
-    note('챔피언 난천', `이겼다 ${String(v.cynthia)} · 지금 맵 ${String((await api.now()).map)}`)
-    if (!v.cynthia) { await untilMap(api, (m) => m === MAP.leagueNorthCenter, 60_000); await api.clearTalk(); await api.settle() }
+    out.rooms.push({ round, who: '난천', won: champ(v), party: party?.map((m) => `${String(m.species)} L${String(m.level)} ${String(m.hp)}`) })
+    note('챔피언 난천', `이겼다 ${String(champ(v))} · 지금 맵 ${String((await api.now()).map)}`)
+    if (!champ(v)) { await untilMap(api, (m) => m === MAP.leagueNorthCenter, 60_000); await api.clearTalk(); await api.settle() }
   }
-  if (!v.cynthia && !out.navigated) return done()
+  if (!champ(v) && !out.navigated) return done()
   out.ending = await watchEnding(api, ctx, page)
   note('명예의 전당 → 크레딧 → 타이틀', JSON.stringify(out.ending))
   out.ok = out.ending.title === true

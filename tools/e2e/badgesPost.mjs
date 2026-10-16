@@ -8,7 +8,7 @@
 // 뒤에만 있고 켜면 봉투 `scope.shortcuts`에 적힌다(`gate-shortcuts-dont-refuse`). 깃발 없이 돌면 그 자리에서 「못 간다」를
 // 까닭과 함께 적고 멈춘다 — 통과로 접지 않는다
 import { boardWarp } from './badges.mjs'
-import { MAP as LEAGUE_MAP, eliteFour } from './badgesLeague.mjs'
+import { MAP as LEAGUE_MAP, eliteFour, victoryRoad } from './badgesLeague.mjs'
 import { sprayBest } from './badges67.mjs'
 import { gridOf, matrixOf, npcsOf, waterAt } from './route.mjs'
 import { solvePush } from './pushSolve.mjs'
@@ -629,6 +629,18 @@ async function toStarkRoom3(api, ctx, page, note) {
   return (await at()) === STARK.room3
 }
 
+/**
+ * **멍청산에서 걸어 나온다** — 동굴 안에서는 공중날기가 안 된다. 가방에 동굴탈출로프가 없다(칸 20 끝 세이브 실측). 방 3 → 방 2(락클라임으로
+ * 내려간다 · 길잡이) → 방 1(바위가 제자리로 돌아와 있다 — 바위 풀이로 입구 (20,29)까지) → 바깥
+ */
+export async function leaveStark(api, ctx, page, note) {
+  const at = () => api.now().then((n) => n.map)
+  if ((await at()) === STARK.room3) note('방 3 → 방 2', await api.goTo(STARK.room2, Math.min(300_000, api.left())))
+  if ((await at()) === STARK.room2) note('방 2 → 방 1', await api.goTo(STARK.room1, Math.min(900_000, api.left())))
+  if ((await at()) === STARK.room1) note('방 1 → 바깥', JSON.stringify(await pushThrough(api, ctx, STARK.room1, { x: 20, z: 29 }, note, page)))
+  return (await at()) === STARK.outside || ![STARK.room1, STARK.room2, STARK.room3].includes(await at())
+}
+
 export async function starkHeatran(api, ctx, page) {
   const t0 = Date.now()
   const out = { steps: [] }
@@ -922,17 +934,29 @@ export async function eliteRematch(api, ctx, page) {
   out.hofBefore = await hofTotal(page)
   note('처음', `214 ${String(charon)} · 사천왕 깃발 ${JSON.stringify([v.aaron, v.bertha, v.flint, v.lucian, v.cynthia])} · 전당 ${String(out.hofBefore)}`)
   if (!charon) { note('재대결 조건', '214가 안 섰다 — 칸 20(찬미 체포)이 먼저다'); return done() }
+  if ([STARK.room1, STARK.room2, STARK.room3].includes((await api.now()).map)) note('멍청산에서 나온다', String(await leaveStark(api, ctx, page, note)))
   const fly = await api.flyTo(LEAGUE_MAP.league, Math.min(180_000, api.left()))
   note('공중날기 → 포켓몬리그', fly.ok ? '닿았다' : String(fly.why))
-  const north = await api.goTo(LEAGUE_MAP.leagueNorthCenter, Math.min(600_000, api.left()))
-  note('리그 북 센터', north)
+  /**
+   * 리그 날기 자리는 남쪽이다 — 북 센터는 챔피언로드 너머다. 실측(진단 2판): `goTo(175)`가 리그(172) ↔ 챔피언로드 1F(244)를 3분 오가 섰다.
+   * 남 센터에서 회복하고 칸 15의 걸음(`badgesLeague.victoryRoad` — 층마다 문 · 2F 바위 풀이)을 그대로 탄다. 라이벌전은 이미 끝나 건너뛴다
+   */
+  const heal = await api.healAt(LEAGUE_MAP.leagueSouthCenter, Math.min(300_000, api.left()))
+  note('리그 남 센터 회복', heal.ok ? '나았다' : String(heal.why))
+  const road = await victoryRoad(api, ctx)
+  note('챔피언로드 → 리그 북 센터', `${String((await api.now()).map)} · ${JSON.stringify(road.steps?.slice(-3) ?? null).slice(0, 300)}`)
+  if ((await api.now()).map !== LEAGUE_MAP.leagueNorthCenter) return done()
   // 상대 트레이너 번호를 배틀마다 적는다 (읽기만 — `useBattleStore.foes`)
   const foes = []
   const watch = setInterval(() => {
     page.evaluate(async () => (await import('/src/state/battleStore.ts')).useBattleStore.getState().foes.map((t) => t.id))
       .then((ids) => { for (const id of ids) if (!foes.includes(id)) foes.push(id) }).catch(() => {})
   }, 1500)
-  const r = await eliteFour(api, ctx, page)
+  /**
+   * 재대결 팀은 L60대 후반~L70대(난천 재대결 선두 L77대)다 — 칸 16 끝 파티(L97 · 87 · 87 · 기라티나 75)로는 진단 3판에서 오엽까지 가서
+   * 선두 셋이 다 쓰러졌다. 사탕으로 맞춘다(정상 행동 · `journey-levels-by-candy`)
+   */
+  const r = await eliteFour(api, ctx, page, { rematch: true, levels: { lead: 100, bird: 100, third: 100, giratina: 100 } })
   clearInterval(watch)
   out.league = { ok: r?.ok, rooms: r?.rooms, ending: r?.ending, navigated: r?.navigated }
   out.foes = foes
