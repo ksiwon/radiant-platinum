@@ -28,7 +28,7 @@ import { preloadSplPack, SPL_WAZA } from './splPack'
 import { worldState } from '../../state/worldState'
 import { timeBlend } from '../../engine/map/timeOfDay'
 import { mapById, world } from '../../engine/map/world'
-import { arenaFor, cameraFit, hasSky, isIndoor } from '../../engine/battle/arena'
+import { arenaFor, cameraFit, cameraFov, ceilingFit, hasSky, isIndoor } from '../../engine/battle/arena'
 import { BODY_FADE_SECONDS, ClockReader, FRAME_SECONDS, battleClock } from '../../engine/battle/presentationClock'
 import { EncounterBurst } from './EncounterBurst'
 import { DistortionArena } from './DistortionArena'
@@ -59,7 +59,7 @@ import { clampShot, type Box, type ClampMemo } from '../../engine/battle/fx/came
 import { bigSwing, NO_RETURN, smoothClamp, stepCamera, swingAround, type CameraReturn, type ClampFix } from './battleCamera'
 import { BattleAtmosphere } from './BattleAtmosphere'
 import { MOVE_FRAMES, moveFramesOf } from '../../engine/battle/vfx'
-import { BATTLE_FOV, CAMERA, FIGHT_LOOK_Y, PAIR_DIR, pairOffset, SLOT } from '../../engine/battle/shots'
+import { CAMERA, FIGHT_LOOK_Y, PAIR_DIR, pairOffset, SLOT } from '../../engine/battle/shots'
 import { useOptionsStore } from '../../state/optionsStore'
 import {
   BACK_DIR,
@@ -183,6 +183,7 @@ function Slot({
   mine,
   shadow,
   onBody,
+  roofed,
 }: {
   mon: ViewMon | null
   /**
@@ -210,12 +211,18 @@ function Slot({
    * 커진 값을 올린다(아래 `grown`)
    */
   onBody: (tall: number) => void
+  /**
+   * 지붕 있는 무대인가 (`isIndoor` — 방 · 굴 · 리그). 그런 무대에서는 **천장보다 큰 몸을 천장 아래로 줄인다** (`ceilingFit`)
+   */
+  roofed: boolean
 }) {
   const body = useRef<Group>(null)
   const shade = useRef<Mesh>(null)
   /** 지금까지 본 제일 높은 자리와, 다음에 잴 시각 */
   const grown = useRef(0)
   const watch = useRef(0)
+  /** 천장에 맞춘 배율 (`ceilingFit`) — 지붕 없는 무대 · 천장보다 작은 몸은 1 */
+  const fit = useRef(1)
   // ⚠️ **HP가 0인 것과 화면에서 지는 것은 다른 일이다.** 예전에는 여기서
   // `mon.hp <= 0`을 봤고, 그 값이 `damage` 사건에서 이미 참이 되므로 **게이지가
   // 닳는 도중에** 몸이 먼저 사라졌다. 지는 것을 시작하는 것은 `faint` 사건뿐이다
@@ -277,6 +284,7 @@ function Slot({
     setSettledShown(false)
     grown.current = 0
     watch.current = 0
+    fit.current = 1
     // 자리가 비거나 몸이 바뀌면 이 자리의 키를 비운다 — 카메라가 앞 몸 기준에 머물지 않는다
     onBody(0)
     // 몸이 바뀌면 시간도 다시 센다 — 안 그러면 새 모델이 앞 모델을 기다린
@@ -543,7 +551,7 @@ function Slot({
     const caughtScale = 1
     // ⚠️ **3D 모델은 크기를 여기서 안 만진다.** 배율은 BDSP가 종마다 적어 둔
     // 값이고(`monModel`), 등판할 때 작아졌다 커지는 것은 도트의 문법이다
-    g.scale.setScalar((model ? 1 : 0.6 + 0.4 * t) * caughtScale)
+    g.scale.setScalar((model ? fit.current : 0.6 + 0.4 * t) * caughtScale)
     // 살짝 흔든다. 완전히 굳어 있으면 도형이 아니라 소품으로 보인다.
     // **위로만 뜬다** — 아래로 내려가면 발이 땅에 파묻힌다.
     // 모델은 대기 동작이 이미 숨을 쉬므로 안 흔든다
@@ -699,7 +707,18 @@ function Slot({
           // 서 있어서 그대로 쓰면 −496이 나오고, 그러면 "더 커졌나"가 영영
           // 거짓이라 카메라가 한 번도 안 물러난다 — 실제로 그랬다
           const box = new Box3().setFromObject(model.root, true)
-          const top = box.max.y - STAGE_ORIGIN.y - GROUND
+          // 상자는 줄인 뒤의 것이다 — 제 키는 배율로 되돌려 잰다
+          const raw = (box.max.y - STAGE_ORIGIN.y - GROUND) / fit.current
+          if (roofed) {
+            const next = ceilingFit(raw, arenaRoom.current?.ceilingAt(spot.x, spot.z) ?? Infinity)
+            if (next < fit.current - 1e-3) {
+              const k = next / fit.current
+              box.min.y = STAGE_ORIGIN.y + GROUND + (box.min.y - STAGE_ORIGIN.y - GROUND) * k
+              box.max.y = STAGE_ORIGIN.y + GROUND + (box.max.y - STAGE_ORIGIN.y - GROUND) * k
+              fit.current = next
+            }
+          }
+          const top = raw * fit.current
           // 시퀀스 카메라가 이 상자 속에 서지 않게 (`clampShot`) — 무대 좌표로 적는다
           slotBox[slot] = {
             min: [box.min.x - STAGE_ORIGIN.x, box.min.y - STAGE_ORIGIN.y, box.min.z - STAGE_ORIGIN.z],
@@ -860,7 +879,13 @@ export function BattleStage() {
   const doubles = useBattleStore((s) => s.doubles)
   // ⚠️ **큰 몸이 내 쪽에 서면 카메라가 옆으로도 돌아간다** (`battleCamera.bigSwing`) — 뒤의 상대가 몸에 안 가리게. 더블은 짝을 벌린 배치가 따로 있다
   const ownFit = doubles ? 1 : cameraFit(arena, Math.max(tall.p1a, tall.p1b))
-  useBattleCamera(cameraFit(arena, Math.max(...Object.values(tall))) * (doubles ? 1.35 : 1), arena.radius, ownFit)
+  const tallest = Math.max(...Object.values(tall))
+  const spread = doubles ? 1.35 : 1
+  // ⚠️ **카메라 쪽 벽까지가 무대다** (`Arena.reach`) — 반지름은 사방에서 가장 짧은 쪽이라 방에서 카메라를 너무 당겼다.
+  // 못 물러난 몫은 화각이 메운다 (`cameraFov`)
+  useBattleCamera(
+    cameraFit(arena, tallest, spread), Math.max(arena.radius, arena.reach ?? 0), ownFit, cameraFov(arena, tallest, spread),
+  )
 
   /** 그 개체의 폼. 명단이 임자다 — 뷰는 폼을 안 들고 있다 */
   const formOf = (mon: ViewMon | null): number =>
@@ -914,7 +939,7 @@ export function BattleStage() {
         <DistortionArena onUp={arenaUp} />
       ) : (
         <Suspense fallback={<Flat look={timeLook} />}>
-          <Arena look={timeLook} file={arena.file} radius={arena.radius} onUp={arenaUp} />
+          <Arena look={timeLook} file={arena.file} radius={Math.max(arena.radius, arena.reach ?? 0)} onUp={arenaUp} />
         </Suspense>
       )}
       <BattleAtmosphere
@@ -949,6 +974,7 @@ export function BattleStage() {
           other={spotOf(id.startsWith('p1') ? 'p2a' : 'p1a')}
           mine={id.startsWith('p1')}
           shadow={shadow}
+          roofed={isIndoor(arena)}
           onBody={(t) => {
             setTall((was) => (was[id] === t ? was : { ...was, [id]: t }))
           }}
@@ -1002,11 +1028,13 @@ export function BattleStage() {
 const QUAKE_PERIOD_MS = 11
 const SEQ_QUAKE_PERIOD_MS = 23
 
-function useBattleCamera(fit: number, arenaRadius: number, ownFit: number): void {
+function useBattleCamera(fit: number, arenaRadius: number, ownFit: number, fov: number): void {
   /** 지금 카메라가 선 거리 배율. 첫 프레임에는 목표 그대로 선다 */
   const shownFit = useRef<number | null>(null)
   /** 지금 서 있는 내 몸 배율 (`ownFit`) — 옆으로 도는 각이 이것을 따른다. 같은 감쇠 */
   const shownOwn = useRef<number | null>(null)
+  /** 지금 선 기본 샷 화각 (`cameraFov`) — 거리와 같은 감쇠다. 넓히는 것은 곧바로 */
+  const shownFov = useRef<number | null>(null)
   /** 시퀀스 카메라의 마지막 자리 · 놓은 시각 — 돌아오는 길을 잇는다 */
   const back = useRef<CameraReturn>(NO_RETURN)
   /** 화면 검사가 프레임 사이에 이어 가는 선택 (`clampShot`의 `ClampMemo`) */
@@ -1026,6 +1054,9 @@ function useBattleCamera(fit: number, arenaRadius: number, ownFit: number): void
     const wasOwn = shownOwn.current
     const atOwn = wasOwn === null || ownFit >= wasOwn ? ownFit : ownFit + (wasOwn - ownFit) * Math.exp(-dt / CAMERA_EASE)
     shownOwn.current = atOwn
+    const wasFov = shownFov.current
+    const atFov = wasFov === null || fov >= wasFov ? fov : fov + (wasFov - fov) * Math.exp(-dt / CAMERA_EASE)
+    shownFov.current = atFov
     // ⚠️ 대본이 배경을 흔들라고 적은 기술만 흔든다 (`Func_ShakeBg`, 30개).
     // 지진·땅가르기가 그것이고, 번개는 안 흔든다 — 위력이 아니라 대본이
     // 정한다. 연출이 끝나면 `t`가 1이라 0이 곱해진다
@@ -1044,7 +1075,7 @@ function useBattleCamera(fit: number, arenaRadius: number, ownFit: number): void
         [lx + (CAMERA.position[0] - lx) * at, ly + (CAMERA.position[1] - ly) * at, lz + (CAMERA.position[2] - lz) * at],
         [lx, ly, lz], bigSwing(atOwn)),
       target: [lx, ly, lz],
-      fov: BATTLE_FOV,
+      fov: atFov,
       roll: 0,
     }
     // ── BDSP 시퀀스 카메라 (BATTLE_FX §4) ──

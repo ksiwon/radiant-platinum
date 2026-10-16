@@ -13,7 +13,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { SLOT } from '../../engine/battle/shots'
+import { CAMERA, SLOT } from '../../engine/battle/shots'
 import { EVERY_ARENA } from '../../engine/battle/arena'
 import { withModels } from '../../data/romData.testkit'
 
@@ -94,6 +94,26 @@ function groundAt(tris: number[][][], x: number, z: number): number[] {
   return hit
 }
 
+/** 광선 o + t·d가 처음 맞는 삼각형까지의 t (양면). 안 맞으면 `Infinity` */
+function rayHit(tris: number[][][], o: number[], d: number[]): number {
+  let best = Infinity
+  for (const [a, b, c] of tris as [number[], number[], number[]][]) {
+    const e1 = [b[0]! - a[0]!, b[1]! - a[1]!, b[2]! - a[2]!], e2 = [c[0]! - a[0]!, c[1]! - a[1]!, c[2]! - a[2]!]
+    const p = [d[1]! * e2[2]! - d[2]! * e2[1]!, d[2]! * e2[0]! - d[0]! * e2[2]!, d[0]! * e2[1]! - d[1]! * e2[0]!]
+    const det = e1[0]! * p[0]! + e1[1]! * p[1]! + e1[2]! * p[2]!
+    if (Math.abs(det) < 1e-9) continue
+    const s = [o[0]! - a[0]!, o[1]! - a[1]!, o[2]! - a[2]!]
+    const u = (s[0]! * p[0]! + s[1]! * p[1]! + s[2]! * p[2]!) / det
+    if (u < 0 || u > 1) continue
+    const q = [s[1]! * e1[2]! - s[2]! * e1[1]!, s[2]! * e1[0]! - s[0]! * e1[2]!, s[0]! * e1[1]! - s[1]! * e1[0]!]
+    const w = (d[0]! * q[0]! + d[1]! * q[1]! + d[2]! * q[2]!) / det
+    if (w < 0 || u + w > 1) continue
+    const t = (e2[0]! * q[0]! + e2[1]! * q[1]! + e2[2]! * q[2]!) / det
+    if (t > 1e-4 && t < best) best = t
+  }
+  return best
+}
+
 /** 여덟 방향. 반지름을 잴 때 이 방향 전부에 땅이 있어야 한다 */
 const COMPASS = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => [
   Math.cos((i * Math.PI) / 4), Math.sin((i * Math.PI) / 4),
@@ -136,6 +156,22 @@ maybe('배틀 무대', () => {
           `${file} 반지름 ${String(r)} 방향 (${at[0].toFixed(1)}, ${at[1].toFixed(1)})`,
         ).toBeGreaterThan(0)
       }
+    }, 30_000)
+
+    it('카메라 쪽 벽까지의 거리(`reach`)가 적힌 값보다 짧지 않다', () => {
+      // ⚠️ **카메라가 이만큼 물러난다** (`cameraFit`). 실제보다 길게 적으면 방에서 카메라가 벽 속에 선다.
+      // 기본 샷 방향(보는 곳 → 자리, 수평)으로 카메라가 서는 높이 1.5~3.5m에서 쏴 처음 맞는 면까지다
+      const arena = EVERY_ARENA.find((a) => a.file === file)!
+      if (arena.reach === undefined) return
+      const len = Math.hypot(CAMERA.position[0] - CAMERA.look[0], CAMERA.position[2] - CAMERA.look[2])
+      const dir = [(CAMERA.position[0] - CAMERA.look[0]) / len, 0, (CAMERA.position[2] - CAMERA.look[2]) / len]
+      let near = Infinity
+      for (const h of [1.5, 2, 2.5, 3, 3.5]) near = Math.min(near, rayHit(tris, [0, h, 0], dir))
+      expect(near, file).toBeGreaterThanOrEqual(arena.reach)
+      // 너무 짧게 적어도 안 된다 — 0.2m 안
+      expect(near - arena.reach, file).toBeLessThan(0.2)
+      // 반지름보다 길 때만 적는다
+      expect(arena.reach, file).toBeGreaterThan(arena.radius)
     }, 30_000)
 
     it('오려 내거나 비치거나 — 둘 중 하나고 전부 양면이다', () => {

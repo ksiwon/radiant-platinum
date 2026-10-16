@@ -6,8 +6,8 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { ARENA, EVERY_ARENA, FAR_RIG, arenaFor, cameraFit, hasSky } from './arena'
-import { SHOT_REACH } from './shots'
+import { ARENA, EVERY_ARENA, FAR_RIG, WIDEST_BATTLE_FOV, arenaFor, cameraFit, cameraFov, ceilingFit, hasSky } from './arena'
+import { BATTLE_FOV, SHOT_REACH } from './shots'
 import type { MapHeader } from '../map/world'
 import { withData } from '../../data/romData.testkit'
 
@@ -30,15 +30,17 @@ describe('배틀 무대 고르기', () => {
     expect(arenaFor(header(999), false)).toBe(ARENA[0])
   })
 
-  it('좁은 무대에서는 카메라를 당긴다', () => {
-    // 실내 방(반지름 6m)은 조금 당기고, 넓은 들판은 그대로
+  it('좁은 무대에서는 카메라를 당긴다 — 카메라 쪽 벽까지', () => {
     const room = ARENA.find((a) => a.radius === 6)!
     const field = ARENA[0]!
-    expect(cameraFit(room)).toBeCloseTo(0.88, 2)
+    // 방은 반지름 6이지만 카메라 쪽으로는 9.1m가 열려 있다(`reach`) — 기본 샷(5.68m)은 당길 필요가 없다
+    expect(room.reach).toBeGreaterThan(SHOT_REACH + 1)
+    expect(cameraFit(room)).toBe(1)
     expect(cameraFit(field)).toBe(1)
-    // 당긴 뒤 카메라가 무대 안에 들어와야 의미가 있다
-    expect(SHOT_REACH * cameraFit(room)).toBeLessThan(room.radius)
-    // 굴(10m)과 들판은 안 당기거나 거의 안 당긴다 — BDSP 리그가 5.68m라 넉넉하다
+    // 벽이 반지름뿐인 무대는 반지름에서 막힌다
+    const tight = { ...field, radius: 5 }
+    expect(cameraFit(tight)).toBeCloseTo(4 / SHOT_REACH, 5)
+    expect(SHOT_REACH * cameraFit(tight)).toBeLessThan(tight.radius)
     expect(cameraFit({ ...field, radius: 10 })).toBe(1)
   })
 
@@ -57,8 +59,35 @@ describe('배틀 무대 고르기', () => {
     // 그래도 원작과 어긋나지는 않았다 — BDSP가 리그를 바꾸는 그 자리에 우리
     // 셈으로 키 1.82m짜리가 온다. 화면 키 상위 10%가 1.86이니 같은 무리다
     expect(FAR_RIG * 1.2).toBeCloseTo(1.82, 2)
-    // 방에서는 벽이 이긴다 — 물러날 데가 없으면 잘리는 편이 벽을 뚫는 것보다 낫다
-    expect(cameraFit(room, 7.31)).toBeCloseTo(0.88, 2)
+    // 방에서는 벽이 이긴다 — 카메라 쪽 벽 1m 앞에서 멈춘다
+    expect(cameraFit(room, 7.31)).toBeCloseTo((room.reach! - 1) / SHOT_REACH, 5)
+  })
+
+  it('벽에 막히면 그 몫만큼 화각을 넓힌다', () => {
+    const field = ARENA[0]!
+    const room = ARENA.find((a) => a.radius === 6)!
+    // 물러날 데가 있으면 화각은 그대로다
+    expect(cameraFov({ ...field, radius: 24 }, 3.54)).toBe(BATTLE_FOV)
+    expect(cameraFov(room, 1.2)).toBe(BATTLE_FOV)
+    // 방의 갸라도스(3.54m) — 거리 배율이 막힌 만큼 넓히되 필드 화각에서 멈춘다
+    const fit = cameraFit(room, 3.54)
+    const fov = cameraFov(room, 3.54)
+    expect(fov).toBe(WIDEST_BATTLE_FOV)
+    // 그 화각으로 담는 키 — 상한에서도 3.1m는 담는다(민가 방 8.7m)
+    const framed = 1.2 * fit * Math.tan((fov * Math.PI) / 360) / Math.tan((BATTLE_FOV * Math.PI) / 360)
+    expect(framed).toBeGreaterThan(3.1)
+    // 롱스톤쯤(2.6m)은 상한 안에서 다 담긴다 — 넓힌 화각의 탄젠트가 못 물러난 몫과 같다
+    const f2 = cameraFov(room, 2.6)
+    expect(f2).toBeLessThan(WIDEST_BATTLE_FOV)
+    expect(1.2 * cameraFit(room, 2.6) * Math.tan((f2 * Math.PI) / 360) / Math.tan((BATTLE_FOV * Math.PI) / 360)).toBeCloseTo(2.6, 5)
+  })
+
+  it('천장보다 큰 몸만 천장 아래로 줄인다', () => {
+    expect(ceilingFit(3.5, Infinity)).toBe(1)
+    expect(ceilingFit(3.5, 3.7)).toBe(1)
+    expect(ceilingFit(5.55, 3.7)).toBeCloseTo(3.7 / 5.55, 6)
+    // 아무리 커도 형체는 남긴다
+    expect(ceilingFit(40, 3.7)).toBe(0.3)
   })
 
   it('밟고 선 땅이 배경을 이긴다', () => {

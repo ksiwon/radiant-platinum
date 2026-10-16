@@ -28,7 +28,7 @@
 // 같지는 않지만 — DS는 씨폭탄·바위사태, BDSP는 에너지볼·파워젬 — 갈라지는 자리는
 // 같다. 표를 고르고 나서 이 둘로 되짚어 봤고 어긋나는 데가 없었다.
 import type { MapHeader } from '../map/world'
-import { SHOT_REACH } from './shots'
+import { BATTLE_FOV, SHOT_REACH } from './shots'
 import { Terrain, terrainOf, type TerrainId } from './terrain'
 
 /** 무대 한 벌 */
@@ -56,6 +56,15 @@ export interface Arena {
    * 실제로 기본 샷이 9.95m라 방 세 곳에서 밖으로 나갔다
    */
   radius: number
+  /**
+   * **카메라가 선 쪽으로** 벽까지 몇 m인가 — 기본 샷 방향(`CAMERA` 보는 곳 → 자리, 수평)으로 높이 1.5~3.5m에서 쏜 광선이 처음 맞는
+   * 무대 면까지(실측 · `arena.test`가 다시 잰다). 반지름보다 길 때만 적는다.
+   *
+   * ⚠️ **반지름은 사방에서 가장 짧은 쪽이다.** 방은 12.4×17.4m 상자라 반지름이 6이지만 카메라는 긴 축을 따라 보므로 그쪽으로는
+   * 9.1m까지 물러날 데가 있다. 반지름으로만 당겼을 때 포켓몬센터에서 카메라가 5.16m에 서서 내 토대부기(2.2m)가 화면을 다 덮고
+   * 상대 갸라도스는 지느러미만 보였다(2026-10-15 3D 측정 H). 옆으로 벗어나는 샷은 무대 충돌(`arenaCollider`)이 벽 앞으로 당긴다
+   */
+  reach?: number
   /**
    * glb 대신 깨어진 세계의 조각으로 세우는 무대 (`scene/battle/DistortionArena`).
    * `file`은 그 조각이 없는 옛 설치본에서만 선다
@@ -106,22 +115,63 @@ export const FAR_RIG = 8.63 / SHOT_REACH
  *
  * 두 가지가 당기고 민다:
  *
- * - **무대가 좁으면 당긴다.** 실내는 12×18m짜리 방이라 기본 샷(5.68m)이 벽
- *   밖으로 나간다. 바라보는 자리는 그대로 두고 거리만 줄인다
+ * - **무대가 좁으면 당긴다.** 카메라 쪽 벽(`reach` · 없으면 반지름)에서 `CLEARANCE`
+ *   앞까지다. 바라보는 자리는 그대로 두고 거리만 줄인다
  * - **몸이 크면 물러난다.** 실측 크기로 서기 때문에 토대부기(화면 키 1.89m)가
  *   기본 샷에서 화면을 넘긴다. BDSP도 큰 종 앞에서는 리그를 바꾼다
  *
- * 좁은 방에서 큰 종을 만나면 **벽이 이긴다** — 물러날 데가 없으면 잘리는 편이
- * 벽을 뚫는 것보다 낫다.
+ * 좁은 방에서 큰 종을 만나면 **벽이 이긴다** — 벽을 뚫지 않는다. 못 물러난 몫은
+ * 화각이 메운다(`cameraFov`). 더블은 짝을 벌린 만큼(`spread`) 더 물러난다.
  *
  * ⚠️ **물러나기에 따로 상한을 두면 안 된다.** 한동안 BDSP의 두 번째 리그
  * (`FAR_RIG`, 1.52배)에서 끊었는데, 갸라도스가 대기 동작으로 3.54m까지 서는
  * 바람에 그 자리에서 머리가 화면 위로 잘렸다. 한계는 무대 벽이지 리그가 아니다 —
  * 노모세 체육관은 반지름 20m라 3.35배까지 물러날 데가 있었다
  */
-export function cameraFit(arena: Arena, tall = 0): number {
-  const room = (arena.radius - CLEARANCE) / SHOT_REACH
-  return Math.min(Math.max(1, tall / FRAMED_TALL), room)
+export function cameraFit(arena: Arena, tall = 0, spread = 1): number {
+  return Math.min(Math.max(1, tall / FRAMED_TALL) * spread, roomFit(arena))
+}
+
+/** 무대 벽이 허락하는 거리 배율 — 카메라 쪽 벽(`reach`)까지, 없으면 반지름까지 */
+function roomFit(arena: Arena): number {
+  return ((arena.reach ?? arena.radius) - CLEARANCE) / SHOT_REACH
+}
+
+/**
+ * 화각을 이보다 넓히지 않는다 (도) — 필드 화각과 같다(`cameraSystem`). 더 넓히면 코앞의 내 몸이 늘어나 보인다. 우리 값이다
+ */
+export const WIDEST_BATTLE_FOV = 55
+
+/**
+ * 기본 샷의 화각 (도). **벽 때문에 더 못 물러날 때만** 넓힌다 — 못 물러난 몫만큼.
+ *
+ * 거리를 배율 `want`만큼 늘리는 대신 화각의 탄젠트를 그만큼 늘리면 보는 곳 둘레에서 같은 넓이가 담긴다. 방(8.7~9.1m)에서 갸라도스
+ * (대기 동작 3.54m)를 만나면 거리 배율이 1.36~1.43에서 막히고, 화각이 30°에서 55°까지 넓어져 키 3.2~3.3m까지 담는다
+ */
+export function cameraFov(arena: Arena, tall = 0, spread = 1): number {
+  const want = Math.max(1, tall / FRAMED_TALL) * spread
+  const room = roomFit(arena)
+  if (want <= room) return BATTLE_FOV
+  const half = Math.atan(Math.tan((BATTLE_FOV * Math.PI) / 360) * (want / room))
+  return Math.min(WIDEST_BATTLE_FOV, (half * 360) / Math.PI)
+}
+
+/** 천장에 맞춰도 이보다 작게는 안 줄인다 — 고래왕(키 14.5m 종)도 방에서 형체는 읽혀야 한다. 우리 값이다 */
+const SMALLEST_FIT = 0.3
+
+/**
+ * 지붕 있는 무대에서 몸을 줄이는 배율 — 천장 아래(`ArenaCollider.ceilingAt`, 아랫면 − 0.5m)에 들게.
+ *
+ * ⚠️ **원작 크기를 깨는 유일한 자리다.** 몸은 BDSP가 종마다 적어 둔 배율 그대로 서는데(`monModel`), 방 무대는 천장이 4.2m라
+ * 강철톤 · 고래왕이 천장을 뚫고 머리가 화면 위로 나갔다 — 화각을 필드만큼(55°) 넓혀도 강철톤 머리끝이 화면 위 204px 밖이었다
+ * (2026-10-16 포켓몬센터 · `.audit/battlecam-20261016`). 천장보다 큰 몸만 줄이고 나머지는 그대로다. 읽히는 쪽이 이긴다
+ *
+ * @param tall 몸의 키 (m, 대기 동작에서 잰 것)
+ * @param ceiling 그 자리에서 선 수 있는 높이 (m). 지붕이 없으면 `Infinity`
+ */
+export function ceilingFit(tall: number, ceiling: number): number {
+  if (!Number.isFinite(ceiling) || tall <= ceiling || tall <= 0) return 1
+  return Math.max(SMALLEST_FIT, ceiling / tall)
 }
 
 /**
@@ -148,25 +198,25 @@ export const ARENA: readonly Arena[] = [
   // 5 SNOW — 선단시티·216·217번도로. BDSP 키사키시티가 이 무대다
   { file: 'g017.glb', caption: '雪原', sky: 's017', radius: 20 },
   // 6 INDOORS_1 — 232맵. 민가·체육관·게이트
-  { file: 'g015.glb', caption: '室内_木目', sky: 's006', radius: 6 },
+  { file: 'g015.glb', caption: '室内_木目', sky: 's006', radius: 6, reach: 8.7 },
   // 7 INDOORS_2 — 73맵. 포켓몬센터·프렌들리샵·포켓치사·TV국
-  { file: 'g016.glb', caption: '室内_タイル', sky: 's006', radius: 6 },
+  { file: 'g016.glb', caption: '室内_タイル', sky: 's006', radius: 6, reach: 9.1 },
   // 8 INDOORS_3 — 35맵. 숲의 양옥집 9개 · 그랜드레이크 6 · 로스트타워 5 · 운하도서관 3…
   // BDSP는 이걸 森の洋館(9존)·ロストタワー(5존)·汎用背景5~6으로 쪼개 놓았다.
   // 우리는 한 벌만 고를 수 있고, **양옥집 아홉이 BDSP 森の洋館 아홉과 수까지 같다**
-  { file: 'g021.glb', caption: '森の洋館', sky: 's006', radius: 6 },
+  { file: 'g021.glb', caption: '森の洋館', sky: 's006', radius: 6, reach: 9.1 },
   // 9 CAVE_1 — 무쇠탄갱·무쇠게이트. 사람이 손댄 굴이라 BDSP `洞窟`(갱목·철제 틀이 있다)
-  { file: 'g006.glb', caption: '洞窟', sky: 's006', radius: 10 },
+  { file: 'g006.glb', caption: '洞窟', sky: 's006', radius: 10, reach: 17.6 },
   // 10 CAVE_2 — 신수유적·천관산·챔피언로드. 손 안 댄 굴
-  { file: 'g070.glb', caption: '洞窟_人工物なし', sky: 's006', radius: 10 },
+  { file: 'g070.glb', caption: '洞窟_人工物なし', sky: 's006', radius: 10, reach: 17.6 },
   // 11 CAVE_3 — 귀혼동굴 46맵. 제일 깊은 굴
-  { file: 'g056.glb', caption: '洞窟_深部', sky: 's006', radius: 10 },
+  { file: 'g056.glb', caption: '洞窟_深部', sky: 's006', radius: 10, reach: 17.6 },
   // 12~16 사천왕과 챔피언. 이름으로 1:1이다
-  { file: 'g038.glb', caption: 'ポケモンリーグ（VS四天王リョウ）', sky: 's006', radius: 12 },
-  { file: 'g039.glb', caption: 'ポケモンリーグ（VS四天王キクノ）', sky: 's006', radius: 12 },
-  { file: 'g040.glb', caption: 'ポケモンリーグ（VS四天王オーバ）', sky: 's006', radius: 12 },
-  { file: 'g041.glb', caption: 'ポケモンリーグ（VS四天王ゴヨウ）', sky: 's006', radius: 12 },
-  { file: 'g042.glb', caption: 'ポケモンリーグ（VSシロナ）', sky: 's006', radius: 16 },
+  { file: 'g038.glb', caption: 'ポケモンリーグ（VS四天王リョウ）', sky: 's006', radius: 12, reach: 14.4 },
+  { file: 'g039.glb', caption: 'ポケモンリーグ（VS四天王キクノ）', sky: 's006', radius: 12, reach: 14.4 },
+  { file: 'g040.glb', caption: 'ポケモンリーグ（VS四天王オーバ）', sky: 's006', radius: 12, reach: 14.4 },
+  { file: 'g041.glb', caption: 'ポケモンリーグ（VS四天王ゴヨウ）', sky: 's006', radius: 12, reach: 14.4 },
+  { file: 'g042.glb', caption: 'ポケモンリーグ（VSシロナ）', sky: 's006', radius: 16, reach: 20.3 },
   // 17 DISTORTION_WORLD — 깨어진 세계 12맵.
   // ⚠️ **BDSP엔 이게 없다.** 깨어진 세계는 플래티넘에만 있는 곳이라 리메이크가
   // 만들지 않았다. 그 세계의 바닥 · 떠 있는 발판 · 소용돌이 하늘로 무대를 세운다
@@ -219,9 +269,9 @@ const ARENA_OF_TERRAIN: Partial<Record<TerrainId, Arena>> = {
 const ARENA_OF_MAP: Readonly<Record<string, Arena>> = {
   // 체육관 여덟. BDSP는 관장전과 트레이너전을 또 가르는데(`VSトレーナー`)
   // 우리는 아직 관장 쪽 한 벌만 쓴다
-  C03GYM: { file: 'g024.glb', caption: 'クロガネジム（VSヒョウタ）', sky: 's006', radius: 10 },
+  C03GYM: { file: 'g024.glb', caption: 'クロガネジム（VSヒョウタ）', sky: 's006', radius: 10, reach: 14.0 },
   C04GYM: { file: 'g025.glb', caption: 'ハクタイジム（VSナタネ）', sky: 's006', radius: 24 },
-  C07GYM: { file: 'g026.glb', caption: 'トバリジム（VSスモモ）', sky: 's006', radius: 8 },
+  C07GYM: { file: 'g026.glb', caption: 'トバリジム（VSスモモ）', sky: 's006', radius: 8, reach: 13.1 },
   C06GYM: { file: 'g027.glb', caption: 'ノモセジム（VSマキシ）', sky: 's006', radius: 20 },
   C05GYM: { file: 'g028.glb', caption: 'ヨスガジム（VSメリッサ）', sky: 's006', radius: 24 },
   C02GYM: { file: 'g029.glb', caption: 'ミオジム（VSトウガン）', sky: 's006', radius: 24 },
@@ -229,7 +279,7 @@ const ARENA_OF_MAP: Readonly<Record<string, Arena>> = {
   C08GYM: { file: 'g031.glb', caption: 'ナギサジム（VSデンジ）', sky: 's006', radius: 24 },
   // ⚠️ 축복시티(C01)에는 체육관이 없다. 그 자리는 트레이너 스쿨이라 BDSP에도
   // 대응하는 무대가 없다 — 실내 기본값이 선다
-  R209R: { file: 'g022.glb', caption: 'ロストタワー', sky: 's006', radius: 14 },
+  R209R: { file: 'g022.glb', caption: 'ロストタワー', sky: 's006', radius: 14, reach: 17.0 },
 }
 
 /** 파도타기: 뭍이 바다면 `海水`, 아니면 호수·강이라 `淡水` */
