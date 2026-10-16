@@ -21,7 +21,9 @@ const ASPECT = (args.find((a) => a.startsWith('--aspect=')) ?? '--aspect=16:9').
 const SHORT = ASPECT === '9:16'
 const [W, H] = SHORT ? [1080, 1920] : [1920, 1080]
 const TAKE = resolve(ROOT, '.audit/reels/take', ASPECT.replace(':', 'x'))
-const WORK = resolve(ROOT, '.audit/reels/work', ASPECT.replace(':', 'x'))
+/** `--edit=v133`이면 v1.3.3 새 컷을 넣은 쇼츠(`SHORTS_V133`) — 작업 폴더 · 결과 이름이 따로다 */
+const EDIT_NAME = args.find((a) => a.startsWith('--edit='))?.slice(7) ?? ''
+const WORK = resolve(ROOT, '.audit/reels/work', ASPECT.replace(':', 'x') + (EDIT_NAME ? `-${EDIT_NAME}` : ''))
 const OUT = resolve(ROOT, '.audit/reels/out')
 const FPS = 30
 /** 겹침이 없는 자리도 두 프레임은 섞는다 — 한 프레임짜리 xfade는 다음 조각을 통째로 버린다(첫 판이 16.8초에서 끊겼다) */
@@ -157,7 +159,31 @@ const SHORTS = [
   { cue: 'F2', card: 'promo', seconds: 2.2 },
 ]
 
-const EDIT = SHORT ? SHORTS : MAIN
+/**
+ * v1.3.3 쇼츠 — 위 쇼츠의 뼈대 · 곡 자리(`SCORE` 9:16의 큐 이름)를 그대로 두고 새로 달라진 것을 넣는다(2026-10-17).
+ * 동굴 무대(C5) 자리에 실내 배틀의 큰 포켓몬 둘, 1인칭 몽타주에 아지트 자동문 · 신월섬 하늘 · 프런티어 깃발, 챔피언과 창기둥 사이에
+ * 시원의 공간을 넣고, 늘어난 만큼 밤 연고(D6) · 축복시티(D8) · 루카리오(D12) · 벽 걸음(E3w) · 흔들림 하나(C7a)를 뺀다 — 60초 아래
+ */
+const SHORTS_V133 = [
+  ...SHORTS.filter((e) => ['A1', 'A2-A4', 'A5', 'A6', 'A7', 'B1', 'B2', 'B5-B6', 'C1', 'C3'].includes(e.cue)),
+  // 포켓몬센터 무대 — 천장보다 큰 몸이 천장 아래로 맞춰 선다(v1.3.3). 가로판을 잘라 쓴다(배틀 카메라는 세로에 맞춰 서지 않는다)
+  { cue: 'N3a', take: 'N3-130', cut: [0.4, 1.7], crop: 0.5, trans: 'cut' },
+  { cue: 'N3b', take: 'N3-321', cut: [0.4, 1.7], crop: 0.48, trans: 'cut' },
+  ...SHORTS.filter((e) => ['C6', 'C7', 'C8', 'D5'].includes(e.cue)),
+  // 갤럭시단 아지트 1F — BDSP 자동문 두 짝이 한 칸씩 미끄러진다
+  { cue: 'N5', take: 'N5-hqdoor', cut: [0.6, 1.4], trans: 'cut' },
+  // 신월섬 — 1인칭으로 숲 사이 노을 하늘을 올려다본다 (3인칭 부감은 바다 위 평판이 보여 안 쓴다 · 보고서)
+  { cue: 'N4', take: 'N4-newmoon-fp', cut: [1.5, 1.3], trans: 'cut' },
+  // 배틀프런티어 — 천으로 바뀐 깃발. 첫 장은 기본 카메라라 0.4초 뒤부터
+  { cue: 'N2', take: 'N2-frontier', cut: [0.5, 1.3], trans: 'cut' },
+  // 오프닝 곡 두 마디(6.2초)에 1인칭 넷 — 축복시티(D8)까지 넣으니 세 마디가 돼 60초를 넘었다. 길이는 깃발 컷이 맞춘다(`fit`)
+  ...SHORTS.filter((e) => ['D11', 'D11b', 'D13'].includes(e.cue)),
+  // 시원의 공간 — 아르세우스를 지나 고개를 들면 구름바다 위 우주. 길이는 챔피언 곡의 프레이즈가 정한다(`fit`)
+  { cue: 'N1', take: 'N1-origin-up', cut: [1.8, 1.8], trans: 'cut' },
+  ...SHORTS.filter((e) => ['E2', 'E3a', 'E3b', 'E4', 'F1', 'F2'].includes(e.cue)),
+]
+
+const EDIT = EDIT_NAME === 'v133' ? SHORTS_V133 : SHORT ? SHORTS : MAIN
 
 /**
  * 장면마다 잰 소리 자리 — [장면 안 초, 효과음, `rel`(`sfxChains`), 소리 안 시작(초 · 없으면 0), 길이(초 · 끝 0.4초에 걸쳐 뺀다)]. 시각은 찍은 프레임에서 잰 것이다
@@ -553,7 +579,7 @@ function mixScore(video, final, cueAt, hits = []) {
 function remix() {
   const cueAt = Object.fromEntries(readFileSync(resolve(WORK, 'stamps.txt'), 'utf8').split('\n').map((l) => { const [c, t] = l.split(' '); return [c, Number(t)] }))
   const hits = fitEdit(snapCuts(fitEdit(EDIT, true))).filter((e) => e.cue in cueAt).flatMap((e) => sfxOf(e).map((h) => ({ ...h, t: cueAt[e.cue] + h.at }))).filter((h) => h.t >= 0)
-  const final = resolve(OUT, SHORT ? 'radiant-reveal-short.mp4' : 'radiant-reveal.mp4')
+  const final = resolve(OUT, `${SHORT ? 'radiant-reveal-short' : 'radiant-reveal'}${EDIT_NAME ? `-${EDIT_NAME}` : ''}.mp4`)
   mixScore(resolve(WORK, 'video.mp4'), final, cueAt, hits)
   console.log(`\n  ${final} · ${duration(final).toFixed(2)}초`)
 }
@@ -597,7 +623,7 @@ async function main() {
     at += clips[i].seconds - f
     last = out
   }
-  const final = resolve(OUT, SHORT ? 'radiant-reveal-short.mp4' : 'radiant-reveal.mp4')
+  const final = resolve(OUT, `${SHORT ? 'radiant-reveal-short' : 'radiant-reveal'}${EDIT_NAME ? `-${EDIT_NAME}` : ''}.mp4`)
   const silent = SCORE.length ? resolve(WORK, 'video.mp4') : final
   run('ffmpeg', ['-y', '-v', 'error', ...inputs, '-filter_complex', parts.join(';'), '-map', '[v]', ...enc,
     '-movflags', '+faststart', silent])

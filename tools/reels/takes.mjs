@@ -248,4 +248,59 @@ export const TAKES = [
     overlays: true,
     recKeys: [{ at: 1.0, key: 'z' }, { at: 2.8, key: 'z' }, { at: 4.4, key: 'z' }, { at: 6.0, key: 'z' }],
   },
+
+  // ── N. v1.3.3에서 달라진 것 (2026-10-17 릴스) ──
+  {
+    // 시원의 공간 — BDSP 하늘 구(구름바다 위 푸른 우주)가 이제 보인다. 계단 위 확인 지점에서 1인칭으로 고개를 들며 돈다
+    id: 'N1-origin', what: '시원의 공간 — 1인칭으로 우주 하늘을 올려다본다', cp: 'origin',
+    steps: [{ do: 'hideText' }, { do: 'first' }, { do: 'look', yaw: 180, pitch: 0 }],
+    seconds: 5, move: { type: 'yaw', at: 0.3, seconds: 4.5, from: 180, to: 300, pitch: 0, pitchTo: 40 },
+  },
+  {
+    id: 'N1-origin-up', what: '시원의 공간 — 아르세우스 쪽 계단을 보다 하늘로', cp: 'origin',
+    steps: [{ do: 'hideText' }, { do: 'first' }, { do: 'look', yaw: 0, pitch: 0 }],
+    seconds: 5, move: { type: 'yaw', at: 0.3, seconds: 4.5, from: -20, to: 40, pitch: 0, pitchTo: 55 },
+  },
+  {
+    id: 'N2-frontier', what: '배틀프런티어 — 바람에 휘날리는 깃발', cp: 'frontier', steps: [{ do: 'hour', hour: 15 }], seconds: 4,
+    // 타워 정면 서쪽 깃발(월드 x≈39.5 · z 16.6 · y 9.5~11.5 — `N2-probe` 실측, 한 묶음이 x 39~59의 두 폭). 주인공 (48.5, 9, 18.5) 기준 상대 좌표
+    move: { type: 'dolly', rel: true, from: { eye: [-4.5, 2.4, 5], gaze: [-9, 1.6, -1.9] }, to: { eye: [-7, 2.1, 4], gaze: [-9, 1.7, -1.9] } },
+  },
+  // 깃발(`천` 메시)의 월드 상자 가운데를 잰다 — 자리 맞추기용
+  {
+    id: 'N2-probe', what: '배틀프런티어 깃발 자리 재기', cp: 'frontier', steps: [{ do: 'hour', hour: 15 }, { do: 'wait', ms: 20000 },
+      { do: 'eval', js: "(async()=>{const {sceneRefs}=await import('/src/scene/sceneRefs.ts');let r=sceneRefs.player;while(r.parent)r=r.parent;const out=[];r.traverse((o)=>{if(o.name==='천'){o.geometry.computeBoundingBox();const b=o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld);out.push([b.min.x,b.min.y,b.min.z,b.max.x,b.max.y,b.max.z].map((n)=>Math.round(n*10)/10))}});return out})()" }],
+    seconds: 1,
+  },
+  // 1인칭은 안 쓴다 — 확인 지점(워프 0)이 타워 캐노피 안이라 1인칭 눈이 벽 속에 든다(2026-10-17)
+  // 실내 배틀의 큰 포켓몬 — 확인 지점 `center`(맵 420)의 무대는 나무 바닥 방(`室内_木目`)이다(지붕 있는 방). 천장보다 큰 몸은 천장 아래로 맞춰 선다(v1.3.3)
+  ...[[130, '갸라도스'], [95, '롱스톤'], [208, '강철톤'], [321, '고래왕자']].map(([sp, name]) => ({
+    id: `N3-${String(sp)}`, what: `포켓몬센터 실내 배틀 — 야생 ${name} 등장 · 내보내기`, cp: 'center',
+    // 배틀 배경은 배틀이 설 때의 맵으로 정해진다 — 420에 내려앉기 전에 열면 시작 맵의 밤 숲이 박혔다
+    steps: [{ do: 'map', map: 420, after: 6000 }, { do: 'wild', species: sp, level: 40, after: 100 }],
+    settle: 0, seconds: 8, recKeys: [{ at: 2.6, key: 'z' }, { at: 3.4, key: 'z' }, { at: 4.2, key: 'z' }],
+  })),
+  {
+    id: 'N4-newmoon', what: '신월섬 — 하늘 아래 숲 부감', cp: 'canalave',
+    steps: [{ do: 'hour', hour: 17 }, { do: 'warp', map: 320, spot: { kind: 'open' }, after: 8000 }], seconds: 4,
+    move: { type: 'dolly', rel: true, from: { eye: [-8, 7, 10], gaze: [0, 3, -10] }, to: { eye: [-3, 6.5, 8], gaze: [2, 4.5, -12] } },
+  },
+  {
+    id: 'N4-newmoon-fp', what: '신월섬 — 1인칭으로 하늘을 올려다본다', cp: 'canalave',
+    steps: [{ do: 'hour', hour: 17 }, { do: 'warp', map: 320, spot: { kind: 'open' }, after: 8000 }, { do: 'hideText' }, { do: 'first' },
+      { do: 'look', yaw: 0, pitch: 0 }],
+    seconds: 4.5, move: { type: 'yaw', at: 0.2, seconds: 4.2, from: -30, to: 60, pitch: 0, pitchTo: 35 },
+  },
+  {
+    // 갤럭시단 아지트 1F(305) — 자동문 두 짝 (22,18) (23,18). 그 남쪽 세 칸에 서서 문을 본다.
+    // 문 객체가 한 칸씩 밀리면 문짝이 따라 미끄러진다(`GalacticDoors`) — 열쇠 스크립트의 `WalkFastWest` · `WalkFastEast`를 대신해 객체를 민다
+    id: 'N5-hqdoor', what: '갤럭시단 아지트 — 3D 자동문이 열린다', cp: 'galactic-hq',
+    steps: [{ do: 'warp', map: 305, after: 6000 }, { do: 'at', x: 22, z: 21 }, { do: 'at', x: 22, z: 21, after: 3000 },
+      { do: 'eval', js: "(async()=>{const w=(await import('/src/state/worldState.ts')).worldState;w.player.facing=0;const {npcActors}=await import('/src/engine/actor/npcs.ts');return npcActors.list.filter((a)=>a.gfx===202).map((a)=>[a.localID,a.x,a.z])})()" },
+      // 문 앞을 순찰하는 단원이 카메라 앞을 지나 머리가 화면을 가렸다 — 문 둘레 여섯 칸 안의 사람만 감춘다(문은 그대로)
+      { do: 'eval', js: "(async()=>{const {npcActors}=await import('/src/engine/actor/npcs.ts');const hid=[];for(const a of npcActors.list){if(a.gfx!==202&&Math.abs(a.x-22.5)<6&&Math.abs(a.z-19)<6){a.visible=false;hid.push(a.localID)}}return hid})()" }],
+    seconds: 5,
+    move: { type: 'dolly', rel: true, from: { eye: [2.5, 2.2, 3.5], gaze: [0.5, 1.2, -3] }, to: { eye: [1.2, 1.9, 1.5], gaze: [0.5, 1.2, -3] } },
+    recEval: [{ at: 1.3, js: "void (async()=>{const {npcActors}=await import('/src/engine/actor/npcs.ts');const d=npcActors.list.filter((a)=>a.gfx===202);const s=d.map((a)=>a.x);const mid=s.reduce((p,c)=>p+c,0)/s.length;const t0=performance.now();const f=()=>{const k=Math.min(1,(performance.now()-t0)/450);d.forEach((a,i)=>{a.x=s[i]+(s[i]<mid?-1:1)*k});if(k<1)requestAnimationFrame(f)};requestAnimationFrame(f)})()" }],
+  },
 ]

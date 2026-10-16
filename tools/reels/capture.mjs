@@ -272,7 +272,9 @@ async function startMove(page, move, seconds) {
         w.worldState.camera.position.set(e[0], e[1], e[2])
         w.worldState.camera.target.set(g[0], g[1], g[2])
       } else if (m.type === 'yaw') {
-        globalThis.pt.look(m.from + (m.to - m.from) * k, m.pitch ?? 0)
+        // `pitchTo`를 주면 고개를 들거나 숙이며 돈다 — 우주 하늘을 올려다보는 컷(시원의 공간)
+        const p0 = m.pitch ?? 0
+        globalThis.pt.look(m.from + (m.to - m.from) * k, p0 + ((m.pitchTo ?? p0) - p0) * k)
       }
       if (t < 1) requestAnimationFrame(tick)
     }
