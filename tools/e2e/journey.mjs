@@ -3212,6 +3212,14 @@ try {
   await page.goto(url, { waitUntil: 'load' })
   const cont = page.getByRole('button', { name: '이어하기', exact: true })
   await cont.waitFor({ timeout: 120_000 })
+  // 이어 든 뒤 돈 스크립트 · 대사를 적는다 — 못 서면 실패 줄에 붙인다 (칸 19 팩토리 로비에서 스크립트 · 대화가 45초 남았다, 2026-10-17)
+  await page.evaluate(async () => {
+    const { scriptSpy } = await import('/src/engine/script/spy.ts')
+    const log = []
+    window.__resumeLog = log
+    scriptSpy.start = (i) => { log.push(`start ${String(i.file)}/${String(i.script)}${i.kind === 'init' ? ' init' : ''}`) }
+    scriptSpy.message = (id, t) => { log.push(`msg ${String(id)}:${String(t).slice(0, 60)}`) }
+  }).catch(() => {})
   await cont.click()
   await page.waitForFunction(() => location.pathname === '/play', null, { timeout: 120_000 })
   await page.waitForFunction(() => document.documentElement.dataset.renderer === 'live',
@@ -3284,6 +3292,7 @@ try {
     return { ok: false, ms: Date.now() - t0, at: last }
   }
   const restored = await waitRestored(beforeWhere.save)
+  const resumeLog = await page.evaluate(() => (window.__resumeLog ?? []).slice(0, 20)).catch(() => null)
   timings.restoreMs = restored.ms
   const back = await marks()
   const backWhere = restored.at
@@ -3330,7 +3339,7 @@ try {
     + ` → 돌아온 자리 ${at(got)} ${got.player.x.toFixed(2)},${got.player.z.toFixed(2)}`
     + ` · 어긋남 x${gap.x.toFixed(2)} z${gap.z.toFixed(2)} 방향${gap.facing.toFixed(2)}`
     + ` · 복원 ${String(Math.round(restored.ms / 100) / 10)}초`
-    + (restored.ok ? '' : ` · **${String(Math.round(restored.ms / 1000))}초를 기다려도 저장한 맵에 안 섰다** (마지막 표식 ${JSON.stringify(lastRestoreMarks)})`)
+    + (restored.ok ? '' : ` · **${String(Math.round(restored.ms / 1000))}초를 기다려도 저장한 맵에 안 섰다** (마지막 표식 ${JSON.stringify(lastRestoreMarks)} · 이어 든 뒤 스크립트 ${JSON.stringify(resumeLog)})`)
     + (stood ? '' : ' · 60초를 기다려도 맵이 안 섰다')
     + (sameMap ? '' : ' · **다른 맵이다**')
     + (samePlace ? '' : ' · **같은 맵이라도 다른 자리다**')

@@ -897,6 +897,13 @@ export async function factoryRun(api, ctx, page) {
   out.talk = (await talkLog.take(page)).slice(-6)
   out.end = s
   note('도전이 닫혔다', `${String(ended.ok)} · 맵 ${String(s.map)} · 표식 ${String(s.load)} · 기록 ${JSON.stringify(s.record)} · BP ${String(s.bp)}`)
+  /**
+   * ⚠️ **접수원 앞에서 물러난다.** 칸 끝의 리포트 쓰기는 Space를 여러 번 누르는데, 접수원을 보고 선 채면 그 누름이 말 걸기가 되어
+   * **새 도전이 열린다**(16567 → 0xFF · 「저장하고 시작」). 그 상태로 리포트가 써지면 이어할 때 원작대로 「저장 안 하고 껐다 · 도전 무효」가 뜬다
+   * (실측 2026-10-17 · 칸 19 ⑭ 45초 — 닫힌 뒤 스크립트가 16567을 255 → 0 → 255로 적었다)
+   */
+  const away = await api.stepOn(FRONTIER.factory, { x: FACTORY_DESK.x, z: FACTORY_DESK.z + 2 }, Math.min(60_000, api.left()))
+  note('접수원에게서 물러남', `${String(away)} · 표식 ${String((await factoryState(page)).load)}`)
   out.ok = ended.ok && s.map === FRONTIER.factory && s.load === 0 && s.record?.active === false && out.battles.length > 0 && out.battles[0].closed
   lastFactory = out
   return done()
