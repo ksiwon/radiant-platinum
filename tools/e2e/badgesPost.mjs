@@ -1,7 +1,7 @@
 // 전당등록 뒤 (P6 — `docs/orders/JOURNEY_PARTS_20261008.md` §6 · 칸 17~) — 사용자가 고른 차례(10-08) 그대로 다리 하나가 칸 하나다.
 //
-//   n 전국도감(마박사) · o 배틀존(파이트 → 서바이벌 → 리조트) · p 배틀 팩토리 한 판 · q 멍청산과 히드런
-//   r 사천왕 재대결 · s 설원 신전과 레지기가스 · t 로토무
+//   n 전국도감(마박사) · o 배틀존(파이트에리어 → 서바이벌에리어 → 리조트에리어) · p 배틀 팩토리 한 판 · q 하드마운틴과 히드런
+//   r 사천왕 재대결 · s 선단신전과 레지기가스 · t 로토무
 //
 // ⚠️ **측정 규칙은 앞 다리들과 같다** — 방향키/A/B와 화면 단추만, `vars`·`flags`·`bag`은 읽기만, 사탕은 가방에 넣는 것만
 // 개발 모듈이고 먹이는 것은 화면이다(`journey-levels-by-candy`). 그 밖의 지름길은 **기본 꺼짐 깃발**(`--shortcut=…`)
@@ -34,7 +34,7 @@ export const ITEM = { pokeRadar: 431 }
 export const SHORTCUT_NAMES = ['dex-seen', 'diag-first-arrival', 'regi-trio', 'night']
 /**
  * · `regi-trio`: 레지락 · 레지아이스 · 레지스틸(L30 · 유적과 같은 레벨)을 파티에 넣는다. 자리가 모자라면 기라티나(487)를 상자로 보낸다.
- *   원작에서 설원 신전 레지기가스는 파티에 셋이 다 있어야 깨어난다(`HasAllLegendaryTitansInParty` · `src/unk_0205DFC4.c:229`). 그런데
+ *   원작에서 선단신전 레지기가스는 파티에 셋이 다 있어야 깨어난다(`HasAllLegendaryTitansInParty` · `src/unk_0205DFC4.c:229`). 그런데
  *   셋이 사는 유적은 **운명적 만남 레지기가스**(배포)를 데려가야 열린다(`scripts_rock_peak_ruins.s:31` 등 · `src/scrcmd.c:7113`) —
  *   신전 레지기가스는 운명적 만남이 아니라 고리가 닫혀 있다. 게임 안에서 셋을 얻는 길은 배포 아니면 팔파크(3세대 옮기기 · 통신 범위 밖)뿐이다
  * · `night`: 게임 시각을 21시로 맞춘다(`worldState.time.gameHour` — 원작은 본체 시계를 읽는다). 고성 로토무는 밤(20~03시)에만
@@ -243,9 +243,9 @@ async function untilMapTalking(api, ok, ms) {
 // ── o 배틀존 ───────────────────────────────────────────────────────────────
 
 /**
- * 배틀존 맵 (`map_headers.txt` 줄 − 1 · 이음은 `events.json` 워프로 맞대었다): 선단시티 165 · 선단 센터 168 · 파이트에어리어 188 ·
- * 225번도로 게이트 193 · 225번도로 400 · 서바이벌에어리어 450 · 226번도로 469 · 228번도로 게이트 501 · 228번도로 406 · 229번도로 407 ·
- * 리조트에어리어 457
+ * 배틀존 맵 (`map_headers.txt` 줄 − 1 · 이음은 `events.json` 워프로 맞대었다): 선단시티 165 · 선단 센터 168 · 파이트에리어 188 ·
+ * 225번도로 게이트 193 · 225번도로 400 · 서바이벌에리어 450 · 226번수로 469 · 228번도로 게이트 501 · 228번도로 406 · 229번도로 407 ·
+ * 리조트에리어 457
  */
 export const ZONE = {
   snowpoint: 165, snowpointCenter: 168, fight: 188, gate225: 193, route225: 400, survival: 450,
@@ -253,7 +253,7 @@ export const ZONE = {
 }
 /** 선단시티 배 선원 — localID 8 (356,247) 스크립트 12. `FLAG_GAME_COMPLETED`만 본다 (`scripts_snowpoint_city.s:183`) */
 const SNOWPOINT_SAILOR_SCRIPT = 12
-/** 파이트에어리어 라이벌 — localID 7 스크립트 14. 「같이 싸우자」에 아니오였으면 (655,426)에 서서 다시 묻는다 */
+/** 파이트에리어 라이벌 — localID 7 스크립트 14. 「같이 싸우자」에 아니오였으면 (655,426)에 서서 다시 묻는다 */
 const FIGHT_RIVAL_SCRIPT = 14
 /** 16513 `VAR_FIGHT_AREA_STATE` 0 → 장면 1 → 태그 배틀 뒤 2 · 깃발 660 `FLAG_HIDE_FIGHT_AREA_BLOCKADE`(225번도로 앞 둘) · 343 배를 탔다 */
 const FIGHT_STATE = 16513
@@ -261,8 +261,8 @@ const FIGHT_BLOCKADE = 660
 const SAILED = 343
 
 /**
- * **다리 o — 배틀존에 든다.** 선단시티 배 → 파이트에어리어(라이벌과 짝이 되어 전진 · 대엽과 태그 배틀) → 225번도로 →
- * 서바이벌에어리어 → 226 · 228 · 229번도로 → 리조트에어리어. 도착 판정: 리조트에어리어(457) · 파이트 상태 ≥ 2
+ * **다리 o — 배틀존에 든다.** 선단시티 배 → 파이트에리어(라이벌과 짝이 되어 전진 · 대엽과 태그 배틀) → 225번도로 →
+ * 서바이벌에리어 → (파이트에리어로 날아) 230번수로 → 229번도로 → 리조트에리어. 도착 판정: 리조트에리어(457) · 16513 ≥ 2
  */
 export async function battleZone(api, ctx, page) {
   const t0 = Date.now()
@@ -282,7 +282,7 @@ export async function battleZone(api, ctx, page) {
     const said = await api.talkToNpc(ZONE.snowpoint, SNOWPOINT_SAILOR_SCRIPT, Math.min(300_000, api.left()))
     const sailed = await untilMapTalking(api, (m) => m === ZONE.fight, 180_000)
     out.boatTalk = await talkLog.take(page)
-    note('선단 배 선원 (356,247)', `${said ? '말 걸었다' : '못 걸었다'} · 파이트에어리어 ${String(sailed)} · ${JSON.stringify(out.boatTalk.slice(-4))}`)
+    note('선단 배 선원 (356,247)', `${said ? '말 걸었다' : '못 걸었다'} · 파이트에리어 ${String(sailed)} · ${JSON.stringify(out.boatTalk.slice(-4))}`)
     if (!sailed) return done()
   }
 
@@ -297,9 +297,9 @@ export async function battleZone(api, ctx, page) {
     v = await read()
     const talk = await talkLog.take(page)
     const party = await api.partyState()
-    note('파이트에어리어 태그 배틀', `${JSON.stringify(v)} · 파티 ${JSON.stringify(party?.map((m) => `${String(m.species)} L${String(m.level)} ${String(m.hp)}`))} · ${JSON.stringify(talk.slice(-3))}`)
+    note('파이트에리어 태그 배틀', `${JSON.stringify(v)} · 파티 ${JSON.stringify(party?.map((m) => `${String(m.species)} L${String(m.level)} ${String(m.hp)}`))} · ${JSON.stringify(talk.slice(-3))}`)
     if ((v?.[`v${String(FIGHT_STATE)}`] ?? 0) < 2 && (await api.now()).map !== ZONE.fight) {
-      // 졌으면 센터에서 깬다 — 파이트에어리어 센터는 바로 옆이다
+      // 졌으면 센터에서 깬다 — 파이트에리어 센터는 바로 옆이다
       await api.goTo(ZONE.fight, Math.min(300_000, api.left()))
     }
   }
@@ -310,12 +310,12 @@ export async function battleZone(api, ctx, page) {
   }
 
   /**
-   * **서바이벌까지는 225번도로로 걷고, 리조트는 파이트에어리어에서 230번도로(파도타기)로 간다.**
+   * **서바이벌에리어까지는 225번도로로 걷고, 리조트에리어는 파이트에리어에서 230번수로(파도타기)로 간다.**
    *
    * ⚠️ 226 → 228 → 229로 이어 걷지 않는다 — 228번도로에는 북쪽으로 오르는 모래 비탈(행동 0xd9)이 있고, 하네스의 자전거는 3단이라
    * 비탈을 못 오른다(`route.slopeClimbBan` 머리 주석 — 사람은 B로 4단에 놓고 도움닫기한다). 실측(2026-10-16 진단 1~3판): 228번도로
    * 남쪽 (791,394)까지 갔다가 되돌아 비탈을 내려선 주머니 (785,343)에 갇혔고, 거기서는 비탈 오르기 말고 나가는 길이 없어 걷기로도
-   * 자전거로도 「unreachable」이었다. 230번도로 막음(깃발 660)은 태그 배틀 뒤 이미 풀렸다
+   * 자전거로도 「unreachable」이었다. 230번수로 막음(깃발 660)은 태그 배틀 뒤 이미 풀렸다
    */
   const sprayed = await sprayBest(api)
   note('스프레이', sprayed.ok ? `뿌렸다 (남은 것 ${String(sprayed.left)})` : String(sprayed.why))
@@ -343,8 +343,8 @@ export async function battleZone(api, ctx, page) {
   out.survival = true
   if ((await api.now()).map !== ZONE.resort) {
     const fly = await api.flyTo(ZONE.fight, Math.min(180_000, api.left()))
-    note('공중날기 → 파이트에어리어', fly.ok ? '닿았다' : String(fly.why))
-    await walkTo(ZONE.resort, '230번도로 → 리조트에어리어')
+    note('공중날기 → 파이트에리어', fly.ok ? '닿았다' : String(fly.why))
+    await walkTo(ZONE.resort, '230번수로 → 리조트에리어')
   }
   out.ok = (await api.now()).map === ZONE.resort
   return done()
@@ -360,9 +360,9 @@ export const reachedBattleZone = async (api, page) => (await api.now()).map === 
  *
  * ⚠️ **공용 길잡이(`route.planPath` · `drive.goTo`)는 걸어서만 계획한다** — 자전거 널(0x76~0x7d)에 올라서는 걸음을 막고
  * (`route.deckLayer`), 도약대(0xD7 · 0xD8)는 그냥 벽이며, 4단으로 바꾸지 않는다(`route.slopeClimbBan` 머리 주석). 227번도로는
- * 그 셋이 다 있어야 멍청산에 닿는다 — 실측(2026-10-16 진단): 226번도로에서 든 남쪽 주머니 (750~757,317~327)는 북쪽이 턱(0x3B, 남으로만
+ * 그 셋이 다 있어야 하드마운틴에 닿는다 — 실측(2026-10-16 진단): 226번수로에서 든 남쪽 주머니 (750~757,317~327)는 북쪽이 턱(0x3B, 남으로만
  * 뛴다)이고, 걸어서는 정적 격자로도 「unreachable」이다. 자전거 너비 우선 탐색(아래)으로는 (761,305) · (754,309)에서 **서쪽 먼 도약**
- * 둘(4단 전속력 · `bikeTerrain.bikeRampHop` — 착지 4칸 앞) → (750,293) 다리 어귀에서 자전거 널을 타고 강을 건너 → 멍청산 바깥(262)이다.
+ * 둘(4단 전속력 · `bikeTerrain.bikeRampHop` — 착지 4칸 앞) → (750,293) 다리 어귀에서 자전거 널을 타고 강을 건너 → 하드마운틴 바깥(262)이다.
  *
  * 그래서 이 다리만 자기 계획을 든다. 원작 규칙을 옮긴 것이 아니라 **제품이 그 규칙으로 막는 것을 길잡이가 알게 한 것**이다:
  * · 도약대: 받는 쪽에서 3칸 이상 곧장 달려와(4단 전속력 = 페달 3칸 · `bike.bikeSpeedLevel`) 그 너머 네 번째 칸에 내린다
@@ -516,7 +516,7 @@ const LEDGE = { 0x38: [1, 0], 0x39: [-1, 0], 0x3a: [0, -1], 0x3b: [0, 1] }
 /**
  * **큰바위를 밀고 바위를 깨서 그 문 옆까지** — 챔피언로드 2F와 같은 걸음(`badgesLeague.victory2F`): 구운 격자와 처음 바위 자리로
  * `pushSolve`가 풀고, 민 것 · 깬 것만 차례로 한다(그 사이 걸음은 `strengthPush` · `smashRock`이 맡는다). 바위는 맵에 들 때마다 제자리다.
- * 실측(2026-10-16 진단 4판): 멍청산 방 1(263)은 입구 (17,29)에서 북쪽 문 (17,2)까지 공용 길잡이로 「unreachable」 — (11,11) 바위와
+ * 실측(2026-10-16 진단 4판): 하드마운틴 방 1(263)은 입구 (17,29)에서 북쪽 문 (17,2)까지 공용 길잡이로 「unreachable」 — (11,11) 바위와
  * (18,9) · (27,13) 큰바위가 길을 가른다
  */
 async function pushThrough(api, ctx, map, door, note, page, avoid = []) {
@@ -575,17 +575,17 @@ async function pushThrough(api, ctx, map, door, note, page, avoid = []) {
   return { ok: false, why: last }
 }
 
-// ── q 멍청산과 히드런 ───────────────────────────────────────────────────────
+// ── q 하드마운틴과 히드런 ───────────────────────────────────────────────────────
 
 /**
- * 멍청산 맵 · 변수 (`map_headers.txt` 줄 − 1 · `vars_flags.txt` 열거형 셈 — `_pg42.design.md`와 같은 셈):
+ * 하드마운틴 맵 · 변수 (`map_headers.txt` 줄 − 1 · `vars_flags.txt` 열거형 셈 — `_pg42.design.md`와 같은 셈):
  *
  * · 227번도로 403: 좌표 사건 (738~739,306) 16523 `VAR_ROUTE_227_WAKE_RIVAL_STATE` 0 → 1 · (758,277) 16665 `VAR_ROUTE_227_BUCK_STATE`
  *   0 → 1(벅이 「같이 가자」 — 예가 나올 때까지 되묻는다)
- * · 멍청산 바깥 262: (752,235) 16544 `VAR_STARK_MOUNTAIN_OUTSIDE_STATE` 0 → 1 · 셋째 방 뒤 2 → 바깥 장면 3
+ * · 하드마운틴 바깥 262: (752,235) 16544 `VAR_STARK_MOUNTAIN_OUTSIDE_STATE` 0 → 1 · 셋째 방 뒤 2 → 바깥 장면 3
  * · 방 1 263: 들어서면 프레임 스크립트로 마스 · 쥬피터 연전 16557 0 → 1
  * · 방 2 264: (42,69) 16532 0 → 1 벅이 동행(`SetHasPartner`) · (42,70)을 밟으면 0으로 돌아간다 · (47,3) 1 → 2 벅이 떠난다
- * · 방 3 265: 프레임 스크립트 — 찬미 · 국제경찰. 끝에 16542 `VAR_STARK_MOUNTAIN_ROOM_3_STATE` 1 · 214 `FLAG_ARRESTED_CHARON_STARK_MOUNTAIN`
+ * · 방 3 265: 프레임 스크립트 — 플루토 · 국제경찰. 끝에 16542 `VAR_STARK_MOUNTAIN_ROOM_3_STATE` 1 · 214 `FLAG_ARRESTED_CHARON_STARK_MOUNTAIN`
  *   (`scripts_stark_mountain_room_3.s:226-236`) → 바깥 (751,233)으로 옮긴다
  * · 배틀그라운드 454: 벅 (11,8) 스크립트 2 → 293 `FLAG_TALKED_TO_BATTLEGROUND_BUCK` (`scripts_battleground.s:114-129`)
  * · 방 3 히드런 (7,6) 스크립트 4: 들어설 때 288 미포획 · 전당 · 전국도감 · 293 · 16542 == 1이면 보인다(`:27-36`) →
@@ -603,7 +603,7 @@ const BATTLEGROUND_BUCK_SCRIPT = 2
 const HEATRAN_SCRIPT = 4
 
 /**
- * **멍청산 셋째 방까지 간다** — 서바이벌에서 226 → 227번도로(자전거 길 · `bikeTo`) → 바깥 → 방 1(바위) → 방 2(바위) → 방 3.
+ * **하드마운틴 셋째 방까지 간다** — 서바이벌에서 226 → 227번도로(자전거 길 · `bikeTo`) → 바깥 → 방 1(바위) → 방 2(바위) → 방 3.
  * 바위는 맵에 들 때마다 제자리라(REPAIR §126) 다시 들 때도 다시 민다. 벅이 없으면 방 2는 락클라임도 되지만 풀이는 걷기 · 밀기 · 깨기로 같다
  */
 async function toStarkRoom3(api, ctx, page, note) {
@@ -611,7 +611,7 @@ async function toStarkRoom3(api, ctx, page, note) {
   if (![STARK.outside, STARK.room1, STARK.room2, STARK.room3].includes(await at())) {
     if ((await at()) !== STARK.route227) {
       const fly = await api.flyTo(450, Math.min(180_000, api.left()))
-      note('공중날기 → 서바이벌에어리어', fly.ok ? '닿았다' : String(fly.why))
+      note('공중날기 → 서바이벌에리어', fly.ok ? '닿았다' : String(fly.why))
       note('227번도로', await api.goTo(STARK.route227, Math.min(900_000, api.left())))
     }
     const sprayed = await sprayBest(api)
@@ -630,7 +630,7 @@ async function toStarkRoom3(api, ctx, page, note) {
 }
 
 /**
- * **멍청산에서 걸어 나온다** — 동굴 안에서는 공중날기가 안 된다. 가방에 동굴탈출로프가 없다(칸 20 끝 세이브 실측). 방 3 → 방 2(락클라임으로
+ * **하드마운틴에서 걸어 나온다** — 동굴 안에서는 공중날기가 안 된다. 가방에 동굴탈출로프가 없다(칸 20 끝 세이브 실측). 방 3 → 방 2(락클라임으로
  * 내려간다 · 길잡이) → 방 1(바위가 제자리로 돌아와 있다 — 바위 풀이로 입구 (20,29)까지) → 바깥
  */
 export async function leaveStark(api, ctx, page, note) {
@@ -664,18 +664,18 @@ export async function starkHeatran(api, ctx, page) {
   let v = await read()
   note('처음', JSON.stringify(v))
 
-  // 이미 멍청산 안이면(앞 판이 거기서 멈췄다) 거기서 잇는다 — 방 상태 값이 어디까지 갔는지를 말한다
+  // 이미 하드마운틴 안이면(앞 판이 거기서 멈췄다) 거기서 잇는다 — 방 상태 값이 어디까지 갔는지를 말한다
   const inside = [STARK.outside, STARK.room1, STARK.room2, STARK.room3].includes((await api.now()).map)
   if (!v.charon && !inside) {
     const fly = await api.flyTo(450, Math.min(180_000, api.left()))
-    note('공중날기 → 서바이벌에어리어', fly.ok ? '닿았다' : String(fly.why))
+    note('공중날기 → 서바이벌에리어', fly.ok ? '닿았다' : String(fly.why))
     const heal = await api.healAt(STARK.survivalCenter, Math.min(300_000, api.left()))
-    note('서바이벌 센터 회복', heal.ok ? '나았다' : String(heal.why))
+    note('서바이벌에리어 센터 회복', heal.ok ? '나았다' : String(heal.why))
     const r227 = await api.goTo(STARK.route227, Math.min(900_000, api.left()))
     note('227번도로', r227)
     /**
      * ⚠️ **227번도로의 두 장면은 길목이 아니다** — 16523 · 16665를 뒤에서 보는 스크립트가 없다(`scripts_route_227.s`만 쓴다).
-     * 걷는 길이 그 칸을 지나면 돌고, 안 지나면 안 돈다 — 값만 적는다. 실측(2026-10-16 진단 1판): (738,306)은 226번도로에서
+     * 걷는 길이 그 칸을 지나면 돌고, 안 지나면 안 돈다 — 값만 적는다. 실측(2026-10-16 진단 1판): (738,306)은 226번수로에서
      * 들어선 (754,319) 쪽에서 「설 길이 없다」(비탈 · 화산재 너머)였다
      */
     v = await read()
@@ -689,7 +689,7 @@ export async function starkHeatran(api, ctx, page) {
   if (!v.charon) {
     if ((v.outside ?? 0) < 1) {
       const outside = await api.goTo(STARK.outside, Math.min(900_000, api.left()))
-      note('멍청산 바깥', outside)
+      note('하드마운틴 바깥', outside)
       if (!await trip(STARK.outside, { x: 752, z: 235 }, 'outside', 1, '바깥 조무래기 (752,235)')) return done()
     }
     if ((v.room1 ?? 0) < 1 || ![STARK.room1, STARK.room2, STARK.room3].includes((await api.now()).map)) {
@@ -703,7 +703,7 @@ export async function starkHeatran(api, ctx, page) {
     if (r2 !== 'arrived' && (await api.now()).map === STARK.room1) r2 = JSON.stringify(await pushThrough(api, ctx, STARK.room1, { x: 17, z: 2 }, note, page))
     note('방 2', r2)
     if (!await trip(STARK.room2, { x: 42, z: 69 }, 'room2', 1, '방 2 벅 동행 (42,69)')) return done()
-    // 벅을 데리고 (47,3)을 지나 셋째 방으로 — 찬미 장면이 끝나면 바깥으로 옮겨진다
+    // 벅을 데리고 (47,3)을 지나 셋째 방으로 — 플루토 장면이 끝나면 바깥으로 옮겨진다
     await talkLog.start(page)
     /**
      * ⚠️ **벅이 따라오는 동안은 락클라임 · 파도타기 · 공중날기를 못 쓴다** — 원작 `field_move_tasks.c` `PlayerTravellingWithPartner`
@@ -718,13 +718,13 @@ export async function starkHeatran(api, ctx, page) {
     api.setClimb(modes.climb !== false); api.setSurf(modes.surf !== false); api.setWaterfall(modes.waterfall !== false)
     await until(api, async () => (await read()).charon === true && ((await read()).outside ?? 0) >= 3, 300_000)
     v = await read()
-    note('방 3 — 찬미 체포', `${r3} · ${JSON.stringify(v)} · 맵 ${String((await api.now()).map)} · ${JSON.stringify((await talkLog.take(page)).slice(-3))}`)
+    note('방 3 — 플루토 체포', `${r3} · ${JSON.stringify(v)} · 맵 ${String((await api.now()).map)} · ${JSON.stringify((await talkLog.take(page)).slice(-3))}`)
     if (!v.charon) return done()
   }
 
   if (!v.buckTalked) {
     const fly = await api.flyTo(450, Math.min(180_000, api.left()))
-    note('공중날기 → 서바이벌에어리어', fly.ok ? '닿았다' : String(fly.why))
+    note('공중날기 → 서바이벌에리어', fly.ok ? '닿았다' : String(fly.why))
     const said = await api.talkToNpc(STARK.battleground, BATTLEGROUND_BUCK_SCRIPT, Math.min(600_000, api.left()))
     await until(api, async () => (await read()).buckTalked === true, 60_000)
     v = await read()
@@ -736,7 +736,7 @@ export async function starkHeatran(api, ctx, page) {
     // 산 안이면 회복하러 안 나간다 — 바위 방을 거꾸로 못 지난다(바위가 제자리로 돌아온다). 파티는 L85~95다
     if (![STARK.outside, STARK.room1, STARK.room2, STARK.room3].includes((await api.now()).map)) {
       const heal = await api.healAt(STARK.survivalCenter, Math.min(300_000, api.left()))
-      note('서바이벌 센터 회복', heal.ok ? '나았다' : String(heal.why))
+      note('서바이벌에리어 센터 회복', heal.ok ? '나았다' : String(heal.why))
     }
     note('방 3', String(await toStarkRoom3(api, ctx, page, note)))
     const foe = []
@@ -766,7 +766,7 @@ export const reachedHeatran = async (page) => {
 // ── p 배틀 팩토리 한 판 ─────────────────────────────────────────────────────
 
 /**
- * 프런티어 맵: 파이트에어리어 188 → 프런티어 게이트 560 → 배틀프런티어 559 → 배틀 팩토리 로비 562. 프런티어는 **팩토리만** 범위다
+ * 프런티어 맵: 파이트에리어 188 → 프런티어 게이트 560 → 배틀프런티어 559 → 배틀 팩토리 로비 562. 프런티어는 **팩토리만** 범위다
  * (메모 no-out-of-scope — 다른 시설은 입구가 막혀 있다). 접수원 (21,6) 스크립트 1 — 계산대(22,6) 너머라 한 칸 아래 (21,7)에서 북쪽을 본다.
  *
  * ⚠️ **`talkTo`로 말을 걸지 않는다** — 그것은 말이 열리면 `settle`로 대사를 넘기고, 셋 이상 고르는 줄에서는 **마지막 칸**(그만둔다)을
@@ -831,7 +831,7 @@ export async function factoryRun(api, ctx, page) {
   let s = await factoryState(page)
   note('처음', JSON.stringify(s))
   const heal = await api.healAt(189, Math.min(300_000, api.left()))
-  note('파이트 센터 회복', heal.ok ? '나았다' : String(heal.why))
+  note('파이트에리어 센터 회복', heal.ok ? '나았다' : String(heal.why))
   for (const m of [FRONTIER.gate, FRONTIER.frontier, FRONTIER.factory]) {
     const went = await api.goTo(m, Math.min(600_000, api.left()))
     note(`프런티어 — 맵 ${String(m)}`, went)
@@ -933,8 +933,8 @@ export async function eliteRematch(api, ctx, page) {
   const charon = (await varsFlags(page, [], [214]))?.f214 === true
   out.hofBefore = await hofTotal(page)
   note('처음', `214 ${String(charon)} · 사천왕 깃발 ${JSON.stringify([v.aaron, v.bertha, v.flint, v.lucian, v.cynthia])} · 전당 ${String(out.hofBefore)}`)
-  if (!charon) { note('재대결 조건', '214가 안 섰다 — 칸 20(찬미 체포)이 먼저다'); return done() }
-  if ([STARK.room1, STARK.room2, STARK.room3].includes((await api.now()).map)) note('멍청산에서 나온다', String(await leaveStark(api, ctx, page, note)))
+  if (!charon) { note('재대결 조건', '214가 안 섰다 — 칸 20(플루토 체포)이 먼저다'); return done() }
+  if ([STARK.room1, STARK.room2, STARK.room3].includes((await api.now()).map)) note('하드마운틴에서 나온다', String(await leaveStark(api, ctx, page, note)))
   const fly = await api.flyTo(LEAGUE_MAP.league, Math.min(180_000, api.left()))
   note('공중날기 → 포켓몬리그', fly.ok ? '닿았다' : String(fly.why))
   /**
@@ -978,10 +978,10 @@ export async function eliteRematch(api, ctx, page) {
 
 export const reachedRematch = async (page) => lastRematch?.ok === true && (await hofTotal(page)) === lastRematch.hofAfter
 
-// ── s 설원 신전과 레지기가스 ─────────────────────────────────────────────────
+// ── s 선단신전과 레지기가스 ─────────────────────────────────────────────────
 
 /**
- * 설원 신전 1F 278 → B1F 279 → B2F 280 → B3F 281 → B4F 282 → B5F 283. 선단시티 좌표 사건 (366,198) 16511 `VAR_SNOWPOINT_CITY_STATE`
+ * 선단신전 1F 278 → B1F 279 → B2F 280 → B3F 281 → B4F 282 → B5F 283. 선단시티 좌표 사건 (366,198) 16511 `VAR_SNOWPOINT_CITY_STATE`
  * 0 → 1(전국도감 · 전당이면 문지기가 비키고 무청이 들어온다) · 문 (366/367,197). B5F 레지기가스 (11,12) 스크립트 2 — 숨김 579는
  * 전당 스크립트가 전국도감이면 푼다(`scripts_pokemon_league_hall_of_fame.s:129,164-169`). A → 셋이 다 있으면 282 `FLAG_AWAKENED_REGIGIGAS` ·
  * `StartLegendaryBattle 486 Lv1` · 잡으면 283
@@ -1049,6 +1049,8 @@ export async function templeRegigigas(api, ctx, page) {
     note('선단 센터 회복', heal.ok ? '나았다' : String(heal.why))
     if ((v.snowpoint ?? 0) < 1) {
       await talkLog.start(page)
+      // ⚠️ `stepOn`은 다른 맵에서 부르면 첫 바퀴에 「warped」로 돌아온다 — 센터에서 회복한 뒤라 먼저 선단시티로 나간다 (진단 1판)
+      await api.goTo(TEMPLE.snowpoint, Math.min(300_000, api.left()))
       const went = await api.stepOn(TEMPLE.snowpoint, { x: 366, z: 198 }, Math.min(300_000, api.left()))
       await until(api, async () => ((await read()).snowpoint ?? 0) >= 1, 120_000)
       v = await read()
@@ -1113,7 +1115,7 @@ export const reachedRegigigas = async (page) => ((await varsFlags(page, [], [REG
 // ── t 로토무 ────────────────────────────────────────────────────────────────
 
 /**
- * 숲의 양옥 295 → 복도 298 (11,2) → 뒤 가운데 서쪽 방 300. TV 표지판 (11,3) · (12,3) — (11,4)에서 북쪽을 보고 A.
+ * 숲의 양옥집 295 → 복도 298 (11,2) → 뒤 가운데 서쪽 방 300. TV 표지판 (11,3) · (12,3) — (11,4)에서 북쪽을 보고 A.
  * 밤(20~03시) · 329 `FLAG_CAUGHT_OLD_CHATEAU_ROTOM` 아님 · 2736 오늘 싸움 아님 → `StartWildBattle 479 Lv20`. 전국도감은 안 본다.
  * 도착 판정: 2736(오늘 싸웠다) 또는 329(잡았다)
  */
@@ -1137,7 +1139,7 @@ export async function chateauRotom(api, ctx, page) {
   const heal = await api.healAt(69, Math.min(300_000, api.left()))
   note('영원 센터 회복', heal.ok ? '나았다' : String(heal.why))
   const room = await api.goTo(CHATEAU.room, Math.min(1_800_000, api.left()))
-  note('숲의 양옥 — 뒤 방(300)', room)
+  note('숲의 양옥집 — 뒤 방(300)', room)
   if (room !== 'arrived') return done()
   const h = await hour()
   const night = h !== null && (h >= 20 || h < 4)
