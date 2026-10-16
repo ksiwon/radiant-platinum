@@ -994,6 +994,33 @@ const REGIGIGAS_SCRIPT = 2
 const B5F_SLIDE = [['ArrowLeft', 7, 4], ['ArrowDown', 7, 17], ['ArrowDown', 7, 18], ['ArrowRight', 16, 18], ['ArrowUp', 16, 10],
   ['ArrowLeft', 4, 10], ['ArrowDown', 4, 16], ['ArrowRight', 11, 16], ['ArrowUp', 11, 15], ['ArrowUp', 11, 14], ['ArrowUp', 11, 13]]
 
+/** 신전 층마다 올라가는 계단 (`events.json` 워프) — 1F는 선단시티로 나가는 문 (8,13) */
+const TEMPLE_UP = { 283: { x: 8, z: 3 }, 282: { x: 6, z: 3 }, 281: { x: 6, z: 3 }, 280: { x: 6, z: 3 }, 279: { x: 4, z: 3 }, 278: { x: 8, z: 13 } }
+/**
+ * **선단신전에서 걸어 나온다** — 동굴 안이라 공중날기가 안 되고(실측 칸 23 진단 1판: B4F ↔ B3F를 3분 오가다 섰다) 얼음 층은 공용 길잡이가
+ * 못 오른다. 층마다 길잡이로 위층에 가 보고, 못 가면 얼음 풀이로 올라가는 계단 옆까지 미끄러져 계단을 민다
+ */
+export async function leaveTemple(api, ctx, note) {
+  for (let i = 0; i < 8; i++) {
+    const here = (await api.now()).map
+    const up = TEMPLE_UP[here]
+    if (up === undefined) return true
+    const next = here === TEMPLE.f1 ? TEMPLE.snowpoint : here - 1
+    /**
+     * 얼음 풀이를 **먼저** 한다 — 길잡이를 먼저 부르면 얼음 층(B3F)에서 아래층 계단으로 미끄러져 내려가 두 층 사이를 3분 오가다 선다
+     * (진단 2판: 281 → 282 → 281…). 풀이가 없으면(얼음이 없는 층) 길잡이로 간다
+     */
+    let went = ''
+    const side = up.z === 13 ? [[up.x, up.z - 1]] : [[up.x, up.z + 1]]
+    const slid = await snowpointSlide(api, ctx, { goals: side, what: `맵 ${String(here)} 올라가는 계단 앞` })
+    if (slid.ok) went = await boardWarp(api, here, up, Math.min(300_000, api.left()))
+    if ((await api.now()).map === here) went = await api.goTo(next, Math.min(240_000, api.left()))
+    note(`신전에서 나온다 — 맵 ${String(here)} → ${String(next)}`, went)
+    if ((await api.now()).map === here) return false
+  }
+  return !Object.keys(TEMPLE_UP).map(Number).includes((await api.now()).map)
+}
+
 let lastRegi = null
 export async function templeRegigigas(api, ctx, page) {
   const t0 = Date.now()
@@ -1123,6 +1150,8 @@ export async function templeRegigigas(api, ctx, page) {
     out.thrown = thrown
     note('레지기가스 (11,12)', `배틀에 선 것 ${JSON.stringify(foe)} · 볼 ${JSON.stringify(thrown)?.slice(0, 200)} · ${JSON.stringify(v)} · ${JSON.stringify((await talkLog.take(page)).slice(-4))}`)
   }
+  // 칸 경계를 신전 밖(선단시티)에 둔다 — 다음 칸은 공중날기로 시작한다
+  if (v.awakened === true) note('선단신전에서 나온다', String(await leaveTemple(api, ctx, note)))
   out.ok = v.awakened === true
   return done()
 }
@@ -1151,6 +1180,7 @@ export async function chateauRotom(api, ctx, page) {
   const hour = () => page.evaluate(async () => (await import('/src/state/worldState.ts')).worldState.time.gameHour).catch(() => null)
   let v = await read()
   note('처음', `${JSON.stringify(v)} · 시각 ${String(await hour())}`)
+  if (TEMPLE_UP[(await api.now()).map] !== undefined) note('선단신전에서 나온다', String(await leaveTemple(api, ctx, note)))
   const fly = await api.flyTo(65, Math.min(180_000, api.left()))
   note('공중날기 → 영원시티', fly.ok ? '닿았다' : String(fly.why))
   const heal = await api.healAt(69, Math.min(300_000, api.left()))
