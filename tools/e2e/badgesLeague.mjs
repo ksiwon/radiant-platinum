@@ -778,7 +778,12 @@ export async function eliteFour(api, ctx, page, {
      */
     const offPlay = async () => (await page.evaluate(() => location.pathname).catch(() => '/')) !== '/play'
     try {
-      for (let i = 0; i < 20 && !(rematch ? false : (await vars()).cynthia); i++) {
+      /**
+       * 재대결은 깃발로 못 끝내므로 **시간으로** 둔다 — 스무 바퀴는 승강기에서 내려 난천 앞까지 걷는 장면(`ApplyMovement`)이 열리기 전에
+       * 다 돌아 「졌다」로 읽혔다(진단 5판 — 그 뒤 배틀을 이기고 엔딩으로 넘어가 앱이 다시 켜졌다). 첫 판은 예전 그대로 스무 바퀴다
+       */
+      const champTill = Date.now() + 600_000
+      for (let i = 0; (rematch ? Date.now() < champTill : i < 20) && !(rematch ? false : (await vars()).cynthia); i++) {
         if (await offPlay()) { navigated = true; break }
         if ((await api.now()).map === MAP.leagueNorthCenter) break
         // 재대결은 깃발이 이미 서 있다 — 복도 · 전당에 들어섰거나 전당 화면이 떴으면 이긴 것이다
