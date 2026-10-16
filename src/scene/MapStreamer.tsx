@@ -97,7 +97,7 @@ import { ChunkModels } from './ChunkModels'
 import { BdspRoom, useBdspRoom } from './BdspRoom'
 import { BdspField, useBdspFields } from './BdspField'
 import { WorldFx } from './WorldFx'
-import { BdspDungeon, openAir, useBdspDungeon } from './BdspDungeon'
+import { BdspDungeon, openAir, useBdspDungeon, useDungeonSky } from './BdspDungeon'
 import { OuterFloor } from './OuterFloor'
 import { NpcMonModels } from './NpcMonModels'
 import { NpcSprites } from './NpcSprites'
@@ -926,8 +926,13 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
    * 부감이라 맵 바깥을 볼 일이 없었지만 우리 3인칭은 가장자리 너머를 본다 —
    * 챔피언로드가 파란 하늘 위의 판때기로 찍혔고 천관산 위에도 하늘이 걸렸다
    */
-  // ⚠️ **BDSP로 선 던전은 제 바깥 배경을 따른다** — 호숫가 · 숲 위가 검게 비지 않게 (`openAir`)
-  const outdoors = isOutdoors(mapById(mapId)) || (dungeon !== null && openAir(mapById(mapId)))
+  // ⚠️ **BDSP로 선 던전은 제 바깥 배경을 따른다** — 호숫가 · 숲 위가 검게 비지 않게 (`openAir`).
+  // **신수 행렬(0) 위의 던전형 맵도 같다** — 신월섬(D30 · 맵 320)은 원작이 동굴형(`mapType` 3)으로 적었지만 바깥 바다 한가운데의
+  // 섬이고(배틀 배경 0 풀밭), BDSP 지역이 땅을 그린다. 행렬 0이면 방 · 던전을 안 고르므로(`roomFor`) 위 조건에 안 걸려 섬 위가 검었다
+  const header = mapById(mapId)
+  const outdoors = isOutdoors(header) || ((dungeon !== null || header?.matrix === 0) && openAir(header))
+  /** 던전이 제 하늘을 그린다 (`BdspDungeon`의 `liftOwnSky` — 시원의 공간) — 하늘 돔을 안 세운다 */
+  const ownSky = useDungeonSky((s) => s.own)
   /** 깨어진 세계인가 — 여기만 아래를 보는 면을 걸어 다닌다 (`DOWN_DIR`) */
   const distortion = isDistortionFloor(mapId)
   /**
@@ -1354,7 +1359,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         {distortion && (
           <DistortionSky mapId={mapId} progress={distortionProgress} />
         )}
-      {sky && outdoors && (
+      {sky && outdoors && !ownSky && (
         <mesh ref={skyRef} renderOrder={-1}>
           <sphereGeometry args={[190, 32, 20]} />
           <meshBasicMaterial map={sky} side={BackSide} fog={false} depthWrite={false} />

@@ -16,10 +16,11 @@
 // ⚠️ **그림은 glb 밖에 있다.** 던전끼리 한 벌을 나눠 쓰므로(`tex/{해시}.png`) glb를 풀기 전에 그 주소를 설치본 주소로 잇는다
 import { useEffect, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
+import { create } from 'zustand'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import {
   AdditiveBlending, Box3, BufferAttribute, BufferGeometry, DoubleSide, InstancedMesh, LoadingManager, Mesh,
-  MeshStandardMaterial, Vector3, type Group, type Material, type Object3D,
+  Matrix4, MeshBasicMaterial, MeshStandardMaterial, Vector3, type Group, type Material, type Object3D,
 } from 'three'
 import { assets } from '../data/providers/assetProvider'
 import { firstPersonView } from '../engine/actor/camera'
@@ -58,7 +59,24 @@ export function useBdspDungeon(mapId: number): string | null {
     void dungeonIndex().then((n) => { if (alive) setNames(n) })
     return () => { alive = false }
   }, [])
-  return names ? roomFor(mapId, names) : null
+  if (!names) return null
+  const own = roomFor(mapId, names)
+  if (own !== null) return own
+  const alias = DUNGEON_ALIAS[mapById(mapId)?.name.toLowerCase() ?? '']
+  return alias !== undefined && names.has(alias) ? alias : null
+}
+
+/**
+ * BDSP에 없는 던전이 빌려 쓰는 던전.
+ *
+ * 창기둥 디아루가 · 펄기아 판(`MAP_HEADER_SPEAR_PILLAR_DIALGA` 584 · `_PALKIA` 585 — `D05R0118` · `D05R0119`)은 엔딩 뒤 금강옥 ·
+ * 백옥을 들고 오르는 **창기둥 그 자리**다. 땅 네 칸(행렬 280 · 281의 땅 635~642)이 창기둥(220 · 행렬 22의 375~378)과 **바이트까지
+ * 같다**(md5 대조 2026-10-16). BDSP는 리메이크라 이 두 판을 따로 안 지었고(DATA.md — 플래티넘에만 있음) 원작 그림이 하늘 없이
+ * 검은 데 떠 있었다. 같은 땅이므로 같은 던전을 세운다 — 들어 올림(`DUNGEON_LIFT`)도 그 이름으로 따라간다
+ */
+export const DUNGEON_ALIAS: Readonly<Record<string, string>> = {
+  d05r0118: 'd05r0114',
+  d05r0119: 'd05r0114',
 }
 
 /**
@@ -170,6 +188,69 @@ export function dressDungeon(root: Object3D): Mesh[] {
   return ceilings
 }
 
+/**
+ * 던전이 제 하늘을 갖고 왔나 — 시원의 공간(`d05r0116` · `d05r0117`)의 `M_D_039_SkySphere_01`(반지름 238 · 구름바다 위 푸른 우주)
+ * · `SkySphere_03`(반투명 별) · `SeaCloud_01`(y 200 구름 판). 던전 138벌 중 이 둘뿐이다.
+ *
+ * ⚠️ **한 번도 화면에 안 나왔다.** 셋이 막았다 — 필드 카메라 far가 200이라 반지름 238이 통째로 잘렸고(`fieldCamera`), 안 잘렸어도
+ * 낮 안개(끝 130칸)에 안개색이 됐고, 그 앞에 우리 하늘 돔(반지름 190)이 섰다. 1인칭은 굴 덮개(`coverKind` — 원작 배틀 배경 9 굴)가
+ * 위를 막았다. 그래서 안개를 끄고, `SKY_FIT`배로 줄여 **카메라를 수평으로 따라오게** 한다(`followOwnSky`) — 하늘은 멀리 있는 것이라
+ * 어디서 봐도 같은 자리여야 한다
+ */
+export const isOwnSky = (m: Material): boolean => /_(SkySphere|SeaCloud)_\d/.test(m.name)
+
+/** 던전 하늘을 줄이는 배율 — 반지름 238 × 0.75 = 178이 카메라 far(200) 안에 든다 */
+const SKY_FIT = 0.75
+
+/**
+ * 하늘 재질을 빛 안 받는 재질로 갈아 낀다.
+ *
+ * ⚠️ **알파를 투명도로 읽으면 하늘이 통째로 사라진다.** 굽는 쪽이 셋 다 `MASK`(문턱 0.5)로 실었는데 하늘 구 그림(`SkySphere_01`)의
+ * 알파는 줄 평균 21~61/255라 거의 다 잘려 나가 배경색만 보였다(2026-10-16 · `.audit/sky-20261016`). BDSP 하늘 셰이더는 그 알파를
+ * 안 쓴다 — 하늘 구는 불투명, 별 겹(`SkySphere_03` · `extras.add`)은 더하기, 구름 판(`SeaCloud_01`)은 알파로 섞는다
+ */
+function skyPaint(src: Material): MeshBasicMaterial {
+  const map = (src as MeshStandardMaterial).map ?? null
+  const m = new MeshBasicMaterial({ map, fog: false, side: DoubleSide, depthWrite: false })
+  m.name = src.name
+  if (/_SkySphere_01/.test(src.name)) return m
+  if (src.userData.add === true || /_SkySphere_/.test(src.name)) {
+    m.blending = AdditiveBlending
+    m.transparent = true
+    return m
+  }
+  m.transparent = true
+  return m
+}
+
+/** 하늘 조각을 하늘로 세운다 — 빛 · 안개 · 그림자 · 깊이 쓰기를 끄고 맨 먼저 그린다. 세운 조각들을 돌려준다 */
+export function liftOwnSky(root: Object3D): Mesh[] {
+  const skies: Mesh[] = []
+  root.traverse((o) => {
+    if (!(o instanceof Mesh)) return
+    const mats = (Array.isArray(o.material) ? o.material : [o.material]) as Material[]
+    if (!mats.some(isOwnSky)) return
+    const painted = mats.map(skyPaint)
+    for (const m of mats) m.dispose()
+    o.material = Array.isArray(o.material) ? painted : painted[0]!
+    o.castShadow = false
+    o.receiveShadow = false
+    o.renderOrder = -2
+    o.frustumCulled = false
+    o.scale.multiplyScalar(SKY_FIT)
+    skies.push(o)
+  })
+  return skies
+}
+
+/** 하늘 조각의 가운데를 카메라 바로 위아래에 둔다 — `eye`는 월드 좌표, 조각은 `root` 바로 밑이라 그 원점을 뺀다 */
+export function followOwnSky(skies: readonly Mesh[], root: Object3D, eye: Vector3): void {
+  for (const sky of skies) sky.position.set(eye.x - root.position.x, sky.position.y, eye.z - root.position.z)
+}
+
+/** 지금 선 던전이 제 하늘을 그리는가 — 그 동안 `MapStreamer`가 하늘 돔을 안 세운다 */
+export const useDungeonSky = create<{ own: boolean }>()(() => ({ own: false }))
+
 // ── 자리 ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -263,6 +344,10 @@ function uvArea(u: readonly number[]): number {
 /** 메시의 삼각형을 월드 꼭짓점 · UV로 돈다 */
 function eachTriangle(mesh: Mesh, fn: (t: number, p: readonly [Vector3, Vector3, Vector3], uv: readonly number[]) => void): void {
   const g = mesh.geometry as BufferGeometry
+  // 인스턴스 메시는 첫 개체 자리로 잰다 — 무늬 결(칸당 UV)은 개체마다 같다
+  const world = mesh instanceof InstancedMesh && mesh.count > 0
+    ? new Matrix4().multiplyMatrices(mesh.matrixWorld, (() => { const m = new Matrix4(); mesh.getMatrixAt(0, m); return m })())
+    : mesh.matrixWorld
   const pos = g.getAttribute('position'), tex = g.getAttribute('uv') as BufferAttribute | undefined
   const index = g.getIndex()
   const n = Math.floor((index ? index.count : pos.count) / 3)
@@ -271,7 +356,7 @@ function eachTriangle(mesh: Mesh, fn: (t: number, p: readonly [Vector3, Vector3,
   for (let t = 0; t < n; t++) {
     for (let k = 0; k < 3; k++) {
       const i = index ? index.getX(t * 3 + k) : t * 3 + k
-      p[k]!.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld)
+      p[k]!.fromBufferAttribute(pos, i).applyMatrix4(world)
       uv[k * 2] = tex ? tex.getX(i) : 0
       uv[k * 2 + 1] = tex ? tex.getY(i) : 0
     }
@@ -466,7 +551,7 @@ const det3 = (x: readonly (readonly number[])[]): number =>
  * 그 재질이 **실제로 벽에 깔린 UV 결** — 세운 삼각형마다 (가로, 높이) → UV를 풀어 넓이로 가장 많은 결. 양옥집 벽
  * `M_D_028_Wall_01`은 (0.25, −0.25, 0.75)이다 — 띠가 같은 결이면 굽도리 높이가 맞는다
  */
-function wallUv(meshes: readonly Mesh[]): WallUv | null {
+function wallUv(meshes: readonly Mesh[]): { uv: WallUv, area: number } | null {
   const votes = new Map<string, { area: number, uv: WallUv }>()
   const n = new Vector3(), e = new Vector3()
   for (const mesh of meshes) {
@@ -493,7 +578,25 @@ function wallUv(meshes: readonly Mesh[]): WallUv | null {
   }
   let best: { area: number, uv: WallUv } | null = null
   for (const v of votes.values()) if (!best || v.area > best.area) best = v
-  return best?.uv ?? null
+  return best
+}
+
+/**
+ * 띠에 깔 벽 — 재질마다 결(`wallUv`)을 재서 **결이 선 넓이가 가장 큰 재질**. 결이 안 서는 재질(UV가 한 점으로 뭉친 절벽 —
+ * `paintFills`)은 안 고른다
+ */
+function bandWall(meshes: readonly Mesh[]): { paint: Material, uv: WallUv } | null {
+  const byPaint = new Map<Material, Mesh[]>()
+  for (const m of meshes) {
+    const paint = m.material as Material
+    byPaint.set(paint, [...(byPaint.get(paint) ?? []), m])
+  }
+  let best: { paint: Material, uv: WallUv, area: number } | null = null
+  for (const [paint, list] of byPaint) {
+    const got = wallUv(list)
+    if (got && (!best || got.area > best.area)) best = { paint, ...got }
+  }
+  return best
 }
 
 /** 메시의 무늬 촘촘함 — 칸당 UV (가운데값) */
@@ -558,23 +661,26 @@ export function dungeonCover(root: Object3D, kind: 'cave' | 'indoor'): Mesh[] {
   const terrain = new Box3()
   let ceil = -Infinity
   const strict: Mesh[] = [], loose: Mesh[] = [], ground: Mesh[] = []
-  const bandStrict = kind === 'cave' ? /_Cliff_01_01[NSEW]$/ : /_Wall_/
+  const bandStrict = kind === 'cave' ? /_Cliff_01_01[NSEW]?$/ : /_Wall_/
   const bandLoose = kind === 'cave' ? /_Cliff_/ : /_ComWall_/
   root.traverse((o) => {
-    if (!(o instanceof Mesh) || o instanceof InstancedMesh) return
+    if (!(o instanceof Mesh)) return
     const mats = (Array.isArray(o.material) ? o.material : [o.material]) as Material[]
-    if (mats.some(isCeiling)) { ceil = Math.max(ceil, new Box3().setFromObject(o).max.y); return }
+    // ⚠️ **굴 절벽은 인스턴스 메시다**(`EXT_mesh_gpu_instancing` — 천관산 `d05r0109`의 절벽 열 벌이 전부). 상자는 안 넓히되 띠 재질
+    // 후보로는 센다 — 안 세던 때 천관산 굴의 띠가 그림 없는 바위색 판으로 서서 1인칭 화면 절반을 덮었다(2026-10-15 3D 측정 I)
+    const instanced = o instanceof InstancedMesh
+    if (!instanced && mats.some(isCeiling)) { ceil = Math.max(ceil, new Box3().setFromObject(o).max.y); return }
     if (!mats.every((m) => COVER_TERRAIN.test(m.name))) return
-    terrain.union(new Box3().setFromObject(o))
+    if (!instanced) terrain.union(new Box3().setFromObject(o))
     const name = mats.length === 1 ? mats[0]!.name : ''
     if (bandStrict.test(name)) strict.push(o)
     else if (bandLoose.test(name)) loose.push(o)
-    if (/_Ground_/.test(name)) ground.push(o)
+    if (/_Ground_/.test(name) && !instanced) ground.push(o)
   })
   if (terrain.isEmpty()) return []
-  const walls = strict.length > 0 ? strict : loose
-  const wallPaint = walls[0]?.material as Material | undefined
-  const wall = wallUv(walls) ?? { du: 0.25, dv: -0.25, v0: 0 }
+  const picked = bandWall(strict) ?? bandWall(loose)
+  const wallPaint = picked?.paint ?? (strict[0] ?? loose[0])?.material as Material | undefined
+  const wall = picked?.uv ?? { du: 0.25, dv: -0.25, v0: 0 }
   const top = kind === 'cave'
     ? terrain.max.y + CAVE_HEADROOM
     : (Number.isFinite(ceil) ? ceil : terrain.max.y) + CEIL_GAP
@@ -631,12 +737,15 @@ export function BdspDungeon({ name }: { name: string }) {
   const devices = useRef<{ map: number, hidden: Mesh[] }>({ map: -1, hidden: [] })
   /** 1인칭에서만 보이는 것 — BDSP 천장(`isCeiling`)과 덮개(`dungeonCover`) */
   const firstOnly = useRef<readonly Mesh[]>([])
+  /** 던전이 갖고 온 하늘 (`liftOwnSky`) — 카메라를 따라온다 */
+  const skies = useRef<readonly Mesh[]>([])
   useBdspMark(name, scene !== null, failed)
   useFrame(({ camera }, dt) => {
     // ⚠️ **눈이 실제로 어디 있나로 가른다** (`firstPersonView`) — 설정 값을 보면 컷신 동안 3인칭 카메라가 천장에 막힌다
     const first = firstPersonView()
     for (const c of firstOnly.current) c.visible = first
     motion.current?.update(dt, camera.getWorldPosition(eye.current))
+    if (scene && skies.current.length > 0) followOwnSky(skies.current, scene, eye.current)
     if (!fade.current) return
     if (scene && devices.current.map !== world.mapId) {
       for (const m of devices.current.hidden) m.visible = true
@@ -676,9 +785,11 @@ export function BdspDungeon({ name }: { name: string }) {
         if (!alive) { disposeTree(root); return }
         built = root
         const ceilings = dressDungeon(root)
+        const own = liftOwnSky(root)
         paintFills(root)
-        // 덮개는 원점에 선 채로 잰다 — `root` 안 좌표다. 흐림이 가리는 것으로 세지 않게 흐림 뒤에 붙인다
-        const kind = coverKind(mapById(world.mapId))
+        // 덮개는 원점에 선 채로 잰다 — `root` 안 좌표다. 흐림이 가리는 것으로 세지 않게 흐림 뒤에 붙인다.
+        // 제 하늘이 있는 던전은 안 덮는다 — 덮으면 그 하늘이 1인칭에서 안 보인다
+        const kind = own.length > 0 ? null : coverKind(mapById(world.mapId))
         const cover = kind ? dungeonCover(root, kind) : []
         const origin = dungeonOrigin(name, world.grid?.meta ?? null)
         root.position.set(origin.x, DUNGEON_LIFT[name] ?? 0, origin.z)
@@ -699,6 +810,8 @@ export function BdspDungeon({ name }: { name: string }) {
         firstOnly.current = [...ceilings, ...cover]
         for (const c of firstOnly.current) c.visible = firstPersonView()
         release = [holdBdspDoors(root), holdBdspSigns(root)]
+        skies.current = own
+        useDungeonSky.setState({ own: own.length > 0 })
         setScene(root)
         // 흐림의 파이프라인을 비동기로 미리 굽는다 — 처음 벽 앞에 설 때 동기로 안 굽게 (`FieldFade.warm`)
         made.warm()
@@ -712,6 +825,7 @@ export function BdspDungeon({ name }: { name: string }) {
     return () => {
       alive = false
       setDungeonLow(null)
+      useDungeonSky.setState({ own: false })
       for (const r of release) r()
       motion.current?.dispose()
       motion.current = null
