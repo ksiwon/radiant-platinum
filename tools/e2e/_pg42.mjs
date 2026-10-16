@@ -7,10 +7,10 @@
 //   dex   마박사 연구소 — 신오 210을 다 보면 전국도감 · 포켓트레
 //   legends 전설 열둘 — 조건을 세우고 곁에서 A → 제 종족·레벨의 배틀이 열리나(크레세리아·새는 배회 · 깃발)
 //   ground 배틀그라운드 — 오늘의 넷이 서나(관장 겉모습) → 첫째에게 말을 걸어 재대결이 열리나
-//   fight  배틀에어리어 — 배에서 내리면 라이벌과 둘이서 전진·대엽과 태그 배틀이 열리나
-//   charon 천관산 셋째 방 — 찬미가 잡히고 214 · 방 상태가 서나
+//   fight  파이트에리어 — 배에서 내리면 라이벌과 둘이서 전진·대엽과 태그 배틀이 열리나
+//   charon 하드마운틴 셋째 방 — 플루토가 잡히고 214 · 방 상태가 서나
 //   rematch 사천왕 — 214가 서면 충호가 재대결 팀으로 나오나
-//   temple 설원 신전 B5F — 얼음을 미끄러져 레지기가스 앞까지 가나
+//   temple 선단신전 B5F — 얼음을 미끄러져 레지기가스 앞까지 가나
 //   rotom  로토무의 방 — 맨 로토무 하나로 가전에 들어가나(파티 화면 없이) · 든 뒤에는 되돌리기가 뜨나
 //   siwon cresselia shaymin manaphy arceus zones factory stark — 설계는 `_pg42.design.md`. 같은 케이스를 `--repeat=N`(기본 2)번 돈다
 //
@@ -475,7 +475,7 @@ try {
   }
 
   if (await turn('fight')) {
-    // 배틀에어리어 — 배에서 내리면 라이벌이 기다리고, 라이벌 + 주인공 대 전진 + 대엽의 태그 배틀(fight_area.s · snowpoint_city.s:210)
+    // 파이트에리어 — 배에서 내리면 라이벌이 기다리고, 라이벌 + 주인공 대 전진 + 대엽의 태그 배틀(fight_area.s · snowpoint_city.s:210)
     await setFlags([], [467, 468, 482])
     await warp('siwon', 188, 623, 434, 0, { postGame: true, nationalDex: true, story: [[16513, 0], [16542, 0]] })
     log('내린 자리', await now())
@@ -487,7 +487,7 @@ try {
     await page.screenshot({ path: `${OUT}/fight-tag.png` })
   }
   if (await turn('charon')) {
-    // 천관산 셋째 방 — 먼저 들어선 찬미를 국제경찰이 잡는다(stark_mountain_room_3.s). 방 끝에서 16544=2 · 214 · 16542=1을 세우고 바깥(262)의
+    // 하드마운틴 셋째 방 — 먼저 들어선 플루토를 국제경찰이 잡는다(stark_mountain_room_3.s). 방 끝에서 16544=2 · 214 · 16542=1을 세우고 바깥(262)의
     // (751,233)으로 워프한다 — 바깥 OnFrame이 상태 2를 보고 루커의 작별을 돌린 뒤 3으로 올린다(stark_mountain_outside.s:143)
     await setFlags([], [475, 476, 478, 563, 214])
     await warp('siwon', 265, 7, 16, 0, { postGame: true, nationalDex: true, story: [[16542, 0]] })
@@ -505,7 +505,7 @@ try {
       await tap('Space', 450)
     }
     const after = { ...(await vf([16542, 16544], [214])), at: await now() }
-    log(`${after.flags[0][1] && after.vars[0][1] === 1 && after.vars[1][1] === 3 && after.at.map === 262 ? '✅' : '❌'} 찬미 뒤`, after)
+    log(`${after.flags[0][1] && after.vars[0][1] === 1 && after.vars[1][1] === 3 && after.at.map === 262 ? '✅' : '❌'} 플루토 뒤`, after)
     await page.screenshot({ path: `${OUT}/charon-after.png` })
   }
   if (await turn('rematch')) {
@@ -531,7 +531,7 @@ try {
     await page.screenshot({ path: `${OUT}/rematch-aaron.png` })
   }
   if (await turn('temple')) {
-    // 설원 신전 B5F — 얼음을 미끄러져 레지기가스 앞까지(snowpoint_temple_b5f.s). 길은 격자로 찾았고 높이는 안 봤다 — 멈춘 자리를 적는다
+    // 선단신전 B5F — 얼음을 미끄러져 레지기가스 앞까지(snowpoint_temple_b5f.s). 길은 격자로 찾았고 높이는 안 봤다 — 멈춘 자리를 적는다
     await setFlags([282], [579, 283, 142])
     await warp('siwon', 283, 8, 4, 0, { postGame: true, nationalDex: true })
     await clear(10)
@@ -1546,7 +1546,7 @@ try {
   const nearNpc = async (x, z, r = 3, gfx = null) => (await visibleNpcs()).find((n) => Math.abs(n[0] - x) <= r && Math.abs(n[1] - z) <= r && (gfx === null || n[2] === gfx)) ?? null
   // ── zones: 서바이벌에리어 · 리조트에리어 ─────────────────────────────────────────────────────
   await runCase('zones', async () => {
-    // 서바이벌에어리어 (450) — 확인 지점 자기 자리에 선다 (원작 NPC: 폐허광 (659,350) · 배틀걸 (652,341) · 꼬마 (667,338) · 카메라맨 (651,348))
+    // 서바이벌에리어 (450) — 확인 지점 자기 자리에 선다 (원작 NPC: 폐허광 (659,350) · 배틀걸 (652,341) · 꼬마 (667,338) · 카메라맨 (651,348))
     await warp('survival', null, null, null, 0, { postGame: true, nationalDex: true })
     await clear(10)
     const at0 = await now()
@@ -1557,7 +1557,7 @@ try {
     const found = {}
     for (const [name, [x, z, gfx]] of Object.entries(want)) { found[name] = await nearNpc(x, z, 8, gfx); check(`서바이벌 — ${name}이(가) (${String(x)},${String(z)}) 근처에 서 있다`, found[name] !== null, found[name] ?? npcs) }
     const pv = await probe([], [555, 473, 214], [])
-    log('서바이벌 — 벅 · 라이벌의 숨김 플래그(555 · 473)와 찬미 체포(214) — 이야기 쪽 조건이라 판정하지 않고 적기만 한다', pv.flags)
+    log('서바이벌 — 벅 · 라이벌의 숨김 플래그(555 · 473)와 플루토 체포(214) — 이야기 쪽 조건이라 판정하지 않고 적기만 한다', pv.flags)
     // 말 걸기 — 걷는 사람이라 한 명이 안 열리면 다음 사람으로 (배틀걸 · 꼬마 · 폐허광 · 카메라맨)
     let girl = null; let whoS = null
     for (const name of ['배틀걸', '꼬마', '폐허광', '카메라맨']) {
@@ -1572,7 +1572,7 @@ try {
     check('서바이벌 — 포켓몬센터 문으로 들어간다 (맵 452)', pc !== null, pc ?? (await now()))
     await page.screenshot({ path: `${OUT}/zones-survival-${String(cur.rep)}.png` })
 
-    // 리조트에어리어 (457)
+    // 리조트에리어 (457)
     await warp('resort', null, null, null, 0, { postGame: true, nationalDex: true })
     await clear(10)
     const r0 = await now()
@@ -1663,7 +1663,7 @@ try {
     const V = [16542]
     const F = [293, 231, 470, 214, 477, 288]
     const P = () => probe(V, F, [])
-    // 방3 입장 조건 중 이야기 쪽은 찬미 체포 장면이 세운다 (`charon` 케이스가 그 장면을 잰다): 214 · 상태 1 · 벅 숨김 해제(470)
+    // 방3 입장 조건 중 이야기 쪽은 플루토 체포 장면이 세운다 (`charon` 케이스가 그 장면을 잰다): 214 · 상태 1 · 벅 숨김 해제(470)
     await setFlags([214, 475, 476, 478, 560, 561, 562, 563], [293, 231, 470, 288, 477])
     // ⓪ 음성 — 벅과 말하기 전(293 꺼짐)에는 히드런이 안 선다
     await warp('siwon', 265, 7, 16, Math.PI, { postGame: true, nationalDex: true, story: [[16542, 1]] })
