@@ -743,6 +743,18 @@ export async function coronetToSnowpoint(api, ctx,
     { keep: keepAllButWeakest((await api.partyState()) ?? [], BIDOOF_LINE) })
   note('비전머신04 괴력', out.strength.ok ? `${String(out.strength.learner ?? '?')}번이 배웠다${out.strength.fallback ? ' (대신)' : ''} · 잊은 것 ${JSON.stringify(out.strength.lost ?? [])}` : String(out.strength.why))
 
+  // ①-2 사탕 — 무청 앞 값을 **길에 나서기 전에** 맞춘다.
+  // ⚠️ 실측(2026-10-14~15 최종 연쇄 칸 7 · 네 판 중 넷): 217번도로(385) 트레이너에게 져서 봉신 센터(443)로 돌아왔다. 사탕을 선단
+  // 센터에서만 먹이던 때라 그 길은 운하 값(52/50/50)으로 걸었다. 한 번 지면 큰바위 앞까지 되돌아가 25분쯤 더 든다
+  if (ctx.candyUp) {
+    const early = [
+      { what: '선두', ...await ctx.candyUp(0, null, levels.lead) },
+      { what: '찌르호크', ...await ctx.candyUp(null, STARLY_LINE, levels.bird) },
+      { what: '비버통', ...await ctx.candyUp(null, BIDOOF_LINE, levels.third) },
+    ]
+    note('천관산 앞 사탕', JSON.stringify(early.map((c) => `${c.what} ${c.ran ? `${String(c.fed)}알 → ${c.to ?? `L${String(c.level)}`}` : String(c.why)}`)))
+  }
+
   // ② 봉신으로 날아 211번도로 동 → 천관산 1F 북 방1 — 큰바위를 민다
   // 선단에서 이어 받은 판(`probe-snowpoint`)은 길을 건너뛰고 ③만 한다
   /**
