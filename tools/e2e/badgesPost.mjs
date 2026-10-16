@@ -9,6 +9,7 @@
 // 까닭과 함께 적고 멈춘다 — 통과로 접지 않는다
 import { boardWarp } from './badges.mjs'
 import { MAP as LEAGUE_MAP, eliteFour } from './badgesLeague.mjs'
+import { sprayBest } from './badges67.mjs'
 
 /** 맵 번호 (`generated/map_headers.txt` 줄 − 1) */
 export const MAP = {
@@ -306,12 +307,42 @@ export async function battleZone(api, ctx, page) {
     return done()
   }
 
-  const chain = [ZONE.fight, ZONE.gate225, ZONE.route225, ZONE.survival, ZONE.route226, ZONE.gate228, ZONE.route228, ZONE.route229, ZONE.resort]
-  const here = (await api.now()).map
-  for (const m of chain.slice(Math.max(0, chain.indexOf(here)) + 1)) {
-    const went = await api.goTo(m, Math.min(900_000, api.left()))
-    note(`배틀존 — 맵 ${String(m)}`, went)
-    if (went !== 'arrived') break
+  /**
+   * **서바이벌까지는 225번도로로 걷고, 리조트는 파이트에어리어에서 230번도로(파도타기)로 간다.**
+   *
+   * ⚠️ 226 → 228 → 229로 이어 걷지 않는다 — 228번도로에는 북쪽으로 오르는 모래 비탈(행동 0xd9)이 있고, 하네스의 자전거는 3단이라
+   * 비탈을 못 오른다(`route.slopeClimbBan` 머리 주석 — 사람은 B로 4단에 놓고 도움닫기한다). 실측(2026-10-16 진단 1~3판): 228번도로
+   * 남쪽 (791,394)까지 갔다가 되돌아 비탈을 내려선 주머니 (785,343)에 갇혔고, 거기서는 비탈 오르기 말고 나가는 길이 없어 걷기로도
+   * 자전거로도 「unreachable」이었다. 230번도로 막음(깃발 660)은 태그 배틀 뒤 이미 풀렸다
+   */
+  const sprayed = await sprayBest(api)
+  note('스프레이', sprayed.ok ? `뿌렸다 (남은 것 ${String(sprayed.left)})` : String(sprayed.why))
+  const walkTo = async (m, what) => {
+    let went = ''
+    for (let t = 0; t < 3 && went !== 'arrived' && api.left() > 0; t++) {
+      if ((await api.now()).map === m) { went = 'arrived'; break }
+      went = await api.goTo(m, Math.min(1_200_000, api.left()))
+      note(`${what}${t > 0 ? ` (다시 ${String(t)})` : ''}`, `${went} · 칸 ${JSON.stringify(await api.now().then((n) => [n.map, n.x, n.z]))}`)
+      if (went !== 'arrived') {
+        const again = await sprayBest(api)
+        if (again.ok) note('스프레이', `다시 뿌렸다 (남은 것 ${String(again.left)})`)
+      }
+    }
+    return went
+  }
+  const toSurvival = [ZONE.fight, ZONE.gate225, ZONE.route225, ZONE.survival]
+  const pastSurvival = [ZONE.survival, ZONE.route226, ZONE.gate228, ZONE.route228, ZONE.route229, ZONE.resort]
+  if (!pastSurvival.includes((await api.now()).map)) {
+    const here = (await api.now()).map
+    for (const m of toSurvival.slice(Math.max(0, toSurvival.indexOf(here)) + 1)) {
+      if (await walkTo(m, `배틀존 — 맵 ${String(m)}`) !== 'arrived') return done()
+    }
+  }
+  out.survival = true
+  if ((await api.now()).map !== ZONE.resort) {
+    const fly = await api.flyTo(ZONE.fight, Math.min(180_000, api.left()))
+    note('공중날기 → 파이트에어리어', fly.ok ? '닿았다' : String(fly.why))
+    await walkTo(ZONE.resort, '230번도로 → 리조트에어리어')
   }
   out.ok = (await api.now()).map === ZONE.resort
   return done()
