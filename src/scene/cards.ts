@@ -61,6 +61,64 @@ const MAX_GRID = 128
  */
 const UPRIGHT = 0.20
 
+/**
+ * **두께가 아니라 몸통이 있어야 하는 판** — 그림 이름별 깊이 (판자가 아니라 덩어리인 것).
+ *
+ * 1텍셀 테두리는 울타리 널판에는 맞는 두께지만, 원작이 그림 한 장으로 세운 **덩어리**(조각상 · 기둥 · 서 있는 해골몽)에
+ * 두르면 「테두리 두른 종이」가 된다 — 옆에서 보면 여전히 판자다. 이런 그림은 실루엣을 **뒤로** 밀어 몸통을 만들고
+ * 뒷면을 막는다(`shellPart`의 `body`). 앞면은 원작 판 그대로라 고정 카메라 · 3인칭에서는 원작과 같은 그림이다.
+ *
+ * 깊이는 그 판 **자신의 눈금**에서 나온다: 깊이 = `ratio` × 판의 좁은 쪽 길이(타일). 좁은 쪽은 축마다 「UV 한 바퀴까지의
+ * 길이」라, 해골몽 열 마리를 한 장에 반복한 줄(u 0~10)도 한 마리 폭(1타일)으로 잰다.
+ *
+ * ⚠️ **뒤로만 민다.** 앞으로 밀면 원작이 판 바로 앞(1텍셀)에 겹쳐 둔 것을 삼킨다 — 해골몽 눈 판 `yomawaru.1`이 몸 판
+ * 앞 0.0625타일에 선다(행렬 224 · 청크 232 실측). 뒤쪽은 원작이 눕혀 둔 쪽(`LEAN_BACK`)이고, 안 눕힌 판은 앞면 법선의 반대다
+ * (`shellPart`의 `body`).
+ *
+ * 그림은 D32 · 연고 체육관 · 프런티어 방을 화면과 텍셀로 보고 골랐다 (`.audit/cloth-20261016`). 벽에 붙은
+ * 그림(`ginga2` 로고 · `azt_win02` 창 · `wtk_mc07` 기계 · `m_bf04_mado*` 창)과 이미 판 여럿으로 상자를 이룬 것
+ * (`bf_mini1` 축소 모형 · `bf_ueki02` 산울타리 앞면)은 **안 넣는다** — 그것들은 원래 얇거나 이미 입체다
+ */
+interface SolidCard {
+  /** 깊이 ÷ 판의 좁은 쪽 길이 */
+  ratio: number
+  /**
+   * 누운 판도 받는다 — 오려 내지 않은 **불투명 판**이라 땅으로 잘못 걸릴 일이 없는 것만.
+   * `bf_hata01`의 가로대가 53°로 기운 띠다
+   */
+  anyLean?: boolean
+}
+
+const SOLID_CARDS: ReadonlyMap<string, SolidCard> = new Map([
+  /**
+   * 연고 체육관 해골몽 — 16텍셀 폭 그림 한 장이 한 마리이고, 방마다 줄지어 13,236삼각형어치 선다. 몸이 둥글어 폭의
+   * 절반(8텍셀 · 0.5타일)을 준다. 줄 사이가 1타일이라(z −9.957 · −10.957 · −11.957) 뒷줄에 안 닿는다
+   */
+  ['gm05_yomawaru', { ratio: 0.5 }],
+  /**
+   * D32 광장 조각상 — 45텍셀 폭(2.62타일)의 기념상과 몬스터볼 받침. 받침(같은 그림의 불투명 칸)은 이미 상자라
+   * 누운 판은 안 받는다. 폭의 ⅓ — 0.87타일이면 판이 아니라 돌덩이로 읽히고 받침(1.5타일 깊이) 안에 든다
+   */
+  ['bf_zou', { ratio: 1 / 3 }],
+  /**
+   * D32 깃대 — 불투명 띠 한 장(폭 0.25타일 · 높이 5.5타일)이 **한쪽 면만** 그려져 뒤에서는 사라졌다. 깃발만 허공에
+   * 떠 보이던 까닭이다. 폭만큼 깊이를 준다(네모 기둥) — 가로대(53°)도 같은 그림이다
+   */
+  ['bf_hata01', { ratio: 1, anyLean: true }],
+  /** 프런티어 방 말뚝 — 16×32 그림이 둥근 기둥 앞모습이다. 폭만큼 */
+  ['bs_pole', { ratio: 1 }],
+  /**
+   * 들판 체육관 링 줄 — 16×16 그림이 4텍셀 줄 셋(사이 2텍셀 빈칸)이고, 그 한 장을 5.25타일 폭 · 1타일 높이로 늘였다.
+   * 1텍셀 두께를 가로 눈금으로 재면 0.33타일이라 줄(높이 0.25타일)보다 두꺼운 널이 됐다. 줄 높이만큼(높이의 ¼)
+   */
+  ['gym07rope', { ratio: 0.25 }],
+])
+
+/** 이 그림이 몸통을 얻는 판인가 (`SOLID_CARDS`). 오려 내지 않은 판이면 재질을 양면으로 만들어야 한다 */
+export function isSolidCard(tex: string | null | undefined): boolean {
+  return tex != null && SOLID_CARDS.has(tex)
+}
+
 /** 판 하나의 UV → 3D 아핀 변환. 축마다 `p = a·u + b·v + c` */
 interface Affine {
   a: [number, number, number]
@@ -111,8 +169,8 @@ export function fitAffine(
 const at = (f: Affine, u: number, v: number, axis: number): number =>
   f.a[axis]! * u + f.b[axis]! * v + f.c[axis]!
 
-/** `rep` 비트대로 텍셀 좌표를 감는다. 0=클램프 · 1=반복 · 5=거울 반복 */
-function wrapTexel(t: number, size: number, repeat: boolean, mirror: boolean): number {
+/** `rep` 비트대로 텍셀 좌표를 감는다. 0=클램프 · 1=반복 · 5=거울 반복 (천도 쓴다 — `cloth.ts`) */
+export function wrapTexel(t: number, size: number, repeat: boolean, mirror: boolean): number {
   if (!repeat) return Math.min(size - 1, Math.max(0, t))
   const m = ((t % size) + size) % size
   if (!mirror) return m
@@ -130,6 +188,11 @@ function shellPart(
   verts: readonly number[], pos: ArrayLike<number>, uv: ArrayLike<number>,
   sheet: TexSheet, item: { x: number, y: number, w: number, h: number }, rep: number,
   out: { position: number[], uv: number[] },
+  /**
+   * 몸통을 줄 판이면 (`SOLID_CARDS`) — 깊이 비율과 **뒤쪽**(수평 단위 벡터 또는 null이면 `front`의 반대),
+   * 뒷면을 막을 원본 삼각형(정점 번호 셋씩)
+   */
+  body?: { ratio: number, back: readonly [number, number] | null, front: readonly [number, number, number], tris: readonly number[] },
 ): void {
   const f = fitAffine(verts, pos, uv)
   if (!f) return
@@ -169,6 +232,22 @@ function shellPart(
   const texel = Math.hypot(f.a[0]!, f.a[1]!, f.a[2]!) / item.w
   const half = (texel * SHELL_TEXELS) / 2
   const hx = (nx / nl) * half, hy = (ny / nl) * half, hz = (nz / nl) * half
+  /** 옆면 앞 끝(s = 1)과 뒤 끝(s = −1)의 밀림 */
+  let front: [number, number, number] = [hx, hy, hz]
+  let back: [number, number, number] = [-hx, -hy, -hz]
+  if (body) {
+    // 좁은 쪽 길이 — 축마다 UV 한 바퀴까지만 센다(반복한 줄은 한 마리 폭)
+    const along = (span: number, axis: Affine['a']) => Math.min(span, 1) * Math.hypot(axis[0], axis[1], axis[2])
+    const depth = body.ratio * Math.min(along(u1 - u0, f.a), along(v1 - v0, f.b))
+    // 뒤쪽 — 원작이 눕혀 둔 쪽, 없으면 앞면의 반대
+    const side = body.back === null
+      ? -Math.sign(nx * body.front[0] + ny * body.front[1] + nz * body.front[2])
+      : Math.sign(nx * body.back[0] + nz * body.back[1])
+    const k = (side === 0 ? -1 : side) * depth / nl
+    // 앞은 원작 판 그대로(0) — 판 바로 앞에 겹친 그림(해골몽 눈)을 안 삼킨다
+    front = [0, 0, 0]
+    back = [nx * k, ny * k, nz * k]
+  }
 
   /** 격자 좌표 → uv */
   const uAt = (i: number) => (tx0 + i * stepX) / item.w
@@ -179,9 +258,10 @@ function shellPart(
 
   /** 옆면 한 장. 두 끝점을 앞뒤로 벌려 사각형으로 만든다 */
   const wall = (ua: number, va: number, ub: number, vb: number, tu: number, tv: number): void => {
-    const p = (u: number, v: number, s: number): [number, number, number] => [
-      at(f, u, v, 0) + hx * s, at(f, u, v, 1) + hy * s, at(f, u, v, 2) + hz * s,
-    ]
+    const p = (u: number, v: number, s: number): [number, number, number] => {
+      const o = s > 0 ? front : back
+      return [at(f, u, v, 0) + o[0], at(f, u, v, 1) + o[1], at(f, u, v, 2) + o[2]]
+    }
     const q = [p(ua, va, 1), p(ub, vb, 1), p(ub, vb, -1), p(ua, va, -1)]
     for (const k of [0, 1, 2, 0, 2, 3]) {
       out.position.push(...q[k]!)
@@ -189,6 +269,12 @@ function shellPart(
     }
   }
 
+  /**
+   * 옆면 색을 어느 텍셀에서 집나. 판때기는 **가장자리 텍셀**(1텍셀 두께라 테두리 색 그대로가 맞다), 몸통은 **한 칸 안쪽** —
+   * 원작 그림은 실루엣을 짙은 윤곽선 한 줄로 두르는데(해골몽 `#4a4a4a` — 안쪽 두건이 `#7b7b6b`), 0.5타일 깊이의 옆면을 그 색으로 칠하면 옆에서
+   * 본 몸이 통째로 검은 덩이가 된다. 안쪽 텍셀(두건 · 돌 색)이 몸의 색이다. 안쪽도 비었으면(1텍셀 가는 줄) 가장자리 그대로
+   */
+  const inward = (filled: boolean, side: number): number => (body !== undefined && filled ? -side : 0)
   // 세로 경계 — 왼쪽·오른쪽. 같은 열에서 이어지는 것은 한 판으로 합친다
   for (const side of [-1, 1]) {
     for (let i = 0; i < gw; i++) {
@@ -198,7 +284,8 @@ function shellPart(
         if (edge && from < 0) from = j
         if (!edge && from >= 0) {
           const u = uAt(side < 0 ? i : i + 1)
-          wall(u, vAt(from), u, vAt(j), uAt(i + 0.5), vAt((from + j) / 2))
+          const step = inward(solidAt(i - side, Math.floor((from + j) / 2)), side)
+          wall(u, vAt(from), u, vAt(j), uAt(i + 0.5 + step), vAt((from + j) / 2))
           from = -1
         }
       }
@@ -213,10 +300,18 @@ function shellPart(
         if (edge && from < 0) from = i
         if (!edge && from >= 0) {
           const v = vAt(side < 0 ? j : j + 1)
-          wall(uAt(from), v, uAt(i), v, uAt((from + i) / 2), vAt(j + 0.5))
+          const step = inward(solidAt(Math.floor((from + i) / 2), j - side), side)
+          wall(uAt(from), v, uAt(i), v, uAt((from + i) / 2), vAt(j + 0.5 + step))
           from = -1
         }
       }
+    }
+  }
+  // 몸통이면 뒷면을 막는다 — 원작 판을 뒤 끝으로 옮긴 사본. 그림 · 알파가 같아 실루엣이 옆면과 맞물린다
+  if (body) {
+    for (const i of body.tris) {
+      out.position.push(pos[i * 3]! + back[0], pos[i * 3 + 1]! + back[1], pos[i * 3 + 2]! + back[2])
+      out.uv.push(uv[i * 2]!, uv[i * 2 + 1]!)
     }
   }
 }
@@ -257,9 +352,11 @@ export function cardShells(
   let leaning = false
 
   mesh.groups.forEach(([, start, count], group) => {
-    if (cutout[group] !== true) return
-    if (isFoliage(mesh, group, cutout) || isBakedShadow(mesh, group)) return
     const spec = mesh.materials[group]!
+    const solid = SOLID_CARDS.get(spec.tex ?? '')
+    // 몸통을 줄 판은 오려 내지 않은 것도 받는다 (`bf_hata01` 깃대)
+    if (cutout[group] !== true && solid === undefined) return
+    if (isFoliage(mesh, group, cutout) || isBakedShadow(mesh, group)) return
     const item = sheet.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
     if (!item) return
 
@@ -295,13 +392,14 @@ export function cardShells(
       join(index[start + t]!, index[start + t + 2]!)
     }
     /** 덩이마다 정점과 면적 가중 법선. 누워 있는 것을 여기서 가른다 */
-    const byRoot = new Map<number, { verts: Set<number>, n: [number, number, number] }>()
+    const byRoot = new Map<number, { verts: Set<number>, tris: number[], n: [number, number, number] }>()
     for (let t = 0; t < count; t += 3) {
       if (lump(t)) continue
       const a = index[start + t]!, b = index[start + t + 1]!, c = index[start + t + 2]!
       const root = find(a)
       let part = byRoot.get(root)
-      if (!part) { part = { verts: new Set(), n: [0, 0, 0] }; byRoot.set(root, part) }
+      if (!part) { part = { verts: new Set(), tris: [], n: [0, 0, 0] }; byRoot.set(root, part) }
+      part.tris.push(a, b, c)
       const ax = position[a * 3]!, ay = position[a * 3 + 1]!, az = position[a * 3 + 2]!
       const ux = position[b * 3]! - ax, uy = position[b * 3 + 1]! - ay, uz = position[b * 3 + 2]! - az
       const vx = position[c * 3]! - ax, vy = position[c * 3 + 1]! - ay, vz = position[c * 3 + 2]! - az
@@ -317,12 +415,18 @@ export function cardShells(
       const len = Math.hypot(...part.n)
       if (len < 1e-9) continue
       // 누워 있으면 판때기가 아니라 지형이다
-      if (Math.abs(part.n[1]) / len >= UPRIGHT) continue
+      if (Math.abs(part.n[1]) / len >= UPRIGHT && solid?.anyLean !== true) continue
       const verts = [...part.verts]
       const before = into.position.length / 3
-      shellPart(verts, position, uv, sheet, item, spec.rep, into)
-      // 판의 경첩을 옆면 정점마다 물려준다. 세운 판이 아니면 0(안 눕힌다)이다
+      // 판의 경첩. 세운 판이 아니면 0(안 눕힌다)이다
       const own = rig == null ? undefined : verts.find((i) => (rig.hinge[i * 4 + 3] ?? 0) > 0)
+      shellPart(verts, position, uv, sheet, item, spec.rep, into, solid === undefined ? undefined : {
+        ratio: solid.ratio,
+        back: own === undefined ? null : [rig!.back[own * 2]!, rig!.back[own * 2 + 1]!],
+        front: [part.n[0] / len, part.n[1] / len, part.n[2] / len],
+        tris: part.tris,
+      })
+      // 판의 경첩을 옆면 정점마다 물려준다
       for (let k = before; k < into.position.length / 3; k++) {
         if (own === undefined) { intoHinge.push(0, 0, 0, 0); intoBack.push(0, 0); continue }
         leaning = true

@@ -8,7 +8,7 @@ export type SourceKind = 'chunk' | 'prop' | 'fldeff' | 'npc-gfx'
 /** 조각이 무엇인가. 검수 전에는 확정하지 않는다 */
 type Semantic =
   | 'tree' | 'rock' | 'planter' | 'shrub' | 'fence' | 'bollard' | 'rail' | 'sign'
-  | 'building' | 'wall' | 'ground' | 'grass' | 'flower' | 'water' | 'decal' | 'stairs' | 'seat' | 'other'
+  | 'building' | 'wall' | 'ground' | 'grass' | 'flower' | 'water' | 'decal' | 'stairs' | 'seat' | 'flag' | 'other'
 
 /**
  * 원본을 어떻게 다루나.
@@ -104,6 +104,11 @@ type GeometryKind =
    * 원작은 3/4 각도로 그린 그림 한 장을 바닥에 깔았다 (`visual/seats.propSeat`)
    */
   | 'cushion' | 'stool'
+  /**
+   * 깃발 판을 **펄럭이는 천**으로 — 판 한 장을 잘게 나눠 매인 변(깃대 쪽)은 묶어 두고 끝자락을 셰이더가 흔든다
+   * (`cloth.clothPanel` · `clothMaterial`)
+   */
+  | 'cloth'
 
 type MaterialProfile = 'rom-lit' | 'cutout-lit' | 'decal-unlit' | 'water'
 

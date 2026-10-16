@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useFrame } from '@react-three/fiber'
 import {
-  ClampToEdgeWrapping, DataTexture, DoubleSide, MeshBasicMaterial, NearestFilter,
+  ClampToEdgeWrapping, Color, DataTexture, DoubleSide, MeshBasicMaterial, NearestFilter,
   SRGBColorSpace, Vector3,
   type BufferAttribute, type BufferGeometry, type Material, type Texture,
 } from 'three'
@@ -35,7 +35,7 @@ import { Grass, grassSpots, type GrassField } from './Grass'
 import { isTuftTile } from '../engine/battle/encounter'
 import { Water, waterField, type WaterField } from './Water'
 import { shellPaint, shellPlates, wallSource, wallStrip } from './shell'
-import { cardShells, type CardShells } from './cards'
+import { cardShells, isSolidCard, type CardShells } from './cards'
 import { floorRegions, floorTiles, roomWalls, type RoomWalls } from './roomWalls'
 import { isOutdoors, mapById, warpsOf, world } from '../engine/map/world'
 import { markTerrain, openTerrainRequest, traceTerrain } from './terrainMark'
@@ -59,6 +59,9 @@ import { ShipDrift } from './ShipDrift'
 import { isShipProp } from '../engine/world/boatCutscene'
 import { loadPropAnimSet } from './propAnim'
 import { ALWAYS_ASYNC } from './asyncPipelines'
+import { clothGeometry } from './cloth'
+import { clothMaterial } from './clothMaterial'
+import type { PlannedCloth } from './visual/chunkPlan'
 
 /** 한 청크가 몇 타일인가. 모델이 그 절반씩 양쪽으로 뻗는다 */
 const CHUNK_TILES = 32
@@ -189,6 +192,13 @@ interface Land extends Placed {
   merged: BufferGeometry | null
   /** 원작이 안 만든 실내 앞벽. 출입구만 비우고 세운다 (`roomWalls.ts`) */
   room: RoomWalls | null
+  /**
+   * 천으로 다시 건 깃발 — 서브메시(그림)마다 하나 (`cloth.ts` · `clothMaterial`).
+   *
+   * 지형에 안 합친다: 재질이 다르다(정점을 셰이더가 흔든다). 기하는 청크 보관함 것이라 안 버리고(`clothChunkCache`),
+   * 재질은 이 배치의 보관함에 들어 배치와 함께 간다
+   */
+  cloth: { key: string, geometry: BufferGeometry, material: Material }[]
 }
 
 /**
@@ -479,6 +489,24 @@ function cachedCrossChunk(
   return made
 }
 
+/**
+ * 청크의 천 기하 — 서브메시마다 하나. `crossChunkCache`와 같은 까닭으로 **안 버린다**: 청크 · 묶음 · 계획이 같으면
+ * 늘 같은 천이고, 배치마다 다시 지으면 청크를 넘을 때마다 매인 변을 다시 잰다
+ */
+const clothChunkCache = new Map<string, { group: number, geometry: BufferGeometry }[]>()
+
+function cachedCloth(key: string, cloths: readonly PlannedCloth[]): { group: number, geometry: BufferGeometry }[] {
+  const hit = clothChunkCache.get(key)
+  if (hit !== undefined) return hit
+  const groups = [...new Set(cloths.map((c) => c.group))]
+  const made = groups.flatMap((group) => {
+    const geometry = clothGeometry(cloths.filter((c) => c.group === group).map((c) => c.panel))
+    return geometry === null ? [] : [{ group, geometry }]
+  })
+  clothChunkCache.set(key, made)
+  return made
+}
+
 function cachedFloors(
   key: string, mesh: ChunkMesh, split: ReturnType<typeof cachedSplit>,
 ): FloorSource {
@@ -554,6 +582,8 @@ interface Piece {
   set: number
   /** 새 표현 계획. 레시피가 없는 청크는 null (`visual/chunkPlan`) */
   visual: ReturnType<typeof planChunk>
+  /** 이 청크가 거는 천 (`cachedCloth`) */
+  cloth: { group: number, geometry: BufferGeometry }[]
 }
 
 /**
@@ -1113,6 +1143,7 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet, ds
             sheet: pSheet,
             set: pSet,
             visual: vp,
+            cloth: vp === null || vp.cloths.length === 0 ? [] : cachedCloth(key, vp.cloths),
           }
         })
         /**
@@ -1270,7 +1301,9 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet, ds
               petals.push(site.x + originX + jx, site.y + 0.02, site.z + originZ + jz)
             }
           }
-          const materials = materialsFor(mesh, p.sheet, cache, p.cutout, p.set, lend)
+          // 몸통을 얻는 불투명 판(`cards.SOLID_CARDS` — 깃대)도 양면이다. 옆면 · 뒷면이 같은 재질이라 감는 방향을 안 탄다
+          const materials = materialsFor(
+            mesh, p.sheet, cache, p.cutout.map((c, g) => c || isSolidCard(mesh.materials[g]?.tex)), p.set, lend)
           // 깔 땅이 제 청크에 없으면 이웃에서 빌려 온다. 재질은 이 배열 뒤에 붙는다.
           //
           // ⚠️ **물·턱만 있는 청크도 "없는 것"으로 친다** (`plates.floorSource`).
@@ -1327,6 +1360,20 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet, ds
             // 받기만 한다 — 합치면 안 보이는 앞벽이 방 안에 그림자를 드리운다
             merged: mergeByMaterial(
               [split.geometry, floor?.geometry, p.shells?.geometry, p.cross], materials),
+            cloth: p.cloth.map(({ group, geometry }) => {
+              // 그림은 원작 판 재질의 것을 나눠 쓴다 — 같은 재질이면 천 재질도 하나다(이 배치의 보관함)
+              const from = materials[group]!
+              const ck = `천/${from.uuid}`
+              let material = cache.get(ck)
+              if (material === undefined) {
+                const tint = (from as Material & { color?: Color }).color?.clone() ?? new Color(1, 1, 1)
+                const shade = p.visual?.cloths.find((c) => c.group === group)?.panel.tint
+                if (shade) tint.multiply(new Color(shade[0], shade[1], shade[2]))
+                material = clothMaterial((from as Material & { map?: Texture | null }).map ?? null, tint, from.name)
+                cache.set(ck, material)
+              }
+              return { key: `${String(group)}`, geometry, material }
+            }),
           }
           // ⚠️ **만들자마자 적는다** (§6). 다음 조각에서 터지면 여기까지가
           // 이 건이 만든 것이고, 놓는 자는 실패 경계다
@@ -1687,6 +1734,10 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet, ds
             <mesh name="방 벽" geometry={p.room.geometry} material={p.materials} receiveShadow />
           )}
           {kept !== null && kept.textures.size > 0 && <KeptLand land={p} kept={kept} />}
+          {/* 깃발 — 원작 판 대신 펄럭이는 천 (`cloth.ts`). 판을 걷은 자리라 BDSP가 쥔 맵에서는 안 건다 */}
+          {!dsHidden && p.cloth.map((c) => (
+            <mesh key={c.key} name="천" geometry={c.geometry} material={c.material} castShadow receiveShadow />
+          ))}
         </group>
       ))}
       {/*

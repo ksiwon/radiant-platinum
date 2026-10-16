@@ -9,6 +9,7 @@
 // 땅과 같은 `setState` 묶음으로 `Planters`에 넘긴다. 그래서 여기서 곧바로 `ready`로
 // 적는다 — 색을 못 꺼내면 그 조각만 `failed`로 현행 표현에 돌려보낸다.
 import type { ChunkMesh, TexSheet } from '../chunkMesh'
+import { clothPanel, type ClothPanel } from '../cloth'
 import type { PlanterGroup, PlanterSite } from './Planters'
 import { PLANTER_FILL } from './planter'
 import { markFailed, markReady, planOf, resolveParts, type RecipeMode } from './resolve'
@@ -45,10 +46,18 @@ export function planterGroupOf(one: Planned): PlanterGroup {
         : { ...base, kind: 'planter', swatch: one.swatch }
 }
 
+/** 천으로 다시 건 깃발 한 폭 — 그 판의 서브메시(재질 칸)와 함께 (`cloth.clothPanel`) */
+export interface PlannedCloth {
+  group: number
+  panel: ClothPanel
+}
+
 interface ChunkPlan {
   plan: ResolvedVisualPlan
   /** 이 청크가 세울 화분·덤불 — 무리 열쇠마다 */
   planters: Planned[]
+  /** 이 청크가 천으로 거는 깃발 */
+  cloths: PlannedCloth[]
 }
 
 type Item = TexSheet['items'][number]
@@ -150,11 +159,23 @@ export function planChunk(
   const byId = new Map(parts.map((p) => [p.componentId, p]))
   const recipeOf = new Map(recipes.map((r) => [r.id, r]))
   const planters: ChunkPlan['planters'] = []
+  const cloths: PlannedCloth[] = []
   const settled: PartDecision[] = decisions.map((d) => {
     if (d.status !== 'pending') return d
     const part = byId.get(d.componentId)!
     const recipe = recipeOf.get(d.recipeId ?? '')
     const kind = recipe?.geometry
+    if (kind === 'cloth') {
+      // 매인 변은 **청크 전체**에서 잰다 — 깃대·가로대는 레시피가 안 보는 서브메시다(`arrays.groups`는 그 칸을 비워 둔다)
+      const item = itemOf(sheet, part.source.tex, part.source.pal)
+      const panel = item === null || arrays.uv === undefined ? null : clothPanel(
+        { index: arrays.index, position: arrays.position, groups: mesh.groups },
+        arrays.uv, geometry.getAttribute('color')?.array, part.triangleOffsets, part.group,
+        sheet, item, part.source.rep)
+      if (panel === null) return markFailed(d, '매인 변을 못 찾았다 — 곧은 변 가까이에 깃대가 없다')
+      cloths.push({ group: part.group, panel })
+      return markReady(d)
+    }
     const line2 = kind === 'bollard-chain' ? 'chain' : kind === 'bollard-grass' ? 'grass' : null
     if (recipe === undefined
       || (kind !== 'planter' && kind !== 'shrub' && kind !== 'fence' && line2 === null)) {
@@ -199,7 +220,7 @@ export function planChunk(
     }
     return markReady(d)
   })
-  return { plan: planOf(settled), planters }
+  return { plan: planOf(settled), planters, cloths }
 }
 
 /**

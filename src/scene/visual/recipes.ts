@@ -499,10 +499,38 @@ const SEATS: readonly VisualRecipe[] = [
   },
 ]
 
+/**
+ * **배틀프런티어 현수막** (`bf_hata02.1` · D32 바깥 열두 장 · `cloth.clothPanel`).
+ *
+ * 32×32 그림 한 장이 파란 현수막이다 — 위 · 양옆이 곧고 아래가 제비꼬리(불투명 26×29텍셀). 원작은 **수직 판**으로
+ * 가로대(`bf_hata01` y 11.5~11.75) 밑에 매달아 두었다(판 법선 y 0 · 열두 장 다). 1텍셀 테두리를 두른 판자로 서던 것이
+ * 감사 사진의 「남쪽 파란 깃발」이다.
+ *
+ * 판을 걷고 **같은 그림 · 같은 UV의 천**을 건다 — 매인 변(위)은 가로대에 묶이고 끝자락이 셰이더로 펄럭인다.
+ * 서 있는 판만 맡는다(`leanDeg` 0~0.5) — 원작이 눕혀 둔 깃발이 생기면 지문부터 다시 본다
+ */
+const BF_HATA_CLOTH: VisualRecipe = {
+  id: 'bf-hata02-cloth',
+  version: 1,
+  semantic: 'flag',
+  outcome: 'replace',
+  geometry: 'cloth',
+  materialProfile: 'cutout-lit',
+  anchor: 'source-local',
+  review: 'verified',
+  selectors: [{
+    kind: 'chunk', tex: 'bf_hata02.1', pal: 'bf_hata02.1_pl',
+    regionHashes: ['dfe87471'],
+    within: [0, 0, 32, 32],
+    leanDeg: [0, 0.5],
+  }],
+  provenance: '폭 · 길이 · 모양 · 색은 원본 판과 그림의 불투명 칸 그대로. 매인 변은 실측(곧은 변 × 가로대까지 거리). 펄럭임 진폭 · 빠르기는 초기값 (`clothMaterial`)',
+}
+
 export const VISUAL_RECIPES: readonly VisualRecipe[] = [
   IMPED_PLANTER, IMPED_PLANTER_SET0, IMPED_SHRUB, BF_UEKI_SHRUB, IMPED_FENCE,
   IMPED_BOLLARD_CHAIN, IMPED_BOLLARD_GRASS, PLANT01_CROSS, ...STANDING_PROPS,
-  ...STANDING_PROP_CARDS, HONEY_TREE, STAIR01_DOWN, ...SEATS,
+  ...STANDING_PROP_CARDS, HONEY_TREE, STAIR01_DOWN, ...SEATS, BF_HATA_CLOTH,
 ]
 
 /**

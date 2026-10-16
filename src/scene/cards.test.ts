@@ -156,6 +156,41 @@ describe('실루엣을 그대로 밀어낸다', () => {
     expect(shells.geometry.getAttribute('position').count / 3).toBe(8)
   })
 
+  it('몸통을 얻는 판은 **뒤로만** 밀고 뒷면을 막는다', () => {
+    // `bs_pole`은 몸통 판이다(비율 1). 1×1타일 판이라 깊이 1타일 — 앞면(z 0)은 원작 판 그대로, 뒤 끝이 z −1이다
+    const rows = ['.##.', '.##.', '.##.', '.##.']
+    const mesh = standingCard('bs_pole')
+    const shells = cardShells(mesh, [true], new Float32Array(
+      (mesh.geometry.getAttribute('position') as BufferAttribute).array), drawnSheet('bs_pole', rows))!
+    const pos = shells.geometry.getAttribute('position') as BufferAttribute
+    const zs = new Set<number>()
+    for (let i = 0; i < pos.count; i++) zs.add(Number(pos.getZ(i).toFixed(6)))
+    // 앞으로는 안 나온다 — 판 바로 앞에 겹친 그림(해골몽 눈)을 안 삼킨다
+    expect([...zs].sort((a, b) => a - b)).toEqual([-1, 0])
+    // 옆면 넷(기둥 좌·우·위·아래) = 삼각형 여덟 + 뒷면 막이(원작 판 삼각형 둘)
+    expect(pos.count / 3).toBe(10)
+    // 뒷면 막이는 원작 UV 그대로다 — 실루엣이 알파로 오려져 옆면과 맞물린다
+    const uv = shells.geometry.getAttribute('uv') as BufferAttribute
+    expect([uv.getX(pos.count - 1), uv.getY(pos.count - 1)]).toEqual([0, 1])
+  })
+
+  it('몸통의 옆면은 윤곽선이 아니라 한 칸 안쪽 색을 집는다', () => {
+    // 가운데 두 열이 몸, 그 양옆이 윤곽선인 그림 — 칸마다 색을 다르게 칠해 어느 텍셀을 집었는지 본다
+    const sheet = drawnSheet('bs_pole', ['####', '####', '####', '####'])
+    for (let x = 0; x < 4; x++) {
+      for (let y = 0; y < 4; y++) sheet.pixels[(y * 4 + x) * 4] = x === 0 || x === 3 || y === 0 || y === 3 ? 10 : 200
+    }
+    const mesh = standingCard('bs_pole')
+    const shells = cardShells(mesh, [true], new Float32Array(
+      (mesh.geometry.getAttribute('position') as BufferAttribute).array), sheet)!
+    const uv = shells.geometry.getAttribute('uv') as BufferAttribute
+    // 옆면 정점(뒷면 막이 6개 앞)의 UV는 전부 안쪽 칸(텍셀 1~2 = 0.25~0.75) 위다
+    for (let i = 0; i < uv.count - 6; i++) {
+      const tx = Math.floor(uv.getX(i) * 4), ty = Math.floor(uv.getY(i) * 4)
+      expect(tx >= 1 && tx <= 2 && ty >= 1 && ty <= 2, `${String(tx)},${String(ty)}`).toBe(true)
+    }
+  })
+
   it('잎과 구운 그림자에는 안 붙인다 — 저쪽은 입체로 다시 세우거나 걷어낸다', () => {
     for (const tex of ['tree01', 'tshadow']) {
       const mesh = standingCard(tex)
@@ -256,13 +291,20 @@ maybe('원작 자료', () => {
 
   it('방 안의 판때기도 두께를 얻는다 — 해골몽 판이 그 자리다', () => {
     const t = sweepInteriors()
-    // 방 청크 × 그림묶음 조합 전체. 그림 58장이 여기서 두께를 얻는다
-    expect(t.tris).toBe(91_620)
+    // 방 청크 × 그림묶음 조합 전체. 그림 59장이 여기서 두께를 얻는다.
+    //
+    // ⚠️ 91,620에서 482 늘었다 — 몸통을 얻는 판(`cards.SOLID_CARDS`)의 **뒷면 막이**와 새로 받는 깃대다:
+    // 해골몽 뒷면 164 · D32 깃대 `bf_hata01` 264(전엔 오려 낸 그림이 아니라 0) · 말뚝 `bs_pole` 30 ·
+    // 조각상 `bf_zou` 12 · 링 줄 `gym07rope` 12. 옆면 수는 그대로다 — 실루엣이 같고 깊이만 다르다
+    expect(t.tris).toBe(92_102)
     // **해골몽(ヨマワル)이다.** 연고시티 체육관 벽에 선 판이 `gm05_yomawaru`,
     // 굴에 선 것이 `yomawaru.1`이고 둘 다 오려 낸 그림 한 장이라 옆에서 보면
-    // 선으로 사라졌다. 두께가 붙는 것을 여기서 잰다
-    expect(t.byTexture.get('gm05_yomawaru')).toBe(16_596)
+    // 선으로 사라졌다. 두께가 붙는 것을 여기서 잰다.
+    // 몸 판은 이제 **몸통**이다(0.5타일 · 뒷면 막이 164 — 16,596에서) · 눈 판은 1텍셀 그대로다
+    expect(t.byTexture.get('gm05_yomawaru')).toBe(16_760)
     expect(t.byTexture.get('yomawaru.1')).toBe(3_264)
+    // D32 깃대 — 불투명 띠라 예전엔 옆면이 없었다(한쪽 면만 그려져 뒤에서 사라졌다). 열두 개가 네모 기둥이 된다
+    expect(t.byTexture.get('bf_hata01')).toBe(264)
     // 제일 많이 쓰는 것은 굴 벽면(`dun_sside`)이다
     expect(t.byTexture.get('dun_sside')).toBe(36_592)
   }, 900_000)
