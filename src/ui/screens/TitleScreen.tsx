@@ -428,7 +428,10 @@ function TitleMenu() {
       key: 'new',
       label: '시작',
       group: 'main',
-      go: () => { if (hasSave) askNew(); else go(true) },
+      // ⚠️ **리포트를 아직 읽는 중이면 아무 일도 안 한다.** 그 사이(`report === undefined`)에는 하던 것이 있는지 몰라
+      // 확인 창 없이 곧바로 지우는 갈래로 갔다 — 타이틀이 뜨자마자 누른 Enter가 리포트를 지웠다(실측 2026-10-17 · 칸 21
+      // 재대결 엔딩 뒤 다시 켜진 타이틀에서 연타가 새 모험으로 들어갔다). 커서는 읽은 뒤 「이어하기」로 옮겨진다
+      go: () => { if (report === undefined) return; if (hasSave) askNew(); else go(true) },
     },
     {
       key: 'continue',

@@ -261,3 +261,10 @@ describe('뜨는 창 자리', () => {
     expect(right.nibAt).toBeGreaterThan(400)
   })
 })
+
+describe('리포트를 읽기 전의 「시작」', () => {
+  it('하던 것이 있는지 모르는 동안에는 지우는 갈래로 안 간다 — 뜨자마자 누른 Enter가 리포트를 지웠다', () => {
+    // `report === undefined`면 아무 일도 안 하고, 읽은 뒤에야 확인 창(`askNew`) 또는 새 모험(`go(true)`)
+    expect(titleSource).toContain("go: () => { if (report === undefined) return; if (hasSave) askNew(); else go(true) },")
+  })
+})
