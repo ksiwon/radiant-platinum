@@ -9,7 +9,7 @@
 // 까닭과 함께 적고 멈춘다 — 통과로 접지 않는다
 import { boardWarp } from './badges.mjs'
 import { MAP as LEAGUE_MAP, eliteFour, victoryRoad } from './badgesLeague.mjs'
-import { sprayBest } from './badges67.mjs'
+import { snowpointSlide, sprayBest } from './badges67.mjs'
 import { gridOf, matrixOf, npcsOf, waterAt } from './route.mjs'
 import { solvePush } from './pushSolve.mjs'
 
@@ -1042,12 +1042,16 @@ export async function templeRegigigas(api, ctx, page) {
     }
   }
 
-  if (!v.awakened) {
+  // 이미 신전 안이면(앞 판이 거기서 멈췄다) 거기서 잇는다
+  const inTemple = [TEMPLE.f1, 279, 280, 281, 282, TEMPLE.b5].includes((await api.now()).map)
+  if (!v.awakened && !inTemple) {
     const fly = await api.flyTo(TEMPLE.snowpoint, Math.min(180_000, api.left()))
     note('공중날기 → 선단시티', fly.ok ? '닿았다' : String(fly.why))
     const heal = await api.healAt(TEMPLE.snowpointCenter, Math.min(300_000, api.left()))
     note('선단 센터 회복', heal.ok ? '나았다' : String(heal.why))
-    if ((v.snowpoint ?? 0) < 1) {
+  }
+  if (!v.awakened) {
+    if ((v.snowpoint ?? 0) < 1 && !inTemple) {
       await talkLog.start(page)
       // ⚠️ `stepOn`은 다른 맵에서 부르면 첫 바퀴에 「warped」로 돌아온다 — 센터에서 회복한 뒤라 먼저 선단시티로 나간다 (진단 1판)
       await api.goTo(TEMPLE.snowpoint, Math.min(300_000, api.left()))
@@ -1057,8 +1061,21 @@ export async function templeRegigigas(api, ctx, page) {
       note('신전 앞 (366,198) — 무청', `${went} · 상태 ${String(v.snowpoint)} · ${JSON.stringify((await talkLog.take(page)).slice(-3))}`)
       if ((v.snowpoint ?? 0) < 1) return done()
     }
-    for (const m of [TEMPLE.f1, 279, 280, 281, 282, TEMPLE.b5]) {
-      const went = await api.goTo(m, Math.min(900_000, api.left()))
+    /**
+     * ⚠️ **B2F 아래는 얼음 바닥이다** — 공용 길잡이는 미끄럼을 몰라 진단 2판에서 B2F(280)를 393번 나아가고도 계단에 못 닿았다.
+     * 길잡이가 못 가면 선단 체육관의 얼음 풀이(`badges67.snowpointSlide` — 제품의 얼음 규칙으로 푸는 `observe.snowpointPlan`)로
+     * 다음 층 계단 (14,3) 아래 칸까지 미끄러진 뒤 계단을 민다
+     */
+    const floors = [TEMPLE.f1, 279, 280, 281, 282, TEMPLE.b5]
+    const startAt = floors.indexOf((await api.now()).map)
+    for (const m of floors.slice(startAt + 1)) {
+      let went = await api.goTo(m, Math.min(300_000, api.left()))
+      const here = (await api.now()).map
+      if (went !== 'arrived' && floors.includes(here) && floors.indexOf(here) === floors.indexOf(m) - 1) {
+        const slid = await snowpointSlide(api, ctx, { goals: [[14, 4], [13, 3], [15, 3]], what: `맵 ${String(here)} 계단 앞` })
+        note(`신전 — 맵 ${String(here)} 얼음`, JSON.stringify({ ok: slid.ok, why: slid.why, moves: slid.moves?.length }))
+        if (slid.ok) went = await boardWarp(api, here, { x: 14, z: 3 }, Math.min(300_000, api.left()))
+      }
       note(`신전 — 맵 ${String(m)}`, went)
       if (went !== 'arrived') return done()
     }
