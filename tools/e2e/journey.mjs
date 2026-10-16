@@ -940,7 +940,17 @@ async function shot(name, { world = true } = {}) {
    * 그대로 남긴다
    */
   const readiness = world ? await waitTerrain(page, 20_000) : null
-  const png = await page.screenshot({ path: resolve(ROOT, `${head}.png`) })
+  /**
+   * ⚠️ **「Unable to capture screenshot」은 한 번 더 찍는다.** 칸이 막 열린 첫 컷에서 크롬이 가끔 이 프로토콜 오류를 낸다 —
+   * 게임은 멀쩡히 도는데 판 전체가 「검사가 끝까지 갔다」로 떨어졌다(2026-10-16 · 칸 11 · 칸 6 · 칸 14, 다시 돌리면 통과).
+   * 프레임 몇 장 뒤 다시 찍는다. 두 번째도 안 되면 그대로 던진다
+   */
+  const png = await page.screenshot({ path: resolve(ROOT, `${head}.png`) }).catch(async (e) => {
+    if (!/Unable to capture screenshot/.test(String(e?.message))) throw e
+    console.log(`      찍기 다시 — ${name} (첫 번째: Unable to capture screenshot)`)
+    await page.waitForTimeout(1000)
+    return page.screenshot({ path: resolve(ROOT, `${head}.png`) })
+  })
   const pix = statsOf(png)
   const one = {
     name, file: `${head}.png`, colors: pix.colors,
