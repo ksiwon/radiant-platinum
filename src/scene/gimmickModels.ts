@@ -7,6 +7,7 @@
 import { BufferGeometry, Mesh, type Material, type Object3D } from 'three'
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js'
 import { assets } from '../data/providers/assetProvider'
+import { GIMMICK_OPAQUE } from '../engine/world/gimmicks'
 
 const loader = new GLTFLoader()
 
@@ -67,7 +68,18 @@ export function gimmickPieces(gltf: GLTF, name: string): GimmickPiece[] {
     const geometry = (o.geometry as BufferGeometry).clone()
     geometry.applyMatrix4(o.matrixWorld)
     geometry.computeBoundingSphere()
-    out.push({ geometry, material: o.material as Material | Material[] })
+    let material = o.material as Material | Material[]
+    // 알파를 안 보는 재질 — 문턱을 끈 사본을 쓴다 (`GIMMICK_OPAQUE`)
+    if (GIMMICK_OPAQUE.has(name)) {
+      material = (Array.isArray(material) ? material : [material]).map((m) => {
+        const c = m.clone()
+        c.alphaTest = 0
+        c.transparent = false
+        return c
+      })
+      if (material.length === 1) material = material[0]!
+    }
+    out.push({ geometry, material })
   })
   pieces.set(name, out)
   return out

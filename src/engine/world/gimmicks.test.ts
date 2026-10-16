@@ -18,7 +18,7 @@ describe('기믹 번들 목록', () => {
     expect(list('GIMMICK_ANIMATED')).toEqual([...GIMMICK_ANIMATED])
   })
 
-  it('쓰임 다섯이 다 굽는 목록에 있다', () => {
+  it('쓰임 일곱이 다 굽는 목록에 있다', () => {
     expect(new Set(Object.values(GIMMICK_MODELS))).toEqual(new Set(gimmickNames()))
     expect(gimmickNames()).toEqual([...gimmickNames()].sort())
   })

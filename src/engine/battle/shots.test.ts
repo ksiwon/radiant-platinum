@@ -69,8 +69,11 @@ describe('카메라', () => {
 describe('볼이 열린 뒤의 구도 (I-p02-7 · I-p04-7)', () => {
   /** 대사창의 위 끝 (NDC) — 픽셀 높이가 고정이라 작은 창일수록 올라온다. 찍는 창 960×640에서 y 525 */
   const DIALOG_TOP = 1 - 2 * (525 / 640)
-  /** 몸 없이 무대만으로 정해지는 거리 배율들 — 실내 0.88부터 */
-  const FITS = [...new Set(ARENA.map((a) => cameraFit(a, 0)))]
+  /**
+   * 몸 없이 무대만으로 정해지는 거리 배율들. 무대 표는 이제 카메라 쪽 벽까지(`reach`)로 당겨서 실내도 1이다 —
+   * 반지름으로 당기던 때의 실내 0.88(가장 다가선 샷)도 같이 잰다
+   */
+  const FITS = [...new Set([...ARENA.map((a) => cameraFit(a, 0)), 5 / SHOT_REACH])]
 
   it('내 것의 발이 대사창 위에 선다 — 제일 다가선 실내 무대에서도', () => {
     expect(Math.min(...FITS)).toBeLessThan(0.9)

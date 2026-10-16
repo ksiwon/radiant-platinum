@@ -508,7 +508,7 @@ LOD: 근경은 3D crown, 중경은 ring/분기 수를 줄인 동일 실루엣 �
 
 `NpcSprites`에서 실제로 그리는 actor를 기준으로 목록화한다. `standingPeople`, `standingMons`, `standingBalls`, `ObjectProps`, 숨김/변장/열매 경로를 적용한 뒤의 결과를 센다.
 
-[확인] 지금 판때기로 남은 배치는 **22개**다(3D_GAP_AUDIT §3.1) — 갤럭시단아지트 문 10 · BDSP에 짝이 없는 말뚝 6 · 한 자리씩인 6. 바위깨기 바위 591 · 괴력 바위 50 · 풀베기 나무 49는 BDSP 기믹 모델(`gimmick/obj0001_00` · `obj0006_00` · `obj0002_00`)을 인스턴싱으로 세우고(`NpcSprites`), 환풍구 65는 BDSP 지역의 `Intake`(빠진 둘은 그 메시를 옮겨 세운다), 말뚝 10은 BDSP 지역의 `BlockPale`이 맡는다(`ObjectProps`). 눈덩이 19와 꿀나무 21도 BDSP 기믹이다(DATA.md §2.17.9).
+[확인] 물건 판때기는 남지 않았다(3D_GAP_AUDIT §3.1) — 갤럭시단아지트 문 10은 BDSP 자동문, 말뚝 6은 BDSP 기믹 `obj0010_01`, 서류가방은 `obj0008_00`, 이끼 · 얼음 바위는 BDSP 지형의 바위, 동굴 벽화 · 조각은 롬 모델 수치로 세운다. 바위깨기 바위 591 · 괴력 바위 50 · 풀베기 나무 49는 BDSP 기믹 모델(`gimmick/obj0001_00` · `obj0006_00` · `obj0002_00`)을 인스턴싱으로 세우고(`NpcSprites`), 환풍구 65는 BDSP 지역의 `Intake`(빠진 둘은 그 메시를 옮겨 세운다), 말뚝 10은 BDSP 지역의 `BlockPale`이 맡는다(`ObjectProps`). 눈덩이 19와 꿀나무 21도 BDSP 기믹이다(DATA.md §2.17.9).
 
 남은 순서: 특수 문 → 고유 물건. 각 gfx의 구조와 상호작용을 기록하고 검수 모델을 연결한다. 보이는 물건이 벽화라면 입체로 튀어나오게 만들지 말고 벽 부착 decal로 둔다.
 

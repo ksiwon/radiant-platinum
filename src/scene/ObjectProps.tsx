@@ -39,6 +39,8 @@ import { world } from '../engine/map/world'
 import type { MapGrid } from '../engine/map/grid'
 import { GIMMICK_MODELS } from '../engine/world/gimmicks'
 import { gimmickPieces, loadGimmick, type GimmickPiece } from './gimmickModels'
+import { bakedHqDoorAt, GALACTIC_HQ_DOOR_GFX, GalacticDoors, holdAutoDoors } from './GalacticDoors'
+import { CAVE_PAINTING_GFX, CavePainting, cavePaintingStands, SHARDS_LEFT_GFX, SHARDS_RIGHT_GFX } from './CavePainting'
 
 /**
  * BDSP가 구워 둔 간판 · 우편함 · 게시판 재질 (`SignBoard_0x` · `Boardletter` · `Boardnumber` · `Post_01` · `Guide_0x` ·
@@ -61,22 +63,25 @@ const bakedSigns = new Set<readonly [number, number]>()
  * BDSP 층이 붙을 때 그 안의 간판 자리와 환풍구 자리(`bakedVents`)를 등록한다. 돌려준 함수로 뗀다.
  * 씬이 제자리(원점)에 놓인 채로 부른다 — BDSP 층은 행렬 원점에 그대로 선다.
  *
- * ⚠️ **환풍구도 여기서 적는다** — 붙고 떼는 자리가 간판과 같다(`BdspRoom` · `BdspField` · `BdspDungeon`이 이 하나를 부른다)
+ * ⚠️ **환풍구 · 말뚝 · 이끼/얼음 바위 · 아지트 자동문도 여기서 적는다** — 붙고 떼는 자리가 간판과 같다(`BdspRoom` · `BdspField` ·
+ * `BdspDungeon`이 이 하나를 부른다). 자동문은 `GalacticDoors`가 따로 든다(`holdAutoDoors`)
  */
 export function holdBdspSigns(root: Object3D): () => void {
   root.updateMatrixWorld(true)
+  const releaseDoors = holdAutoDoors(root)
   const signs: (readonly [number, number])[] = []
   const vents: (readonly [number, number])[] = []
   const bollards: BakedBox[] = []
+  const rocks: BakedBox[] = []
   let template: VentTemplate | null = null
   const at = new Matrix4()
   const c = new Vector3()
   root.traverse((o) => {
     if (!(o instanceof Mesh)) return
     const mats = (Array.isArray(o.material) ? o.material : [o.material]) as Material[]
-    const pale = mats.some(isBakedBollard)
+    const boxes = mats.some(isBakedBollard) ? bollards : mats.some(isBakedEvoRock) ? rocks : null
     const into = mats.some(isBakedSign) ? signs : mats.some(isBakedVent) ? vents : null
-    if (into === null && !pale) return
+    if (into === null && boxes === null) return
     o.geometry.computeBoundingBox()
     const box = o.geometry.boundingBox
     if (!box) return
@@ -89,7 +94,7 @@ export function holdBdspSigns(root: Object3D): () => void {
     for (const m of places) {
       if (into === null) {
         const b = new Box3().copy(box).applyMatrix4(m)
-        bollards.push([b.min.x, b.min.z, b.max.x, b.max.z])
+        boxes?.push([b.min.x, b.min.z, b.max.x, b.max.z])
         continue
       }
       const w = center.clone().applyMatrix4(m)
@@ -104,13 +109,16 @@ export function holdBdspSigns(root: Object3D): () => void {
   for (const p of signs) bakedSigns.add(p)
   for (const p of vents) bakedVents.add(p)
   for (const b of bollards) bakedBollards.add(b)
+  for (const b of rocks) bakedEvoRocks.add(b)
   const held = template
   if (held !== null) ventTemplates.add(held)
   return () => {
     for (const p of signs) bakedSigns.delete(p)
     for (const p of vents) bakedVents.delete(p)
     for (const b of bollards) bakedBollards.delete(b)
+    for (const b of rocks) bakedEvoRocks.delete(b)
     if (held !== null) ventTemplates.delete(held)
+    releaseDoors()
   }
 }
 
@@ -169,18 +177,32 @@ function anyVentTemplate(): VentTemplate | null {
 }
 
 /**
- * 배치 중 판때기(`NpcSprites`)가 건너뛸 몫 — BDSP가 모델로 이미 세운 환풍구 · 말뚝. 지난 값(`was`)과 같으면 그것을 그대로
+ * 배치 중 판때기(`NpcSprites`)가 건너뛸 몫 — 다른 쪽이 입체로 이미 세운 물건. 지난 값(`was`)과 같으면 그것을 그대로
  * 돌려준다(프레임마다 불러도 상태를 안 흔든다).
  *
- * 환풍구는 BDSP가 빠뜨린 두 자리(머리말)도 지역이 붙어 있으면 든다 — 그 자리에는 붙은 지역의 `Intake` 틀을 옮겨 세운다
- * (`VentModels`). 말뚝은 BDSP 지역이 그 칸에 `BlockPale`을 구워 둔 것만 든다 (`bakedBollardAt`)
+ * | 그림 | 언제 거르나 |
+ * | --- | --- |
+ * | 환풍구 | BDSP 지역이 붙어 있으면 — 빠뜨린 두 자리(머리말)에는 붙은 지역의 `Intake` 틀을 옮겨 세운다 (`VentModels`) |
+ * | 말뚝 | BDSP 지역이 그 칸에 `BlockPale`을 구워 두었으면 (`bakedBollardAt`) — 아니면 `NpcSprites`가 기믹 `obj0010_01`로 세운다 |
+ * | 이끼 · 얼음 바위 | BDSP가 그 칸에 바위를 구워 두었으면 (`bakedEvoRockAt`) |
+ * | 아지트 문 | BDSP가 그 칸에 자동문을 구워 두었으면 (`bakedHqDoorAt` — `GalacticDoors`가 그 문짝을 객체 자리에 세운다) |
+ * | 벽화 · 조각 | 입체를 지었으면 (`cavePaintingStands` — `CavePainting`) |
+ *
+ * 다 **BDSP가 안 섰거나 모델을 못 지었으면 판때기가 선다**
  */
 export function bakedVentActors(list: readonly NpcActor[], was: ReadonlySet<NpcActor>): ReadonlySet<NpcActor> {
   const anyTemplate = anyVentTemplate() !== null
   const takes = (actor: NpcActor): boolean => {
     const x = actor.x + 0.5, z = actor.z + 0.5
-    return actor.gfx === VENT_GFX ? anyTemplate || bakedVentNear(x, z)
-      : actor.gfx === BOLLARD_GFX && bakedBollardAt(x, z)
+    switch (actor.gfx) {
+      case VENT_GFX: return anyTemplate || bakedVentNear(x, z)
+      case BOLLARD_GFX: return bakedBollardAt(x, z)
+      case MOSS_ROCK_GFX: case ICE_ROCK_GFX: return bakedEvoRockAt(x, z)
+      // 문짝을 오린 칸은 배치표 칸이다 — 열리며 미끄러지는 동안에도 판때기가 다시 안 서게 처음 칸으로 본다
+      case GALACTIC_HQ_DOOR_GFX: return bakedHqDoorAt(actor.info.x, actor.info.z)
+      case CAVE_PAINTING_GFX: case SHARDS_LEFT_GFX: case SHARDS_RIGHT_GFX: return cavePaintingStands(actor.gfx)
+      default: return false
+    }
   }
   // ⚠️ **바뀌지 않았으면 아무것도 안 만든다** — 프레임마다 불리므로 Set · 배열을 먼저 만들지 않고 지난 값과 바로 견준다.
   // 몫이 지난 값의 부분집합이고 개수가 같으면 같은 집합이다 (배우는 목록에 한 번씩만 든다)
@@ -255,9 +277,11 @@ function VentModels({ grid, layer, mapId }: { grid: MapGrid, layer: number, mapI
 // 신월섬 D30 셋(151, 275·276·278). 칸 한가운데에서 위로부터 쏘면 그 열 칸만 땅 + 0.75에 `BlockPale`이 맞는다
 // (`.audit/probe/gimmickLedges.mts look`). 그 자리에서 판때기까지 세우면 한 물체가 두 벌로 선다.
 //
-// 나머지 여섯은 BDSP에 짝이 없다 — 연고시티 체육관 방 `C05GYM0104`(8, 9·10)과 갤럭시단아지트 `D26R0104`(18·19, 14)는 그 칸이 맨바닥이고,
-// 파이트에리어 C11(617, 434·435)은 BDSP 지역(`area014`)에서 바다다. 그 여섯은 판때기가 선다. BDSP 필드 glb의 `M_T_013_Bollard_01`
-// (항구 계류주 0.89×0.69×0.83칸 · 선단 353·359,246 · 운하 42,753·756)은 모양이 다른 물건(버섯꼴 계류주)이라 갖다 쓰지 않는다.
+// 나머지 여섯은 BDSP 지역에 짝이 없다 — 연고시티 체육관 방 `C05GYM0104`(8, 9·10)과 갤럭시단아지트 `D26R0104`(18·19, 14)는 그 칸이 맨바닥이고,
+// 파이트에리어 C11(617, 434·435)은 BDSP 지역(`area014`)에서 바다다(BDSP는 네 칸 동쪽 (621, 434·435)에 `BlockPale` 둘을 따로 세웠다).
+// 그 여섯은 **BDSP 기믹 `obj0010_01`(`P_D_006_BlockPale_01` · 0.90×0.75×0.90칸)을 세운다**(`NpcSprites`) — 지역에 구운 것과 같은 크기의
+// 흰 돌기둥이다. BDSP 필드 glb의 `M_T_013_Bollard_01`(항구 계류주 0.89×0.69×0.83칸 · 선단 353·359,246 · 운하 42,753·756)은 모양이 다른
+// 물건(버섯꼴 계류주)이라 갖다 쓰지 않는다.
 //
 // ⚠️ **판만 거른다.** 배치는 그대로라 통행(`actor/obstacles`)은 안 바뀐다
 
@@ -278,6 +302,31 @@ const bakedBollards = new Set<BakedBox>()
 /** 이 자리(칸 한가운데 월드 x, z)를 BDSP `BlockPale`이 덮는가 */
 export function bakedBollardAt(x: number, z: number): boolean {
   for (const [x0, z0, x1, z1] of bakedBollards) if (x0 <= x && x <= x1 && z0 <= z && z <= z1) return true
+  return false
+}
+
+// ── 이끼 바위 · 얼음 바위 ──────────────────────────────────────────────────────────────────────────────────
+//
+// 진화 바위 둘(`OBJ_EVENT_GFX_MOSS_ROCK` 190 · `ICE_ROCK` 191 — 16×16 판때기)은 BDSP가 같은 칸에 입체로 구워 두었다(실측 · glb 정점):
+// 이끼 바위는 영원의 숲 `D03R0101`(맵 203) (17,66)에 `M_D_044_Rock_01` 0.93×0.81×0.94칸(x 17.04~17.97 · z 66.07~67.01),
+// 얼음 바위는 217번도로(area009 · 맵 385) (313,275)에 `M_R_217_Rock_01`(x 313.04~313.97 · z 275.07~276.01). 두 재질은 BDSP 필드 ·
+// 던전 · 방 glb 전부에서 그 하나씩뿐이다. 판때기를 세우면 바위 앞에 도트 바위가 한 장 더 선다 — 그 칸에서만 거른다
+
+/** `OBJ_EVENT_GFX_MOSS_ROCK` · `OBJ_EVENT_GFX_ICE_ROCK` */
+export const MOSS_ROCK_GFX = 190
+export const ICE_ROCK_GFX = 191
+
+/** BDSP가 구운 진화 바위 재질 — 이끼(`M_D_044_Rock_01`) · 얼음(`M_R_217_Rock_01`). 흔한 바위(`M_C_001_Rock_0x`)는 아니다 */
+export function isBakedEvoRock(m: Material): boolean {
+  return /^M_(D_044|R_217)_Rock_01/.test(m.name)
+}
+
+/** 지금 씬에 붙은 BDSP 층들의 진화 바위 상자 */
+const bakedEvoRocks = new Set<BakedBox>()
+
+/** 이 자리(칸 한가운데 월드 x, z)를 BDSP 진화 바위가 덮는가 */
+export function bakedEvoRockAt(x: number, z: number): boolean {
+  for (const [x0, z0, x1, z1] of bakedEvoRocks) if (x0 <= x && x <= x1 && z0 <= z && z <= z1) return true
   return false
 }
 
@@ -383,7 +432,13 @@ export function ObjectProps({ grid, layer, mapId, bdsp }: Props) {
     }
   })
 
-  const vents = bdsp ? <VentModels grid={grid} layer={layer} mapId={mapId} /> : null
+  const vents = (
+    <>
+      {bdsp ? <VentModels grid={grid} layer={layer} mapId={mapId} /> : null}
+      <GalacticDoors mapId={mapId} />
+      <CavePainting grid={grid} layer={layer} mapId={mapId} bdsp={bdsp} />
+    </>
+  )
   if (placed.length === 0) return vents
   return (
     <group>

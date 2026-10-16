@@ -8,10 +8,12 @@
 // 써야 하는데, 한 맵에 서 있는 사람은 많아야 수십이라 그럴 값어치가 없다.
 // 대신 판때기와 재질은 **한 번 만들어 돌려 쓴다** — 프레임마다 만들면 GC가 돈다.
 //
-// ⚠️ **비전머신 장애물 셋은 판때기로 안 세운다** — 괴력 바위(`STRENGTH_BOULDER` 84 · 배치 50) · 바위깨기 바위(`ROCK_SMASH` 85 ·
+// ⚠️ **비전머신 장애물 셋 · 말뚝 · 서류가방은 판때기로 안 세운다** — 괴력 바위(`STRENGTH_BOULDER` 84 · 배치 50) · 바위깨기 바위(`ROCK_SMASH` 85 ·
 // 591) · 풀베기 나무(`CUT_TREE` 86 · 49). BDSP 기믹 모델(`gimmick/obj0006_00` RockMove · `obj0001_00` RockCrush ·
 // `obj0002_00` SlashTree — `engine/world/gimmicks`)을 **인스턴싱으로** 세운다 — 바위가 빽빽한 동굴은 한 맵에 서른 개쯤이라
 // 그림마다 그리기 한 번이다. 판때기면 BDSP 바닥 위에 늘 정면을 보는 도트 종잇장이 서고, 1인칭으로 다가가면 계단 픽셀 판이 된다.
+// 말뚝(`BOLLARD` 192)은 `obj0010_01` BlockPale, 서류가방(`BRIEFCASE` 174)은 `obj0008_00` Bag이다. 이끼 · 얼음 바위 · 아지트 문 ·
+// 벽화와 조각은 다른 쪽이 입체로 세우고 여기서는 `standing`으로 건너뛴다(`ObjectProps`의 `bakedVentActors`).
 //
 // 기믹 그룹을 안 구운 옛 설치본은 원작 쪽이 선다 — 바위 둘은 맵 바위(`Rocks`)와 같은 덩이 모양(`rockShape`)에 **그 그림을
 // 그대로** 입힌 것(`rockPaint` — 모양만 우리 것이고 폭·높이·문양은 원작 그림), 나무는 판때기다. 모델을 받는 동안은 아무것도
@@ -95,11 +97,26 @@ const ROCK_SPRITES: ReadonlySet<string> = new Set(['STRENGTH_BOULDER', 'ROCK_SMA
  */
 const ROCK_SINK = 0.10
 
-/** 그림 이름 → BDSP 기믹 번들. 모델이 섰으면 판때기 · 덩이 대신 이것이 선다 */
+/**
+ * 그림 이름 → BDSP 기믹 번들. 모델이 섰으면 판때기 · 덩이 대신 이것이 선다.
+ *
+ * 말뚝은 BDSP 지역이 그 칸에 `BlockPale`을 구워 둔 열 곳이면 여기까지 안 온다(`standing` — `ObjectProps`의 `bakedVentActors`).
+ * 짝 없는 여섯(연고시티 체육관 방 · 갤럭시단아지트 4F · 파이트에리어)과 원작 땅으로 그리는 동안의 말뚝이 이 모델로 선다
+ */
 const GIMMICK_BY_SPRITE: Readonly<Record<string, string>> = {
   STRENGTH_BOULDER: GIMMICK_MODELS.strength,
   ROCK_SMASH: GIMMICK_MODELS.rockSmash,
   CUT_TREE: GIMMICK_MODELS.cutTree,
+  BOLLARD: GIMMICK_MODELS.bollard,
+  BRIEFCASE: GIMMICK_MODELS.briefcase,
+}
+
+/**
+ * 칸 한가운데로 옮길 몫 `[x, z]` (칸) — 기믹 원점이 모델 한가운데가 아닌 것만. 서류가방(`P_C_001_Bag_01`)은 x ±0.450 ·
+ * z −0.501~−0.202로 칸 북쪽 끝에 서 있다(실측) — 원작 그림은 칸 한가운데에 선다. 나머지는 상자 한가운데가 원점에서 0.04칸 안이라(바위깨기 z +0.04) 안 옮긴다
+ */
+const GIMMICK_CENTRE: Readonly<Record<string, readonly [number, number]>> = {
+  [GIMMICK_MODELS.briefcase]: [0, 0.3516],
 }
 
 /** 기믹 한 벌의 인스턴스 묶음 — 조각마다 `InstancedMesh` 하나. 판때기 상한(`MAX`)만큼 자리를 둔다 */
@@ -122,8 +139,8 @@ interface RockKit {
  */
 const rockKits = new Map<number, RockKit | null>()
 
-/** 그림의 RGBA를 읽는다. 캔버스가 없거나 막히면 `null` */
-function readPixels(image: CanvasImageSource, w: number, h: number): Uint8ClampedArray | null {
+/** 그림의 RGBA를 읽는다. 캔버스가 없거나 막히면 `null` (벽화 조각 `CavePainting`도 쓴다) */
+export function readPixels(image: CanvasImageSource, w: number, h: number): Uint8ClampedArray | null {
   try {
     const canvas = typeof OffscreenCanvas !== 'undefined'
       ? new OffscreenCanvas(w, h)
@@ -440,10 +457,11 @@ export function NpcSprites({ grid, layer, standing }: Props) {
           }
           batches.set(bdspName, batch)
         }
+        const centre = GIMMICK_CENTRE[bdspName]
         at.makeTranslation(
-          actor.x + 0.5 + (actor.offsetX ?? 0),
+          actor.x + 0.5 + (actor.offsetX ?? 0) + (centre?.[0] ?? 0),
           y + (actor.offsetY ?? 0),
-          actor.z + 0.5 + (actor.offsetZ ?? 0),
+          actor.z + 0.5 + (actor.offsetZ ?? 0) + (centre?.[1] ?? 0),
         )
         for (const m of batch.meshes) m.setMatrixAt(batch.count, at)
         batch.count++

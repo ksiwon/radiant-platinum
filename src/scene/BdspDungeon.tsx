@@ -74,7 +74,7 @@ export function useBdspDungeon(mapId: number): string | null {
  * 같다**(md5 대조 2026-10-16). BDSP는 리메이크라 이 두 판을 따로 안 지었고(DATA.md — 플래티넘에만 있음) 원작 그림이 하늘 없이
  * 검은 데 떠 있었다. 같은 땅이므로 같은 던전을 세운다 — 들어 올림(`DUNGEON_LIFT`)도 그 이름으로 따라간다
  */
-export const DUNGEON_ALIAS: Readonly<Record<string, string>> = {
+const DUNGEON_ALIAS: Readonly<Record<string, string>> = {
   d05r0118: 'd05r0114',
   d05r0119: 'd05r0114',
 }
@@ -197,7 +197,7 @@ export function dressDungeon(root: Object3D): Mesh[] {
  * 위를 막았다. 그래서 안개를 끄고, `SKY_FIT`배로 줄여 **카메라를 수평으로 따라오게** 한다(`followOwnSky`) — 하늘은 멀리 있는 것이라
  * 어디서 봐도 같은 자리여야 한다
  */
-export const isOwnSky = (m: Material): boolean => /_(SkySphere|SeaCloud)_\d/.test(m.name)
+const isOwnSky = (m: Material): boolean => /_(SkySphere|SeaCloud)_\d/.test(m.name)
 
 /** 던전 하늘을 줄이는 배율 — 반지름 238 × 0.75 = 178이 카메라 far(200) 안에 든다 */
 const SKY_FIT = 0.75
@@ -224,7 +224,7 @@ function skyPaint(src: Material): MeshBasicMaterial {
 }
 
 /** 하늘 조각을 하늘로 세운다 — 빛 · 안개 · 그림자 · 깊이 쓰기를 끄고 맨 먼저 그린다. 세운 조각들을 돌려준다 */
-export function liftOwnSky(root: Object3D): Mesh[] {
+function liftOwnSky(root: Object3D): Mesh[] {
   const skies: Mesh[] = []
   root.traverse((o) => {
     if (!(o instanceof Mesh)) return
@@ -244,7 +244,7 @@ export function liftOwnSky(root: Object3D): Mesh[] {
 }
 
 /** 하늘 조각의 가운데를 카메라 바로 위아래에 둔다 — `eye`는 월드 좌표, 조각은 `root` 바로 밑이라 그 원점을 뺀다 */
-export function followOwnSky(skies: readonly Mesh[], root: Object3D, eye: Vector3): void {
+function followOwnSky(skies: readonly Mesh[], root: Object3D, eye: Vector3): void {
   for (const sky of skies) sky.position.set(eye.x - root.position.x, sky.position.y, eye.z - root.position.z)
 }
 

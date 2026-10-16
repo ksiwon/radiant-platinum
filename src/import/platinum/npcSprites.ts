@@ -102,6 +102,18 @@ export function byFrameNumber(textures: readonly TexEntry[]): { t: TexEntry, i: 
 }
 
 /**
+ * 장 하나를 풀 팔레트 — **그 장 이름에 `_pl`을 붙인 팔레트**다. 없으면 첫 팔레트.
+ *
+ * ⚠️ **첫 팔레트로 다 풀면 안 되는 장이 있다.** `mmodel.narc`에서 팔레트를 둘 이상 단 멤버가 207개고(`--palette-suffix`로 짠
+ * 것), 그 장을 첫 팔레트와 제 팔레트로 각각 풀어 견주면 그림 장 **열셋**이 다른 색을 낸다 — 벽화(그림 203)의 벽 `t5_o01_c`는
+ * 사전에서 앞에 오는 벽화 그림 팔레트 `t5_o01_c__pl`로 풀려 흰 바탕에 붉은 무늬가 됐다(원래 갈색 벽돌이다 · 디컴프
+ * `cave_painting/wall.png`). 나머지 열둘은 나무열매 싹의 둘째 장이다(`seed07_a.2` · `seed10_a.2` …)
+ */
+export function paletteOf(tex0: Tex0, tex: TexEntry): Tex0['palettes'][number] | undefined {
+  return tex0.palettes.find((p) => p.name === `${tex.name}_pl`) ?? tex0.palettes[0]
+}
+
+/**
  * 표가 밀렸는지 이름으로 본다.
  *
  * ⚠️ **여기서 어긋나면 아래는 전부 헛것이다.** `meson.build`이 파일마다 nsbtx 안
@@ -188,14 +200,13 @@ export async function convertNpcSprites(ctx: ConvertContext): Promise<Produced> 
     const tex0: Tex0 = parseTex0(buf, at)
     const frames = byFrameNumber(tex0.textures)
     const first = frames[0]!.t
-    const pal = tex0.palettes[0]!
     const w = first.width
     const h = first.height
 
     // 프레임을 가로로 이어 붙인 한 줄 아틀라스
     const atlas = new Uint8Array(w * frames.length * h * 4)
     for (let k = 0; k < frames.length; k++) {
-      const rgba = decode(tex0, frames[k]!.t, pal.offset)
+      const rgba = decode(tex0, frames[k]!.t, paletteOf(tex0, frames[k]!.t)!.offset)
       for (let y = 0; y < h; y++) {
         const from = y * w * 4
         atlas.set(rgba.subarray(from, from + w * 4), (y * w * frames.length + k * w) * 4)

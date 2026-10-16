@@ -212,6 +212,13 @@ function texBlock(buf) {
 }
 
 /** 텍스처 이름이 `<밑이름>.<번호>`라 사전은 글자순이다. 번호순으로 되돌린다 */
+/**
+ * 장 하나를 풀 팔레트 — 그 장 이름에 `_pl`을 붙인 것, 없으면 첫 팔레트. 브라우저 쪽 `paletteOf`와 같다 (벽화의 벽 · 나무열매 싹의 둘째 장)
+ */
+function paletteOf(tex0, tex) {
+  return tex0.palettes.find((p) => p.name === `${tex.name}_pl`) ?? tex0.palettes[0]
+}
+
 function byFrameNumber(textures) {
   return textures
     .map((t, i) => ({ t, i, n: Number(/\.(\d+)$/.exec(t.name)?.[1] ?? 0) }))
@@ -332,14 +339,13 @@ function main() {
     const tex0 = parseTex0(buf, at)
     const frames = byFrameNumber(tex0.textures)
     const first = frames[0].t
-    const pal = tex0.palettes[0]
 
     // 프레임을 가로로 이어 붙인 한 줄 아틀라스
     const w = first.width
     const h = first.height
     const atlas = new Uint8Array(w * frames.length * h * 4)
     for (let k = 0; k < frames.length; k++) {
-      const rgba = decode(tex0, frames[k].t, pal.offset)
+      const rgba = decode(tex0, frames[k].t, paletteOf(tex0, frames[k].t).offset)
       for (let y = 0; y < h; y++) {
         const from = y * w * 4
         const to = (y * w * frames.length + k * w) * 4

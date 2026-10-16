@@ -4,12 +4,13 @@
 import { closeSync, existsSync, openSync, readFileSync, readSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, MeshStandardMaterial, Quaternion, Vector3 } from 'three'
+import { BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, MeshStandardMaterial, Quaternion, Vector3, type BufferGeometry } from 'three'
 import type { NpcActor } from '../engine/actor/npcs'
 import {
-  BOLLARD_GFX, bakedBollardAt, bakedSignNear, bakedVentActors, bakedVentNear, holdBdspSigns, isBakedBollard, isBakedSign,
-  isBakedVent, propShown, VENT_GFX,
+  BOLLARD_GFX, bakedBollardAt, bakedEvoRockAt, bakedSignNear, bakedVentActors, bakedVentNear, holdBdspSigns, ICE_ROCK_GFX,
+  isBakedBollard, isBakedEvoRock, isBakedSign, isBakedVent, MOSS_ROCK_GFX, propShown, VENT_GFX,
 } from './ObjectProps'
+import { bakedHqDoorAt, cutDoorCell, GALACTIC_HQ_DOOR_GFX } from './GalacticDoors'
 
 describe('BDSP가 구운 간판', () => {
   it('간판 · 글자판 · 번호판 · 우편함 · 게시판만 고른다 — 상자(`CardBoard`) · 철도 신호 · 벽보는 아니다', () => {
@@ -135,6 +136,82 @@ describe('BDSP가 구운 말뚝', () => {
     expect([...bakedVentActors([a, b, far], new Set())]).toEqual([a, b])
     release()
     expect(bakedVentActors([a, b, far], new Set()).size).toBe(0)
+  })
+})
+
+describe('BDSP가 구운 진화 바위', () => {
+  it('이끼 · 얼음 바위 재질만 고른다 — 흔한 바위는 아니다', () => {
+    const is = (name: string): boolean => isBakedEvoRock(new MeshStandardMaterial({ name }))
+    expect(is('M_D_044_Rock_01')).toBe(true)
+    expect(is('M_R_217_Rock_01')).toBe(true)
+    for (const n of ['M_C_001_Rock_01', 'M_C_001_Rock_05', 'M_C_001_RockCrush_01']) expect(is(n), n).toBe(false)
+  })
+
+  it('바위가 덮은 칸의 판때기만 거른다 — 떼면 판때기가 선다', () => {
+    const root = new Group()
+    // 영원의 숲 (17,66) — d03r0101 실측 x 17.04~17.97 · y −0.01~0.80 · z 66.07~67.01
+    const rock = new Mesh(new BoxGeometry(0.93, 0.81, 0.94), new MeshStandardMaterial({ name: 'M_D_044_Rock_01' }))
+    rock.position.set(17.505, 0.395, 66.54)
+    // 217번도로 (313,275) — area009 실측 (313.04~313.97 · 275.07~276.01)
+    const ice = new Mesh(new BoxGeometry(0.93, 0.81, 0.94), new MeshStandardMaterial({ name: 'M_R_217_Rock_01' }))
+    ice.position.set(313.505, 2.395, 275.54)
+    root.add(rock, ice)
+    const moss = actor(MOSS_ROCK_GFX, 17, 66)
+    const iceRock = actor(ICE_ROCK_GFX, 313, 275)
+    const elsewhere = actor(MOSS_ROCK_GFX, 30, 66)
+    const release = holdBdspSigns(root)
+    expect(bakedEvoRockAt(17.5, 66.5)).toBe(true)
+    expect([...bakedVentActors([moss, iceRock, elsewhere], new Set())]).toEqual([moss, iceRock])
+    // 진화 바위는 말뚝으로 안 센다
+    expect(bakedBollardAt(17.5, 66.5)).toBe(false)
+    release()
+    expect(bakedVentActors([moss, iceRock, elsewhere], new Set()).size).toBe(0)
+  })
+})
+
+describe('갤럭시단 아지트 문 (`GalacticDoors`)', () => {
+  /** 배치표 칸까지 든 시험용 문 객체 */
+  const door = (x: number, z: number): NpcActor => ({ gfx: GALACTIC_HQ_DOOR_GFX, x, z, info: { x, z } }) as unknown as NpcActor
+
+  it('BDSP 자동문이 덮은 칸의 문만 판때기를 거른다 — 열리며 미끄러져도 배치표 칸으로 본다 · 떼면 판때기가 선다', () => {
+    const root = new Group()
+    // 1F (22,18) · (23,18) — d26r0101 실측 인스턴스 둘 · 한 칸씩 · z 18.30~18.70 · 높이 2.99
+    const leaves = new InstancedMesh(new BoxGeometry(1, 2.99, 0.4).translate(0, 1.495, 0),
+      new MeshStandardMaterial({ name: 'M_C_001_AutoDoor_01' }), 2)
+    leaves.setMatrixAt(0, new Matrix4().makeTranslation(23.5, 0, 18.5))
+    leaves.setMatrixAt(1, new Matrix4().makeTranslation(22.5, 0, 18.5))
+    root.add(leaves)
+    const west = door(22, 18)
+    const east = door(23, 18)
+    const other = door(5, 5)
+    const release = holdBdspSigns(root)
+    expect(bakedHqDoorAt(22, 18)).toBe(true)
+    expect(bakedHqDoorAt(24, 18)).toBe(false)
+    // 서쪽 짝이 한 칸 밀려 나가는 중이다 (`WalkFastWest`)
+    west.x = 21.4
+    expect([...bakedVentActors([west, east, other], new Set())]).toEqual([west, east])
+    release()
+    expect(bakedHqDoorAt(22, 18)).toBe(false)
+    expect(bakedVentActors([west, east, other], new Set()).size).toBe(0)
+  })
+
+  it('두 짝이 한 조각인 창고 문을 칸마다 오린다 — 칸 한가운데가 원점이다', () => {
+    // 창고 `C07R0301` — 메시 하나 x 8.00~10.00 · z 7.30~7.70 (두 짝)
+    const leaf = new BoxGeometry(2, 2.99, 0.4, 2, 1, 1).translate(9, 1.495, 7.5)
+    const west = cutDoorCell(leaf, new Matrix4(), 8, 7)!
+    const east = cutDoorCell(leaf, new Matrix4(), 9, 7)!
+    west.computeBoundingBox()
+    east.computeBoundingBox()
+    expect(west.boundingBox!.min.x).toBeCloseTo(-0.5)
+    expect(west.boundingBox!.max.x).toBeCloseTo(0.5)
+    expect(east.boundingBox!.min.x).toBeCloseTo(-0.5)
+    expect(east.boundingBox!.max.x).toBeCloseTo(0.5)
+    // 높이는 월드 그대로다 — 배우 자리에는 바닥 높이를 안 더한다
+    expect(west.boundingBox!.max.y).toBeCloseTo(2.99)
+    // 삼각형이 두 칸에 빠짐없이 나뉜다
+    const tris = (g: BufferGeometry): number => (g.index ? g.index.count : g.getAttribute('position').count) / 3
+    expect(tris(west) + tris(east)).toBe(tris(leaf))
+    expect(cutDoorCell(leaf, new Matrix4(), 12, 7)).toBeNull()
   })
 })
 

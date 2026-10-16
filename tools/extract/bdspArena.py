@@ -1052,10 +1052,10 @@ BERRY_SEEDING = "kinoseeding"
 #: 나무 그림 긴 변의 상한. 나무는 한 칸 안에 서는 작은 물건이라 256이면 텍셀이 남는다 — 브라우저 변환기(`convert.ts`)의 `BERRY_TEXTURE`와 같아야 한다
 BERRY_TEXTURE = 256
 #: 필드 기믹 (docs/orders/BATTLE_FX_20261004.md §8 · DATA.md §2.17.9). BDSP가 필드 glb에 안 굽고 기믹 번들로 따로 두는 것들이다 —
-#: 바위깨기 바위 · 풀베기 나무 · 눈덩이 · 괴력 바위는 정적 메시라 이 변환기로, 꿀나무는 뼈 넷과 흔들림 클립 넷이 있어 인물
+#: 바위깨기 바위 · 풀베기 나무 · 눈덩이 · 괴력 바위 · 서류가방 · 말뚝은 정적 메시라 이 변환기로, 꿀나무는 뼈 넷과 흔들림 클립 넷이 있어 인물
 #: 변환기(`bdspGlb`)로 굽는다. 목록은 `src/engine/world/gimmicks.ts`의 `GIMMICK_MODELS`와 같아야 한다
 GIMMICK_OUT = ROOT / "public/models/gimmick"
-GIMMICK_STATIC = ["obj0001_00", "obj0002_00", "obj0004_00", "obj0006_00"]
+GIMMICK_STATIC = ["obj0001_00", "obj0002_00", "obj0004_00", "obj0006_00", "obj0008_00", "obj0010_01"]
 GIMMICK_ANIMATED = ["obj0003_00"]
 #: 기믹 그림 긴 변의 상한. 넷은 원본이 256이고 꿀나무만 512다(세 칸 높이 나무라 1인칭으로 올려다본다) — 원본 그대로 싣는다.
 #: 브라우저 변환기(`convert.ts`)의 `GIMMICK_TEXTURE`와 같아야 한다

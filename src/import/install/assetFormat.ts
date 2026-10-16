@@ -450,12 +450,23 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    */
   battleFx: 6,
   /**
+   * 2 — **장마다 제 팔레트로 푼다** (`import/platinum/npcSprites`의 `paletteOf` · 노드 쪽 `tools/extract/npcSprites.js`). 355장 중 열셋만
+   * 바뀐다(실측 — 앞뒤 PNG 지문 대조): 벽화 `203.png`의 벽 장이 흰 바탕 붉은 무늬에서 원작 갈색 벽돌로, 나무열매 싹 열둘(4115 · 4124 · 4156 ·
+   * 4157 · 4170 · 4178 · 4189 · 4215 · 4221 · 4251 · 4262 · 4266)의 둘째 장 색이 원작대로 바뀐다. ⚠️ **1도 그대로 쓴다**(`GROUP_ACCEPTS`) —
+   * 없으면 벽화 입체(`scene/CavePainting`)의 벽이 옛 색으로 선다
+   */
+  npcSprites: 2,
+  /**
+   * 2 — **서류가방 · 말뚝이 붙는다** (`obj0008_00` `P_C_001_Bag_01` 175,932B · `obj0010_01` `P_D_006_BlockPale_01` 25,312B —
+   * `engine/world/gimmicks`의 `briefcase` · `bollard`). 판때기로 남던 201번도로 서류가방 하나와 BDSP 지역에 짝 없는 말뚝 여섯이
+   * 입체로 선다. 앞의 다섯 벌은 바이트가 그대로다. ⚠️ **1도 그대로 쓴다**(`GROUP_ACCEPTS`) — 없으면 그 일곱 자리에 원작 판때기가 설 뿐이다
+   *
    * 1 — **바위깨기 · 풀베기 · 괴력 바위 · 꿀나무 · 눈덩이가 BDSP 입체다** (`models/gimmick/obj0001~0006_00.glb` · `index.json`,
    * 다섯 벌 415KB — `import/bdsp/convert.ts`의 `convertGimmicks` · 노드 쪽 `bdspArena.py --gimmicks`). 꿀나무는 뼈 넷과 흔들림
    * 클립 넷(`Wait` · `Move01~03`)을 싣는다. ⚠️ **필수 그룹이라**(`required.ts`) 이미 깐 사람은 이 그룹만 새로 굽는다 — 없으면
    * 원작 그림(판 · 덩이 · 소품)이 선다
    */
-  gimmicks: 1,
+  gimmicks: 2,
   /**
    * 3 — **사슬 BMA0과 엔딩 모델이 같이 붙는다.** 2가 두 갈래에서 따로 올라서(사슬 · 엔딩) 합치며 3으로 올렸다.
    * ⚠️ **1 · 2는 안 쓴다**(`GROUP_ACCEPTS`에 없다)
@@ -497,6 +508,10 @@ const GROUP_ACCEPTS: Readonly<Record<string, readonly number[]>> = {
   monVariants: [1, 2],
   // 상태 이상 · 날씨 (`GROUP_FORMAT.battleFx` 3) — 없으면 그 연출이 DS 입자로 선다
   battleFx: [2],
+  // 서류가방 · 말뚝 (`GROUP_FORMAT.gimmicks` 2) — 없으면 그 일곱 자리에 원작 판때기가 선다
+  gimmicks: [1],
+  // 제 팔레트 (`GROUP_FORMAT.npcSprites` 2) — 없으면 벽화의 벽 · 싹 둘째 장 열세 장이 옛 색이다
+  npcSprites: [1],
 }
 
 /** 이 판의 그 그룹을 그대로 써도 되는가 */
