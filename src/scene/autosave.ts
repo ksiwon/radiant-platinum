@@ -79,7 +79,7 @@ async function autosaveNow(): Promise<{ saved: boolean, why?: string }> {
 }
 
 /** 오래 한 판 경고 — 화면 구석에 한 줄 (`ui/hud/PlayNotice`) */
-type NoticeKind = 'recovered' | 'slow' | 'long'
+type NoticeKind = 'recovered' | 'slow'
 interface NoticeState {
   kind: NoticeKind | null
   /** 마지막 자동 저장 시각. 경고 글에 「몇 분 전」을 적는다 */
@@ -94,12 +94,6 @@ export const usePlayNotice = create<NoticeState>()((set) => ({
   dismiss: () => { set({ kind: null }) },
 }))
 
-/**
- * 맵 이동 몇 번에 한 번 경고하나.
- *
- * 실측(2026-10-14 mac · REPAIR §149): 맵을 백 번쯤 오가면 GPU 메모리가 1.5~2.5GB 쌓인다. 그 언저리에서 한 번 알린다
- */
-const LONG_PLAY_MAPS = 100
 /** 느려짐 — 프레임 중간값이 이만큼(ms)을 넘는 판이 연달아 셋이면 알린다(20초마다 잰다 · 60fps면 16.7) */
 const SLOW_MEDIAN_MS = 40
 const SLOW_STREAK = 3
@@ -114,8 +108,6 @@ const SLOW_POLL_MS = 20_000
 export function installAutosave(): () => void {
   let lastSaved = 0
   let waiting: ReturnType<typeof setInterval> | null = null
-  let maps = 0
-  let warnedAtMaps = 0
   let slowStreak = 0
   let warnedSlow = false
 
@@ -144,11 +136,7 @@ export function installAutosave(): () => void {
   const offMap = useSessionStore.subscribe((s, prev) => {
     if (s.mapId === prev.mapId || s.mapId < 0 || prev.mapId < 0) return
     if (worldState.restoring) return
-    maps++
-    if (maps - warnedAtMaps >= LONG_PLAY_MAPS) {
-      warnedAtMaps = maps
-      usePlayNotice.getState().show('long')
-    }
+    // ⚠️ 맵 이동 횟수로는 더 안 알린다 — 맵을 오가며 쌓이던 GPU 메모리를 놓게 됐다(REPAIR §149). 실제로 느려졌을 때만 알린다
     trySoon()
   })
   const offBattle = useBattleStore.subscribe((s, prev) => {
