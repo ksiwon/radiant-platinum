@@ -17,7 +17,7 @@ import { SYSTEM_FLAG } from '../engine/script/commands'
 import { coverScreen, fadeColor, resetFade, screenTint } from '../engine/script/fade'
 import { VAR_PARTNER_TRAINER_ID } from '../engine/script/vars'
 import { statsOf, maxPpOf, type PokemonInstance } from '../engine/pokemon/instance'
-import { flyUnlockedAt, spawnAt, spawnWarp } from '../engine/map/spawns'
+import { firstArrivalFlags, flyUnlockedAt, spawnAt, spawnWarp } from '../engine/map/spawns'
 import { mapById, world } from '../engine/map/world'
 import { gameLocale } from '../state/optionsStore'
 import { useSaveStore } from '../state/saveStore'
@@ -276,6 +276,11 @@ export function arriveAt(mapId: number): void {
   if (heal !== null) save.setHealSpot(heal)
   const fly = flyUnlockedAt(mapId)
   if (fly !== null && (save.flySpots & (1 << fly)) === 0) save.unlockFly(fly)
+  // 깃발 없이 비트만 섰던 세이브(2026-10-16 이전)도 다음 맵 전환에서 맞춘다
+  const vars = fieldScripts.vars
+  for (const flag of firstArrivalFlags(useSaveStore.getState().flySpots)) {
+    if (!vars.checkFlag(flag)) vars.setFlag(flag)
+  }
 }
 
 /**

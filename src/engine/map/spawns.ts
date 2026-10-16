@@ -68,6 +68,21 @@ const FIRST_ARRIVAL_FLAG_BASE = 2480
 const SCRIPT_UNLOCKED_FLY: Readonly<Record<number, number>> = { 14: 16, 18: 67, 19: 68 }
 
 /**
+ * 열린 날기 자리 비트(`flySpots`)가 세워야 하는 첫 도착 깃발들.
+ *
+ * 원작에서 날기 자리를 여는 일은 곧 그 깃발을 세우는 일이다(`TryUnlockFlyLocationByMap` → `SystemFlag_HandleFirstArrivalToZone`,
+ * `spawn_locations.c` 135). 우리는 비트를 따로 두므로 깃발도 같이 세워야 그 깃발을 읽는 스크립트가 원작대로 간다 — 마박사의
+ * 전국도감(`ProfRowanReactToPokedex` · 영원시티 2490), 도감 평가(`pokedex_ratings.s`), 라이벌 대사(`counterpart_talk.s`)
+ */
+export function firstArrivalFlags(flySpots: number): number[] {
+  const flags: number[] = []
+  spawnTable.list.forEach((s, i) => {
+    if (s.unlockOnMapEntry && (flySpots & (1 << i)) !== 0) flags.push(FIRST_ARRIVAL_FLAG_BASE + s.firstArrival)
+  })
+  return flags
+}
+
+/**
  * 타운맵에서 이 날기 자리가 열려 있는가 (`TownMapContext_Init`: 자리마다 `FirstArrivalToZone` 깃발 하나).
  *
  * 마을 열일곱은 우리가 따로 적어 둔 비트(`flySpots`)가 원작의 깃발 구실을 하고, 나머지 셋은 센터 스크립트가 세우는 깃발을 그대로 본다

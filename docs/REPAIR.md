@@ -6091,3 +6091,17 @@ WebGPU 백엔드는 2 · 3이 없다(파이프라인은 GC가 거둔다) — 1�
 
 ⚠️ 3D 측정(2026-10-15)이 「시원의 공간 위층 511 바닥이 2m 어긋났다」고 적었으나 **511은 원작이 안 쓰는 맵이다**
 (`MAP_HEADER_UNKNOWN_511` · 이리 가는 워프 · 스크립트 0). 아르세우스는 510에 있다(`events_hall_of_origin.json` (31, 27)). 안 고쳤다.
+
+## 158. 신오도감을 다 채워도 마박사가 **전국도감을 안 줬다** — 날기 자리를 열면서 첫 도착 깃발을 안 세웠다
+
+**원작** — 맵에 들어서 날기 자리를 여는 일이 곧 그 마을의 첫 도착 깃발(2480 + `firstArrival`)을 세우는 일이다
+(`TryUnlockFlyLocationByMap` → `SystemFlag_HandleFirstArrivalToZone`, `spawn_locations.c` 135). 마박사는 신오도감 210종과 함께
+영원시티 깃발 2490을 보고서야 전국도감을 준다(`scripts_sandgem_town_pokemon_research_lab.s` 54). 도감 평가(`pokedex_ratings.s` 87) ·
+라이벌 대사(`counterpart_talk.s` 19)도 같은 깃발을 읽는다.
+
+**우리** — 날기 자리를 우리 비트(`flySpots`)로만 켜고 깃발은 안 세웠다. 그래서 게임 끝까지 2490이 거짓이었고, 마박사는 평가만 하고 끝났다
+(실측 2026-10-16 · P6 칸 17 · 칸 16 끝 세이브).
+
+**고친 것** — 맵 전환마다(`arriveAt`) 열린 날기 자리의 첫 도착 깃발을 모두 세운다(`spawns.firstArrivalFlags`). 깃발 없이 비트만 섰던
+세이브도 이어하기 · 다음 맵 전환에서 맞춰진다. 이야기가 여는 셋(리그 둘 · 팔파크)은 센터 스크립트가 세우던 그대로다.
+시험 `engine/map/spawns.test.ts`.

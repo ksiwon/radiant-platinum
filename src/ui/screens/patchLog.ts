@@ -55,6 +55,13 @@ interface PatchNote {
 
 export const NOTES: PatchNote[] = [
   {
+    v: 'v1.3.4',
+    date: '2026-10-17',
+    items: [
+      { kind: 'fix', text: '신오도감을 다 채워도 마박사가 전국도감을 주지 않던 것을 고쳤습니다. 이미 엔딩을 본 리포트도 맵을 한 번 옮기면 받을 수 있습니다.' },
+    ],
+  },
+  {
     v: 'v1.3.3',
     date: '2026-10-16',
     items: [

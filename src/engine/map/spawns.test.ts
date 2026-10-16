@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from './grid'
-import { spawnAt, spawnTable, spawnWarp, flyUnlockedAt, type SpawnPoint } from './spawns'
+import { spawnAt, spawnTable, spawnWarp, flyUnlockedAt, firstArrivalFlags, type SpawnPoint } from './spawns'
 import { world, type MapHeader } from './world'
 import { withData } from '../../data/romData.testkit'
 
@@ -100,6 +100,16 @@ maybe('스폰 지점', () => {
     }
     // 도로에 들어섰다고 열리지는 않는다
     expect(flyUnlockedAt(0)).toBeNull()
+  })
+
+  it('열린 날기 자리는 원작의 첫 도착 깃발을 같이 세운다 — 영원시티 2490이 서야 마박사가 전국도감을 준다', () => {
+    const eterna = flyUnlockedAt(65)
+    expect(eterna).not.toBeNull()
+    expect(firstArrivalFlags(1 << eterna!)).toEqual([2490])
+    expect(firstArrivalFlags(0)).toEqual([])
+    // 이야기가 여는 셋(리그 둘 · 팔파크)은 비트가 서도 여기서 안 세운다 — 센터 스크립트가 세운다
+    const all = spawnTable.list.reduce((m, _, i) => m | (1 << i), 0)
+    expect(firstArrivalFlags(all)).toHaveLength(17)
   })
 
   it('워프 모양으로 펼 때 칸 한가운데로 온다', () => {
