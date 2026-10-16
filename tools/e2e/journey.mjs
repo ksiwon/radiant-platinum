@@ -3230,6 +3230,7 @@ try {
    * ⚠️ **못 서면 그대로 떨어진다.** 기다림은 무한이 아니고, 상한에 닿으면
    * 마지막으로 본 자리를 그대로 판정에 넘긴다
    */
+  let lastRestoreMarks = null
   const waitRestored = async (want, capMs = 45_000) => {
     const t0 = Date.now()
     let last = null
@@ -3239,6 +3240,8 @@ try {
       const m = await marks()
       const w = await whereNow()
       last = w
+      // 못 섰을 때 무엇이 남았는지를 적는다 — 표식 · 격자 (칸 19 팩토리 로비에서 45초 상한, 2026-10-16)
+      lastRestoreMarks = { restoring: m.restoring, scene: m.scene, script: m.script, talk: m.talk, menu: m.menu, grid: Boolean(w.world?.grid) }
       /**
        * **복원이 끝났다**는 상태를 못 박는다. 고정 시간을 기다리면 그것은
        * 「대충 이쯤이면 됐겠지」고, 느린 기계에서는 아직 아니고 빠른 기계에서는
@@ -3317,7 +3320,7 @@ try {
     + ` → 돌아온 자리 ${at(got)} ${got.player.x.toFixed(2)},${got.player.z.toFixed(2)}`
     + ` · 어긋남 x${gap.x.toFixed(2)} z${gap.z.toFixed(2)} 방향${gap.facing.toFixed(2)}`
     + ` · 복원 ${String(Math.round(restored.ms / 100) / 10)}초`
-    + (restored.ok ? '' : ` · **${String(Math.round(restored.ms / 1000))}초를 기다려도 저장한 맵에 안 섰다**`)
+    + (restored.ok ? '' : ` · **${String(Math.round(restored.ms / 1000))}초를 기다려도 저장한 맵에 안 섰다** (마지막 표식 ${JSON.stringify(lastRestoreMarks)})`)
     + (stood ? '' : ' · 60초를 기다려도 맵이 안 섰다')
     + (sameMap ? '' : ' · **다른 맵이다**')
     + (samePlace ? '' : ' · **같은 맵이라도 다른 자리다**')

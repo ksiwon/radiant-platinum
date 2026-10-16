@@ -10,6 +10,8 @@
 import { boardWarp } from './badges.mjs'
 import { MAP as LEAGUE_MAP, eliteFour } from './badgesLeague.mjs'
 import { sprayBest } from './badges67.mjs'
+import { gridOf, matrixOf, npcsOf, waterAt } from './route.mjs'
+import { solvePush } from './pushSolve.mjs'
 
 /** 맵 번호 (`generated/map_headers.txt` 줄 − 1) */
 export const MAP = {
@@ -351,6 +353,200 @@ export async function battleZone(api, ctx, page) {
 export const reachedBattleZone = async (api, page) => (await api.now()).map === ZONE.resort
   && ((await varsFlags(page, [FIGHT_STATE]))?.[`v${String(FIGHT_STATE)}`] ?? 0) >= 2
 
+// ── 자전거 길 (227번도로) ─────────────────────────────────────────────────
+
+/**
+ * **자전거로만 이어지는 길을 탄다** — 도약대 · 자전거 널 · 4단 전속력.
+ *
+ * ⚠️ **공용 길잡이(`route.planPath` · `drive.goTo`)는 걸어서만 계획한다** — 자전거 널(0x76~0x7d)에 올라서는 걸음을 막고
+ * (`route.deckLayer`), 도약대(0xD7 · 0xD8)는 그냥 벽이며, 4단으로 바꾸지 않는다(`route.slopeClimbBan` 머리 주석). 227번도로는
+ * 그 셋이 다 있어야 멍청산에 닿는다 — 실측(2026-10-16 진단): 226번도로에서 든 남쪽 주머니 (750~757,317~327)는 북쪽이 턱(0x3B, 남으로만
+ * 뛴다)이고, 걸어서는 정적 격자로도 「unreachable」이다. 자전거 너비 우선 탐색(아래)으로는 (761,305) · (754,309)에서 **서쪽 먼 도약**
+ * 둘(4단 전속력 · `bikeTerrain.bikeRampHop` — 착지 4칸 앞) → (750,293) 다리 어귀에서 자전거 널을 타고 강을 건너 → 멍청산 바깥(262)이다.
+ *
+ * 그래서 이 다리만 자기 계획을 든다. 원작 규칙을 옮긴 것이 아니라 **제품이 그 규칙으로 막는 것을 길잡이가 알게 한 것**이다:
+ * · 도약대: 받는 쪽에서 3칸 이상 곧장 달려와(4단 전속력 = 페달 3칸 · `bike.bikeSpeedLevel`) 그 너머 네 번째 칸에 내린다
+ * · 자전거 널: 어귀(0x70)로 올라서면 위층이고, 위층에서는 널끼리만 · 어귀로만 내린다
+ * · 턱: 남쪽으로만 두 칸 · 비탈(0xD9 · 0xDA): 북쪽 금지(이 길에는 없다) · 물: 자전거는 못 들어간다
+ */
+const RAMP = { 0xd7: 1, 0xd8: -1 }
+const isBikeDeckB = (b) => b >= 0x76 && b <= 0x7d
+const isDeckB = (b) => b >= 0x71 && b <= 0x75
+export function planBike(from, layer0, goalZone) {
+  const g = gridOf(0)
+  const B = (x, z) => g.at(x, z) & 0x7fff
+  const open = (x, z) => !g.blocked(x, z) && !waterAt(0, x, z)
+  const id = (x, z, l) => `${String(x)},${String(z)},${String(l)}`
+  const prev = new Map([[id(from.x, from.z, layer0), null]])
+  const q = [[from.x, from.z, layer0]]
+  let hit = null
+  const dirs = [['ArrowRight', 1, 0], ['ArrowLeft', -1, 0], ['ArrowDown', 0, 1], ['ArrowUp', 0, -1]]
+  while (q.length > 0 && hit === null) {
+    const [x, z, l] = q.shift()
+    for (const [key, dx, dz] of dirs) {
+      let nx = x + dx; let nz = z + dz; let nl = l
+      const b = B(nx, nz); const here = B(x, z)
+      let move = { key, x: nx, z: nz }
+      if (RAMP[b] !== undefined) {
+        if (RAMP[b] !== dx || dz !== 0) continue
+        // 도약대 — 4단 전속력은 **도약대 앞 칸에 들어설 때** 페달이 3칸 넘게 쌓여 있어야 난다(`player`가 칸이 바뀌는 순간
+        // 앞 칸을 본다). 도움닫기는 실행이 앞 걸음들을 멈추지 않고 이어 달려 만든다(`bikeTo`) — 계획은 착지만 본다
+        nx = x + dx * 4
+        if (!open(nx, nz)) continue
+        move = { key, x: nx, z: nz, ramp: true }
+      } else if (b === 0x3b) {
+        if (dz !== 1) continue
+        nz = z + 2
+        if (!open(nx, nz)) continue
+        move = { key, x: nx, z: nz, ledge: true }
+      } else if ((b === 0xd9 || b === 0xda) && dz === -1) {
+        continue
+      } else if (b === 0x70) {
+        if (l === 0 && (isDeckB(here) || isBikeDeckB(here))) continue
+        nl = 1
+      } else if (isBikeDeckB(b) || isDeckB(b)) {
+        nl = isBikeDeckB(here) || isDeckB(here) || here === 0x70 ? l : 0
+        if (nl === 0 && !open(nx, nz)) continue
+      } else {
+        if (l === 1 && (isDeckB(here) || isBikeDeckB(here))) continue
+        nl = 0
+        if (!open(nx, nz)) continue
+      }
+      if (g.zoneAt(nx, nz) < 0) continue
+      const k = id(nx, nz, nl)
+      if (prev.has(k)) continue
+      prev.set(k, { from: id(x, z, l), move: { ...move, layer: nl } })
+      if (g.zoneAt(nx, nz) === goalZone) { hit = k; break }
+      q.push([nx, nz, nl])
+    }
+  }
+  if (hit === null) return null
+  const moves = []
+  for (let k = hit; prev.get(k) !== null; k = prev.get(k).from) moves.push(prev.get(k).move)
+  return moves.reverse()
+}
+
+async function bikeTo(api, ctx, page, goalZone, note) {
+  const out = { ramps: 0, steps: 0, replans: 0 }
+  const player = () => page.evaluate(async () => {
+    const p = (await import('/src/state/worldState.ts')).worldState.player
+    return { cycling: p.cycling === true, gear: p.bikeGear, pedalling: p.pedalling }
+  }).catch(() => null)
+  const bike = await api.rideBike(Math.min(120_000, api.left()))
+  let pl = await player()
+  note('자전거', `${JSON.stringify(bike).slice(0, 80)} · ${JSON.stringify(pl)}`)
+  // 4단 — 우리 키 B (`engine/input/keys`의 `gear`). 바뀌었는지는 제품 값을 읽어 본다(`bike.BIKE_GEAR`)
+  const fourth = await page.evaluate(async () => (await import('/src/engine/actor/bike.ts')).BIKE_GEAR.fourth).catch(() => null)
+  for (let i = 0; i < 2 && pl?.gear !== fourth; i++) { await api.tap('KeyB', 120); pl = await player() }
+  note('4단', `${String(pl?.gear)} (4단 ${String(fourth)})`)
+  if (pl?.gear !== fourth) return out
+  let layer = 0
+  for (let round = 0; round < 12 && api.left() > 0; round++) {
+    const at = await api.now()
+    if (gridOf(0).zoneAt(at.x, at.z) === goalZone) { out.ok = true; return out }
+    const plan = planBike({ x: at.x, z: at.z }, layer, goalZone)
+    if (plan === null) { note('자전거 길', `(${String(at.x)},${String(at.z)}) 층 ${String(layer)}에서 길이 없다`); return out }
+    if (round > 0) out.replans++
+    let off = false
+    /**
+     * 도약대 앞에서는 **멈추지 않고 이어 달린다** — 앞 걸음 넷 이상(앞선 도약 · 턱 뒤부터)을 키를 놓지 않고 바꿔 쥐며 탄다.
+     * 실측(2026-10-16 진단 3판): (764,305)에서 곧게 셋을 달려 들어가면 가까운 도약(759)에 내렸다 — 앞 칸 (761)에 들어서는 순간의
+     * 페달이 2.5칸이었다. 둘째 도약대 (753,309)는 뒤가 셋뿐이라 (757,305)에서 남으로 넷을 내려온 기세를 그대로 서쪽으로 꺾어 간다
+     */
+    const RUN = 5
+    for (let i = 0; i < plan.length && !off; i++) {
+      const m = plan[i]
+      const rampAt = plan.findIndex((x, j) => j >= i && x.ramp)
+      const runStart = rampAt < 0 ? -1 : Math.max(i, rampAt - RUN)
+      const special = rampAt < 0 ? false : plan.slice(runStart, rampAt).some((x) => x.ledge)
+      if (rampAt >= 0 && i === runStart && !special) {
+        const seq = plan.slice(runStart, rampAt + 1)
+        const before = await api.now()
+        let held = null
+        let reached = 0
+        for (const s2 of seq) {
+          if (held !== s2.key) {
+            await page.keyboard.down(s2.key)
+            if (held !== null) await page.keyboard.up(held)
+            held = s2.key
+          }
+          let ok = false
+          for (let t = 0; t < 80; t++) {
+            const n = await api.now()
+            if (n.x === s2.x && n.z === s2.z) { ok = true; break }
+            if (n.scene !== 'overworld' || n.talk) break
+            await page.waitForTimeout(10)
+          }
+          if (!ok) break
+          reached++
+        }
+        if (held !== null) await page.keyboard.up(held)
+        await api.settle()
+        const after = await api.now()
+        const ramp = seq.at(-1)
+        out.ramps++
+        note('도약대', `${String(seq.length - 1)}칸 도움닫기 (${String(before.x)},${String(before.z)}) → (${String(after.x)},${String(after.z)}) · 노린 칸 (${String(ramp.x)},${String(ramp.z)}) · ${String(reached)}/${String(seq.length)}`)
+        if (after.x !== ramp.x || after.z !== ramp.z) { off = true; break }
+        layer = ramp.layer
+        i = rampAt
+        continue
+      }
+      const n = await api.stepKey(m.key, { x: m.x, z: m.z })
+      out.steps++
+      if (n.scene === 'battle' || n.talk) { await api.settle(); off = true; break }
+      if (n.x !== m.x || n.z !== m.z) { off = true; break }
+      layer = m.layer
+    }
+    if (!off) {
+      const end = await api.now()
+      if (gridOf(0).zoneAt(end.x, end.z) === goalZone) { out.ok = true; return out }
+    }
+    // 어긋났으면 지금 칸에서 다시 — 층은 지금 칸이 널이면 위로 친다
+    const n = await api.now()
+    const b = gridOf(0).at(n.x, n.z) & 0x7fff
+    layer = isBikeDeckB(b) || isDeckB(b) ? 1 : 0
+  }
+  return out
+}
+
+// ── 바위 방 ────────────────────────────────────────────────────────────────
+
+/** 턱 → 뛰는 방향 (`badgesLeague`의 `LEDGE`와 같은 표) */
+const LEDGE = { 0x38: [1, 0], 0x39: [-1, 0], 0x3a: [0, -1], 0x3b: [0, 1] }
+/**
+ * **큰바위를 밀고 바위를 깨서 그 문 옆까지** — 챔피언로드 2F와 같은 걸음(`badgesLeague.victory2F`): 구운 격자와 처음 바위 자리로
+ * `pushSolve`가 풀고, 민 것 · 깬 것만 차례로 한다(그 사이 걸음은 `strengthPush` · `smashRock`이 맡는다). 바위는 맵에 들 때마다 제자리다.
+ * 실측(2026-10-16 진단 4판): 멍청산 방 1(263)은 입구 (17,29)에서 북쪽 문 (17,2)까지 공용 길잡이로 「unreachable」 — (11,11) 바위와
+ * (18,9) · (27,13) 큰바위가 길을 가른다
+ */
+async function pushThrough(api, ctx, map, door, note) {
+  const g = gridOf(matrixOf(map))
+  const npcs = npcsOf(map)
+  // 선 사람은 **지금 보이는 사람**만 — 구운 표에는 장면이 끝나 숨은 갤럭시단(방 1 (19~21,24) · 깃발 559)도 있다. 바위 자리는 뺀다
+  const obstacles = new Set(npcs.filter((n) => n.sprite === 84 || n.sprite === 85).map((n) => `${String(n.x)},${String(n.z)}`))
+  const people = new Set(((await api.npcSpots(map)) ?? []).map(([x, z]) => `${String(x)},${String(z)}`).filter((k) => !obstacles.has(k)))
+  const here = await api.now()
+  const plan = solvePush({
+    start: { x: here.x, z: here.z },
+    wall: (x, z) => x < 0 || z < 0 || x >= g.w || z >= g.h || g.blocked(x, z) || people.has(`${String(x)},${String(z)}`),
+    ledge: (x, z) => LEDGE[g.at(x, z) & 0x7fff] ?? null,
+    boulders: npcs.filter((n) => n.sprite === 84).map((n) => [n.x, n.z]),
+    rocks: npcs.filter((n) => n.sprite === 85).map((n) => [n.x, n.z]),
+    goal: (x, z) => Math.abs(x - door.x) + Math.abs(z - door.z) === 1,
+  })
+  if (plan === null) return { ok: false, why: `(${String(here.x)},${String(here.z)})에서 풀이가 없다` }
+  const acts = plan.moves.filter((m) => m.kind === 'push' || m.kind === 'smash')
+  note(`맵 ${String(map)} 바위 풀이`, `밀기 ${String(plan.pushes)} · 깨기 ${String(plan.smashes)} — ${acts.map((m) => `${m.kind === 'push' ? '밀기' : '깨기'} (${String(m.at.x)},${String(m.at.z)})${m.key}`).join(' ')}`)
+  for (const m of acts) {
+    const r = m.kind === 'push'
+      ? await api.strengthPush(map, m.at, m.key, 1, Math.min(300_000, api.left()))
+      : await api.smashRock(map, m.at, Math.min(300_000, api.left()))
+    if (!r.ok) return { ok: false, why: `(${String(m.at.x)},${String(m.at.z)}) ${m.kind} 실패 — ${String(r.why ?? '')}` }
+  }
+  const went = await boardWarp(api, map, door, Math.min(600_000, api.left()))
+  return { ok: went === 'arrived', why: went }
+}
+
 // ── q 멍청산과 히드런 ───────────────────────────────────────────────────────
 
 /**
@@ -408,8 +604,18 @@ export async function starkHeatran(api, ctx, page) {
     note('서바이벌 센터 회복', heal.ok ? '나았다' : String(heal.why))
     const r227 = await api.goTo(STARK.route227, Math.min(900_000, api.left()))
     note('227번도로', r227)
-    if (!await trip(STARK.route227, { x: 738, z: 306 }, 'wake', 1, '227번도로 맥실러 · 라이벌 (738,306)')) return done()
-    if (!await trip(STARK.route227, { x: 758, z: 277 }, 'buck227', 1, '227번도로 벅 (758,277)')) return done()
+    /**
+     * ⚠️ **227번도로의 두 장면은 길목이 아니다** — 16523 · 16665를 뒤에서 보는 스크립트가 없다(`scripts_route_227.s`만 쓴다).
+     * 걷는 길이 그 칸을 지나면 돌고, 안 지나면 안 돈다 — 값만 적는다. 실측(2026-10-16 진단 1판): (738,306)은 226번도로에서
+     * 들어선 (754,319) 쪽에서 「설 길이 없다」(비탈 · 화산재 너머)였다
+     */
+    v = await read()
+    note('227번도로 장면', `맥실러 · 라이벌 ${String(v.wake)} · 벅 ${String(v.buck227)} (길목 아님 — 적기만)`)
+    // 227번도로는 자전거 길이다(위 `bikeTo` 머리 주석) — 공용 길잡이로는 남쪽 주머니에서 못 나온다
+    const sprayed = await sprayBest(api)
+    note('스프레이', sprayed.ok ? `뿌렸다 (남은 것 ${String(sprayed.left)})` : String(sprayed.why))
+    const rode = await bikeTo(api, ctx, page, STARK.outside, note)
+    note('227번도로 자전거 길', JSON.stringify(rode))
     const outside = await api.goTo(STARK.outside, Math.min(900_000, api.left()))
     note('멍청산 바깥', outside)
     if (!await trip(STARK.outside, { x: 752, z: 235 }, 'outside', 1, '바깥 조무래기 (752,235)')) return done()
@@ -418,12 +624,14 @@ export async function starkHeatran(api, ctx, page) {
     v = await read()
     note('방 1 — 마스 · 쥬피터', `${r1} · 상태 ${String(v.room1)}`)
     if ((v.room1 ?? 0) < 1) return done()
-    const r2 = await api.goTo(STARK.room2, Math.min(1_200_000, api.left()))
+    let r2 = await api.goTo(STARK.room2, Math.min(600_000, api.left()))
+    if (r2 !== 'arrived' && (await api.now()).map === STARK.room1) r2 = JSON.stringify(await pushThrough(api, ctx, STARK.room1, { x: 17, z: 2 }, note))
     note('방 2', r2)
     if (!await trip(STARK.room2, { x: 42, z: 69 }, 'room2', 1, '방 2 벅 동행 (42,69)')) return done()
     // 벅을 데리고 (47,3)을 지나 셋째 방으로 — 찬미 장면이 끝나면 바깥으로 옮겨진다
     await talkLog.start(page)
-    const r3 = await api.goTo(STARK.room3, Math.min(1_200_000, api.left()))
+    let r3 = await api.goTo(STARK.room3, Math.min(600_000, api.left()))
+    if (r3 !== 'arrived' && (await api.now()).map === STARK.room2) r3 = JSON.stringify(await pushThrough(api, ctx, STARK.room2, { x: 47, z: 2 }, note))
     await until(api, async () => (await read()).charon === true && ((await read()).outside ?? 0) >= 3, 300_000)
     v = await read()
     note('방 3 — 찬미 체포', `${r3} · ${JSON.stringify(v)} · 맵 ${String((await api.now()).map)} · ${JSON.stringify((await talkLog.take(page)).slice(-3))}`)
