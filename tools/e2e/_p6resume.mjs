@@ -20,6 +20,13 @@ try {
     scriptSpy.start = (i) => window.__log.push(`start ${JSON.stringify(i)}`)
     scriptSpy.end = (k) => window.__log.push(`end ${String(k)}`)
   })
+  const evalAt = process.argv.find((a) => a.startsWith('--eval='))
+  if (evalAt !== undefined) {
+    await page.waitForFunction(() => document.documentElement.dataset.map !== undefined, null, { timeout: 120_000 })
+    await page.waitForTimeout(3000)
+    const fn = (await import('node:fs')).readFileSync(evalAt.slice(7), 'utf8')
+    console.log(JSON.stringify(await page.evaluate(`(async () => { ${fn} })()`), null, 1))
+  }
   let last = ''
   for (let i = 0; i < 120; i++) {
     const d = await page.evaluate(() => JSON.stringify((({ map, script, talk, restoring, scene, menu }) => ({ map, script, talk, restoring, scene, menu }))(document.documentElement.dataset)))

@@ -519,32 +519,60 @@ const LEDGE = { 0x38: [1, 0], 0x39: [-1, 0], 0x3a: [0, -1], 0x3b: [0, 1] }
  * 실측(2026-10-16 진단 4판): 멍청산 방 1(263)은 입구 (17,29)에서 북쪽 문 (17,2)까지 공용 길잡이로 「unreachable」 — (11,11) 바위와
  * (18,9) · (27,13) 큰바위가 길을 가른다
  */
-async function pushThrough(api, ctx, map, door, note) {
+async function pushThrough(api, ctx, map, door, note, page, avoid = []) {
   const g = gridOf(matrixOf(map))
-  const npcs = npcsOf(map)
-  // 선 사람은 **지금 보이는 사람**만 — 구운 표에는 장면이 끝나 숨은 갤럭시단(방 1 (19~21,24) · 깃발 559)도 있다. 바위 자리는 뺀다
-  const obstacles = new Set(npcs.filter((n) => n.sprite === 84 || n.sprite === 85).map((n) => `${String(n.x)},${String(n.z)}`))
-  const people = new Set(((await api.npcSpots(map)) ?? []).map(([x, z]) => `${String(x)},${String(z)}`).filter((k) => !obstacles.has(k)))
-  const here = await api.now()
-  const plan = solvePush({
-    start: { x: here.x, z: here.z },
-    wall: (x, z) => x < 0 || z < 0 || x >= g.w || z >= g.h || g.blocked(x, z) || people.has(`${String(x)},${String(z)}`),
-    ledge: (x, z) => LEDGE[g.at(x, z) & 0x7fff] ?? null,
-    boulders: npcs.filter((n) => n.sprite === 84).map((n) => [n.x, n.z]),
-    rocks: npcs.filter((n) => n.sprite === 85).map((n) => [n.x, n.z]),
-    goal: (x, z) => Math.abs(x - door.x) + Math.abs(z - door.z) === 1,
-  })
-  if (plan === null) return { ok: false, why: `(${String(here.x)},${String(here.z)})에서 풀이가 없다` }
-  const acts = plan.moves.filter((m) => m.kind === 'push' || m.kind === 'smash')
-  note(`맵 ${String(map)} 바위 풀이`, `밀기 ${String(plan.pushes)} · 깨기 ${String(plan.smashes)} — ${acts.map((m) => `${m.kind === 'push' ? '밀기' : '깨기'} (${String(m.at.x)},${String(m.at.z)})${m.key}`).join(' ')}`)
-  for (const m of acts) {
-    const r = m.kind === 'push'
-      ? await api.strengthPush(map, m.at, m.key, 1, Math.min(300_000, api.left()))
-      : await api.smashRock(map, m.at, Math.min(300_000, api.left()))
-    if (!r.ok) return { ok: false, why: `(${String(m.at.x)},${String(m.at.z)}) ${m.kind} 실패 — ${String(r.why ?? '')}` }
+  /** 지금 보이는 큰바위 · 바위 · 사람 — 제품의 물체 자리를 읽는다(`npcActors` · 읽기만). 밀다 만 판은 이 자리에서 다시 푼다 */
+  const live = () => page.evaluate(async () => (await import('/src/engine/actor/npcs.ts')).npcActors.list
+    .filter((a) => a.visible).map((a) => [Math.round(a.x), Math.round(a.z), a.gfx])).catch(() => [])
+  let last = null
+  for (let round = 0; round < 4 && api.left() > 0; round++) {
+    const actors = await live()
+    const people = new Set(actors.filter(([, , gfx]) => gfx !== 84 && gfx !== 85).map(([x, z]) => `${String(x)},${String(z)}`))
+    const here = await api.now()
+    if (here.map !== map) return { ok: here.map !== map, why: `맵 ${String(here.map)}` }
+    const plan = solvePush({
+      start: { x: here.x, z: here.z },
+      wall: (x, z) => x < 0 || z < 0 || x >= g.w || z >= g.h || g.blocked(x, z) || people.has(`${String(x)},${String(z)}`)
+        || avoid.some((a) => a.x === x && a.z === z),
+      ledge: (x, z) => LEDGE[g.at(x, z) & 0x7fff] ?? null,
+      boulders: actors.filter(([, , gfx]) => gfx === 84).map(([x, z]) => [x, z]),
+      rocks: actors.filter(([, , gfx]) => gfx === 85).map(([x, z]) => [x, z]),
+      goal: (x, z) => Math.abs(x - door.x) + Math.abs(z - door.z) === 1,
+    })
+    if (plan === null) return { ok: false, why: `(${String(here.x)},${String(here.z)})에서 풀이가 없다 (${String(round + 1)}번째)` }
+    const acts = plan.moves.filter((m) => m.kind === 'push' || m.kind === 'smash')
+    note(`맵 ${String(map)} 바위 풀이 ${String(round + 1)}`, `밀기 ${String(plan.pushes)} · 깨기 ${String(plan.smashes)} — ${acts.map((m) => `${m.kind === 'push' ? '밀기' : '깨기'} (${String(m.at.x)},${String(m.at.z)})${m.key}`).join(' ')}`)
+    last = null
+    for (const m of acts) {
+      const r = m.kind === 'push'
+        ? await api.strengthPush(map, m.at, m.key, 1, Math.min(300_000, api.left()))
+        : await api.smashRock(map, m.at, Math.min(300_000, api.left()))
+      if (!r.ok) { last = `(${String(m.at.x)},${String(m.at.z)}) ${m.kind} 실패 — ${String(r.why ?? '')} · 지금 칸 ${JSON.stringify(await api.now().then((n) => [n.x, n.z]))}`; break }
+    }
+    if (last !== null) { note(`맵 ${String(map)} 바위`, `${last} — 지금 자리에서 다시 푼다`); continue }
+    let went = await boardWarp(api, map, door, Math.min(600_000, api.left()))
+    if (went !== 'arrived') {
+      /**
+       * ⚠️ 실측(2026-10-16 진단 6판): 방 1 북쪽 계단 (17,2) — `boardWarp`의 `stepOn`이 (17,3)에 「arrived」를 내고 (18,3)에 서 있었다.
+       * 문 바로 아래 칸으로 한 칸씩 맞춰 서서 북쪽을 길게 민다
+       */
+      const below = { x: door.x, z: door.z + 1 }
+      for (let i = 0; i < 4; i++) {
+        const n = await api.now()
+        if (n.x === below.x && n.z === below.z) break
+        const key = n.x !== below.x ? (below.x < n.x ? 'ArrowLeft' : 'ArrowRight') : (below.z < n.z ? 'ArrowUp' : 'ArrowDown')
+        await api.stepKey(key, { x: n.x + Math.sign(below.x - n.x), z: n.x === below.x ? n.z + Math.sign(below.z - n.z) : n.z })
+      }
+      await page.keyboard.down('ArrowUp')
+      for (let i = 0; i < 40 && (await api.now()).map === map; i++) await page.waitForTimeout(100)
+      await page.keyboard.up('ArrowUp')
+      await api.settle()
+      const after = await api.now()
+      went = after.map !== map ? 'arrived' : `${went} · 아래 칸에서 길게 밀어도 그대로 (${String(after.x)},${String(after.z)})`
+    }
+    return { ok: went === 'arrived', why: went }
   }
-  const went = await boardWarp(api, map, door, Math.min(600_000, api.left()))
-  return { ok: went === 'arrived', why: went }
+  return { ok: false, why: last }
 }
 
 // ── q 멍청산과 히드런 ───────────────────────────────────────────────────────
@@ -574,6 +602,28 @@ const F = { charon: 214, buckTalked: 293, heatranBattled: 215, heatranCaught: 28
 const BATTLEGROUND_BUCK_SCRIPT = 2
 const HEATRAN_SCRIPT = 4
 
+/**
+ * **멍청산 셋째 방까지 간다** — 서바이벌에서 226 → 227번도로(자전거 길 · `bikeTo`) → 바깥 → 방 1(바위) → 방 2(바위) → 방 3.
+ * 바위는 맵에 들 때마다 제자리라(REPAIR §126) 다시 들 때도 다시 민다. 벅이 없으면 방 2는 락클라임도 되지만 풀이는 걷기 · 밀기 · 깨기로 같다
+ */
+async function toStarkRoom3(api, ctx, page, note) {
+  const at = () => api.now().then((n) => n.map)
+  if (![STARK.outside, STARK.room1, STARK.room2, STARK.room3].includes(await at())) {
+    if ((await at()) !== STARK.route227) {
+      const fly = await api.flyTo(450, Math.min(180_000, api.left()))
+      note('공중날기 → 서바이벌에어리어', fly.ok ? '닿았다' : String(fly.why))
+      note('227번도로', await api.goTo(STARK.route227, Math.min(900_000, api.left())))
+    }
+    const sprayed = await sprayBest(api)
+    note('스프레이', sprayed.ok ? `뿌렸다 (남은 것 ${String(sprayed.left)})` : String(sprayed.why))
+    note('227번도로 자전거 길', JSON.stringify(await bikeTo(api, ctx, page, STARK.outside, note)))
+  }
+  if ((await at()) === STARK.outside) note('방 1로', await api.goTo(STARK.room1, Math.min(300_000, api.left())))
+  if ((await at()) === STARK.room1) note('방 1 바위', JSON.stringify(await pushThrough(api, ctx, STARK.room1, { x: 17, z: 2 }, note, page)))
+  if ((await at()) === STARK.room2) note('방 2 바위', JSON.stringify(await pushThrough(api, ctx, STARK.room2, { x: 47, z: 2 }, note, page, [{ x: 42, z: 70 }])))
+  return (await at()) === STARK.room3
+}
+
 export async function starkHeatran(api, ctx, page) {
   const t0 = Date.now()
   const out = { steps: [] }
@@ -597,7 +647,9 @@ export async function starkHeatran(api, ctx, page) {
   let v = await read()
   note('처음', JSON.stringify(v))
 
-  if (!v.charon) {
+  // 이미 멍청산 안이면(앞 판이 거기서 멈췄다) 거기서 잇는다 — 방 상태 값이 어디까지 갔는지를 말한다
+  const inside = [STARK.outside, STARK.room1, STARK.room2, STARK.room3].includes((await api.now()).map)
+  if (!v.charon && !inside) {
     const fly = await api.flyTo(450, Math.min(180_000, api.left()))
     note('공중날기 → 서바이벌에어리어', fly.ok ? '닿았다' : String(fly.why))
     const heal = await api.healAt(STARK.survivalCenter, Math.min(300_000, api.left()))
@@ -616,22 +668,37 @@ export async function starkHeatran(api, ctx, page) {
     note('스프레이', sprayed.ok ? `뿌렸다 (남은 것 ${String(sprayed.left)})` : String(sprayed.why))
     const rode = await bikeTo(api, ctx, page, STARK.outside, note)
     note('227번도로 자전거 길', JSON.stringify(rode))
-    const outside = await api.goTo(STARK.outside, Math.min(900_000, api.left()))
-    note('멍청산 바깥', outside)
-    if (!await trip(STARK.outside, { x: 752, z: 235 }, 'outside', 1, '바깥 조무래기 (752,235)')) return done()
-    const r1 = await api.goTo(STARK.room1, Math.min(300_000, api.left()))
-    await until(api, async () => ((await read()).room1 ?? 0) >= 1, 300_000)
-    v = await read()
-    note('방 1 — 마스 · 쥬피터', `${r1} · 상태 ${String(v.room1)}`)
-    if ((v.room1 ?? 0) < 1) return done()
+  }
+  if (!v.charon) {
+    if ((v.outside ?? 0) < 1) {
+      const outside = await api.goTo(STARK.outside, Math.min(900_000, api.left()))
+      note('멍청산 바깥', outside)
+      if (!await trip(STARK.outside, { x: 752, z: 235 }, 'outside', 1, '바깥 조무래기 (752,235)')) return done()
+    }
+    if ((v.room1 ?? 0) < 1 || ![STARK.room1, STARK.room2, STARK.room3].includes((await api.now()).map)) {
+      const r1 = await api.goTo(STARK.room1, Math.min(300_000, api.left()))
+      await until(api, async () => ((await read()).room1 ?? 0) >= 1, 300_000)
+      v = await read()
+      note('방 1 — 마스 · 쥬피터', `${r1} · 상태 ${String(v.room1)}`)
+      if ((v.room1 ?? 0) < 1) return done()
+    }
     let r2 = await api.goTo(STARK.room2, Math.min(600_000, api.left()))
-    if (r2 !== 'arrived' && (await api.now()).map === STARK.room1) r2 = JSON.stringify(await pushThrough(api, ctx, STARK.room1, { x: 17, z: 2 }, note))
+    if (r2 !== 'arrived' && (await api.now()).map === STARK.room1) r2 = JSON.stringify(await pushThrough(api, ctx, STARK.room1, { x: 17, z: 2 }, note, page))
     note('방 2', r2)
     if (!await trip(STARK.room2, { x: 42, z: 69 }, 'room2', 1, '방 2 벅 동행 (42,69)')) return done()
     // 벅을 데리고 (47,3)을 지나 셋째 방으로 — 찬미 장면이 끝나면 바깥으로 옮겨진다
     await talkLog.start(page)
-    let r3 = await api.goTo(STARK.room3, Math.min(600_000, api.left()))
-    if (r3 !== 'arrived' && (await api.now()).map === STARK.room2) r3 = JSON.stringify(await pushThrough(api, ctx, STARK.room2, { x: 47, z: 2 }, note))
+    /**
+     * ⚠️ **벅이 따라오는 동안은 락클라임 · 파도타기 · 공중날기를 못 쓴다** — 원작 `field_move_tasks.c` `PlayerTravellingWithPartner`
+     * (381 날기 · 426 파도타기 · 639 락클라임 · 717 순간이동 · 764 구멍파기). 괴력 · 바위깨기는 된다. 실측(2026-10-16 진단 7판): 길잡이가
+     * (38,57)에서 북쪽 락클라임을 골라 20분을 「못 탔다」로 되밀렸다. 그래서 방 2는 걸음 · 밀기 · 깨기만으로 푼다(`pushThrough`)
+     * — 하네스 기억의 파도타기 · 락클라임은 벅이 떠난 뒤 되돌린다
+     */
+    const modes = api.harnessMemory?.() ?? {}
+    api.setClimb(false); api.setSurf(false); api.setWaterfall(false)
+    const r3 = JSON.stringify(await pushThrough(api, ctx, STARK.room2, { x: 47, z: 2 }, note, page, [{ x: 42, z: 70 }]))
+    // (42,70)을 밟으면 벅이 「떨어졌다」로 상태가 0이 된다 — 풀이에서 벽으로 친다
+    api.setClimb(modes.climb !== false); api.setSurf(modes.surf !== false); api.setWaterfall(modes.waterfall !== false)
     await until(api, async () => (await read()).charon === true && ((await read()).outside ?? 0) >= 3, 300_000)
     v = await read()
     note('방 3 — 찬미 체포', `${r3} · ${JSON.stringify(v)} · 맵 ${String((await api.now()).map)} · ${JSON.stringify((await talkLog.take(page)).slice(-3))}`)
@@ -649,10 +716,11 @@ export async function starkHeatran(api, ctx, page) {
   }
 
   if (!v.heatranBattled && !v.heatranCaught) {
-    const heal = await api.healAt(STARK.survivalCenter, Math.min(300_000, api.left()))
-    note('서바이벌 센터 회복', heal.ok ? '나았다' : String(heal.why))
-    const r3 = await api.goTo(STARK.room3, Math.min(1_800_000, api.left()))
-    note('방 3', r3)
+    if ((await api.now()).map !== STARK.room3) {
+      const heal = await api.healAt(STARK.survivalCenter, Math.min(300_000, api.left()))
+      note('서바이벌 센터 회복', heal.ok ? '나았다' : String(heal.why))
+    }
+    note('방 3', String(await toStarkRoom3(api, ctx, page, note)))
     const foe = []
     const watch = setInterval(() => {
       page.evaluate(async () => {
