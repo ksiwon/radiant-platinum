@@ -160,27 +160,32 @@ const SHORTS = [
 ]
 
 /**
- * v1.3.3 쇼츠 — 위 쇼츠의 뼈대 · 곡 자리(`SCORE` 9:16의 큐 이름)를 그대로 두고 새로 달라진 것을 넣는다(2026-10-17).
- * 동굴 무대(C5) 자리에 실내 배틀의 큰 포켓몬 둘, 1인칭 몽타주에 아지트 자동문 · 신월섬 하늘 · 프런티어 깃발, 챔피언과 창기둥 사이에
- * 시원의 공간을 넣고, 늘어난 만큼 밤 연고(D6) · 축복시티(D8) · 루카리오(D12) · 벽 걸음(E3w) · 흔들림 하나(C7a)를 뺀다 — 60초 아래
+ * v1.3.3 쇼츠 — **실제로 만나는 순서대로**(사용자 · 2026-10-17). 떡잎마을 → 202번도로 조우 · 기술 · 포획 → 갤럭시단 아지트 자동문 → 창기둥 → 깨어진 세계 → 기라티나 → 챔피언 →
+ * 엔딩 뒤(신월섬 · 배틀프런티어 깃발) → 시원의 공간 아르세우스 → 로고. 곡은 `SCORE['9:16-v133']`.
+ * 관장전은 넣지 않는다 — 짧은 쇼츠에서 배틀은 야생 · 난천으로 충분하다(사용자 · 2026-10-17). 60초 아래를 지키려고 화강돌(D11b) · 밤 연고 · 축복시티 · 루카리오 · 벽 걸음은 뺐다
  */
+const pick = (...cues) => cues.map((c) => SHORTS.find((e) => e.cue === c))
 const SHORTS_V133 = [
-  ...SHORTS.filter((e) => ['A1', 'A2-A4', 'A5', 'A6', 'A7', 'B1', 'B2', 'B5-B6', 'C1', 'C3'].includes(e.cue)),
-  // 포켓몬센터 무대 — 천장보다 큰 몸이 천장 아래로 맞춰 선다(v1.3.3). 가로판을 잘라 쓴다(배틀 카메라는 세로에 맞춰 서지 않는다)
-  { cue: 'N3a', take: 'N3-130', cut: [0.4, 1.7], crop: 0.5, trans: 'cut' },
-  { cue: 'N3b', take: 'N3-321', cut: [0.4, 1.7], crop: 0.48, trans: 'cut' },
-  ...SHORTS.filter((e) => ['C6', 'C7', 'C8', 'D5'].includes(e.cue)),
-  // 갤럭시단 아지트 1F — BDSP 자동문 두 짝이 한 칸씩 미끄러진다
+  ...pick('A1', 'A2-A4', 'A5', 'A6', 'A7', 'B1', 'B2'),
+  // 떡잎마을에서 바로 V — 3인칭 → 1인칭. 길이는 오프닝 곡의 마디가 정한다(`fit`)
+  { cue: 'D5', take: 'D5-first', cut: [0.4, 2.0], trans: 'cut' },
+  // 배틀 곡 한 마디가 2.59초라 컷 머리 합이 7초 남짓이어야 다음 마디(7.82초)에 잡힘 컷이 1.5초 안팎으로 맞는다
+  ...pick('B5-B6', 'C1'),
+  { ...pick('C3')[0], cut: [1.0, 1.3] },
+  // 길이는 야생 배틀 곡의 마디가 정한다(`fit` — C8)
+  ...pick('C6', 'C7a', 'C7', 'C8'),
+  // 갤럭시단 아지트 1F — BDSP 자동문 두 짝이 한 칸씩 미끄러진다. 기라티나 곡이 여기서 들어온다
   { cue: 'N5', take: 'N5-hqdoor', cut: [0.6, 1.4], trans: 'cut' },
-  // 신월섬 — 1인칭으로 숲 사이 노을 하늘을 올려다본다 (3인칭 부감은 바다 위 평판이 보여 안 쓴다 · 보고서)
+  ...pick('E2', 'E3a', 'E3b'),
+  { cue: 'E4', card: 'white', seconds: 0.4, fade: 0.3 },
+  // 길이는 챔피언 곡의 프레이즈가 정한다(`fit`)
+  ...pick('D11', 'D13'),
+  // 엔딩 뒤 — 타이틀 곡. 신월섬은 1인칭으로 숲 사이 노을 하늘(3인칭 부감은 바다 위 평판이 보여 안 쓴다 · 보고서)
   { cue: 'N4', take: 'N4-newmoon-fp', cut: [1.5, 1.3], trans: 'cut' },
-  // 배틀프런티어 — 천으로 바뀐 깃발. 첫 장은 기본 카메라라 0.4초 뒤부터
-  { cue: 'N2', take: 'N2-frontier', cut: [0.5, 1.3], trans: 'cut' },
-  // 오프닝 곡 두 마디(6.2초)에 1인칭 넷 — 축복시티(D8)까지 넣으니 세 마디가 돼 60초를 넘었다. 길이는 깃발 컷이 맞춘다(`fit`)
-  ...SHORTS.filter((e) => ['D11', 'D11b', 'D13'].includes(e.cue)),
-  // 시원의 공간 — 아르세우스를 지나 고개를 들면 구름바다 위 우주. 길이는 챔피언 곡의 프레이즈가 정한다(`fit`)
-  { cue: 'N1', take: 'N1-origin-up', cut: [1.8, 1.8], trans: 'cut' },
-  ...SHORTS.filter((e) => ['E2', 'E3a', 'E3b', 'E4', 'F1', 'F2'].includes(e.cue)),
+  { cue: 'N2', take: 'N2-frontier', cut: [0.5, 1.4], trans: 'cut' },
+  // 시원의 공간 — 아르세우스가 가운데 들어왔다가 고개를 들면 화면 아래로 빠지고 구름바다 위 우주가 열린다. 그대로 로고로
+  { cue: 'N1', take: 'N1-origin-up', cut: [1.2, 2.0], fade: 0.3, snap: false },
+  ...pick('F1', 'F2'),
 ]
 
 const EDIT = EDIT_NAME === 'v133' ? SHORTS_V133 : SHORT ? SHORTS : MAIN
@@ -266,7 +271,17 @@ const SCORE = {
     // 타이틀 곡 파일은 머리 0.45초가 무음이다 — 그 뒤부터 깔고 로고보다 조금 앞서 들어온다. 원본은 곡을 0.2초 비우고 스팅어를 넣는다
     { src: 'B_OTH002', cue: 'F1', at: -0.15, from: 0.45, until: 'end', fadeOut: 1.5 },
   ],
-}[ASPECT] ?? []
+  // v1.3.3 쇼츠 — 만나는 순서대로라 곡도 이야기를 따른다. 관장전은 배틀 곡을 잇고(관장 곡은 풀어 둔 것이 없다), 아지트부터
+  // 기라티나 곡, 챔피언 곡, 엔딩 뒤는 타이틀 곡으로 아르세우스를 지나 로고까지 간다
+  '9:16-v133': [
+    { src: 'B_OTH001', cue: 'A2-A4', at: -0.057, from: 5.8, until: 'B5-B6', untilAt: 3.03, fit: 1, fadeIn: 0.05, fadeOut: 0.25 },
+    // 배틀 곡 · 챔피언 곡은 한 마디에 맞춘다 — 4마디면 볼이 2초 넘게 멈춰 섰고(C7 · C8) 드래곤다이브가 부딪히기 전에 잘렸다(D13)
+    { src: 'BA001', cue: 'B5-B6', at: 3.03, from: 0, until: 'N5', fit: 1, tail: 0.7 },
+    { src: 'BA015', cue: 'N5', from: 0, until: 'D11', untilAt: 0.16, fadeIn: 0.5, fadeOut: 0.4 },
+    { src: 'BA008', cue: 'D11', at: 0.16, from: 0, until: 'N4', fit: 1, tail: 0.8 },
+    { src: 'B_OTH002', cue: 'N4', at: -0.15, from: 0.45, until: 'end', fadeIn: 0.3, fadeOut: 1.5 },
+  ],
+}[EDIT_NAME && SHORT ? `${ASPECT}-${EDIT_NAME}` : ASPECT] ?? []
 const MUSIC = resolve(ROOT, '.audit/reels/music')
 /** 효과음은 BDSP 원본이다(Wwise 이벤트 → wem, `.audit/reels/sfx/` · `index.json`, 깃에 없다) */
 const SFX = resolve(ROOT, '.audit/reels/sfx')
