@@ -620,7 +620,12 @@ async function toStarkRoom3(api, ctx, page, note) {
   }
   if ((await at()) === STARK.outside) note('방 1로', await api.goTo(STARK.room1, Math.min(300_000, api.left())))
   if ((await at()) === STARK.room1) note('방 1 바위', JSON.stringify(await pushThrough(api, ctx, STARK.room1, { x: 17, z: 2 }, note, page)))
-  if ((await at()) === STARK.room2) note('방 2 바위', JSON.stringify(await pushThrough(api, ctx, STARK.room2, { x: 47, z: 2 }, note, page, [{ x: 42, z: 70 }])))
+  if ((await at()) === STARK.room2) {
+    // 입구 (42,86)에서 (42,69)까지는 락클라임 길이다 — 걸어 올라가(길잡이) 벅 자리에서 바위 풀이를 시작한다 (진단 9판: 입구에서는 풀이가 없다)
+    const n = await api.now()
+    if (n.z > 69) note('방 2 (42,69)로', await api.stepOn(STARK.room2, { x: 42, z: 69 }, Math.min(600_000, api.left())))
+    note('방 2 바위', JSON.stringify(await pushThrough(api, ctx, STARK.room2, { x: 47, z: 2 }, note, page, [{ x: 42, z: 70 }])))
+  }
   return (await at()) === STARK.room3
 }
 
@@ -716,7 +721,8 @@ export async function starkHeatran(api, ctx, page) {
   }
 
   if (!v.heatranBattled && !v.heatranCaught) {
-    if ((await api.now()).map !== STARK.room3) {
+    // 산 안이면 회복하러 안 나간다 — 바위 방을 거꾸로 못 지난다(바위가 제자리로 돌아온다). 파티는 L85~95다
+    if (![STARK.outside, STARK.room1, STARK.room2, STARK.room3].includes((await api.now()).map)) {
       const heal = await api.healAt(STARK.survivalCenter, Math.min(300_000, api.left()))
       note('서바이벌 센터 회복', heal.ok ? '나았다' : String(heal.why))
     }
@@ -1031,7 +1037,9 @@ export async function templeRegigigas(api, ctx, page) {
       if (went !== 'arrived') return done()
     }
     // B5F 얼음 — 계단에서 레지기가스 앞까지 미끄러진다. 멈춘 칸이 다르면 적고 그만둔다
-    const at0 = await api.now()
+    let at0 = await api.now()
+    // 계단 (8,3)에 내려서면 한 칸 아래 (8,4)가 미끄럼 길의 출발이다(진단 탐침이 선 자리)
+    if (at0.x === 8 && at0.z === 3) { await api.stepKey('ArrowDown', { x: 8, z: 4 }); at0 = await api.now() }
     note('B5F 들어선 자리', `${String(at0.x)},${String(at0.z)}`)
     for (const [key, wx, wz] of B5F_SLIDE) {
       const from = await api.now()
