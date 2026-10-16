@@ -49,6 +49,7 @@ import { CELLS, CELL_COUNT, diagDir, keepPartEnd, partEnvelope, partStart, PARTS
 // 칸 8~16(깨어진 세계 · 리그 다리)의 걸음 — 예전 탐침 `_dw` · `_league`가 부르던 것을 journey가 그대로 부른다 (사용자 10-11)
 import { MAP as DW_MAP, candiceToAcuity, catchGiratina, coronetToSpear, veilstoneHQ, walkDistortion } from './badgesDW.mjs'
 import { MAP as LEAGUE_MAP, beaconToVictory, eliteFour, sendoffToBeacon, victoryRoad } from './badgesLeague.mjs'
+import * as POST from './badgesPost.mjs'
 import { landDrawn, levelLook, skyDecision } from './partChecks.mjs'
 import {
   bindingDigest, dataDigest, describeEnvironment, rosterOf, sealEvidence,
@@ -158,6 +159,18 @@ const SHORTCUTS = []
  * (`.audit/parts/mac-diag/FINDINGS.md` 1). 상태 1이면 137칸이 닿는다. 그 뒤 칸을 진단하려는 것이지 통과가 아니다
  */
 if (args.includes('--diag-gear-press')) SHORTCUTS.push('diag-gear-press')
+/**
+ * **전당 뒤 칸(17~)의 지름길 `--shortcut=a,b`** (기본 꺼짐 · 봉투 `scope.shortcuts`에 적힌다). 이름과 근거는
+ * `badgesPost.SHORTCUT_NAMES` 머리 주석 — 원작이 걸어서는 못 여는 조건(신오 210종을 다 봄 · 배포로만 오는 레지 셋)만 둔다.
+ * 안 켜면 그 다리가 「못 간다」를 까닭과 함께 적고 실패한다
+ */
+for (const name of (flag('shortcut') ?? '').split(',').filter((x) => x !== '')) {
+  if (!POST.SHORTCUT_NAMES.includes(name)) {
+    console.error(`\n--shortcut=${name} — 모르는 지름길이다 (${POST.SHORTCUT_NAMES.join(' · ')})\n`)
+    process.exit(1)
+  }
+  SHORTCUTS.push(name)
+}
 /** 유채 앞에서 찌르꼬를 올릴 레벨 — L14 진화 · 날개치기는 L9 */
 const CANDY_STARLY_LEVEL = 16
 /** 이상한사탕 (`items.json` 50 · 약 주머니) */
@@ -1953,6 +1966,8 @@ try {
             return { top: st.top, summarySlot: st.summarySlot, choosingMon: st.choosingMon }
           }).catch(() => null),
           out: SHOTS,
+          // 전당 뒤 다리(`badgesPost`)가 보는 켠 지름길 — `--shortcut=…`
+          shortcuts: SHORTCUTS,
         }
         const feed = async () => {
           if (PART.candy === null) return
@@ -1975,6 +1990,14 @@ try {
           k: [() => beaconToVictory(api, legCtx), async () => (await api.now()).map === LEAGUE_MAP.leagueSouthCenter],
           l: [() => victoryRoad(api, legCtx),
             async () => (await api.now()).map === LEAGUE_MAP.leagueNorthCenter && ((await v()).rivalLeague ?? 0) >= 1],
+          // ── 전당 뒤 (P6 · 칸 17~ · `badgesPost.mjs`) ──
+          n: [() => POST.nationalDex(api, legCtx, page), () => POST.reachedNationalDex(api, page)],
+          o: [() => POST.battleZone(api, legCtx, page), () => POST.reachedBattleZone(api, page)],
+          p: [() => POST.factoryRun(api, legCtx, page), () => POST.reachedFactory(page)],
+          q: [() => POST.starkHeatran(api, legCtx, page), () => POST.reachedHeatran(page)],
+          r: [() => POST.eliteRematch(api, legCtx, page), () => POST.reachedRematch(page)],
+          s: [() => POST.templeRegigigas(api, legCtx, page), () => POST.reachedRegigigas(page)],
+          t: [() => POST.chateauRotom(api, legCtx, page), () => POST.reachedRotom(page)],
           m: [async () => {
             const r = await eliteFour(api, legCtx, page)
             if (r?.ok !== true) return r

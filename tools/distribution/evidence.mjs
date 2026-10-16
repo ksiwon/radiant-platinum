@@ -275,6 +275,8 @@ export const SUITES = {
       'tools/e2e/journey.mjs', 'tools/e2e/badges.mjs', 'tools/e2e/badges67.mjs',
       // 칸 8~16의 걸음 — 깨어진 세계 · 리그 다리 (`JOURNEY_CELLS_20261011.md`)
       'tools/e2e/badgesDW.mjs', 'tools/e2e/badgesLeague.mjs', 'tools/e2e/distortionSolve.mjs',
+      // 칸 17~ — 전당 뒤 (`badgesPost.mjs`)
+      'tools/e2e/badgesPost.mjs',
       // ⚠️ **체육관 풀이도 도구다.** 장막의 샌드백 차례를 내는 탐색이 여기 있고
       // (`observe.veilstonePlan`이 페이지 안에서 부른다), 그것이 바뀌면 「자두
       // 앞에 섰다」의 뜻이 바뀐다 — 목록 밖에 있으면 봉투가 그 변화를 못 잡는다
