@@ -9,7 +9,7 @@
 // 까닭과 함께 적고 멈춘다 — 통과로 접지 않는다
 import { boardWarp } from './badges.mjs'
 import { MAP as LEAGUE_MAP, eliteFour, victoryRoad } from './badgesLeague.mjs'
-import { snowpointSlide, sprayBest } from './badges67.mjs'
+import { snowpointSlide, sprayBest, teachTo } from './badges67.mjs'
 import { gridOf, matrixOf, npcsOf, waterAt } from './route.mjs'
 import { solvePush } from './pushSolve.mjs'
 
@@ -1155,7 +1155,25 @@ export async function chateauRotom(api, ctx, page) {
   note('공중날기 → 영원시티', fly.ok ? '닿았다' : String(fly.why))
   const heal = await api.healAt(69, Math.min(300_000, api.left()))
   note('영원 센터 회복', heal.ok ? '나았다' : String(heal.why))
-  const room = await api.goTo(CHATEAU.room, Math.min(1_800_000, api.left()))
+  /**
+   * ⚠️ **숲의 양옥집 문 (74,15)은 영원의숲(203) 안 거합베기 나무 셋((74,33) · (75,33) · (77,33)) 너머다** — 나무를 피하면 정적 격자로도
+   * 「unreachable」(2026-10-16 계산). 칸 21 끝 파티(토대부기 · 찌르호크 · 비버통 · 레지 셋)에 거합베기가 없다 — 비전머신01(420)을
+   * 토대부기에게 가르친다(잎날가르기(75)를 잊는다 · `badges67.teachTo`). 나무는 `clearWay`가 가까운 것부터 벤다
+   */
+  const party = (await api.partyState()) ?? []
+  if (!party.some((m) => m.moves.some((x) => x.move === 15))) {
+    const taught = await teachTo(api, 420, 15, [387, 388, 389], { keep: [89, 202, 431] })
+    note('비전머신01 거합베기', JSON.stringify(taught).slice(0, 200))
+  }
+  const forest = await api.goTo(203, Math.min(900_000, api.left()))
+  note('영원의숲(203)', forest)
+  let hall = await api.goTo(CHATEAU.hall, Math.min(300_000, api.left()))
+  if (hall !== 'arrived' && (await api.now()).map === 203) {
+    const cut = await api.clearWay(203, CHATEAU.hall, Math.min(900_000, api.left()), { sprite: 86, maxHits: 3 })
+    hall = cut.ok ? 'arrived' : JSON.stringify(cut).slice(0, 200)
+  }
+  note('숲의 양옥집(295)', hall)
+  const room = await api.goTo(CHATEAU.room, Math.min(900_000, api.left()))
   note('숲의 양옥집 — 뒤 방(300)', room)
   if (room !== 'arrived') return done()
   const h = await hour()
