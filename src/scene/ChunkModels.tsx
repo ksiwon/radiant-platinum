@@ -35,6 +35,7 @@ import { Grass, grassSpots, type GrassField } from './Grass'
 import { isTuftTile } from '../engine/battle/encounter'
 import { Water, waterField, type WaterField } from './Water'
 import { shellPaint, shellPlates, wallSource, wallStrip } from './shell'
+import { RING_BACKS, ringBack, ringStrip } from './ringBack'
 import { cardShells, isSolidCard, type CardShells } from './cards'
 import { floorRegions, floorTiles, roomWalls, type RoomWalls } from './roomWalls'
 import { isOutdoors, mapById, warpsOf, world } from '../engine/map/world'
@@ -676,7 +677,13 @@ function cachedBack(mesh: ChunkMesh, sheet: TexSheet | null, id: number): Back {
   const plain = shellBody(mesh, sheet, id, VISUAL_RECIPES, recipeMode())
   const body = swapped === null ? plain : dropClaims(plain, swapped.claims)
   const paint = shellPaint(body, sheet)
-  const band = wallStrip(body, sheet, wallSource(body, paint))
+  // ⚠️ **둥근 건물은 판을 안 세운다** — 축에 맞춘 판이 원작 면 앞에 서서 덩어리가 된다. 빈 뒤 호만 몸통으로 닫고,
+  // 띠도 벽을 실제로 찍어 읽는다 (`ringBack` · 배틀프런티어 천막)
+  const ring = RING_BACKS.get(id)
+  const ringBand = ring ? ringStrip(body, sheet, ring) : null
+  const band = ring
+    ? (ringBand ? { ...ringBand, group: ring.walls[0]! } : null)
+    : wallStrip(body, sheet, wallSource(body, paint))
   let strip: Texture | null = null
   if (band) {
     // 폭 1텍셀 × 높이 h. 세로만 늘어나므로 가로 물림은 뜻이 없다
@@ -694,7 +701,7 @@ function cachedBack(mesh: ChunkMesh, sheet: TexSheet | null, id: number): Back {
     strip.needsUpdate = true
   }
   const made: Back = {
-    geometry: shellPlates(body, paint),
+    geometry: ring ? ringBack(body, ring) : shellPlates(body, paint),
     strip,
     spec: band ? mesh.materials[band.group] ?? null : null,
   }
