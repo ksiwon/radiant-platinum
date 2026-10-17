@@ -55,6 +55,14 @@ interface PatchNote {
 
 export const NOTES: PatchNote[] = [
   {
+    v: 'v1.3.5',
+    date: '2026-10-18',
+    items: [
+      { kind: 'fix', text: '신월섬과 보름달섬 너머 바다 위에 베이지색 판이 떠 보이던 것을 고쳤습니다.' },
+      { kind: 'fix', text: '배틀프런티어 정원 위에 노란 반투명 덩어리가 보이던 것을 고쳤습니다. 둥근 천막의 뒤가 벽으로 닫힙니다.' },
+    ],
+  },
+  {
     v: 'v1.3.4',
     date: '2026-10-17',
     items: [
