@@ -1804,10 +1804,21 @@ try {
            * 비버니가 열두 번 안 나와 파티가 둘로 남았고, 칸 3에서 풀베기를 배울 마리가 없었다.
            * 사람은 나올 때까지 한 번 더 돈다
            */
-          if (!got.ok && got.why === '풀밭을 돌았는데 못 잡았다' && api.left() > 900_000) {
-            const first = got
+          /**
+           * ⚠️ **풀밭에서 쓰러져 센터로 밀려나도 다시 간다.** 실측(2026-10-17 최종 연쇄 칸 2 · 20cd0507): 찌르꼬를 기다리다
+           * 「풀밭을 벗어났다 (맵 6)」로 끝나 다시 안 갔고, 날 마리 없이 칸 6까지 가서 태홍에게 세 번 지고 공중날기도 못 썼다.
+           * 볼이 떨어진 것만 빼고 세 바퀴까지 — 낫고, 풀밭으로 돌아가서
+           */
+          for (let round = 2; !got.ok && round <= 3 && api.left() > 900_000
+            && !String(got.why).startsWith('가방에 몬스터볼이'); round++) {
+            const before = got
+            if (!api.fullyHealed(await api.partyState()).ok) {
+              const again = await api.healAt(CENTERS[426], Math.min(240_000, api.left()))
+              heals.push({ where: `${who.what}을 다시 잡으러 가기 전`, center: CENTERS[426], ...again })
+            }
+            if ((await api.goTo(CATCH_MAP, Math.min(300_000, api.left()))) !== 'arrived') break
             got = await api.catchInGrass(CATCH_MAP, Math.min(600_000, api.left()), 12, who.species)
-            got = { ...got, met: [...(first.met ?? []), ...(got.met ?? [])], rounds: 2 }
+            got = { ...got, met: [...(before.met ?? []), ...(got.met ?? [])], rounds: round }
           }
           north.caught.push({ what: who.what, ...got })
           const party = await api.partyState()
