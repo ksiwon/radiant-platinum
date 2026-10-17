@@ -814,7 +814,16 @@ export async function eliteFour(api, ctx, page, {
     if (!champ(v)) { await untilMap(api, (m) => m === MAP.leagueNorthCenter, 60_000); await api.clearTalk(); await api.settle() }
   }
   if (!champ(v) && !out.navigated) return done()
-  out.ending = await watchEnding(api, ctx, page)
+  /**
+   * ⚠️ **다시 켜진 앱에서는 엔딩을 기다리며 키를 누르지 않는다.** 그 이동이 크레딧 끝의 `location.assign`이다 — 전당 · 크레딧은 이미 지났다.
+   * 여기서 `watchEnding`이 Space를 누르면 타이틀의 「이어하기」(리포트가 있으면 커서가 거기 있다)로 들어가 필드에 서고, 오지 않을
+   * 전당 · 크레딧 · 타이틀을 기다리다 8분 정체로 떨어졌다(2026-10-17 최종 연쇄 칸 21). 타이틀이 섰는지만 본다 — 이어하기는 부른 쪽이 한다
+   */
+  if (out.navigated) {
+    const atTitle = () => page.evaluate(() => location.pathname === '/' || document.documentElement.dataset.scene === 'title').catch(() => false)
+    await page.waitForFunction(() => location.pathname === '/' || document.documentElement.dataset.scene === 'title', null, { timeout: 120_000 }).catch(() => {})
+    out.ending = { navigated: true, title: await atTitle() }
+  } else out.ending = await watchEnding(api, ctx, page)
   note('명예의 전당 → 크레딧 → 타이틀', JSON.stringify(out.ending))
   out.ok = out.ending.title === true
   return done()
