@@ -39,6 +39,9 @@ const CASES = {
   m434: { opts: { mine: [{ species: 149, moves: [434] }], foe: [{ species: 143, moves: SPLASH }] }, turn: [{ move: 434 }] },
   m439: { opts: { mine: [{ species: 248, moves: [439] }], foe: [{ species: 143, moves: SPLASH }] }, turn: [{ move: 439 }] },
   stealth: { opts: { mine: [{ species: 76, moves: [446] }], foe: [{ species: 143, moves: SPLASH }] }, turn: [{ move: 446 }] },
+  // 검은눈빛(212) — 칸 10 (67a7edab) 천관산 조무래기 골뱃의 검은눈빛 대사에서 배틀이 8분 섰다
+  meanLook: { opts: { mine: [{ species: 389, level: 69, moves: [150] }], foe: [{ species: 42, level: 39, moves: [212] }] }, turn: [{ move: 150 }], turn2: [{ move: 150 }] },
+  meanLookConfused: { opts: { mine: [{ species: 389, level: 69, moves: [150] }], foe: [{ species: 42, level: 39, moves: [109, 212] }] }, turn: [{ move: 150 }], turn2: [{ move: 150 }] },
   reflect: { opts: { mine: [{ species: 242, moves: [115, 113] }], foe: [{ species: 143, moves: SPLASH }] }, turn: [{ move: 115 }], turn2: [{ move: 113 }] },
 }
 const name = flag('case')

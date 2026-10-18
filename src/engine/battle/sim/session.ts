@@ -590,9 +590,10 @@ export class BattleSession {
    * 눕혀 두면 sim이 우리 칸을 **처음부터 없는 것처럼** 다룬다 — PP가 다 떨어진
    * 순간 원작처럼 발버둥이 나온다
    */
-  private lowerIdle(): void {
+  private lowerIdle(): boolean {
     const battle = this.raw.battle
-    if (!battle) return
+    if (!battle) return false
+    let lowered = false
     for (const [i, side] of battle.sides.entries()) {
       // 한쪽만 들어온 시점에도 불린다 — 상대가 오기 전에 우리 칸부터 눕힌다
       if (!side) continue
@@ -608,9 +609,40 @@ export class BattleSession {
         // 실행할 때 PP가 없어 `|cant|nopp|`가 뜨고 볼을 던진 턴이 통째로 샌다.
         // 개체와 턴이 둘 다 그때 그대로일 때만 남긴다
         if (live.some((a) => a.mon === p)) continue
+        if (slot.pp > 0) lowered = true
         slot.pp = 0
       }
     }
+    return lowered
+  }
+
+  /**
+   * 이미 나간 `|request|`의 기술 목록을 **지금 개체**로 다시 쓴다.
+   *
+   * ⚠️ **눕히기 전에 만들어진 요청은 낡았다.** 도구를 쓴 턴에 세운 빈 턴 칸이 그 턴에
+   * 안 나가면(혼란 자해 · 풀죽음 · 잠듦) PP 1이 남은 채 턴이 끝나고, sim은 그 PP를
+   * 보고 **발버둥을 안 넣은** 다음 턴 요청을 내보낸다. `settle`이 칸을 도로 눕혀도
+   * 요청은 그대로라, 진짜 기술 PP가 다 떨어진 마리는 고를 칸이 하나도 없다 — 교체마저
+   * 묶였으면(검은눈빛) 명령 창이 영영 안 선다. 실측(2026-10-18 칸 10 · 67a7edab): 천관산
+   * 조무래기의 골뱃이 검은눈빛을 쓴 턴, 발버둥만 남은 토대부기가 상처약을 쓴 다음 턴에
+   * 배틀이 8분 섰다. sim의 `chooseMove`도 고르는 그 자리에서 `getMoveRequestData`를
+   * 다시 부르므로 여기서 같은 값으로 맞춰 두면 둘이 어긋나지 않는다
+   */
+  private freshRequests(lines: string[], sideIndex: number): string[] {
+    const side = this.raw.battle?.sides[sideIndex]
+    if (!side) return lines
+    return lines.map((line) => {
+      if (!line.startsWith('|request|')) return line
+      const body = line.slice('|request|'.length)
+      if (body === '') return line
+      const request = JSON.parse(body) as { active?: { moves: unknown }[]; forceSwitch?: unknown; wait?: unknown }
+      if (!request.active || request.forceSwitch || request.wait) return line
+      for (const [at, slot] of request.active.entries()) {
+        const mon = side.active[at]
+        if (mon && !mon.fainted) slot.moves = mon.getMoveRequestData().moves
+      }
+      return `|request|${JSON.stringify(request)}`
+    })
   }
 
   /**
@@ -1007,8 +1039,9 @@ export class BattleSession {
     await new Promise((r) => setTimeout(r, 0))
     // 세워 뒀던 빈 턴 칸을 도로 눕힌다. 기술이 도중에 실패해 PP가 안 깎이는 길이
     // 있어서, 여기서 한 번 더 0으로 맞춰야 다음 턴에 그 칸이 살아나지 않는다
-    this.lowerIdle()
-    return { p1: this.drain('p1'), p2: this.drain('p2') }
+    // 세운 채 남았던 칸을 눕혔으면 이미 나간 요청도 고친다 (`freshRequests`)
+    if (!this.lowerIdle()) return { p1: this.drain('p1'), p2: this.drain('p2') }
+    return { p1: this.freshRequests(this.drain('p1'), 0), p2: this.freshRequests(this.drain('p2'), 1) }
   }
 
   get ended(): boolean {

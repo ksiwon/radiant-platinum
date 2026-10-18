@@ -952,3 +952,44 @@ describe('담금질이 잡은 자리', () => {
     controller.destroy()
   }, 30_000)
 })
+
+describe('도구를 쓴 턴에 세운 빈 턴 칸이 안 나가도 다음 턴이 선다', () => {
+  // 실측(2026-10-18 칸 10 · 67a7edab 천관산): 발버둥만 남은 토대부기가 검은눈빛에 묶인 채 상처약을 썼고,
+  // 혼란 자해로 빈 턴 칸이 안 나가 PP 1이 남았다 — 다음 턴 요청에 발버둥이 없어 명령 창이 영영 안 섰다
+  const SUPER_POTION = itemList.findIndex((i) => i.name === 'super_potion')
+  const bag = (id: number) => ({ id, data: itemTable.get(id) })
+  const TORTERRA = 389
+  const GOLBAT = 42
+  const CONFUSE_RAY = 109
+  const MEAN_LOOK = 212
+
+  it('발버둥만 남고 묶인 마리가 상처약을 써도 다음 턴에 고를 것이 있다', async () => {
+    let usedOnTrap = 0
+    for (let seed = 1; seed <= 40; seed++) {
+      const player = spawn(TORTERRA, 69, seed, 'p1-0')
+      player.mon.moves = [452, 89, 242, 437].map((move) => ({ move, pp: 0, ppUps: 0 }))
+      const golbat = spawn(GOLBAT, 39, seed + 100, 'p2-0')
+      golbat.mon.moves = [CONFUSE_RAY, MEAN_LOOK].map((move) => ({ move, pp: movesById.get(move)?.pp ?? 5, ppUps: 0 }))
+      const { controller } = await BattleController.start({
+        player: { name: '빛나', team: [player, spawn(TURTWIG, 40, seed + 7, 'p1-1')] },
+        foe: { name: '조무래기', team: [golbat] },
+        seed: [seed & 0xffff, 2, 3, 4],
+        random: rng(seed),
+        basePp: (move) => movesById.get(move)?.pp ?? 5,
+      })
+      for (let turn = 0; turn < 12 && !controller.ended; turn++) {
+        expect(controller.actions.length, `씨앗 ${String(seed)} · ${String(turn)}턴에 고를 것이 없다`).toBeGreaterThan(0)
+        const me = controller.results('p1').find((r) => r.key === 'p1-0')!
+        if (me.hp < me.maxHp * 0.6 && controller.canSpendAt(0)) {
+          if (controller.state.active.p1a?.volatiles.has('trapped')) usedOnTrap++
+          await controller.useBagItem(bag(SUPER_POTION), 'p1-0')
+          continue
+        }
+        await controller.choose(controller.actions.find((a) => a.type === 'move') ?? controller.actions[0]!)
+      }
+      controller.destroy()
+    }
+    // 묶인 채 도구를 쓴 턴이 실제로 있었어야 이 시험이 그 자리를 밟은 것이다
+    expect(usedOnTrap).toBeGreaterThan(0)
+  }, 120_000)
+})
