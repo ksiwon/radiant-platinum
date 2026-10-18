@@ -25,7 +25,7 @@ const maybe = withModels(...FILES.map((f) => `arena/${f}`))
 interface Gltf {
   accessors: { bufferView: number; componentType: number; count: number; type: string }[]
   bufferViews: { byteOffset: number; byteLength: number }[]
-  meshes: { primitives: { attributes: Record<string, number>; indices: number; material?: number }[] }[]
+  meshes: { name: string; primitives: { attributes: Record<string, number>; indices: number; material?: number }[] }[]
   materials: { name: string; alphaMode?: string; doubleSided?: boolean }[]
 }
 
@@ -181,8 +181,14 @@ maybe('배틀 무대', () => {
         expect(['MASK', 'BLEND'], m.name).toContain(m.alphaMode)
         expect(m.doubleSided, m.name).toBe(true)
       }
-      // 재질별로 합쳐 둔다 — 원본은 메시가 수백 개라 그대로 두면 드로우콜이 그만큼이다
-      expect(gltf.meshes[0]!.primitives.length).toBe(gltf.materials.length)
+      // 재질별로 합쳐 둔다 — 원본은 메시가 수백 개라 그대로 두면 드로우콜이 그만큼이다. 따로 서는 것은 배틀 종류별 바닥 덮개(`hide:` —
+      // 배틀 종류마다 켜고 끈다, `battle/arenaCascade`)뿐이고, 재질 하나가 합친 메시와 덮개 메시에 겹쳐 서지 않는다
+      const merged = gltf.meshes.filter((m) => !m.name.startsWith('hide:'))
+      expect(merged).toHaveLength(1)
+      const slots = gltf.meshes.flatMap((m) => m.primitives.map((p) => p.material))
+      expect(new Set(slots).size).toBe(gltf.materials.length)
+      expect(merged[0]!.primitives.length + new Set(gltf.meshes.filter((m) => m.name.startsWith('hide:')).flatMap((m) => m.primitives.map((p) => p.material))).size)
+        .toBe(gltf.materials.length)
     })
   })
 
@@ -194,7 +200,8 @@ maybe('배틀 무대', () => {
       const blend = stages.find((s) => s.file === file)!
         .gltf.materials.filter((m) => m.alphaMode === 'BLEND')
       expect(blend.length, file).toBeGreaterThan(0)
-      for (const m of blend) expect(m.name).toMatch(/Light|Window/)
+      // 창빛 말고 비치는 것은 배틀 종류별 바닥 덮개(`Cover_01` — 원작이 SrcAlpha · OneMinusSrcAlpha로 섞는다)뿐이다
+      for (const m of blend) expect(m.name).toMatch(/Light|Window|Cover_01/)
     }
     // 굴과 들판에는 없다. 있으면 벽이 비쳐 보인다
     for (const file of ['g001.glb', 'g006.glb', 'g056.glb', 'g070.glb']) {

@@ -3160,6 +3160,21 @@ u = 0.5를 축으로 마주 본다 — 왼쪽 최댓값 + 오른쪽 최솟값이
 브라우저(`arena.ts`)와 노드(`bdspArena.py`)가 **픽셀 최대 차 0**이다(`glbDiff` g038~g041). 지역 14벌 · 던전 138벌에는 이 조건에 드는 재질이 0이다
 (재질 1,500 · 2,434 실측).
 
+**무대만의 재질 셋 (`arena` 옵션 — 무대 30벌만 켠다 · 방 · 나무열매 · 기믹은 안 켠다 · DEFECTS_20261017 §4)** — 무대 30벌 전부를 UnityPy로
+읽은 범위는 `.audit/arena-mats-20261018/survey.json` · `bsurvey.json`이다.
+
+| 갈래 | 원작 | 싣는 것 | 실행 쪽 |
+|---|---|---|---|
+| 그림 셋 섞기 (70재질 — 둘째 UV를 읽는데 메시에 없는 16재질은 뺀다) | `_CASCADE_BLENDUV0`에 `_MainTex` · `_BlendTex`가 다 있다. 바탕 · 층은 100배로 되풀이하고 마스크는 배율 1(그중 일부는 둘째 UV — `_BlendUVIndex` 1) | 바탕 = `baseColorTexture`(그대로) · 층 = `emissiveTexture`(발광색 없음 — 안 빛난다 · 바탕과 같은 그림이면 같은 번호) · 마스크 = `occlusionTexture`(`texCoord` 1 · `strength` 0) · 그 재질 조각에 `TEXCOORD_1`(마스크 배율을 먹인 UV) · `extras.cascade` { color, layer (선형 × 세기 · float32), layerUv (`TEXCOORD_0` → 층 UV 배율 · 오프셋), layerMap } | `scene/battle/arenaCascade`가 `lerp(바탕 × color, 층 × layer, 마스크 R)` × 재질 색 |
+| 오려 내는 재질의 색 (A) | `TransparentCutout`인데 `_Color`가 흰색이 아니다 | `baseColorFactor` = `_Color` × `_ColorIntensity` · `_Color` 알파 (반투명 겹그림과 같은 식). 문턱은 재질의 `_Cutoff`. `_SrcBlend 5 · _DstBlend 10`인 바닥 덮개 `Cover_01` 열한 벌은 `BLEND` | — |
+| 발광 그림 (C · 47재질) | `_CASCADE_EMISSION` · `_MainTex` · `_EmissionTex` · 세기 > 0 (창빛은 `battle/arenaLight`가 더하기로 · 그림 없는 재질은 전처럼 `emissiveFactor`만) | `emissiveTexture` · `emissiveFactor` = `_EmissionColor`를 **선형으로 내린** 값 · `extras.glow` = 세기 · `extras.emitOn` | `emissiveIntensity` = `glow` (늘 켠다) |
+| 배틀 종류별 물체 | 무대 `MonoBehaviour`의 `_singleBattleHideObjects` · `_doubleBattleHideObjects` · `_tagBattleHideObject` (무대 아홉 벌 — 바닥 덮개 여섯 장씩) | 그 물체를 묶음 `hide:<이름>`으로 따로 두고 노드 `extras.listedIn` = 그 물체를 적은 목록들 | `battleHides` — **적힌 배틀에서만 보인다**(칸 이름과 거꾸로 — 근거는 그 함수 머리말) |
+
+섞는 식은 원작 셰이더(Switch 바이너리)를 못 읽어 우리 식이다 — 충호 방 바닥 · 나무열매 잎이 같은 식으로 원작과 맞았다. 바닥 30벌의 정점 알파는 전부 255라
+정점 색은 안 곱한다. 거울 반사(`_ENVIRONMENTMAPENABLE_MIRRORMAP` · `MirrorReflection` 컴포넌트 — g027 바닥 둘)는 아직 안 옮긴다.
+발광색을 선형으로 내리는 것은 무대만이다 — 빛 재질을 싣는 쪽(야외 · 던전 `lights`)은 밤 창빛을 원작 값 그대로 맞춰 두었다.
+두 굽는 쪽은 30벌 전부 `tools/spike/glbDiff.py`(기하 · 그림 픽셀)와 `.audit/arena-mats-20261018/matdiff.py`(재질 · 노드 extras · `TEXCOORD_1` · 그림 차례)가 같다.
+
 ⚠️ **여기까지 오는 데 헛짚은 것들** — 전부 재 보고 아닌 것으로 지웠다: 뼈대·스킨
 (실루엣이 정확한 모부기다) · 크기(0.787 = 0.40×1.98) · 그림 선택(몸 재질 다섯이
 다 `Body_col` 하나다) · 원본 그림(512 원본과 배치가 같다) · 형식(멀쩡해 보이던

@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { exportArena, flipbookCell, plainFactor, texturePid } from './arena'
+import { cascadeExtras, exportArena, flipbookCell, plainFactor, texturePid } from './arena'
 import { openEnvironment } from './environment'
 import { decodePng, encodePng } from '../platinum/png'
 import { bdspDir, withLocal } from '../../data/romData.testkit'
@@ -107,14 +107,93 @@ withLocal('BDSP 방', room('c02r0101'), room('c05r1101'), room('t01r0101'), room
 
 const g027 = ARENAS ? join(ARENAS, 'ground', 'g027') : null
 withLocal('BDSP 무대 g027', g027)('물 체육관 무대 (원본 번들)', () => {
-  it('더하는 물은 색을 곱하지 않고 알파를 곱한 보통 섞기로 실린다', async () => {
+  interface Full {
+    materials: (Material & { extras?: Record<string, unknown>, occlusionTexture?: Record<string, number>, emissiveTexture?: { index: number }, emissiveFactor?: number[] })[]
+    nodes: { name: string, mesh?: number, extras?: Record<string, unknown> }[]
+    meshes: { name: string, primitives: { attributes: Record<string, number>, material?: number }[] }[]
+  }
+  let g: Full | null = null
+  const baked = async (): Promise<Full> => {
+    if (g) return g
     const env = openEnvironment([new Uint8Array(readFileSync(g027!))])
-    const { glb } = await exportArena(env, encodePng, { name: 'g027' })
-    const water = gltfOf(glb).materials.find((m) => m.name === 'M_B_027_Water_02')!
+    // 무대는 `arena`를 켠다 (`convert.ts`의 `convertArenas`) — 그림 크기는 재질 값과 상관없어 작게 굽는다
+    const { glb, stat } = await exportArena(env, encodePng, { name: 'g027', maxSize: 32, arena: true })
+    expect(stat.problems).toEqual([])
+    return (g = gltfOf(glb) as unknown as Full)
+  }
+  const mat = (all: Full, name: string): Full['materials'][number] => all.materials.find((m) => m.name === name)!
+
+  it('더하는 물은 색을 곱하지 않고 알파를 곱한 보통 섞기로 실린다', async () => {
+    const water = mat(await baked(), 'M_B_027_Water_02')
     expect(water.alphaMode).toBe('BLEND')
     expect(water.pbrMetallicRoughness.baseColorTexture).toBeDefined()
     expect(water.pbrMetallicRoughness.baseColorFactor).toBeUndefined()
   }, 120_000)
+  // DEFECTS_20261017 §4 — 바닥이 회색 격자뿐 · 덮개가 흰 판 · 천장 링이 검었다
+  it('바닥은 그림 셋을 싣는다 — 층은 발광 칸, 마스크는 가림 칸(둘째 UV · 세기 0), 섞는 값은 `extras.cascade`', async () => {
+    const all = await baked()
+    const floor = mat(all, 'M_CB_027_Floor_01')
+    expect(floor.emissiveTexture).toBeDefined()
+    expect(floor.emissiveFactor).toBeUndefined()
+    expect(floor.occlusionTexture).toMatchObject({ texCoord: 1, strength: 0 })
+    const c = floor.extras!.cascade as { color: number[], layer: number[], layerUv: number[] }
+    // `_Color` (0.3, 0.765, 1) × 세기 1.5를 선형으로 — 파랑이 1을 넘는다
+    expect(c.color[2]).toBeCloseTo(1.5, 5)
+    expect(c.layerUv).toEqual([1, 1, 0, 0])
+    // 그 재질 조각에만 마스크 UV가 실린다
+    const slot = all.materials.indexOf(floor)
+    const prim = all.meshes.flatMap((m) => m.primitives).find((p) => p.material === slot)!
+    expect(prim.attributes.TEXCOORD_1).toBeDefined()
+    const plain = all.meshes.flatMap((m) => m.primitives).find((p) => p.material === all.materials.findIndex((m) => m.name === 'M_CB_027_Wall_01'))!
+    expect(plain.attributes.TEXCOORD_1).toBeUndefined()
+  }, 120_000)
+  it('바닥 덮개는 물빛을 곱해 섞어 그린다 — 흰 판으로 오리지 않는다', async () => {
+    const cover = mat(await baked(), 'M_CB_027_Cover_01')
+    expect(cover.alphaMode).toBe('BLEND')
+    const [r, gg, b, a] = cover.pbrMetallicRoughness.baseColorFactor!
+    expect(b!).toBeGreaterThan(gg!)
+    expect(gg!).toBeGreaterThan(r!)
+    expect(a!).toBeCloseTo(0.961, 3)
+  }, 120_000)
+  it('천장 링은 발광 그림 × 선형 발광색 · 세기 5를 싣는다', async () => {
+    const ring = mat(await baked(), 'M_CB_027_Facility_04')
+    expect(ring.emissiveTexture).toBeDefined()
+    // `_EmissionColor` (0.765, 0.574, 0.382)는 감마다 — 선형으로 내리면 주황이 짙어진다
+    expect(ring.emissiveFactor![0]).toBeCloseTo(0.546, 2)
+    expect(ring.emissiveFactor![2]).toBeCloseTo(0.12, 2)
+    expect(ring.extras).toMatchObject({ glow: 5 })
+  }, 120_000)
+  it('바닥 덮개 여섯 장은 노드를 따로 두고 적힌 배틀 목록을 싣는다', async () => {
+    const listed = Object.fromEntries((await baked()).nodes.filter((n) => n.extras?.listedIn).map((n) => [n.name, n.extras!.listedIn]))
+    expect(listed).toEqual({
+      Cover_E_001: ['single'], Cover_P_001: ['single'],
+      Cover_E_002: ['double'], Cover_P_002: ['double'],
+      Cover_P_003: ['tag'], Cover_P_004: ['tag'],
+    })
+  }, 120_000)
+  it('`arena`를 안 켜면(방 · 나무열매 · 기믹) 전과 같다 — 섞기 · 목록이 없다', async () => {
+    const env = openEnvironment([new Uint8Array(readFileSync(g027!))])
+    const { glb } = await exportArena(env, encodePng, { name: 'g027', maxSize: 32 })
+    const plain = gltfOf(glb) as unknown as Full
+    expect(plain.materials.some((m) => m.extras?.cascade)).toBe(false)
+    expect(plain.nodes.some((n) => n.extras?.listedIn)).toBe(false)
+    expect(mat(plain, 'M_CB_027_Cover_01').alphaMode).toBe('MASK')
+  }, 120_000)
+})
+
+describe('섞기 값 (`cascadeExtras`)', () => {
+  const pairs = (o: Record<string, unknown>): Map<string, never> => new Map(Object.entries(o)) as Map<string, never>
+  it('층 UV는 바탕 배율이 먹은 UV에서 다시 잰다 — 바탕 (100, 100) · 층 (25, 25)이면 4분의 1', () => {
+    const c = cascadeExtras(pairs({}), pairs({}), [100, 100, 0, 0], [25, 25, 0, 0], true)
+    expect(c.layerUv).toEqual([0.25, 0.25, 0, 0.75])
+  })
+  it('색은 감마 → 선형 × 세기, 세기가 없으면 1', () => {
+    const c = cascadeExtras(pairs({ _Color: { r: 1, g: 0.5, b: 0 } }), pairs({ _ColorIntensity: 2 }), [1, 1, 0, 0], [1, 1, 0, 0], false)
+    expect(c.color[0]).toBe(2)
+    expect(c.color[1]).toBeCloseTo(0.214 * 2, 2)
+    expect(c.layer).toEqual([1, 1, 1])
+    expect(c.layerMap).toBe(false)
+  })
 })
 
 describe('그림 없는 재질의 색 (`plainFactor`)', () => {

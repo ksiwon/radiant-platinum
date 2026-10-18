@@ -35,7 +35,7 @@ import numpy as np
 import UnityPy
 from UnityPy.helpers import MeshHelper
 
-from bdsp_bake_albedo import bake, linear_to_srgb, plant_kind, prop_pairs, srgb_to_linear_scalar
+from bdsp_bake_albedo import bake, linear_to_srgb, plant_kind, prop_pairs, raw_wrap, srgb_to_linear_scalar
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tools.raw.sources import require_dir
@@ -563,10 +563,89 @@ def top_group(transform) -> str:
     return chain[-2] if len(chain) >= 2 else chain[-1]
 
 
+#: 배틀 종류별 물체 목록 — 무대 `MonoBehaviour`(`G027` 등)가 적어 둔 칸 → 우리 이름. `arena.ts`의 `HIDE_LISTS`와 같다
+HIDE_LISTS = (("_singleBattleHideObjects", "single"), ("_doubleBattleHideObjects", "double"), ("_tagBattleHideObject", "tag"))
+
+
+def hide_lists(env) -> dict[int, list[str]]:
+    """GameObject PathID → 그 물체를 적은 배틀 종류 목록들 (`single` · `double` · `tag` 차례). `arena.ts`의 `hideLists`와 같다.
+
+    물 체육관 g027의 바닥 덮개(`Cover_P_001` …)가 그렇다 — 여섯 장이 겹쳐 서 있고 목록마다 둘씩 적혀 있다. 안 읽으면 다 겹쳐 그린다.
+    목록의 뜻(그 배틀에서 숨긴다 · 그 배틀에만 보인다)은 **굽는 쪽이 정하지 않는다** — 사실(`listedIn`)만 싣고 실행 쪽(`battleHides`)이 읽는다
+    """
+    out: dict[int, list[str]] = {}
+    for o in env.objects:
+        if o.type.name != "MonoBehaviour":
+            continue
+        try:
+            mb = o.read_typetree()
+        except Exception:
+            continue
+        for key, mode in HIDE_LISTS:
+            for ref in mb.get(key) or []:
+                pid = ref.get("m_PathID", 0) if isinstance(ref, dict) else 0
+                if pid and mode not in out.setdefault(pid, []):
+                    out[pid].append(mode)
+    return out
+
+
+def hidden_in(go, transform, hides: dict[int, list[str]]) -> tuple[str, list[str]] | None:
+    """이 물체(또는 조상)가 숨김 목록에 있으면 (그 물체 이름, 배틀 종류들). `arena.ts`의 `hiddenIn`과 같다"""
+    if not hides:
+        return None
+    if go.object_reader.path_id in hides:
+        return go.m_Name, hides[go.object_reader.path_id]
+    t = transform
+    while t is not None and t.m_Father.path_id:
+        t = t.m_Father.read()
+        g = t.m_GameObject.read()
+        if g.object_reader.path_id in hides:
+            return g.m_Name, hides[g.object_reader.path_id]
+    return None
+
+
+def f32(x: float) -> float:
+    """float32로 누른다 — 브라우저 변환기의 `Math.fround`와 JSON이 같게 (`pow`가 끝자리에서 갈려도 float32에서 만난다)"""
+    return float(np.float32(x))
+
+
+def cascade_extras(colors: dict, floats: dict, main_st, layer_st, layer: bool) -> dict:
+    """그림 셋 섞기 재질의 `extras.cascade` — `arena.ts`의 `cascadeExtras`와 같다.
+
+    실행 쪽(`scene/battle/arenaCascade`)이 `lerp(바탕 × color, 층 × layer, 섞기 R)`로 편다. 색은 선형 × 세기(1을 넘을 수 있다).
+    `layerUv`는 `TEXCOORD_0`(바탕 배율이 먹은 glTF UV)에서 층 UV로 가는 배율 · 오프셋이다 — 층 그림은 바탕과 같은 첫 UV를 제 배율로 읽는다
+    """
+    def lin(key: str, gain: str) -> list[float]:
+        c = colors.get(key) or {}
+        k = floats.get(gain, 1.0)
+        return [f32(srgb_to_linear_scalar(c.get(x, 1.0)) * k) for x in ("r", "g", "b")]
+
+    sx, sy, ox, oy = main_st
+    lsx, lsy, lox, loy = layer_st
+    a = lsx / (sx or 1.0)
+    b = lsy / (sy or 1.0)
+    return {"color": lin("_Color", "_ColorIntensity"), "layer": lin("_LayerColor", "_LayerColorIntensity"),
+            "layerUv": [f32(a), f32(b), f32(lox - ox * a), f32(1 - loy - (1 - oy) * b)], "layerMap": layer}
+
+
+def raw_png(tex, max_size: int | None) -> bytes:
+    """그림을 손대지 않고 PNG로 — 섞기 마스크 · 발광 그림. 줄이는 길은 `cascade_mix`와 같다 (`arena.ts`의 `rawImage`)"""
+    from io import BytesIO
+    from PIL import Image
+    img = tex.image.convert("RGBA")
+    if max_size is not None and max(img.size) > max_size:
+        k = max_size / max(img.size)
+        img = img.resize((max(1, round(img.size[0] * k)), max(1, round(img.size[1] * k))), Image.LANCZOS)
+    out = BytesIO()
+    img.save(out, "PNG")
+    return out.getvalue()
+
+
 def export(bundle: Path, out: Path, far: float | None, max_size: int | None = None, groups: bool = False,
-           plant: bool = False, motion: bool = False) -> dict:
+           plant: bool = False, motion: bool = False, arena: bool = False) -> dict:
     """`groups` 뿌리 바로 아래 자식마다 노드를 따로 둔다 · `plant` 나무열매 색 입히기 (`arena.ts`의 `plant`와 같다 — 둘은 따로 켠다) ·
-    `motion` 흐름 · 흔들림 값을 `extras`로 싣는다 (`arena.ts`의 `motion` — 방이 켠다)"""
+    `motion` 흐름 · 흔들림 값을 `extras`로 싣는다 (`arena.ts`의 `motion` — 방이 켠다) ·
+    `arena` 배틀 무대만의 재질 셋(오려 내는 재질의 색 · 그림 셋 섞기 · 발광 그림)과 배틀 종류별 숨김 (`arena.ts`의 `arena` — DEFECTS_20261017 §4)"""
     env = UnityPy.load(str(bundle))
     filters = [o.read() for o in env.objects if o.type.name == "MeshFilter"]
     if not filters:
@@ -588,6 +667,9 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
     looks: dict[str, tuple[dict, dict, set]] = {}
     #: 나무열매(`plant`)만 — 재질마다 색 입히는 길 (`plant_kind`)
     plant_of: dict[str, str] = {}
+    #: 재질마다 셰이더 키워드 · 그림 칸(PathID · 배율 오프셋) — 무대(`arena`)의 섞기 · 발광이 읽는다
+    words_of: dict[str, str] = {}
+    tex_of: dict[str, dict[str, tuple[int, tuple[float, float, float, float]]]] = {}
     for obj in env.objects:
         if obj.type.name != "Material":
             continue
@@ -599,14 +681,25 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         slots = {k for k, v in prop_pairs(props.get("m_TexEnvs", []))
                  if isinstance(v, dict) and v.get("m_Texture", {}).get("m_PathID", 0) != 0}
         looks[name] = (dict(prop_pairs(props.get("m_Floats", []))), dict(prop_pairs(props.get("m_Colors", []))), slots)
+        words_of[name] = str(d.get("m_ShaderKeywords") or "")
+        te = dict(prop_pairs(props.get("m_TexEnvs", [])))
+        tex_of[name] = {k: (tex_pid(te, k), (v["m_Scale"]["x"], v["m_Scale"]["y"], v["m_Offset"]["x"], v["m_Offset"]["y"]))
+                        for k, v in te.items() if tex_pid(te, k) != 0}
         if plant:
-            te = dict(prop_pairs(props.get("m_TexEnvs", [])))
-            plant_of[name] = plant_kind(str(d.get("m_ShaderKeywords") or ""), tex_pid(te, "_MainTex"), tex_pid(te, "_LayerTex"))
+            plant_of[name] = plant_kind(words_of[name], tex_pid(te, "_MainTex"), tex_pid(te, "_LayerTex"))
 
     def alpha_of(name: str) -> dict:
         kind = kinds.get(name, "Opaque")
         if kind == "Transparent":
             return {"alphaMode": "BLEND"}
+        if arena and kind == "TransparentCutout":
+            f = looks.get(name, ({}, {}, set()))[0]
+            # 무대의 바닥 덮개(`Cover_01` — 열한 벌)는 오려 내지 않고 섞는다: `_SrcBlend 5 · _DstBlend 10`(SrcAlpha, OneMinusSrcAlpha)에
+            # `_Cutoff` 0이다. 0.5로 오리면 알파 0.5를 넘는 가운데만 **흰 판**으로 남았다 (DEFECTS_20261017 §4)
+            if f.get("_SrcBlend") == 5.0 and f.get("_DstBlend") == 10.0:
+                return {"alphaMode": "BLEND"}
+            # 문턱은 재질이 적어 둔 `_Cutoff`다 — 풀 · 나무 몇 벌이 0.6 · 0.8 · 0.884다
+            return {"alphaMode": "MASK", "alphaCutoff": f32(f.get("_Cutoff", 0.5))}
         # ⚠️ Opaque도 오려 낸다. BDSP 셰이더는 `RenderType`이 Opaque인 재질에도
         # 알파 있는 그림을 물리는 자리가 있고(무대 나무·풀), 불투명으로 두면
         # 잎 사이가 사각형으로 막힌다. 문턱은 유니티의 `_Cutoff` 기본값이다
@@ -625,6 +718,38 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
             continue
         if n not in additive:
             layered.add(n)
+    # **그림 셋을 섞는 재질** (무대만 · `arena`) — `_CASCADE_BLENDUV0`에 바탕(`_MainTex`)과 섞기 마스크(`_BlendTex`)가 물렸다.
+    # 바탕 · 층은 100배로 되풀이하고 마스크는 한 장(때로 둘째 UV)이라 그림 한 장으로 못 굽는다 — 셋을 싣고 실행 쪽이 섞는다.
+    # 물 체육관 g027 바닥이 그렇다(마스크 링으로 하늘색 ↔ 파랑). 무대 30벌 88재질 (`arena.ts`의 `cascade`와 같다)
+    # ⚠️ **마스크를 둘째 UV로 읽는데(`_BlendUVIndex` 1) 둘째 UV가 없는 메시에 붙은 재질은 섞지 않는다** — 16재질(g006 · g018 · g020 ·
+    # g029 · g056 · g070). 원작이 없는 채널을 무엇으로 읽는지 셰이더 원문이 없어 모른다. 첫 UV로 대신 읽었더니 대습초원(g020) 바닥의 물이
+    # 다 풀로 덮였다 — 짐작으로 섞느니 전처럼 바탕 그림만 둔다 (`arena.ts`의 `noUv1`와 같다)
+    no_uv1 = set()
+    if arena:
+        for mf in filters:
+            try:
+                mesh = mf.m_Mesh.read()
+                go = mf.m_GameObject.read()
+            except Exception:
+                continue
+            renderer = next((c.read() for c in go.m_Components if c.read().object_reader.type.name == "MeshRenderer"), None)
+            if renderer is None:
+                continue
+            h = MeshHelper.MeshHandler(mesh)
+            h.process()
+            n = len(h.m_Vertices)
+            if n and h.m_UV1 is not None and np.asarray(h.m_UV1).size >= n * 2:
+                continue
+            for ref in renderer.m_Materials:
+                try:
+                    no_uv1.add(ref.read().m_Name)
+                except Exception:
+                    pass
+    cascade = {n for n, (f, _, slots) in looks.items()
+               if arena and "_CASCADE_BLENDUV0" in words_of[n] and "_MainTex" in slots and "_BlendTex" in slots
+               and n not in additive and n not in layered and not (f.get("_BlendUVIndex", 0.0) == 1 and n in no_uv1)}
+    #: 층 그림이 바탕과 다른 섞기 재질 — 층 그림을 따로 굽는다
+    cascade_layer = {n for n in cascade if "_LayerTex" in tex_of[n] and tex_of[n]["_LayerTex"][0] != tex_of[n]["_MainTex"][0]}
 
     # 알베도는 번들 통째로 한 번만 굽는다. BDSP 셰이더를 런타임에 재현하지 않기
     # 위해서다 (`bdsp_bake_albedo` 머리말). 층 그림 재질은 `_LayerTex`로 한 번 더 굽는다
@@ -637,10 +762,35 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
     spec = bake(bundle, albedo, None, max_size, additive_water=True, plant=plant)
     baked = [(png.name[: -len("_albedo.png")], png, spec) for png in albedo.glob("*_albedo.png")]
     baked = [b for b in baked if b[0] not in layered]
-    if layered:
+    layer_spec: dict = {}
+    if layered or cascade_layer:
         layer_spec = bake(bundle, layer_dir, None, max_size, main_props=("_LayerTex",))
         baked += [(png.name[: -len("_albedo.png")], png, layer_spec) for png in layer_dir.glob("*_albedo.png")
                   if png.name[: -len("_albedo.png")] in layered]
+    textures_by_pid = {o.path_id: o for o in env.objects if o.type.name == "Texture2D"}
+    #: 마스크 · 발광 그림은 PathID마다 한 장 — 여러 재질이 나눠 쓴다 (g027 바닥 둘이 마스크 하나). `arena.ts`의 `rawAt`과 같다
+    raw_at: dict[int, int | None] = {}
+
+    def raw_texture(pid: int) -> int | None:
+        if pid in raw_at:
+            return raw_at[pid]
+        t = textures_by_pid.get(pid)
+        if t is None:
+            raw_at[pid] = None
+            return None
+        tex = t.read()
+        images.append({"bufferView": buf.view(raw_png(tex, max_size)), "mimeType": "image/png", "name": tex.m_Name})
+        # 마스크 · 발광 그림은 원작 반복 방식(0 Repeat · 1 Clamp)을 그대로 둔다 — `arena.ts`의 `bakeEmission`과 같다
+        wrap = 33071 if raw_wrap(tex)[0] == 1 else 10497
+        want = {"wrapS": wrap, "wrapT": wrap}
+        if want not in samplers:
+            samplers.append(want)
+        textures.append({"source": len(images) - 1, "sampler": samplers.index(want)})
+        raw_at[pid] = len(textures) - 1
+        return raw_at[pid]
+
+    #: 섞기 재질 슬롯 → 마스크를 읽는 UV (0 · 1)와 마스크 배율 — 그 재질 조각에 `TEXCOORD_1`을 싣는다
+    blend_uv: dict[int, tuple[int, tuple[float, float, float, float]]] = {}
     # ⚠️ **재질 이름순이다** — 브라우저 변환기와 같은 차례라야 프리미티브 차례가 같다. 파일 이름(`…_albedo.png`)으로 세우면
     # `ComWall_09`와 `ComWall_09_01`의 차례가 뒤집힌다
     st_of = {}
@@ -660,8 +810,10 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         textures.append({"source": len(images) - 1, "sampler": samplers.index(want)})
         floats, colors, _ = looks.get(name, ({}, {}, set()))
         lay = name in layered
-        see = kinds.get(name) == "Transparent"
-        tint = tint_of(floats, colors, lay, see) if lay or (see and name not in additive) else None
+        # 무대는 오려 내는 재질(`TransparentCutout`)에도 색을 곱한다 — 바닥 덮개 `Cover_01`은 그림이 순백(알파만 모양)이고
+        # 하늘색 물빛이 `_Color` (0.216, 0.654, 0.87, 0.961)에 있다. 안 곱하면 바닥이 하얗게 덮인다 (`arena.ts`의 `see`와 같다)
+        see = kinds.get(name) == "Transparent" or (arena and kinds.get(name) == "TransparentCutout")
+        tint = tint_of(floats, colors, lay, see) if (lay or (see and name not in additive)) and name not in cascade else None
         cell = None if lay else flipbook_cell(floats.get("_PatternH", 1.0), floats.get("_PatternV", 1.0),
                                               floats.get("_StartFrameIndex", 0.0))
         transformed = transformed or cell is not None
@@ -685,11 +837,44 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         pbr["metallicFactor"] = 0.0
         pbr["roughnessFactor"] = 0.9
         moving = motion_extras(floats, colors, lay) if motion else None
+        extra: dict = {}
+        if name in cascade:
+            # 층 그림은 발광 칸에(발광색이 없어 빛나지 않는다), 마스크는 가림 칸에(세기 0 · 둘째 UV) 싣는다 — glTF 로더가 그림을 읽어
+            # 오게 하려는 자리다. 섞는 식은 `extras.cascade`가 들고 실행 쪽이 편다. 실행 쪽이 없으면 바탕 그림만 보인다(전과 같다)
+            main_pid, main_st = tex_of[name]["_MainTex"]
+            layer_pid, layer_st = tex_of[name].get("_LayerTex", (0, (1.0, 1.0, 0.0, 0.0)))
+            if name in cascade_layer:
+                png = layer_dir / f"{name}_albedo.png"
+                images.append({"bufferView": buf.view(png.read_bytes()), "mimeType": "image/png", "name": f"{name}_layer"})
+                lw = dict(zip(("wrapS", "wrapT"), layer_spec.get(name, {}).get("wrap", (10497, 10497))))
+                if lw not in samplers:
+                    samplers.append(lw)
+                textures.append({"source": len(images) - 1, "sampler": samplers.index(lw)})
+                extra["emissiveTexture"] = {"index": len(textures) - 1}
+            elif layer_pid:
+                extra["emissiveTexture"] = {"index": tex["index"]}
+            mask = raw_texture(tex_of[name]["_BlendTex"][0])
+            if mask is not None:
+                extra["occlusionTexture"] = {"index": mask, "texCoord": 1, "strength": 0}
+                blend_uv[len(materials)] = (1 if floats.get("_BlendUVIndex", 0.0) == 1 else 0, tex_of[name]["_BlendTex"][1])
+            moving = {**(moving or {}), "cascade": cascade_extras(colors, floats, st_of[name], layer_st, layer_pid != 0)}
+        elif (arena and "_CASCADE_EMISSION" in words_of.get(name, "") and "_EmissionTex" in tex_of.get(name, {})
+              and floats.get("_EmissionColorIntensity", 0.0) > 0 and colors.get("_EmissionColor") and name not in additive):
+            # 스스로 빛나는 그림 재질 (무대만) — 들판 체육관 천장 링 `Facility_04`가 `_EmissionTex` × `_EmissionColor` × 세기 5로 주황빛을 낸다.
+            # 세기는 `extras.glow`로 싣는다(`emissiveFactor`는 0~1) — 실행 쪽이 `emissiveIntensity`로 편다 (`arena.ts`의 `glowOf`와 같은 값)
+            glow_tex = raw_texture(tex_of[name]["_EmissionTex"][0])
+            if glow_tex is not None:
+                g = colors["_EmissionColor"]
+                extra["emissiveTexture"] = {"index": glow_tex}
+                # 색은 감마로 적혀 있다(`_Color`와 같다) — 선형으로 내려 싣는다. 그대로 실으면 주황 링이 × 5에서 **하얗게** 탄다
+                extra["emissiveFactor"] = [f32(srgb_to_linear_scalar(g.get(k, 0.0))) for k in ("r", "g", "b")]
+                moving = {**(moving or {}), "glow": floats["_EmissionColorIntensity"], "emitOn": floats.get("_EmissionOnTime", 0.0)}
         materials.append({
             "name": name,
             "pbrMetallicRoughness": pbr,
             **alpha_of(name),
             "doubleSided": True,
+            **extra,
             **({"extras": moving} if moving else {}),
         })
         if moving and "swing" in moving:
@@ -760,6 +945,9 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
     kept = 0
     #: 혼자 움직이는 묶음(`move:<Transform>`) → 그 물체 (`moving_of`)
     movers: dict[str, dict] = {}
+    #: 배틀 종류별 물체 (무대만) — 묶음(`hide:<이름>`)을 따로 두고 노드 `extras.listedIn`에 적는다
+    hides = hide_lists(env) if arena else {}
+    hide_of: dict[str, list[str]] = {}
     for mf in filters:
         try:
             mesh = mf.m_Mesh.read()
@@ -803,6 +991,8 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         length = np.linalg.norm(normals, axis=1, keepdims=True)
         normals = np.where(length > 1e-9, normals / np.maximum(length, 1e-9), [0.0, 1.0, 0.0])
         uv_raw = lanes(handler.m_UV0, n, 2, [0.0, 0.0]).astype(np.float32)
+        # 둘째 UV — 섞기 마스크를 `_BlendUVIndex` 1로 읽는 재질만 쓴다(그런 재질은 둘째 UV가 있는 메시에만 붙는다 — 위 `no_uv1`)
+        uv1_raw = lanes(handler.m_UV1, n, 2, [0.0, 0.0]).astype(np.float32) if handler.m_UV1 is not None and np.asarray(handler.m_UV1).size >= n * 2 else uv_raw
         # 정점 색의 알파 — 잎(`blend`)이 `_Color` ↔ `_LayerColor`를 이 값으로 섞는다. 8비트라 255로 나눈다. 없으면 흰 정점 색(알파 1)이다
         vertex_color = lanes(handler.m_Colors, n, 4, [255.0] * 4)
         vertex_alpha = (vertex_color[:, 3] / 255.0).astype(np.float32)
@@ -844,21 +1034,33 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
             # 묶음 이름 = 이름 + 월드 자리(세 자리) — `arena.ts`와 같다 (PathID는 그쪽에서 64비트가 뭉개진다)
             def at(v: float) -> str:
                 return f"{0.0 if abs(v) < 5e-4 else v:.3f}"
+            hidden = hidden_in(go, transform, hides) if move is None else None
             group = (f"move:{move['name']}:{at(world[0, 3])}:{at(world[1, 3])}:{at(world[2, 3])}" if move
+                     else f"hide:{hidden[0]}" if hidden
                      else (top_group(transform) if groups else bundle.name))
             if move:
                 movers[group] = move
+            if hidden:
+                hide_of[group] = hidden[1]
+            # 섞기 마스크의 UV — 그 재질이 고른 UV에 마스크 배율을 먹이고 v를 뒤집는다 (`TEXCOORD_0`과 같은 꼴)
+            uv1 = None
+            if slot in blend_uv:
+                which, (bx, by, bo, bp) = blend_uv[slot]
+                src = uv1_raw if which == 1 else uv_raw
+                uv1 = np.stack([src[:, 0] * bx + bo, 1.0 - (src[:, 1] * by + bp)], axis=1).astype(np.float32)
             parts.setdefault((group, slot), []).append((
-                verts.astype(np.float32), normals.astype(np.float32), uv, tri, col, wind,
+                verts.astype(np.float32), normals.astype(np.float32), uv, tri, col, wind, uv1,
             ))
 
     meshes: dict[str, list[dict]] = {}
     total_v = total_t = 0
     for (group, slot), chunks in sorted(parts.items()):
         primitives = meshes.setdefault(group, [])
-        pos, nrm, tex, idx, cols, winds = [], [], [], [], [], []
+        pos, nrm, tex, idx, cols, winds, tex1 = [], [], [], [], [], [], []
         base = 0
-        for v, nn, u, t, cc, ww in chunks:
+        for v, nn, u, t, cc, ww, u1 in chunks:
+            if u1 is not None:
+                tex1.append(u1)
             pos.append(v)
             nrm.append(nn)
             tex.append(u)
@@ -889,6 +1091,9 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
             ),
             "mode": 4,
         }
+        # 섞기 마스크의 UV — 모든 조각에 있을 때만 (같은 재질 슬롯이라 다 있다 · `arena.ts`와 같다)
+        if tex1 and len(tex1) == len(chunks):
+            prim["attributes"]["TEXCOORD_1"] = buf.add(np.concatenate(tex1), "VEC2", FLOAT, ARRAY)
         if cols:
             prim["attributes"]["COLOR_0"] = buf.add(np.concatenate(cols), "VEC4", FLOAT, ARRAY)
         # 모든 조각에 가중치가 있을 때만 싣는다 (`arena.ts`의 `wind`와 같다)
@@ -913,6 +1118,9 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         if g.startswith("skin:"):
             continue
         mv = movers.get(g)
+        if g in hide_of:
+            nodes.append({"name": g[len("hide:"):], "mesh": i, "extras": {"listedIn": hide_of[g]}})
+            continue
         if mv is None:
             nodes.append({"name": g, "mesh": i})
             continue
@@ -1175,7 +1383,7 @@ def main() -> int:
         total = 0
         for name in names:
             out = OUTDIR / f"{name}.glb"
-            stat = export(GROUND / name, out, args.far)
+            stat = export(GROUND / name, out, args.far, arena=True)
             total += stat["바이트"]
             print(f"  {name}  삼각형 {stat['삼각형']:>7,} · 재질 {stat['재질']:>2}"
                   f" · {stat['바이트'] / 1e6:.1f}MB")
@@ -1184,7 +1392,7 @@ def main() -> int:
 
     if args.bundle is None or args.out is None:
         raise SystemExit("번들과 -o를 대거나 --all을 쓴다")
-    stat = export(args.bundle, args.out, args.far)
+    stat = export(args.bundle, args.out, args.far, arena=True)
     print(args.out)
     for k, v in stat.items():
         print(f"  {k}: {v}")

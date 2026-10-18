@@ -32,6 +32,7 @@ import { arenaFor, cameraFit, cameraFov, ceilingFit, hasSky, isIndoor } from '..
 import { BODY_FADE_SECONDS, ClockReader, FRAME_SECONDS, battleClock } from '../../engine/battle/presentationClock'
 import { EncounterBurst } from './EncounterBurst'
 import { DistortionArena } from './DistortionArena'
+import { battleShape } from './arenaCascade'
 import { loadMotionTiming, loadMoves, loadSpecies } from '../../data/gameData'
 import { battleTerrainNow, fieldHiddenForBattle, useBattleStore } from '../../state/battleStore'
 import { Terrain } from '../../engine/battle/terrain'
@@ -877,6 +878,8 @@ export function BattleStage() {
   // ⚠️ **더블에서는 한 걸음 물러난다.** 무대에 넷이 서므로 싱글 화각 그대로면
   // 바깥 둘이 화면 밖으로 나간다. 짝을 벌린 만큼만 물러난다
   const doubles = useBattleStore((s) => s.doubles)
+  // 편(동료 트레이너)이 서면 태그 배틀이다 — 무대가 배틀 종류별 물체를 가른다 (`arenaCascade`의 `battleHides`)
+  const partnered = useBattleStore((s) => s.partner !== null)
   // ⚠️ **큰 몸이 내 쪽에 서면 카메라가 옆으로도 돌아간다** (`battleCamera.bigSwing`) — 뒤의 상대가 몸에 안 가리게. 더블은 짝을 벌린 배치가 따로 있다
   const ownFit = doubles ? 1 : cameraFit(arena, Math.max(tall.p1a, tall.p1b))
   const tallest = Math.max(...Object.values(tall))
@@ -939,7 +942,7 @@ export function BattleStage() {
         <DistortionArena onUp={arenaUp} />
       ) : (
         <Suspense fallback={<Flat look={timeLook} />}>
-          <Arena look={timeLook} file={arena.file} radius={Math.max(arena.radius, arena.reach ?? 0)} onUp={arenaUp} />
+          <Arena look={timeLook} file={arena.file} radius={Math.max(arena.radius, arena.reach ?? 0)} shape={battleShape(doubles, partnered)} onUp={arenaUp} />
         </Suspense>
       )}
       <BattleAtmosphere

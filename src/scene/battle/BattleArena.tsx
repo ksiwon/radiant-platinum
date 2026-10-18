@@ -2,8 +2,10 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useLoader } from '@react-three/fiber'
 import { Color, Mesh, MeshStandardMaterial, NormalBlending, Vector3, type BufferGeometry, type Group, type Material } from 'three'
+import { MeshStandardNodeMaterial } from 'three/webgpu'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { applyLightMode } from './arenaLight'
+import { battleHides, liveArenaMaterials, type BattleShape } from './arenaCascade'
 import { arenaRoom, seqStage } from './stageRefs'
 import { buildArenaCollider, type ArenaCollider } from '../../engine/battle/fx/arenaCollider'
 import { onProviderSwap } from '../../data/providers/assetProvider'
@@ -89,8 +91,21 @@ function opaqueTriangles(scene: Group): number[] {
  * 한 벌이 2~8MB라 배틀이 열리는 순간에 받는다. 받는 동안은 아래 `Flat`이 대신
  * 선다 — 첫 프레임에 빈 화면을 보이지 않으려고
  */
-export function Arena({ look, file, radius, onUp }: {
-  look: TimeLook; file: string; radius: number; onUp: (up: boolean) => void
+/**
+ * 재질마다 굽은 그대로의 색(`tone`)과 시간대를 곱한 색(`lit`).
+ *
+ * ⚠️ **메시가 아니라 재질에 적는다.** 한 재질을 여러 메시가 나눠 쓴다 — 물 체육관 바닥 덮개 여섯 장(`Cover_01` 하나)이 그렇다.
+ * 메시마다 적었더니 둘째 메시가 첫째가 이미 물들인 색을 「원래 색」으로 적어 여섯 번 거듭 곱했고, 덮개가 하늘색이 아니라 **검게**
+ * 깔렸다 (DEFECTS_20261017 §4). 무대 파일이 캐시에 남는 동안 재질도 남으므로 두 번째 배틀도 처음 색에서 곱한다
+ */
+const tones = new WeakMap<Material, { tone: Color, lit: Color }>()
+
+/** 물들일 수 있는 무대 재질 — 굽은 그대로의 것과 섞기 재질(`arenaCascade`)로 편 것 */
+const tintable = (m: unknown): m is MeshStandardMaterial | MeshStandardNodeMaterial =>
+  m instanceof MeshStandardMaterial || m instanceof MeshStandardNodeMaterial
+
+export function Arena({ look, file, radius, shape, onUp }: {
+  look: TimeLook; file: string; radius: number; shape: BattleShape; onUp: (up: boolean) => void
 }) {
   const gltf = useLoader(GLTFLoader, useAssetUrl(`models/arena/${file}`))
   // 이 부품이 서는 것 자체가 「무대가 왔다」다 — `useLoader`가 풀려야 마운트된다.
@@ -111,8 +126,12 @@ export function Arena({ look, file, radius, onUp }: {
         if (o.material instanceof MeshStandardMaterial && !applyLightMode(o.material)) o.visible = false
       }
     })
+    // 그림 셋 섞기 · 발광 세기 (`arenaCascade`) — 창빛을 가른 뒤에 편다
+    liveArenaMaterials(root)
     return root
   }, [gltf])
+  // 배틀 종류별 물체 — 물 체육관 바닥 덮개 (`battleHides`)
+  useEffect(() => { battleHides(scene, shape) }, [scene, shape])
   // 카메라 충돌 — 무대 파일마다 한 번(`arenaColliderFor`). 지으면 이 판의 `arenaRoom`으로 건다
   const room = useMemo(() => arenaColliderFor(file, radius, () => opaqueTriangles(scene)), [scene, file, radius])
   useEffect(() => {
@@ -124,14 +143,15 @@ export function Arena({ look, file, radius, onUp }: {
   useEffect(() => {
     const tint = new Color(look.groundColor).lerp(new Color('#ffffff'), 0.45)
     scene.traverse((o) => {
-      if (o instanceof Mesh && o.material instanceof MeshStandardMaterial) {
+      if (o instanceof Mesh && tintable(o.material)) {
         // ⚠️ **덮어쓰면 안 된다. 곱해야 한다.** 무늬 있는 재질은 제 색이
         // 흰색이라 덮으나 곱하나 같지만, **무늬 없는 재질**은 색이 전부다 —
         // g010의 바닷물(0, 0.295, 0.502), g006의 굴 불빛(1, 0.548, 0.13).
         // 덮어쓰면 바다가 흙색으로 물든다
-        const base = (o.userData.tone ??= o.material.color.clone()) as Color
-        o.material.color.copy(base).multiply(tint)
-        o.userData.lit = o.material.color.clone()
+        let t = tones.get(o.material)
+        if (!t) tones.set(o.material, t = { tone: o.material.color.clone(), lit: o.material.color.clone() })
+        o.material.color.copy(t.tone).multiply(tint)
+        t.lit.copy(o.material.color)
       }
     })
   }, [scene, look])
@@ -144,8 +164,8 @@ export function Arena({ look, file, radius, onUp }: {
     if (key === backWas.current) return
     backWas.current = key
     scene.traverse((o) => {
-      if (!(o instanceof Mesh) || !(o.material instanceof MeshStandardMaterial)) return
-      const lit = o.userData.lit as Color | undefined
+      if (!(o instanceof Mesh) || !tintable(o.material)) return
+      const lit = tones.get(o.material)?.lit
       if (!lit) return
       if (!b) { o.material.color.copy(lit); return }
       o.material.color.setRGB(

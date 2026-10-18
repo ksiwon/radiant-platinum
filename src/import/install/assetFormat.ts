@@ -93,6 +93,16 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    */
   rooms: 3,
   /**
+   * 4 — **무대만의 재질 셋과 배틀 종류별 물체를 싣는다** (`import/bdsp/arena.ts`의 `arena` 옵션 · 노드 쪽 `bdspArena.py`와 같다 · DATA.md §7.4).
+   * 물 체육관 무대가 흰 판 바닥 · 검은 천장이던 자리다 (DEFECTS_20261017 §4)
+   *
+   * · 그림 셋 섞기(바탕 · 층 · 마스크 — 70재질 · 둘째 UV가 없는 메시의 16재질은 뺀다)를 셋 다 싣고 마스크 UV를 `TEXCOORD_1`에 — 실행 쪽 `battle/arenaCascade`가 섞는다
+   * · 오려 내는 재질에 `_Color`를 곱하고 문턱을 재질 값으로 · 바닥 덮개 `Cover_01` 11벌은 섞어 그린다
+   * · 발광 그림(47재질 — 창빛 · 그림 없는 재질은 전과 같다)과 세기
+   * · 배틀 종류별 물체(바닥 덮개 — 9벌)를 노드로 따로 둔다
+   *
+   * 30벌 전부 바뀐다 — 130 → 148MB. ⚠️ 3은 안 쓴다(`GROUP_ACCEPTS`에 없다) — 옛 무대는 바닥이 흰 판 그대로다
+   *
    * 3 — **마스크로 섞는 그림 없는 재질의 섞은 그림을 두 굽는 쪽이 같은 바이트로 굽는다** (`import/bdsp/arena.ts`의 `cascadeMix` ·
    * 노드 쪽 `bdspArena.py`의 `cascade_mix`). 충호 방 무대 g038~g041의 바닥(`M_B_038_Floor_24`) 그림이 RGBA PNG다 — 무대 30벌 중
    * 4벌의 바이트만 갈린다(135,995,512 → 136,001,992 · 한 벌에 +1,620). 픽셀은 같다(`glbDiff` 최대 차 0 · 두 굽는 쪽 사이도 0).
@@ -102,7 +112,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 굽는다** (`import/bdsp/albedo.ts`의 `additiveWater`) — 물 체육관 무대 `g027`의 회색 물결이 알파 1로 바닥과 뒷벽을 덮어 흑백
    * 노이즈로 보였다. 30벌 중 8벌의 재질 · 그림이 바뀐다
    */
-  arenas: 3,
+  arenas: 4,
   /**
    * 5 — **움직임 값과 눈 땅 그림이 같이 붙는다** (`fields` 8과 같다). ⚠️ **3 · 4는 안 쓴다**(`GROUP_ACCEPTS`에 없다)
    *

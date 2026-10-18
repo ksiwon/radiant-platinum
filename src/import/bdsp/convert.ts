@@ -927,7 +927,7 @@ async function convertArenas(ctx: ConvertContext): Promise<Produced> {
     if (!env) missing.push(name)
     else {
       try {
-        const { glb } = await exportArena(env, encodePng, { name })
+        const { glb } = await exportArena(env, encodePng, { name, arena: true })
         put(ctx, out, `models/arena/${file}`, glb)
         made.push(file)
       } catch { missing.push(name) }

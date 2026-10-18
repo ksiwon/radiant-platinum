@@ -156,6 +156,34 @@ interface Looks {
   blend: Map<number, [number[], number[]]>
   /** 바람에 흔들리는 재질의 glTF 재질 번호 (`motion` 옵션일 때만) — 그 재질을 쓰는 조각에 정점 가중치 `_SWING`을 싣는다 */
   swing: Set<number>
+  /** 그림 셋 섞기 재질의 glTF 재질 번호 → 마스크를 읽는 UV(0 · 1)와 마스크 배율 (`arena` 옵션일 때만) — 그 재질 조각에 `TEXCOORD_1`을 싣는다 */
+  blendUv: Map<number, { which: 0 | 1, st: [number, number, number, number] }>
+}
+
+/**
+ * 그림 셋 섞기 재질의 `extras.cascade` — 노드 쪽 `bdspArena.py`의 `cascade_extras`와 같다.
+ *
+ * 실행 쪽(`scene/battle/arenaCascade`)이 `lerp(바탕 × color, 층 × layer, 섞기 R)`로 편다. 색은 선형 × 세기(1을 넘을 수 있다).
+ * `layerUv`는 `TEXCOORD_0`(바탕 배율이 먹은 glTF UV)에서 층 UV로 가는 배율 · 오프셋이다 — 층 그림은 바탕과 같은 첫 UV를 제 배율로 읽는다
+ */
+export function cascadeExtras(
+  colors: Map<string, UnityValue>, floats: Map<string, UnityValue>,
+  mainSt: readonly number[], layerSt: readonly number[], layer: boolean,
+): { color: number[], layer: number[], layerUv: number[], layerMap: boolean } {
+  const f32 = Math.fround
+  const lin = (key: string, gain: string): number[] => {
+    const c = (colors.get(key) ?? {}) as Props
+    const k = floats.has(gain) ? num(floats.get(gain)) : 1
+    return [f32(toLinear(num(c.r, 1)) * k), f32(toLinear(num(c.g, 1)) * k), f32(toLinear(num(c.b, 1)) * k)]
+  }
+  const [sx, sy, ox, oy] = mainSt as [number, number, number, number]
+  const [lsx, lsy, lox, loy] = layerSt as [number, number, number, number]
+  const a = lsx / (sx || 1)
+  const b = lsy / (sy || 1)
+  return {
+    color: lin('_Color', '_ColorIntensity'), layer: lin('_LayerColor', '_LayerColorIntensity'),
+    layerUv: [f32(a), f32(b), f32(lox - ox * a), f32(1 - loy - (1 - oy) * b)], layerMap: layer,
+  }
 }
 
 /**
@@ -204,6 +232,13 @@ interface LookOptions {
   plant?: boolean
   /** 흐름 · 흔들림 값을 `extras`로 싣는다 (`motion.ts`). 야외 · 던전 · 방이 켠다 — 무대 · 나무열매 · 기믹은 안 켠다 */
   motion?: boolean
+  /**
+   * 배틀 무대만의 재질 셋 — 오려 내는 재질의 색 · 그림 셋 섞기(`cascadeExtras`) · 발광 그림 (DEFECTS_20261017 §4).
+   * 노드 쪽 `bdspArena.py`의 `arena`와 같다. 방은 같은 굽기를 쓰지만 아직 안 켠다
+   */
+  arena?: boolean
+  /** 둘째 UV가 없는 메시에 붙은 재질 이름 (`arena`만 — `exportArena`가 메시를 미리 훑어 넘긴다 · 노드 쪽 `no_uv1`) */
+  noUv1?: ReadonlySet<string>
 }
 
 /** 감마 값 → 선형. 재질에 박힌 색은 감마다 (`albedo.ts`의 레이어 색과 같은 자리) */
@@ -305,6 +340,7 @@ export async function bakeLooks(
   const lights = options.lights ?? false
   const plant = options.plant ?? false
   const motion = options.motion ?? false
+  const arena = options.arena ?? false
   const swing = new Set<number>()
   /** 그림 한 장을 glTF 그림으로 — 공용 자리가 있으면 거기 두고 주소만, 없으면 glb 안에 싣는다 */
   const image = async (px: Uint8Array, w: number, h: number, name: string): Promise<Record<string, unknown>> => {
@@ -327,6 +363,8 @@ export async function bakeLooks(
   const looks = new Map<string, { floats: Map<string, UnityValue>, colors: Map<string, UnityValue>, slots: Set<string>, emission: number, keywords: string }>()
   /** 나무열매만 — 재질마다 색 입히는 길 */
   const plantOf = new Map<string, 'blend' | 'mask' | 'plain'>()
+  /** 재질마다 물린 그림 칸 → (PathID, 배율 · 오프셋) — 무대(`arena`)의 섞기 · 발광이 읽는다 */
+  const texOf = new Map<string, Map<string, { pid: number, st: [number, number, number, number] }>>()
   for (const e of env.ofType('Material')) {
     const v = env.readEntry(e) as Props | null
     if (!v) continue
@@ -338,6 +376,15 @@ export async function bakeLooks(
       if (num(((raw as Props).m_Texture as Props | undefined)?.m_PathID) !== 0) slots.add(k)
     }
     looks.set(mat, { floats, colors: pairs(saved.m_Colors), slots, emission: texturePid(pairs(saved.m_TexEnvs), '_EmissionTex'), keywords: String(v.m_ShaderKeywords ?? '') })
+    const tex = new Map<string, { pid: number, st: [number, number, number, number] }>()
+    for (const [k, raw] of pairs(saved.m_TexEnvs)) {
+      const pid = num(((raw as Props).m_Texture as Props | undefined)?.m_PathID)
+      if (pid === 0) continue
+      const sc = ((raw as Props).m_Scale ?? {}) as Props
+      const of = ((raw as Props).m_Offset ?? {}) as Props
+      tex.set(k, { pid, st: [num(sc.x, 1), num(sc.y, 1), num(of.x), num(of.y)] })
+    }
+    texOf.set(mat, tex)
     if (plant) {
       const te = pairs(saved.m_TexEnvs)
       plantOf.set(mat, plantKind(String(v.m_ShaderKeywords ?? ''), texturePid(te, '_MainTex'), texturePid(te, '_LayerTex')))
@@ -359,6 +406,36 @@ export async function bakeLooks(
     const k = l.floats.has('_ColorIntensity') ? num(l.floats.get('_ColorIntensity')) : 1
     if (!l.slots.has('_LayerTex') || (l.slots.has('_MainTex') && k !== 0)) continue
     if (lights || !additive.has(mat)) layered.add(mat)
+  }
+  /**
+   * **그림 셋을 섞는 재질** (무대만 · `arena`) — `_CASCADE_BLENDUV0`에 바탕(`_MainTex`)과 섞기 마스크(`_BlendTex`)가 물렸다.
+   * 바탕 · 층은 100배로 되풀이하고 마스크는 한 장(때로 둘째 UV)이라 그림 한 장으로 못 굽는다 — 셋을 싣고 실행 쪽이 섞는다.
+   * 물 체육관 g027 바닥이 그렇다(마스크 링으로 하늘색 ↔ 파랑). 노드 쪽 `bdspArena.py`의 `cascade`와 같다
+   */
+  const cascade = new Set<string>()
+  for (const [mat, l] of looks) {
+    // ⚠️ 마스크를 둘째 UV로 읽는데(`_BlendUVIndex` 1) 둘째 UV가 없는 메시에 붙은 재질은 섞지 않는다 — 노드 쪽 `no_uv1` 머리말
+    const needsUv1 = num(l.floats.get('_BlendUVIndex')) === 1 && (options.noUv1?.has(mat) ?? false)
+    if (arena && l.keywords.includes('_CASCADE_BLENDUV0') && l.slots.has('_MainTex') && l.slots.has('_BlendTex')
+      && !additive.has(mat) && !layered.has(mat) && !needsUv1) cascade.add(mat)
+  }
+  /** 층 그림이 바탕과 다른 섞기 재질 — 층 그림을 따로 굽는다 */
+  const cascadeLayer = new Set([...cascade].filter((mat) => {
+    const t = texOf.get(mat)!
+    return t.has('_LayerTex') && t.get('_LayerTex')!.pid !== t.get('_MainTex')!.pid
+  }))
+  /** 오려 내는 재질의 섞기 · 문턱 (무대만) — 노드 쪽 `alpha_of`와 같다 */
+  const alphaFor = (mat: string): Record<string, unknown> => {
+    const kind = renderType.get(mat) ?? 'Opaque'
+    if (arena && kind === 'TransparentCutout') {
+      const f = looks.get(mat)?.floats
+      // 무대의 바닥 덮개(`Cover_01` — 열한 벌)는 오려 내지 않고 섞는다: `_SrcBlend 5 · _DstBlend 10`(SrcAlpha, OneMinusSrcAlpha)에
+      // `_Cutoff` 0이다. 0.5로 오리면 알파 0.5를 넘는 가운데만 **흰 판**으로 남았다 (DEFECTS_20261017 §4)
+      if (num(f?.get('_SrcBlend')) === 5 && num(f?.get('_DstBlend')) === 10) return { alphaMode: 'BLEND' }
+      // 문턱은 재질이 적어 둔 `_Cutoff`다 — 풀 · 나무 몇 벌이 0.6 · 0.8 · 0.884다
+      return { alphaMode: 'MASK', alphaCutoff: Math.fround(f?.has('_Cutoff') ? num(f.get('_Cutoff')) : 0.5) }
+    }
+    return alphaOf(kind)
   }
   const textureAt = new Map<number, { entry: ReturnType<Environment['ofType']>[number], read: Texture | null }>()
   for (const e of env.ofType('Texture2D')) textureAt.set(e.object.pathId, { entry: e, read: null })
@@ -473,7 +550,11 @@ export async function bakeLooks(
   // ⚠️ 더하는 물(`additiveWater`)은 빛 재질을 안 싣는 쪽만 보통 섞기로 옮겨 굽는다 — 싣는 쪽은 더하기를 그대로 싣는다
   const premultiplied = options.premultiplied ?? false
   const main = bakeAlbedo(env, { maxSize, premultiplied, additiveWater: !lights, plant }).filter((m) => !layered.has(m.name))
-  const layer = layered.size === 0 ? [] : bakeAlbedo(env, { maxSize, premultiplied, mainProps: ['_LayerTex'] }).filter((m) => layered.has(m.name))
+  const layerAll = layered.size === 0 && cascadeLayer.size === 0 ? [] : bakeAlbedo(env, { maxSize, premultiplied, mainProps: ['_LayerTex'] })
+  const layer = layerAll.filter((m) => layered.has(m.name))
+  /** 섞기 재질의 층 그림 (`cascadeLayer`) */
+  const layerOf = new Map(layerAll.filter((m) => cascadeLayer.has(m.name)).map((m) => [m.name, m]))
+  const blendUv = new Map<number, { which: 0 | 1, st: [number, number, number, number] }>()
   const baked = [...main, ...layer]
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   let transformed = false
@@ -487,8 +568,10 @@ export async function bakeLooks(
     const look = looks.get(m.name)
     const lay = layered.has(m.name)
     const add = additive.has(m.name)
-    const see = renderType.get(m.name) === 'Transparent'
-    let tint = lights
+    // 무대는 오려 내는 재질(`TransparentCutout`)에도 색을 곱한다 — 바닥 덮개 `Cover_01`은 그림이 순백(알파만 모양)이고
+    // 하늘색 물빛이 `_Color` (0.216, 0.654, 0.87, 0.961)에 있다. 안 곱하면 바닥이 하얗게 덮인다 (노드 쪽 `see`와 같다)
+    const see = renderType.get(m.name) === 'Transparent' || (arena && renderType.get(m.name) === 'TransparentCutout')
+    let tint = cascade.has(m.name) ? null : lights
       ? tintOf(look, lay, add, see)
       : tinted(lay, add, see) ? tintOf(look, lay, false, see) : null
     // ⚠️ **나무열매는 재질 색이 곧 색이다.** 줄기 · 잎 · 꽃 그림은 회색 마스크라 안 곱하면 **하얗다**.
@@ -507,8 +590,39 @@ export async function bakeLooks(
     // ⚠️ **그림 있는 재질도 빛난다** — 창 · 집 · 센터 · 가로등은 `_MainTex`에 `_EmissionTex`가 같이 물렸다. 한동안 발광은 그림 없는 재질만
     // 실어서 이 재질들의 밤 창이 안 켜졌다. 더하는 재질(입구 빛)은 아래 그림 없는 길이 맡는다.
     // ⚠️ **높이 안개 판(`_DEPTHDENSITY` — `HeightFog_01`)은 빛이 아니다** — 안개 빛깔을 발광으로 들고 있어 켜면 밤에 안개 판이 스스로 빛난다. 전처럼 안 켠다
-    const glow = lights && look && !add && !look.keywords.includes('_DEPTHDENSITY') ? await glowOf(look) : null
+    const glow = lights && look && !add && !look.keywords.includes('_DEPTHDENSITY') ? await glowOf(look)
+      // 스스로 빛나는 그림 재질 (무대만) — 들판 체육관 천장 링 `Facility_04`가 `_EmissionTex` × `_EmissionColor` × 세기 5로 주황빛을 낸다.
+      // 세기는 `extras.glow`로 싣고 실행 쪽이 `emissiveIntensity`로 편다 (노드 쪽과 같은 조건 — 키워드 `_CASCADE_EMISSION`)
+      : arena && look && !add && !cascade.has(m.name) && look.keywords.includes('_CASCADE_EMISSION') ? await glowOf(look) : null
+    // 무대의 발광색은 선형으로 내린다 — 감마로 적혀 있어 그대로 실으면 주황 링이 × 5에서 **하얗게** 탄다 (노드 쪽과 같다).
+    // 빛 재질 쪽(야외 · 던전)은 원작 값 그대로 싣는다 — 그쪽은 밤 창빛을 그 값으로 맞춰 두었다
+    if (glow && !lights) glow.factor = glow.factor.map((x) => Math.fround(toLinear(x)))
     const moving = motion ? motionExtras(look, lay) : null
+    // 섞기 재질 — 층 그림은 발광 칸에(발광색이 없어 빛나지 않는다), 마스크는 가림 칸에(세기 0 · 둘째 UV) 싣는다. glTF 로더가 그림을
+    // 읽어 오게 하려는 자리다. 섞는 식은 `extras.cascade`가 들고 실행 쪽이 편다 (노드 쪽과 같은 차례로 그림을 단다: 바탕 → 층 → 마스크)
+    const mixing: Record<string, unknown> = {}
+    let mixed: ReturnType<typeof cascadeExtras> | null = null
+    if (cascade.has(m.name) && look) {
+      const t = texOf.get(m.name)!
+      const layerTex = t.get('_LayerTex')
+      const own = layerOf.get(m.name)
+      if (own) {
+        images.push(await image(own.pixels, own.width, own.height, `${m.name}_layer`))
+        const lw = { wrapS: own.look.wrap[0], wrapT: own.look.wrap[1] }
+        let ls = samplers.findIndex((s) => s.wrapS === lw.wrapS && s.wrapT === lw.wrapT)
+        if (ls < 0) { samplers.push(lw); ls = samplers.length - 1 }
+        textures.push({ source: images.length - 1, sampler: ls })
+        mixing.emissiveTexture = { index: textures.length - 1 }
+      } else if (layerTex) {
+        mixing.emissiveTexture = { index: baseTexture }
+      }
+      const mask = await emissionImage(t.get('_BlendTex')!.pid)
+      if (mask !== null) {
+        mixing.occlusionTexture = { index: mask, texCoord: 1, strength: 0 }
+        blendUv.set(materials.length, { which: num(look.floats.get('_BlendUVIndex')) === 1 ? 1 : 0, st: t.get('_BlendTex')!.st })
+      }
+      mixed = cascadeExtras(look.colors, look.floats, m.look.uv, layerTex?.st ?? [1, 1, 0, 0], layerTex !== undefined)
+    }
     materials.push({
       name: m.name,
       pbrMetallicRoughness: {
@@ -520,11 +634,12 @@ export async function bakeLooks(
         metallicFactor: 0,
         roughnessFactor: 0.9,
       },
-      ...alphaOf(renderType.get(m.name) ?? 'Opaque'),
+      ...alphaFor(m.name),
       doubleSided: true,
       ...(lights && add ? { alphaMode: 'BLEND' } : {}),
       ...(glow ? { emissiveTexture: { index: glow.index }, emissiveFactor: glow.factor } : {}),
-      ...extrasOf({ ...(lights && add ? { add: true } : {}), ...(glow ? glow.extras : {}) }, moving),
+      ...mixing,
+      ...extrasOf({ ...(lights && add ? { add: true } : {}), ...(glow ? glow.extras : {}) }, { ...moving, ...(mixed ? { cascade: mixed } : {}) }),
     })
     if (moving?.swing) swing.add(materials.length - 1)
     slotOf.set(m.name, materials.length - 1)
@@ -554,7 +669,7 @@ export async function bakeLooks(
         metallicFactor: 0,
         roughnessFactor: 0.9,
       },
-      ...alphaOf(renderType.get(mat) ?? 'Opaque'),
+      ...alphaFor(mat),
       doubleSided: true,
     }
     const mixed = await cascadeMix(v, colors, floats)
@@ -594,7 +709,7 @@ export async function bakeLooks(
     slotOf.set(mat, materials.length - 1)
   }
 
-  return { images, textures, materials, samplers, slotOf, uvOf, materialName, transformed, blend, swing }
+  return { images, textures, materials, samplers, slotOf, uvOf, materialName, transformed, blend, swing, blendUv }
 }
 
 // ── 내보내기 ─────────────────────────────────────────────────────────────────
@@ -623,6 +738,8 @@ interface ArenaOptions {
   plant?: boolean
   /** 흐름 · 흔들림 값을 싣는다 (`bakeLooks`의 `motion`) — 방이 켠다 */
   motion?: boolean
+  /** 배틀 무대만의 재질 셋과 배틀 종류별 숨김 (`bakeLooks`의 `arena` · `hideLists`) — 무대가 켠다 */
+  arena?: boolean
   /**
    * 혼자 움직이는 물체를 가르는 함수 (`field.ts`의 `movingOf`) — 주면 그 물체는 합치지 않고 노드 둘(닻 · 몸)로 싣는다.
    * ⚠️ `field.ts`가 이 파일을 불러서 여기서 못 불러온다(순환) — 부르는 쪽(`convert.ts`)이 넘긴다
@@ -661,6 +778,60 @@ interface Part {
   colors?: Float32Array
   /** 바람 흔들림 가중치 `_SWING` — 흔드는 재질이고 정점 색 채널이 있을 때만 */
   swing?: Float32Array
+  /** 섞기 마스크의 UV `TEXCOORD_1` — 그림 셋 섞기 재질만 */
+  uv1?: Float32Array
+}
+
+/** 배틀 종류별 물체 목록 — 무대 `MonoBehaviour`(`G027` 등)가 적어 둔 칸 → 우리 이름. 노드 쪽 `HIDE_LISTS`와 같다 */
+const HIDE_LISTS = [['_singleBattleHideObjects', 'single'], ['_doubleBattleHideObjects', 'double'], ['_tagBattleHideObject', 'tag']] as const
+
+/**
+ * GameObject PathID → 그 물체를 적은 배틀 종류 목록들 (`single` · `double` · `tag` 차례). 노드 쪽 `hide_lists`와 같다.
+ *
+ * 물 체육관 g027의 바닥 덮개(`Cover_P_001` …)가 그렇다 — 여섯 장이 겹쳐 서 있고 목록마다 둘씩 적혀 있다. 안 읽으면 다 겹쳐 그린다.
+ * 목록의 뜻은 굽는 쪽이 정하지 않는다 — 사실(`listedIn`)만 싣고 실행 쪽(`battleHides`)이 읽는다
+ */
+export function hideLists(env: Environment): Map<number, string[]> {
+  const out = new Map<number, string[]>()
+  for (const e of env.ofType('MonoBehaviour')) {
+    const mb = env.readEntry(e) as Props | null
+    if (!mb) continue
+    for (const [key, mode] of HIDE_LISTS) {
+      const list = mb[key]
+      if (!Array.isArray(list)) continue
+      for (const ref of list as UnityValue[]) {
+        const pid = num((ref as Props | null)?.m_PathID)
+        if (pid === 0) continue
+        const modes = out.get(pid) ?? []
+        if (!modes.includes(mode)) modes.push(mode)
+        out.set(pid, modes)
+      }
+    }
+  }
+  return out
+}
+
+/** 이 물체(또는 조상)가 숨김 목록에 있으면 [그 물체 이름, 배틀 종류들]. 노드 쪽 `hidden_in`과 같다 */
+function hiddenIn(env: Environment, goPid: number, transformPid: number, hides: Map<number, string[]>): [string, string[]] | null {
+  if (hides.size === 0) return null
+  const nameOf = (pid: number): string => {
+    const go = env.read(pid) as Props | null
+    return typeof go?.m_Name === 'string' ? go.m_Name : ''
+  }
+  if (hides.has(goPid)) return [nameOf(goPid), hides.get(goPid)!]
+  let pid = transformPid
+  const seen = new Set<number>()
+  while (pid !== 0 && !seen.has(pid)) {
+    seen.add(pid)
+    const t = env.read(pid) as Props | null
+    if (!t) break
+    pid = num((t.m_Father as Props | undefined)?.m_PathID)
+    if (pid === 0) break
+    const father = env.read(pid) as Props | null
+    const go = num((father?.m_GameObject as Props | undefined)?.m_PathID)
+    if (hides.has(go)) return [nameOf(go), hides.get(go)!]
+  }
+  return null
 }
 
 /** 정점당 `want`개 값으로 편다. 없거나 개수가 안 맞으면 `fallback`으로 채운다 */
@@ -705,10 +876,39 @@ export async function exportArena(
   const filters = env.ofType('MeshFilter')
   if (filters.length === 0) throw new ArenaError('MeshFilter가 없다')
 
+  // 둘째 UV가 없는 메시에 붙은 재질 (무대만) — 섞기 마스크를 둘째 UV로 읽는 재질을 거른다 (`LookOptions.noUv1`)
+  const noUv1 = new Set<string>()
+  if (options.arena) {
+    for (const filter of filters) {
+      const mf = env.readEntry(filter) as Props | null
+      const meshPid = num((mf?.m_Mesh as Props | undefined)?.m_PathID)
+      const meshValue = env.read(meshPid) as Props | null
+      const go = env.read(num((mf?.m_GameObject as Props | undefined)?.m_PathID)) as Props | null
+      if (!meshValue || !go) continue
+      let mesh: MeshData
+      const holder = env.bundleOf(meshPid)
+      try { mesh = meshFrom(meshValue, (p) => (holder ? resource(holder, p) : null)) } catch { continue }
+      const uv1 = mesh.attributes.get(CHANNEL.uv1)
+      const dim = mesh.dimensions.get(CHANNEL.uv1)
+      if (mesh.vertexCount > 0 && uv1 && dim !== undefined && dim >= 2 && uv1.length >= mesh.vertexCount * dim) continue
+      for (const c of (go.m_Component as UnityValue[] | undefined) ?? []) {
+        const ptr = (((Array.isArray(c) ? c[1] : c) as Props).component ?? (Array.isArray(c) ? c[1] : c)) as Props
+        const pid = num(ptr.m_PathID)
+        if (env.entryOf(pid)?.type !== 'MeshRenderer') continue
+        for (const m of ((env.read(pid) as Props | null)?.m_Materials as Props[] | undefined) ?? []) {
+          const name = (env.read(num(m.m_PathID)) as Props | null)?.m_Name
+          if (typeof name === 'string') noUv1.add(name)
+        }
+      }
+    }
+  }
   // 재질 이름 → RenderType. 짐작하지 않고 번들이 적어 둔 것을 읽는다
   const buf = new GlbBuffer()
-  const { images, textures, materials, samplers, slotOf, uvOf, materialName, transformed, blend, swing } =
-    await bakeLooks(env, encodePng, buf, { maxSize: options.maxSize ?? null, premultiplied: options.premultiplied ?? false, plant: options.plant ?? false, motion: options.motion ?? false })
+  const { images, textures, materials, samplers, slotOf, uvOf, materialName, transformed, blend, swing, blendUv } =
+    await bakeLooks(env, encodePng, buf, { maxSize: options.maxSize ?? null, premultiplied: options.premultiplied ?? false, plant: options.plant ?? false, motion: options.motion ?? false, arena: options.arena ?? false, noUv1 })
+  /** 배틀 종류별 물체 (무대만) — 묶음(`hide:<이름>`)을 따로 두고 노드 `extras.listedIn`에 적는다 */
+  const hides = options.arena ? hideLists(env) : new Map<number, string[]>()
+  const hideOf = new Map<string, string[]>()
 
   const cache = new Map<number, Mat4>()
   const rigs = options.rigging ? options.rigging.find(env, cache) : []
@@ -765,8 +965,12 @@ export async function exportArena(
     const move = options.moving ? options.moving(env, go, transformPid, cache) : null
     // 묶음 이름 = 이름 + 월드 자리(세 자리) — PathID는 자바스크립트에서 64비트가 뭉개져 노드 쪽(`bdspArena.py`)과 갈린다
     const at = (v: number): string => (Math.abs(v) < 5e-4 ? 0 : v).toFixed(3)
-    const group = move ? `move:${move.name}:${at(world[3]!)}:${at(world[7]!)}:${at(world[11]!)}` : options.groups ? topGroup(env, transformPid) : name
+    const hidden = move ? null : hiddenIn(env, goPid, transformPid, hides)
+    const group = move ? `move:${move.name}:${at(world[3]!)}:${at(world[7]!)}:${at(world[11]!)}`
+      : hidden ? `hide:${hidden[0]}`
+        : options.groups ? topGroup(env, transformPid) : name
     if (move) movers.set(group, move)
+    if (hidden) hideOf.set(group, hidden[1])
     const n = mesh.vertexCount
     const rawPos = mesh.attributes.get(CHANNEL.position)
     if (!rawPos) continue
@@ -818,6 +1022,10 @@ export async function exportArena(
     }
     const rawUv = lanes(mesh.attributes.get(CHANNEL.uv0), mesh.dimensions.get(CHANNEL.uv0),
       n, 2, [0, 0])
+    // 둘째 UV — 섞기 마스크를 `_BlendUVIndex` 1로 읽는 재질만 쓴다(그런 재질은 둘째 UV가 있는 메시에만 붙는다 — `noUv1`)
+    const uv1Data = mesh.attributes.get(CHANNEL.uv1)
+    const uv1Dim = mesh.dimensions.get(CHANNEL.uv1)
+    const rawUv1 = uv1Data && uv1Dim !== undefined && uv1Dim >= 2 && uv1Data.length >= n * uv1Dim ? lanes(uv1Data, uv1Dim, n, 2, [0, 0]) : rawUv
     // 정점 색의 알파 — 잎(`blend`)이 `_Color` ↔ `_LayerColor`를 이 값으로 섞는다. 8비트라 0..1로 읽힌다. 없으면 흰 정점 색(알파 1)이다
     const rawColor = lanes(mesh.attributes.get(CHANNEL.color), mesh.dimensions.get(CHANNEL.color), n, 4, [1, 1, 1, 1])
 
@@ -865,7 +1073,19 @@ export async function exportArena(
       }
       // 바람 흔들림 — 가중치는 정점 색 R × A (`swingWeights`). 정점 색이 없는 메시는 흔들지 않는다
       const weights = swing.has(slot) ? swingWeights(mesh.attributes.get(CHANNEL.color), mesh.dimensions.get(CHANNEL.color), n) : null
-      const part: Part = { positions: verts, normals, uvs, indices, ...(colors ? { colors } : {}), ...(weights ? { swing: weights } : {}) }
+      // 섞기 마스크의 UV — 그 재질이 고른 UV에 마스크 배율을 먹이고 v를 뒤집는다 (`uvs`와 같은 꼴)
+      const mix = blendUv.get(slot)
+      let uv1: Float32Array | undefined
+      if (mix) {
+        const src = mix.which === 1 ? rawUv1 : rawUv
+        const [bx, by, bo, bp] = mix.st
+        uv1 = new Float32Array(n * 2)
+        for (let i = 0; i < n; i++) {
+          uv1[i * 2] = src[i * 2]! * bx + bo
+          uv1[i * 2 + 1] = 1 - (src[i * 2 + 1]! * by + bp)
+        }
+      }
+      const part: Part = { positions: verts, normals, uvs, indices, ...(colors ? { colors } : {}), ...(weights ? { swing: weights } : {}), ...(uv1 ? { uv1 } : {}) }
       if (list) list.push(part)
       else bySlot.set(slot, [part])
     }
@@ -902,11 +1122,13 @@ export async function exportArena(
       const idx = new Uint32Array(idxCount)
       const col = chunks.every((c) => c.colors) ? new Float32Array(count * 4) : null
       const wind = chunks.every((c) => c.swing) ? new Float32Array(count) : null
+      const tex1 = chunks.every((c) => c.uv1) ? new Float32Array(count * 2) : null
       let base = 0
       let atI = 0
       for (const c of chunks) {
         if (col && c.colors) col.set(c.colors, base * 4)
         if (wind && c.swing) wind.set(c.swing, base)
+        if (tex1 && c.uv1) tex1.set(c.uv1, base * 2)
         pos.set(c.positions, base * 3)
         nrm.set(c.normals, base * 3)
         tex.set(c.uvs, base * 2)
@@ -929,6 +1151,7 @@ export async function exportArena(
           : buf.add(idx, 'SCALAR', UINT, ELEMENT_BUFFER),
         mode: 4,
       }
+      if (tex1) (prim.attributes as Record<string, number>).TEXCOORD_1 = buf.add(tex1, 'VEC2', FLOAT, ARRAY_BUFFER)
       if (col) (prim.attributes as Record<string, number>).COLOR_0 = buf.add(col, 'VEC4', FLOAT, ARRAY_BUFFER)
       if (wind) (prim.attributes as Record<string, number>)[SWING_ATTRIBUTE] = buf.add(wind, 'SCALAR', FLOAT, ARRAY_BUFFER)
       if (slot >= 0) prim.material = slot
@@ -1028,6 +1251,8 @@ export async function exportArena(
   meshes.forEach((m, i) => {
     if (m.name.startsWith('skin:')) return
     const mv = movers.get(m.name)
+    const listedIn = hideOf.get(m.name)
+    if (listedIn) { nodes.push({ name: m.name.slice('hide:'.length), mesh: i, extras: { listedIn } }); return }
     if (!mv) { nodes.push({ name: m.name, mesh: i }); return }
     const body: Record<string, unknown> = {
       name: mv.name, mesh: i, translation: mv.body.t, rotation: mv.body.r, scale: mv.body.s,
