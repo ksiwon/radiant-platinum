@@ -944,6 +944,12 @@ async function main() {
       const { readFileSync } = await import('node:fs')
       const out = await page.evaluate(`(${readFileSync(evalFile, 'utf8')})()`)
       console.log(typeof out === 'string' ? out : JSON.stringify(out, null, 1))
+      // 탐침이 화면을 바꿨으면(재질을 칠하거나 숨겼으면) 그 뒤를 한 장 더 — `--eval-shot`. 위 그림은 탐침 **전**이다
+      if (args.includes('--eval-shot')) {
+        const after = resolve(OUT, `${id}-eval.png`)
+        writeFileSync(after, await page.screenshot())
+        console.log(`   탐침 뒤 그림 ${after}`)
+      }
     }
     // 배틀 화면에서 **몸 상자가 화면의 어디에 서는지**를 잰다 — `--boxes`. 겹침(상자 교집합 ÷ 작은 쪽 상자)도 같이 낸다.
     // 상자는 대기 자세에서 잰 3D 상자의 여덟 꼭짓점을 실제 배틀 카메라로 투영한 것이다 (눈대중이 아니다)
