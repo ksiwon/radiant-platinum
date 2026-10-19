@@ -524,6 +524,15 @@ function devObserver(page) {
        * `climb:<방향키>` 하나로 내고(`walk`가 거기서 끊고 탄다), 내린 자리는 그 칸의 두 바닥(위 · 아래) 중 닿는 쪽이다
        */
       const goal = a.goal ?? null
+      /**
+       * ⚠️ **서 있는 사람도 벽이다** (`solidNpcAt`). 사람을 정면으로 뚫고 지나가던 것을 고친 뒤(REPAIR §164) 처음
+       * 드러났다 — 실측(2026-10-19 진단 `c39bd941` 칸 21): 챔피언로드 1F 계단 (4,37)로 가는 층 걸음이 (10,42)에 선
+       * 엘리트 트레이너 마리아를 그대로 지나는 길을 내 (10,43)에서 15분을 밀었다. 그 칸이 목표면 비워 둔다
+       */
+      const npcs = await import('/src/engine/actor/npcs.ts')
+      const people = new Set(npcs.npcActors.list.filter((n) => n.visible)
+        .map((n) => `${String(Math.round(n.x))},${String(Math.round(n.z))}`))
+      if (goal !== null) people.delete(`${String(goal.x)},${String(goal.z)}`)
       const CLIMB = { 0x4b: 'ns', 0x4c: 'ew' }
       for (let head = 0; head < queue.length && head < 200000; head++) {
         const [x, z, y, k] = queue[head]
@@ -554,6 +563,7 @@ function devObserver(page) {
             }
           }
           if (grid.isBlocked(nx, nz) === true) continue
+          if (people.has(`${String(nx)},${String(nz)}`)) continue
           if (typeof ask === 'function' && ask(nx, nz, y) === true) continue
           if (pl.stepTooHigh(grid, nx + 0.5, nz + 0.5, y)) continue
           const ny = grid.heightAtWorld(nx + 0.5, nz + 0.5, y) ?? y
