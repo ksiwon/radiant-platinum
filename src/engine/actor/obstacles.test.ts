@@ -11,7 +11,8 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from '../map/grid'
 import { isSurfable } from '../map/zone'
 import { world, type EventFile, type MapHeader } from '../map/world'
-import { OBSTACLE_MOVE, STRENGTH_BOULDER, isObstacle, obstacleAt, pushBoulder } from './obstacles'
+import { OBSTACLE_MOVE, STRENGTH_BOULDER, isObstacle, obstacleAt, pushBoulder, solidNpcAt } from './obstacles'
+import { worldState } from '../../state/worldState'
 import { npcActors, type NpcActor } from './npcs'
 import { withData } from '../../data/romData.testkit'
 
@@ -176,5 +177,33 @@ maybe('막아도 갈 데가 남는가', () => {
     for (const z of ['T01', 'R201', 'T02', 'R202', 'C01', 'R203']) {
       expect(shut.zones.has(z), `${z}에 걸어서 도달하지 못한다`).toBe(true)
     }
+  })
+})
+
+describe('사람은 정면으로 걸어도 막는다 (`solidNpcAt`)', () => {
+  // 걸음이 쓰는 네 귀퉁이 (`actor/player`의 `blocked` · `RADIUS` 0.3)
+  const HALF = 0.3
+  const shut = (x: number, z: number) =>
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].some(([a, b]) => solidNpcAt(x + a! * HALF, z + b! * HALF, 0) !== null)
+
+  it('서쪽에서 0.05씩 다가가면 사람 칸 앞에서 선다 — 예전에는 0.85칸 안을 「이미 겹쳤다」로 봐서 그대로 건넜다', () => {
+    npcActors.list = [actor(1, 5, 5)]
+    let x = 3.5
+    for (let i = 0; i < 80; i++) {
+      worldState.player.position.set(x, 0, 5.5)
+      if (shut(x + 0.05, 5.5)) break
+      x += 0.05
+    }
+    // 사람 가운데 5.5 — 귀퉁이가 원기둥 0.4에 닿기 전에 선다
+    expect(x).toBeLessThan(5)
+    npcActors.list = []
+  })
+
+  it('남이 걸어 들어와 이미 겹쳤으면 비켜 나갈 수 있다 — 동행이 방금 떠난 칸으로 들어온 자리', () => {
+    npcActors.list = [actor(1, 5, 5)]
+    worldState.player.position.set(5.2, 0, 5.5)
+    expect(shut(5.0, 5.5)).toBe(false)
+    expect(shut(5.4, 5.5)).toBe(false)
+    npcActors.list = []
   })
 })
