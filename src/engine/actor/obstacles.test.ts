@@ -206,4 +206,11 @@ describe('사람은 정면으로 걸어도 막는다 (`solidNpcAt`)', () => {
     expect(shut(5.4, 5.5)).toBe(false)
     npcActors.list = []
   })
+
+  it('한가운데가 딱 겹쳐도 비켜 나갈 수 있다 — 귀퉁이는 0.42라 원기둥 0.4 밖이다', () => {
+    npcActors.list = [actor(1, 5, 5)]
+    worldState.player.position.set(5.5, 0, 5.5)
+    for (const [dx, dz] of [[0.05, 0], [-0.05, 0], [0, 0.05], [0, -0.05]]) expect(shut(5.5 + dx!, 5.5 + dz!)).toBe(false)
+    npcActors.list = []
+  })
 })

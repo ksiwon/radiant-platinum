@@ -135,7 +135,10 @@ const PLAYER_HALF = 0.3
  * 같은 귀퉁이로 재면 스스로는 안으로 못 들어가고, 동행처럼 **남이 걸어 들어온** 때만 겹친다 — 그때는 비켜 나갈 수 있어야 한다
  */
 function bodyInside(actor: NpcActor, x: number, z: number): boolean {
-  return covers(actor, x - PLAYER_HALF, z - PLAYER_HALF, 0) || covers(actor, x + PLAYER_HALF, z - PLAYER_HALF, 0)
+  // ⚠️ **몸 가운데도 본다.** 한가운데가 딱 겹치면 귀퉁이는 0.42라 원기둥 0.4 **밖**이다 — 그러면 「안 겹쳤다」로 읽혀 그 사람이
+  // 사방을 막는다. 실측(2026-10-20 연쇄 `22c081d6` 칸 1): 201번도로 가방 장면에서 라이벌이 주인공 칸 (114,853)에 그대로 서서
+  // 한 걸음도 못 뗐다. 스스로 걸어서는 가운데가 0.4 안으로 못 들어가므로(정면 0.57 · 대각 0.82에서 막힌다) 막는 판정은 그대로다
+  return covers(actor, x, z, 0) || covers(actor, x - PLAYER_HALF, z - PLAYER_HALF, 0) || covers(actor, x + PLAYER_HALF, z - PLAYER_HALF, 0)
     || covers(actor, x - PLAYER_HALF, z + PLAYER_HALF, 0) || covers(actor, x + PLAYER_HALF, z + PLAYER_HALF, 0)
 }
 

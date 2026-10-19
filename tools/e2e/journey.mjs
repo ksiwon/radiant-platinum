@@ -1379,7 +1379,11 @@ try {
       const png = await page.screenshot({ path: resolve(ROOT, shotAt), timeout: 15_000 }).then(() => shotAt).catch(() => null)
       const where = await Promise.race([whereNow().catch(() => null), new Promise((r) => { setTimeout(() => { r(null) }, 8_000) })])
       const m = await Promise.race([marks().catch(() => null), new Promise((r) => { setTimeout(() => { r(null) }, 8_000) })])
-      writeFileSync(resolve(ROOT, stateAt), `${JSON.stringify({ ...info, cell: PART_N, at: new Date().toISOString(), where, marks: m, shot: png }, null, 1)}\n`)
+      // 선 자리에서 누가 어디 서 있었나 — 사람이 막는 게임이 된 뒤(REPAIR §164) 멈춤의 첫 용의자다
+      const people = await Promise.race([page.evaluate(async () => (await import('/src/engine/actor/npcs.ts')).npcActors.list
+        .map((a) => ({ id: a.localID, gfx: a.gfx, x: a.x, z: a.z, vis: a.visible, move: a.movementType })))
+        .catch(() => null), new Promise((r) => { setTimeout(() => { r(null) }, 8_000) })])
+      writeFileSync(resolve(ROOT, stateAt), `${JSON.stringify({ ...info, cell: PART_N, at: new Date().toISOString(), where, marks: m, people, shot: png }, null, 1)}\n`)
       return { shot: png, state: stateAt }
     },
   })
