@@ -97,6 +97,33 @@ async function untilMap(api, ok, ms) {
 }
 
 /**
+ * **사천왕 방 사이에서 가방으로 회복한다** — 쓰러진 마리는 기력의조각, 체력이 반 아래면 고급상처약.
+ *
+ * 원작도 방 사이에 회복이 없고, 사람은 방을 나서기 전에 가방을 연다. 실측(2026-10-19 진단 `8a602fe6` 칸 21):
+ * 이것 없이 오엽까지 넷을 이기고 기라티나 혼자 난천 앞에 서서 두 판 내리 졌다
+ */
+async function topUp(api) {
+  const done = []
+  const party = (await api.partyState()) ?? []
+  for (let i = 0; i < party.length && api.left() > 60_000; i++) {
+    let mon = (await api.partyState())?.[i]
+    if (!mon || typeof mon.max !== 'number') continue
+    if (mon.hp === 0 && await have(api, ITEM.revive)) {
+      const r = await api.healSlot(ITEM.revive, i)
+      done.push(`${String(mon.species)} 기력의조각 ${r.ok ? `${String(r.before)}→${String(r.after)}` : String(r.why)}`)
+      mon = (await api.partyState())?.[i]
+    }
+    for (let k = 0; k < 3 && mon && mon.hp > 0 && mon.hp < mon.max * 0.5 && await have(api, ITEM.hyperPotion); k++) {
+      const r = await api.healSlot(ITEM.hyperPotion, i)
+      done.push(`${String(mon.species)} 고급상처약 ${r.ok ? `${String(r.before)}→${String(r.after)}` : String(r.why)}`)
+      if (!r.ok) break
+      mon = (await api.partyState())?.[i]
+    }
+  }
+  return done.length > 0 ? done.join(' · ') : '쓸 것 없다'
+}
+
+/**
  * 회복 · 사탕 · 약 켜기 — 다리마다 싸움 앞에서 한 번 (`badgesDW`의 `prepare`와 같다).
  */
 async function prepare(api, ctx, note, { center, nurse = 1, levels, what }) {
@@ -720,6 +747,8 @@ export async function eliteFour(api, ctx, page, {
        */
       const bought = await api.buyAt(MAP.leagueNorthCenter, ITEM.hyperPotion, potions, Math.min(300_000, api.left()), LEAGUE_CLERK)
       note(`북 센터 상점 고급상처약 ${String(potions)}개`, bought.ok ? `${String(bought.bought)}개 샀다` : String(bought.why))
+      const revives = await api.buyAt(MAP.leagueNorthCenter, ITEM.revive, 12, Math.min(300_000, api.left()), LEAGUE_CLERK)
+      note('북 센터 상점 기력의조각 12개', revives.ok ? `${String(revives.bought)}개 샀다` : String(revives.why))
       await prepare(api, ctx, note, { center: MAP.leagueNorthCenter, nurse: LEAGUE_NURSE, levels, what: `사천왕 앞${round > 0 ? ` 재도전 ${String(round)}` : ''}` })
       if (ctx.candyUp && levels.giratina) {
         const g = await ctx.candyUp(null, [487], levels.giratina)
@@ -753,6 +782,7 @@ export async function eliteFour(api, ctx, page, {
       note(`사천왕 ${e.what}`, `${said ? '붙었다' : '못 걸었다'} · 이겼다 ${String(v[e.flag])} · 파티 ${JSON.stringify(out.rooms.at(-1).party)}`)
       // 지면 전멸로 북 센터에 돌아간다 — 사천왕 깃발이 지워지고 처음부터다
       if (!v[e.flag]) { lost = true; break }
+      note(`${e.what}의 방 나서기 전 회복`, await topUp(api))
       const next = await boardWarp(api, e.room, ELITE_EXIT, Math.min(300_000, api.left()))
       note(`${e.what}의 방 출구 (8,2)`, next)
     }

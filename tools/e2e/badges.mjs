@@ -37,6 +37,8 @@ export const ITEM = {
   secretPotion: 464,
   /** 고급상처약 — 배지 다섯이면 마트가 판다 (`engine/bag/mart.ts`의 tier 4) */
   hyperPotion: 25,
+  /** 기력의조각 — 배지 셋이면 마트가 판다(tier 3) */
+  revive: 28,
   /** 실버스프레이 */
   superRepel: 76,
   /** 골드스프레이 — 250걸음. 배지 다섯이면 마트가 판다(tier 4) */
@@ -194,6 +196,14 @@ export async function boardWarp(api, mapId, warp, budgetMs) {
       Math.max(0, Math.min(300_000, till - Date.now())), { intoDoors: [warp] })
     const at = await api.now()
     tried.push(`옆 (${String(side.at.x)},${String(side.at.z)}) ${stood} · 선 칸 ${String(at.x)},${String(at.z)}`)
+    /**
+     * ⚠️ **옆칸으로 가다 그 계단을 밟았으면 넘어간 것이다.** 실측(2026-10-19 진단 `8a602fe6` 칸 21): 챔피언로드
+     * 2F에서 (23,27)로 가던 걸음이 (23,30)에서 한 번 막혀 다시 짠 길이 계단 (23,26)을 밟아 1F (9,47)로 내려갔다 —
+     * 가려던 곳에 닿았는데 `warped`라 실패로 세고 다음 옆칸을 1F에서 찾다 칸이 통째로 끝났다
+     */
+    // 부르는 쪽은 대개 칸만 준다 (`{ x, z }`) — 어디로 가는지는 그 맵의 워프 표에 있다
+    const dest = warp.to ?? others.find((w) => w.x === warp.x && w.z === warp.z)?.to
+    if (stood === 'warped' && dest !== undefined && (await api.settle()).map === dest) return 'arrived'
     if (stood !== 'arrived') continue
     for (let i = 0; i < 8; i++) {
       await api.tap(side.key, 260)

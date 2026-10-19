@@ -3611,6 +3611,31 @@ export async function driveStory(page, {
   }
 
   /**
+   * **필드에서 그 마리에게 회복 도구를 쓴다** — 가방 → 그 도구 → 「쓴다」 → 파티 화면에서 그 칸 → 결정.
+   *
+   * 사천왕 방 사이에는 회복이 없다. 사람은 방을 나설 때마다 가방을 열어 기력의조각 · 고급상처약을 쓴다 —
+   * 실측(2026-10-19 진단 `8a602fe6` 칸 21): 그것 없이 기라티나 혼자 난천 앞에 서서 두 판 내리 졌다.
+   * 쓴 것은 가방이 아니라 **그 마리의 체력**으로 본다
+   */
+  const healSlot = async (item, slot, budgetMs = 120_000) => {
+    const till = Math.min(Date.now() + budgetMs, started + totalMs)
+    const hpOf = async () => (await partyState())?.[slot]?.hp ?? null
+    const before = await hpOf()
+    if (before === null) return { ok: false, why: '파티를 못 읽었다' }
+    const at = await openBagAt(item, till)
+    if (!at.ok) { await closeMenus(); return { ok: false, why: at.why } }
+    const used = await chooseUse(at.slot)
+    if (!used.ok) { await closeMenus(); return { ok: false, why: used.why } }
+    for (let i = 0; i < slot; i++) await tap('ArrowRight', 120)
+    await tap('Space', 500)
+    // 「…의 체력이 회복되었다!」 · 「…은 기운을 되찾았다!」를 넘긴다
+    for (let i = 0; i < 6 && (await hpOf()) === before && Date.now() < till; i++) await tap('Space', 300)
+    await closeMenus()
+    const after = await hpOf()
+    return { ok: after !== null && after > before, before, after, why: after !== null && after > before ? null : '체력이 그대로다' }
+  }
+
+  /**
    * **비전머신을 가르친다** — 사람이 하는 길 그대로.
    *
    * 원작이 여기서 막는다: `whyNot`이 「그 기술을 아는 파티원이 있는가」를 보고
@@ -4792,7 +4817,7 @@ export async function driveStory(page, {
     distortionState: async () => { const r = await obs.distortionState(); return r.known ? r.value : null },
     distortionPlan: async (arg) => { const r = await obs.distortionPlan(arg); return r.known ? r.value : null },
     distortionWalk,
-    runAway, useItem, usePotions, stopPotions,
+    runAway, useItem, healSlot, usePotions, stopPotions,
     fightThrough,
     // ⚠️ **소포를 받는 걸음도 같이 넘긴다.** 새 게임 갈래는 트레이너전이 0일 때만
     // 부르는데(라이벌전이 이미 붙었으면 건너뛴다), 그 뒤로 더 가는 쪽은
