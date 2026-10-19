@@ -122,22 +122,14 @@ export function obstacleAt(tx: number, tz: number): NpcActor | null {
 /** 사람이 차지하는 반지름(타일) */
 const PERSON_RADIUS = 0.4
 
-/** 주인공 상자의 반 너비 (`actor/player`의 `RADIUS`). 걸음은 이 네 귀퉁이로 판정한다 */
-const PLAYER_HALF = 0.3
-
 /**
- * 주인공 몸이 **지금** 그 사람 안에 들어가 있는가 — 걸음이 쓰는 그 네 귀퉁이로 잰다.
+ * 주인공 상자의 대각 반지름 (`actor/player`의 `RADIUS` 0.3 × √2).
  *
- * ⚠️ **막히는 판정과 같은 모양이어야 한다.** 예전에는 몸 가운데가 0.85칸(원기둥 0.4 + 대각 0.45) 안이면 「이미 겹쳤다」로
- * 봤는데, 정면으로 걸어가면 귀퉁이는 0.57칸에서야 막힌다 — 그 사이 0.85~0.57이 늘 「겹쳤다」라 **아무 사람이나 정면으로 걸어
- * 뚫고 지나갔다.** 실측(2026-10-19 `.audit/probe/walkThrough`): 0.55칸부터 막혀야 할 걸음이 사람 칸을 그대로 건넜다. 장막 체육관에서
- * 싸우러 걸어온 부하를 지나 통로 안쪽으로 들어가고, 부하가 통로 둘을 막아 샌드백 풀이가 끊겼다(연쇄 `67a7edab` 칸 4 · `de07d6a8`).
- * 같은 귀퉁이로 재면 스스로는 안으로 못 들어가고, 동행처럼 **남이 걸어 들어온** 때만 겹친다 — 그때는 비켜 나갈 수 있어야 한다
+ * 주인공은 점이 아니라 **네 귀퉁이**로 판정하므로, 몸 가운데가 아직 밖에 있어도
+ * 귀퉁이가 이만큼 먼저 들어간다. 「이미 겹쳐 서 있다」를 잴 때 이 몫을 더해
+ * **막히기 시작하는 거리보다 늘 넓게** 잡는다 — 좁으면 갇힌다
  */
-function bodyInside(actor: NpcActor, x: number, z: number): boolean {
-  return covers(actor, x - PLAYER_HALF, z - PLAYER_HALF, 0) || covers(actor, x + PLAYER_HALF, z - PLAYER_HALF, 0)
-    || covers(actor, x - PLAYER_HALF, z + PLAYER_HALF, 0) || covers(actor, x + PLAYER_HALF, z + PLAYER_HALF, 0)
-}
+const PLAYER_REACH = 0.45
 
 /**
  * 이만큼 벌어지면 다른 층이다.
@@ -204,7 +196,7 @@ export function solidNpcAt(cx: number, cz: number, y: number): NpcActor | null {
     // 걸어 들어오는데(`actor/ambient`의 `stepFollow`) 그 칸이 아직 주인공 몸에
     // 걸쳐 있다. 이 줄이 없으면 그 순간 사방이 다 막혀 **못 움직인다** —
     // 스크립트가 사람을 주인공 위로 걸어 보내는 자리도 같다
-    if (bodyInside(actor, p.x, p.z)) continue
+    if (covers(actor, p.x, p.z, PLAYER_REACH)) continue
     if (grid !== null) {
       // ⚠️ **다리 밑을 지날 때는 다리 위의 사람이 안 막는다** (PARITY §1.16).
       // 사람은 늘 다리 **위**로 친다 (`actor/ambient`의 `terrainBlocks`)
@@ -236,7 +228,7 @@ export function solidNpcAtHeight(cx: number, cz: number, y: number): NpcActor | 
   for (const actor of npcActors.list) {
     if (!actor.visible) continue
     if (!covers(actor, cx, cz, 0)) continue
-    if (bodyInside(actor, p.x, p.z)
+    if (covers(actor, p.x, p.z, PLAYER_REACH)
       && Math.abs(Math.round(actor.y * 2) - Math.round(p.y * 2)) < 2) continue
     if (Math.abs(Math.round(actor.y * 2) - Math.round(y) * 2) >= 2) continue
     return actor
