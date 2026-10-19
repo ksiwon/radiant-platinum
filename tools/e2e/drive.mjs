@@ -144,6 +144,9 @@ export async function driveStory(page, {
   const obs = await makeObserver(page, observe)
   /** 기술을 무엇으로 골랐나 — 읽어서 골랐나, 화면 글로 물러났나 */
   const movePicks = { read: 0, text: 0 }
+  /** 발버둥만 남아 바꾼 횟수 · 마지막으로 바꿔 본 턴 (`pickMove`) */
+  let struggleSwaps = 0
+  let swapTried = null
   /** 「새 기술을 배우겠는가」에 몇 번 답했나 */
   let learnAsks = 0
   /** 규칙대로 갈아 낀 기술 — `잊은것→배운것` */
@@ -772,6 +775,29 @@ export async function driveStory(page, {
       // 열 길이 아예 없고(관측 불가), 개발 서버에서도 값이 null일 수 있다
       // (변화 기술만 남은 판이 그렇다) — 앞은 **다른 규칙으로 고른 판**이라
       // 증거에 그렇게 적어야 한다 (`movePicks`)
+      /**
+       * ⚠️ **발버둥만 남았으면 PP가 남은 마리로 바꾼다** — 사람도 그렇게 한다. 실측(2026-10-19 최종 `e5a70213` 칸 10):
+       * 토대부기 하나가 센터 없는 천관산 길을 다 맡아 PP가 바닥났고, 마스 · 쥬피터전이 발버둥으로 37턴을 끌어 창기둥 컷신
+       * 도중에 예산이 끝났다. 전날 칸 10의 배틀 멈춤(REPAIR §163)도 같은 바닥난 PP에서 드러났다. 묶였거나(검은눈빛) 바꿀
+       * 마리가 없으면 화면이 「포켓몬」을 잠가 두므로 그대로 발버둥을 친다. 한 턴에 한 번만 해 본다
+       */
+      if (n === 1 && (await rows.first().innerText()).includes('발버둥')) {
+        const turn = await turnAt()
+        if (turn !== swapTried) {
+          swapTried = turn
+          await tap('KeyX', 120)
+          await until(async () => commandReady(await buttonTexts()), 1500)
+          const cmd = await buttonTexts()
+          const party = cmd.find((t) => t.startsWith('포켓몬'))
+          if (commandReady(cmd) && party !== undefined && party === '포켓몬') {
+            await tap('ArrowDown', 90)
+            await tap('ArrowDown', 90)
+            await tap('Space', 150)
+            struggleSwaps++
+            return true
+          }
+        }
+      }
       const read = await obs.bestMove()
       let at = read.known ? read.value : null
       if (at !== null) movePicks.read++
@@ -4783,7 +4809,7 @@ export async function driveStory(page, {
       maps: [...maps], ...battles, shops, missed: [], trouble,
       plan: planSummary(), episodes: episodeSummary(), failedEpisodes: failedEpisodes(),
       blocks: blockSummary(),
-      fights, movePicks, observer: obs.kind, extra: only,
+      fights, movePicks, struggleSwaps, observer: obs.kind, extra: only,
       potions: { used: potion.used, left: potion.left, why: potion.why, misses: potion.misses, uses: potion.uses, rows: potion.rows },
     }
   }
@@ -4929,6 +4955,7 @@ export async function driveStory(page, {
     observer: obs.kind,
     /** 기술을 무엇으로 골랐나. 배포물은 전부 `text`다 (관측 불가) */
     movePicks,
+    struggleSwaps,
     /** 「새 기술을 배우겠는가」에 몇 번 답했나 */
     learnAsks,
     /** 규칙대로 갈아 낀 기술 — `잊은것→배운것`. 파티가 왜 그 기술을 들었는지가 여기 남는다 */
