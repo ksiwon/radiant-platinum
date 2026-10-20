@@ -2648,7 +2648,7 @@ export async function driveStory(page, {
           x += STEPV[keys[i]][0]; z += STEPV[keys[i]][1]
           tiles.push([x, z])
         }
-        const lk = await obs.layeredKeys({ path: tiles })
+        const lk = await obs.layeredKeys({ path: tiles, avoid: warpsOf(s.map).map((w) => [w.x, w.z]) })
         if (lk.known && lk.value?.keys != null && lk.value.keys.length > 0) {
           if (first || verbose) log(`    층 걸음으로 간다 — 계획 ${String(tiles.length)}칸 중 ${String(lk.value.reached + 1)}번째까지 ${String(lk.value.keys.length)}걸음 (상태 ${String(lk.value.states)}개)`)
           // 계획의 방향키 끝(락클라임 · 판 칸 앞)까지 닿았으면 그 뒤 특수 걸음을 잇는다 — 안 이으면 바위 밑에서 영영 선다
@@ -2839,13 +2839,14 @@ export async function driveStory(page, {
           tiles.push([x, z])
         }
         // 먼저 그 칸으로 곧장(락클라임 포함) — 없을 때만 격자 계획을 따라 닿는 데까지
-        const direct = await obs.layeredKeys({ goal: { x: spot.x, z: spot.z } })
+        const shunDoors = doors.filter((w) => !intoDoors.some((d) => d.x === w.x && d.z === w.z)).map((w) => [w.x, w.z])
+        const direct = await obs.layeredKeys({ goal: { x: spot.x, z: spot.z }, avoid: shunDoors })
         if (direct.known && direct.value?.keys != null && direct.value.keys.length > 0) {
           if (first || verbose) log(`    층 걸음으로 밟으러 간다 (${String(spot.x)},${String(spot.z)}) — 곧장 ${String(direct.value.keys.length)}걸음 · 바위 ${String(direct.value.keys.filter((k) => k.startsWith(CLIMB_PREFIX)).length)}번 (상태 ${String(direct.value.states)}개)`)
           keys = direct.value.keys
           tiles.length = 0
         }
-        const lk = tiles.length === 0 ? { known: false } : await obs.layeredKeys({ path: tiles })
+        const lk = tiles.length === 0 ? { known: false } : await obs.layeredKeys({ path: tiles, avoid: shunDoors })
         if (tiles.length === 0) {
           // 곧장 길을 썼다
         } else if (lk.known && lk.value?.keys != null && lk.value.keys.length > 0) {

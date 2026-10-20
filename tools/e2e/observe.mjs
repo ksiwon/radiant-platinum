@@ -534,6 +534,15 @@ function devObserver(page) {
       const people = new Set(npcs.npcActors.list.filter((n) => n.visible && n.movementType !== npcs.MOVEMENT_FOLLOW_PLAYER)
         .map((n) => `${String(Math.round(n.x))},${String(Math.round(n.z))}`))
       if (goal !== null) people.delete(`${String(goal.x)},${String(goal.z)}`)
+      /**
+       * ⚠️ **안 갈 문 · 계단은 밟지 않는다** (`a.avoid`). 격자 계획은 문을 피하는데 층 걸음은 몰랐다 — 실측(2026-10-20 진단
+       * `d73fd793` 칸 21): 챔피언로드 1F (41,24)에 올라선 자리에서 출구 옆 (35,5)로 가는 66걸음이 내려온 계단을 다시 밟아
+       * B1F로 도로 떨어졌다. 목표 칸과 계획의 끝 칸은 빼 둔다 — 그리로 들어가려는 걸음이다
+       */
+      const avoid = new Set((a.avoid ?? []).map(([x, z]) => `${String(x)},${String(z)}`))
+      if (goal !== null) avoid.delete(`${String(goal.x)},${String(goal.z)}`)
+      const last = (a.path ?? []).at(-1)
+      if (last !== undefined) avoid.delete(`${String(last[0])},${String(last[1])}`)
       const CLIMB = { 0x4b: 'ns', 0x4c: 'ew' }
       for (let head = 0; head < queue.length && head < 200000; head++) {
         const [x, z, y, k] = queue[head]
@@ -565,6 +574,7 @@ function devObserver(page) {
           }
           if (grid.isBlocked(nx, nz) === true) continue
           if (people.has(`${String(nx)},${String(nz)}`)) continue
+          if (avoid.has(`${String(nx)},${String(nz)}`)) continue
           if (typeof ask === 'function' && ask(nx, nz, y) === true) continue
           if (pl.stepTooHigh(grid, nx + 0.5, nz + 0.5, y)) continue
           const ny = grid.heightAtWorld(nx + 0.5, nz + 0.5, y) ?? y
