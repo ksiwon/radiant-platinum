@@ -221,6 +221,18 @@ export async function driveStory(page, {
    * 피하고 한 줄 아래로 다시 들이밀기를 되풀이했다. 한 번 어긋나면 둘레를 통째로 물어 배운다
    */
   const gameWalls = new Set()
+  /**
+   * **계획이 막혔을 때 걷어 낼 수 있는 벽** — 지금 선 사람과 배운 벽. 둘 다 추정이라(사람은 비키고, 배운 벽은 둔덕의 다른 층에서는
+   * 지나간다) 길이 없으면 걷고 다시 찾는다. 실측(2026-10-21 진단 `3d959fa8` 칸 9): 장막시티 둘레에서 배운 벽이 시내를 갈라 센터로 가는
+   * 길이 없어졌다. 걷은 것이 있으면 참
+   */
+  const dropSoftWalls = (mapId) => {
+    const m = `${String(matrixOf(mapId))}:`
+    let dropped = peopleNow.size > 0
+    peopleNow.clear()
+    for (const key of [...gameWalls]) if (key.startsWith(m)) { gameWalls.delete(key); dropped = true }
+    return dropped
+  }
   const refreshPeople = async (mapId, goal = null) => {
     const m = String(matrixOf(mapId))
     // ⚠️ **따라다니는 동행은 뺀다** — 원작도 제품도 동행은 길을 안 막는다(`actor/obstacles`의 `passable` · REPAIR §167)
@@ -2439,10 +2451,9 @@ export async function driveStory(page, {
         }
         let plain = planned(here, from, isGoal, { ...opts, avoid }, why)
         // 사람을 벽으로 쳐서 길이 없으면 사람을 빼고 한 번 더 — `talkTo`의 같은 자리와 같은 까닭이다
-        if (plain.keys === null && plain.status !== PLAN.budget && peopleNow.size > 0) {
-          peopleNow.clear()
-          plain = planned(here, from, isGoal, { ...opts, avoid }, `${why}/사람 빼고`)
-          if (plain.keys !== null && verbose) log(`      ${why} — 사람을 빼고 길을 냈다`)
+        if (plain.keys === null && plain.status !== PLAN.budget && dropSoftWalls(s.map)) {
+          plain = planned(here, from, isGoal, { ...opts, avoid }, `${why}/사람 · 배운 벽 빼고`)
+          if (plain.keys !== null && verbose) log(`      ${why} — 사람 · 배운 벽을 빼고 길을 냈다`)
         }
         if (plain.status === PLAN.budget && verbose) {
           log(`      계획 상한 소진 (${why}) — 「길이 없다」가 아니다`)
@@ -2975,10 +2986,9 @@ export async function driveStory(page, {
          * 실제로는 안 막는다(격자는 층을 모른다). 실측(2026-10-21 최종 연쇄 `cc0bb5d0` 칸 5): 장막시티 창고 앞 동행 상대의 네 옆칸이
          * 둔덕 위 조무래기 둘 때문에 「길이 없다」로 나와 30분을 돌았다 — 사람을 안 세던 판은 곧장 닿았다
          */
-        if (keys === null && peopleNow.size > 0) {
-          peopleNow.clear()
+        if (keys === null && dropSoftWalls(mapId)) {
           keys = sidePlan()
-          if (keys !== null && verbose) log(`      ${String(side.at.x)},${String(side.at.z)} — 사람을 빼고 길을 냈다`)
+          if (keys !== null && verbose) log(`      ${String(side.at.x)},${String(side.at.z)} — 사람 · 배운 벽을 빼고 길을 냈다`)
         }
         if (keys === null) {
           if (verbose) log(`      ${String(side.at.x)},${String(side.at.z)}로 가는 길이 없다`)
