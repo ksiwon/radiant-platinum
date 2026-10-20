@@ -216,9 +216,15 @@ export async function driveStory(page, {
   const peopleNow = new Set()
   const refreshPeople = async (mapId, goal = null) => {
     const m = String(matrixOf(mapId))
-    const got = await page.evaluate(async () => (await import('/src/engine/actor/npcs.ts')).npcActors.list
-      .filter((a) => a.visible).map((a) => [Math.round(a.x), Math.round(a.z), a.gfx]))
-      .catch(() => null)
+    // ⚠️ **따라오는 동행은 뺀다** — 주인공이 방금 떠난 칸에 늘 서 있으니 벽으로 치면 돌아설 길이 막힌다. 실측(2026-10-20 진단
+    // `ab9ad9f5` 칸 20): 하드마운틴 방 2에서 벅을 데리고 (41,15) 바위로 가는 길이 8분 내내 「없다」였다
+    const got = await page.evaluate(async () => {
+      const { npcActors } = await import('/src/engine/actor/npcs.ts')
+      const { npcAmbient } = await import('/src/engine/actor/ambient.ts')
+      return npcActors.list
+        .filter((a) => a.visible && npcAmbient.types[a.movementType]?.kind !== 'follow')
+        .map((a) => [Math.round(a.x), Math.round(a.z), a.gfx])
+    }).catch(() => null)
     peopleNow.clear()
     if (got === null) return
     // 벨 나무 · 깰 바위 · 큰바위는 `standingObstacles`가 따로 센다(치우면 지나간다)
