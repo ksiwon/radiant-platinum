@@ -812,7 +812,8 @@ export async function eliteFour(api, ctx, page, {
        * 재대결은 깃발로 못 끝내므로 **시간으로** 둔다 — 스무 바퀴는 승강기에서 내려 난천 앞까지 걷는 장면(`ApplyMovement`)이 열리기 전에
        * 다 돌아 「졌다」로 읽혔다(진단 5판 — 그 뒤 배틀을 이기고 엔딩으로 넘어가 앱이 다시 켜졌다). 첫 판은 예전 그대로 스무 바퀴다
        */
-      const champTill = Date.now() + 600_000
+      // 스무 분 — 실측(2026-10-20 진단 `cc0bb5d0` 칸 21): 34턴 걸린 난천전이 열 분을 넘겨 이기고도 「졌다」로 읽혔다
+      const champTill = Date.now() + 1_200_000
       for (let i = 0; (rematch ? Date.now() < champTill : i < 20) && !(rematch ? false : (await vars()).cynthia); i++) {
         if (await offPlay()) { navigated = true; break }
         if ((await api.now()).map === MAP.leagueNorthCenter) break
@@ -825,6 +826,8 @@ export async function eliteFour(api, ctx, page, {
         await api.clearTalk(); await api.settle()
       }
       if (!navigated && await offPlay()) navigated = true
+      // 기다림이 끝난 뒤에 들어섰어도 이긴 것이다 — 복도 · 전당은 이긴 사람만 간다
+      if (rematch && !navigated && [MAP.hallway, MAP.hallOfFame].includes((await api.now()).map)) out.champion = true
     } catch (e) {
       if (!leftApp(e)) throw e
       navigated = true
