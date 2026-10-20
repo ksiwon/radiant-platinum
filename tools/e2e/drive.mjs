@@ -203,6 +203,29 @@ export async function driveStory(page, {
     // (2026-09-17 `_leg42`): 202에서 347로 빠져나왔다가 같은 계획으로 202에
     // 도로 들어가기를 121걸음씩 되풀이했다
     || standingObstacles.has(`${String(matrixOf(mapId))}:${String(x)},${String(z)}`)
+    || peopleNow.has(`${String(matrixOf(mapId))}:${String(x)},${String(z)}`)
+
+  /**
+   * **지금 서 있는 사람 칸** — 계획을 세우기 직전에 다시 읽는다 (`refreshPeople`).
+   *
+   * ⚠️ **사람도 벽이다** (REPAIR §164). 사람을 뚫고 걷던 동안은 격자만 보고 길을 내도 됐지만, 이제는 그 길이 사람 앞에서
+   * 서고, 막힌 칸을 피하다 엉뚱한 문으로 샌다 — 실측(2026-10-20 진단 `748bccb4` 칸 6): 215번도로(382)에서 210번도로 남으로 가던
+   * 길이 사람 앞에서 꺾여 동쪽 관문(149)을 3분 넘게 드나들었다. 층 걸음(`observe`의 `layeredKeys`)과 같은 규칙이다.
+   * 아는 것은 **지금 맵**뿐이다 — 옆 구역 사람은 그 구역에 들어서서 다시 읽는다
+   */
+  const peopleNow = new Set()
+  const refreshPeople = async (mapId, goal = null) => {
+    const m = String(matrixOf(mapId))
+    const got = await page.evaluate(async () => (await import('/src/engine/actor/npcs.ts')).npcActors.list
+      .filter((a) => a.visible).map((a) => [Math.round(a.x), Math.round(a.z), a.gfx]))
+      .catch(() => null)
+    peopleNow.clear()
+    if (got === null) return
+    // 벨 나무 · 깰 바위 · 큰바위는 `standingObstacles`가 따로 센다(치우면 지나간다)
+    for (const [x, z, gfx] of got) if (!OBSTACLE_SPRITES.has(gfx)) peopleNow.add(`${m}:${String(x)},${String(z)}`)
+    // 밟을 칸 위의 사람은 비워 둔다 — 그 사람이 비키기를 기다리는 자리다(층 걸음과 같다)
+    if (goal !== null) peopleNow.delete(`${m}:${String(goal.x)},${String(goal.z)}`)
+  }
 
   /**
    * **벨 나무·깰 바위·밀 바위는 격자에 없다** — 지형이 아니라 객체라서다
@@ -2333,6 +2356,7 @@ export async function driveStory(page, {
       // 상점으로 가는 길이 포켓몬센터 문을 지난다 (실측: 419로 가다 422에 들어갔다)
       // 이 맵의 장애물이 **아직 서 있는지** 한 번 묻는다 (맵당 한 번)
       await askObstacles(s.map)
+      await refreshPeople(s.map)
       const others = warpsOf(s.map)
       const avoid = (x, z) => shun.has(`${String(x)},${String(z)}`)
         || others.some((w) => w.x === x && w.z === z)
@@ -2766,6 +2790,7 @@ export async function driveStory(page, {
       // ⚠️ **밟을 칸은 문이 아니다** — 통행 불가 칸을 목표로 삼는 예외를 안 쓴다
       // (후속 §4.2). 쓰면 「계획은 `found`인데 마지막 한 걸음이 늘 막힌다」가
       // 예산이 다 될 때까지 되풀이된다
+      await refreshPeople(mapId, spot)
       const r = planned(here, { x: s.x, z: s.z }, (x, z) => x === spot.x && z === spot.z, {
         avoid: (x, z) => shun.has(`${String(x)},${String(z)}`)
           || doors.some((w) => w.x === x && w.z === z)
@@ -2904,6 +2929,7 @@ export async function driveStory(page, {
         return done(`다른 맵으로 나왔다 (${String(s.map)})`)
       }
       if (s.x !== side.at.x || s.z !== side.at.z) {
+        await refreshPeople(mapId)
         const keys = planned(here, { x: s.x, z: s.z },
           (x, z) => x === side.at.x && z === side.at.z,
           {
