@@ -789,9 +789,19 @@ export async function eliteFour(api, ctx, page, {
     if (lost) { await untilMap(api, (m) => m === MAP.leagueNorthCenter, 60_000); await api.clearTalk(); await api.settle(); continue }
 
     v = await vars()
+    /**
+     * ⚠️ **승강기를 타는 걸음이 난천전 · 엔딩까지 치를 수 있다** — 그 안의 `settle`이 대사를 넘긴다. 실측(2026-10-21 진단 `4e2d1909`
+     * 칸 21): 승강기 걸음 안에서 이기고 크레딧 끝의 `location.assign`으로 앱이 다시 켜져 「Execution context was destroyed」로 다리가 터졌다
+     */
+    let liftLeft = false
     if (!champ(v) && (await api.now()).map === MAP.liftChampion) {
-      const r = await rideLift(api, ctx, MAP.liftChampion, MAP.champion)
-      note('챔피언 승강기 → 난천', `맵 ${String(r.map)}`)
+      try {
+        const r = await rideLift(api, ctx, MAP.liftChampion, MAP.champion)
+        note('챔피언 승강기 → 난천', `맵 ${String(r.map)}`)
+      } catch (e) {
+        if (!/Execution context was destroyed|navigation|Target page, context or browser has been closed/i.test(String(e?.message ?? e))) throw e
+        liftLeft = true
+      }
     }
     // 난천전은 방의 프레임 스크립트가 연다 — `settle`이 치르고, 이기면 복도 → 전당으로 스크립트가 옮긴다
     /**
@@ -799,7 +809,7 @@ export async function eliteFour(api, ctx, page, {
      * (`CreditsScreen`의 `leave`). 실측(2026-10-10 P5 진단 · 12b961a): 난천을 이긴 뒤 `settle`이 전당과 크레딧을 넘겨
      * 「Execution context was destroyed」로 판이 터졌다. 그 이동은 엔딩을 다 지난 것이다 — 타이틀에서 이어 잰다
      */
-    let navigated = false
+    let navigated = liftLeft
     const leftApp = (e) => /Execution context was destroyed|navigation|Target page, context or browser has been closed/i.test(String(e?.message ?? e))
     /**
      * 던지지 않고 넘어가기도 한다 — 다시 켜진 타이틀에서 읽으면 맵이 NaN이고 이야기 값이 비어 「졌다」로 읽힌다
@@ -807,7 +817,7 @@ export async function eliteFour(api, ctx, page, {
      * 이어하기 뒤 게임 클리어 깃발 · 전당 기록으로 따로 잰다(`_league` 다리 m)
      */
     const offPlay = async () => (await page.evaluate(() => location.pathname).catch(() => '/')) !== '/play'
-    try {
+    if (!navigated) try {
       /**
        * 재대결은 깃발로 못 끝내므로 **시간으로** 둔다 — 스무 바퀴는 승강기에서 내려 난천 앞까지 걷는 장면(`ApplyMovement`)이 열리기 전에
        * 다 돌아 「졌다」로 읽혔다(진단 5판 — 그 뒤 배틀을 이기고 엔딩으로 넘어가 앱이 다시 켜졌다). 첫 판은 예전 그대로 스무 바퀴다
