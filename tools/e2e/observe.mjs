@@ -530,7 +530,8 @@ function devObserver(page) {
        * 엘리트 트레이너 마리아를 그대로 지나는 길을 내 (10,43)에서 15분을 밀었다. 그 칸이 목표면 비워 둔다
        */
       const npcs = await import('/src/engine/actor/npcs.ts')
-      const people = new Set(npcs.npcActors.list.filter((n) => n.visible)
+      // 따라다니는 동행은 안 막는다 — 제품과 같은 규칙이다(`actor/obstacles`의 `passable`)
+      const people = new Set(npcs.npcActors.list.filter((n) => n.visible && n.movementType !== npcs.MOVEMENT_FOLLOW_PLAYER)
         .map((n) => `${String(Math.round(n.x))},${String(Math.round(n.z))}`))
       if (goal !== null) people.delete(`${String(goal.x)},${String(goal.z)}`)
       const CLIMB = { 0x4b: 'ns', 0x4c: 'ew' }

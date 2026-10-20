@@ -335,6 +335,9 @@ export function switchMovementType(localID: number, type: number): boolean {
   return true
 }
 
+/** `MOVEMENT_TYPE_FOLLOW_PLAYER` (`generated/movement_types.txt` 49번째 줄) — 주인공을 따라다니는 동행 */
+export const MOVEMENT_FOLLOW_PLAYER = 48
+
 /** 그 이동 유형으로 서 있는 첫 사람 (`MapObjMan_GetLocalMapObjByMovementType`) */
 export function npcByMovementType(type: number): NpcActor | null {
   return npcActors.list.find((a) => a.movementType === type) ?? null

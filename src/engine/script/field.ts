@@ -24,7 +24,7 @@ import { StepTrace } from '../actor/stepTrace'
 import { entryOffset, fileBytes, resolveScript, type ScriptData } from './data'
 import { resetFade, tickFade } from './fade'
 import {
-  clearNpcPlacement, npcActors, npcByMovementType, spawnNpcs, switchMovementType,
+  clearNpcPlacement, MOVEMENT_FOLLOW_PLAYER, npcActors, npcByMovementType, spawnNpcs, switchMovementType,
 } from '../actor/npcs'
 import { disguiseOf, setAmbientTables } from '../actor/ambient'
 import { frameTableScript, INIT_SCRIPT, parseInitScripts, type InitScripts } from './initScripts'
@@ -643,8 +643,6 @@ scriptBridge.running = () => fieldScripts.ctx !== null || native !== null
 const LOCALID_PLAYER = 0xff
 /** 같은 표의 「지금 따라다니는 사람」. 배치표 번호가 아니다 */
 const LOCALID_FOLLOWER = 0xf2
-/** `MOVEMENT_TYPE_FOLLOW_PLAYER` (`generated/movement_types.txt` 49번째 줄) */
-const MOVEMENT_FOLLOW_PLAYER = 48
 /** `MOVEMENT_TYPE_NONE`. 변장이 풀린 사람이 이걸로 갈린다 */
 const MOVEMENT_NONE = 0
 

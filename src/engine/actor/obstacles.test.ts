@@ -13,7 +13,7 @@ import { isSurfable } from '../map/zone'
 import { world, type EventFile, type MapHeader } from '../map/world'
 import { OBSTACLE_MOVE, STRENGTH_BOULDER, isObstacle, obstacleAt, pushBoulder, solidNpcAt } from './obstacles'
 import { worldState } from '../../state/worldState'
-import { npcActors, type NpcActor } from './npcs'
+import { MOVEMENT_FOLLOW_PLAYER, npcActors, type NpcActor } from './npcs'
 import { tileBlocked } from './player'
 import { activeZone, type CollisionGrid } from '../map/zone'
 import { withData } from '../../data/romData.testkit'
@@ -213,6 +213,16 @@ describe('사람은 정면으로 걸어도 막는다 (`solidNpcAt`)', () => {
     npcActors.list = [actor(1, 5, 5)]
     worldState.player.position.set(5.5, 0, 5.5)
     for (const [dx, dz] of [[0.05, 0], [-0.05, 0], [0, 0.05], [0, -0.05]]) expect(shut(5.5 + dx!, 5.5 + dz!)).toBe(false)
+    npcActors.list = []
+  })
+
+  it('따라다니는 동행은 안 막는다 — 짝 트레이너는 막는다 (`MAP_OBJ_STATUS_18`)', () => {
+    const follower = { ...actor(1, 5, 5), movementType: MOVEMENT_FOLLOW_PLAYER }
+    npcActors.list = [follower]
+    worldState.player.position.set(5.5, 0, 3.5)
+    expect(solidNpcAt(5.5, 5.5, 0)).toBeNull()
+    npcActors.list = [{ ...follower, movementType: 50 }]
+    expect(solidNpcAt(5.5, 5.5, 0)).not.toBeNull()
     npcActors.list = []
   })
 })

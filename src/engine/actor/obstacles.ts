@@ -16,7 +16,7 @@ import { distortionBridge } from '../world/distortion'
 import { activeZone } from '../map/zone'
 import { worldState } from '../../state/worldState'
 import { isBridgeOverWater, onElevatedBridge } from './bridge'
-import { npcActors, type NpcActor } from './npcs'
+import { MOVEMENT_FOLLOW_PLAYER, npcActors, type NpcActor } from './npcs'
 import { edgeBlocks } from './edgeBlock'
 
 /** 그림 번호 → 어느 기술로 치우는가 */
@@ -189,6 +189,18 @@ function covers(actor: NpcActor, cx: number, cz: number, grow: number): boolean 
 }
 
 /**
+ * **따라다니는 동행은 아무도 안 막는다** (`unk_02069BE0.c`의 `sub_02069BE0` · `sub_02069C0C`).
+ *
+ * 원작은 `FOLLOW_PLAYER` 유형이 붙는 순간과 매 프레임 `sub_02062D80(mapObj, 0)`으로 `MAP_OBJ_STATUS_18`을 켜고,
+ * `sub_02063F00`이 그 비트가 선 객체를 건너뛴다 — 동행은 몸으로 길을 막지 않고 시선도 안 끊는다. 짝 트레이너
+ * (`FOLLOW_PARTNER_TRAINER`)는 그 줄이 없어서 그대로 막는다. 실측(2026-10-20 진단 `ab9ad9f5` 칸 20): 하드마운틴 방 2에서
+ * 벅이 주인공이 방금 떠난 칸에 서서 되돌아갈 길을 막았고, 주인공이 안 움직이니 벅도 안 비켜 그 자리에서 굳었다
+ */
+function passable(actor: NpcActor): boolean {
+  return actor.movementType === MOVEMENT_FOLLOW_PLAYER
+}
+
+/**
  * 그 자리를 막고 선 사람·물체 (`sub_02063F00`).
  *
  * @param cx 재려는 자리 (월드 타일 좌표)
@@ -202,6 +214,7 @@ export function solidNpcAt(cx: number, cz: number, y: number): NpcActor | null {
     // 숨은 사람은 없는 것이다 (`MAP_OBJ_STATUS_18`) — `HideObject`로 숨긴 사람과
     // 숨김 플래그가 서 있는 사람이 여기로 온다
     if (!actor.visible) continue
+    if (passable(actor)) continue
     if (!covers(actor, cx, cz, 0)) continue
     // ⚠️ **이미 겹쳐 서 있으면 안 막는다.** 동행은 주인공이 **방금 떠난 칸**으로
     // 걸어 들어오는데(`actor/ambient`의 `stepFollow`) 그 칸이 아직 주인공 몸에
@@ -238,6 +251,7 @@ export function solidNpcAtHeight(cx: number, cz: number, y: number): NpcActor | 
   const p = worldState.player.position
   for (const actor of npcActors.list) {
     if (!actor.visible) continue
+    if (passable(actor)) continue
     if (!covers(actor, cx, cz, 0)) continue
     if (bodyInside(actor, p.x, p.z)
       && Math.abs(Math.round(actor.y * 2) - Math.round(p.y * 2)) < 2) continue
