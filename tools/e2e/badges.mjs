@@ -63,7 +63,7 @@ export const MAP = {
   undergroundMan: 84, gate206North: 80, route206: 350, gate206South: 351,
   route207: 353, coronetSouth: 207, route208: 354, gate208: 109,
   hearthome: 86, hearthomeMart: 87, hearthomeCenter: 101,
-  hearthomeGymEntrance: 88, hearthomeRoom1: 89, hearthomeRoom2: 90, hearthomeLeader: 91,
+  hearthomeGymEntrance: 88, hearthomeRoom1: 89, hearthomeRoom2: 90, hearthomeLeader: 91, contestLobby: 117,
   // 넷째 배지 길 (지시서 §4.1)
   gate209: 110, route209: 356, solaceon: 433, solaceonMart: 434, solaceonCenter: 435,
   route210south: 362, route215: 382, gate215: 149,
@@ -818,11 +818,26 @@ async function enterDoor(api, mapId, door, budgetMs) {
  *
  * @param stopAt `MAP.hearthomeLeader`면 관장 방에 서기까지(관장은 부르는 쪽이 만난다)
  */
+/** `FLAG_HIDE_HEARTHOME_CITY_GYM_GUIDE` — 켜지면 연고 체육관 문 앞 안내원이 사라진다 */
+const GYM_GUIDE_GONE = 397
+/** 콘테스트 회장 로비의 멜리사 자리 */
+const FANTINA_LOBBY = { x: 22, z: 9 }
+
 export async function hearthomeDoors(api, ctx, { stopAt = MAP.hearthomeLeader } = {}) {
   const t0 = Date.now()
   const out = { steps: [], rooms: [], bounced: 0 }
   const note = (what, detail) => { out.steps.push({ what, detail }); ctx.log(`  ${what} → ${detail}`) }
 
+  /**
+   * ⚠️ **체육관 안내원이 문 앞 (499,698)을 막고 있다** — 콘테스트 회장 로비(117)의 멜리사 (22,9)에게 말을 걸어야
+   * 「체육관에서 기다릴게요」 하고 떠나며 비킨다(디컴프 `ContestHallLobby_RemoveFantina`의 `SetFlag FLAG_HIDE_HEARTHOME_CITY_GYM_GUIDE`).
+   * 사람을 뚫고 걷던 동안(REPAIR §164)은 몰랐던 걸음이다. 실측(2026-10-20 연쇄 `446138a3` 칸 3): 문이 막혀 옆 건물을 드나들다 예산이 끝났다
+   */
+  if ((await api.flag(GYM_GUIDE_GONE)) === false) {
+    const said = await api.talkTo(MAP.contestLobby, FANTINA_LOBBY, Math.min(300_000, api.left()))
+    await api.clearTalk(); await api.settle()
+    note('콘테스트 로비 멜리사 (22,9)', `${said ? '말 걸었다' : '못 걸었다'} · 안내원 비켰다 ${String(await api.flag(GYM_GUIDE_GONE))}`)
+  }
   const entrance = await api.goTo(MAP.hearthomeGymEntrance, Math.min(600_000, api.left()))
   note('연고 체육관 입구(88)', entrance)
   if (entrance !== 'arrived') { out.why = `입구에 못 갔다 (${entrance})`; return out }

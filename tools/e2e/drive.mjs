@@ -4818,6 +4818,9 @@ export async function driveStory(page, {
     distortionPlan: async (arg) => { const r = await obs.distortionPlan(arg); return r.known ? r.value : null },
     distortionWalk,
     runAway, useItem, healSlot, usePotions, stopPotions,
+    /** 이야기 깃발 하나를 읽는다 — 못 읽으면 null (없는 값을 false로 접지 않는다) */
+    flag: async (id) => page.evaluate(async (n) => (await import('/src/engine/script/field.ts')).fieldScripts.vars.checkFlag(n) === true, id)
+      .catch(() => null),
     fightThrough,
     // ⚠️ **소포를 받는 걸음도 같이 넘긴다.** 새 게임 갈래는 트레이너전이 0일 때만
     // 부르는데(라이벌전이 이미 붙었으면 건너뛴다), 그 뒤로 더 가는 쪽은

@@ -615,6 +615,8 @@ const CLOSED_WITHOUT_BIKE = new Set([350])
  * **영원 마트** (`C04FS0101`). 체육관 바로 옆이라 사람도 여기서 약을 산다
  */
 const ETERNA_MART = 66
+/** 영원시티 — 체육관 문 앞에 유채가 선다 (`FLAG_HIDE_ETERNA_CITY_GARDENIA` 536) */
+const ETERNA_CITY = 65
 /**
  * **좋은상처약** (26 · 700원 · 50 회복).
  *
@@ -2449,6 +2451,21 @@ try {
          */
         const room = Math.min(1_800_000,
           Math.max(900_000, Math.floor(api.left() / Math.max(1, ahead))))
+        /**
+         * ⚠️ **유채가 체육관 문 앞 (312,563)에 서 있다** — 말을 걸면 「이 마을의 관장이에요」 하고 문으로 들어가 비킨다
+         * (디컴프 `EternaCity_Gardenia` · `FLAG_HIDE_ETERNA_CITY_GARDENIA`). 사람을 뚫고 걷던 동안(REPAIR §164)은 몰랐던 걸음이다.
+         * 실측(2026-10-20 연쇄 `446138a3` 칸 2): 문이 막혀 길 찾기가 문 옆 관문(80)을 드나들며 3분을 돌았다
+         */
+        if (stop.map === 67) {
+          // 숨김 깃발로 본다 — 사람 목록은 지금 맵 것뿐인데 이 자리는 대개 마트(66) 안이다
+          const there = await page.evaluate(async () => (await import('/src/engine/script/field.ts')).fieldScripts.vars
+            .checkFlag(536) !== true).catch(() => false)
+          if (there) {
+            const said = await api.talkTo(ETERNA_CITY, { x: 312, z: 563 }, Math.min(300_000, api.left()))
+            await api.clearTalk(); await api.settle()
+            log(`  영원 체육관 문 앞 유채 → ${said ? '말 걸었다' : '못 걸었다'}`)
+          }
+        }
         const verdict = await api.goTo(stop.map, Math.min(room, api.left()))
         await api.settle()
         const at = await marks()
