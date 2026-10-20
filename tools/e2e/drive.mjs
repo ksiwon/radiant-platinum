@@ -3489,9 +3489,16 @@ export async function driveStory(page, {
       if (at.at === menu.want) break
       await tap(at.at < menu.want ? 'ArrowDown' : 'ArrowUp', 60)
     }
+    const picked = await rowAt().catch(() => null)
+    if (verbose) log(`      공중날기 고르기 — 줄 ${String(picked?.at)}/${String(menu.want)} · ${JSON.stringify(picked?.texts ?? null)}`)
     await tap('Space', 400)
     await until(async () => (await now()).menu === 'fly', 6_000, 50)
-    if ((await now()).menu !== 'fly') { await closeMenus(); return { ok: false, why: '타운맵이 안 열렸다' } }
+    if ((await now()).menu !== 'fly') {
+      const wrong = (await now()).menu
+      await closeMenus()
+      if (verbose) log(`      타운맵 대신 ${String(wrong)}이 열렸다 — 닫고 나서 메뉴 ${String((await now()).menu)}`)
+      return { ok: false, why: `타운맵이 안 열렸다 (${String(wrong)})` }
+    }
     // 커서는 열린 첫 자리에서 시작한다 — 화면이 그 값을 효과로 세우므로 한 박자(프레임 두 장) 기다린다.
     // 배포물에서는 프레임을 못 읽어 예전 400ms 그대로다
     await framesFor(2, 400)
