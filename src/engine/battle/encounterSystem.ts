@@ -105,6 +105,13 @@ export const encounters = {
   pending: null as WildEncounter | null,
   /** 판정을 멈추는 스위치 — 전투 중이거나 워프 전이 중일 때 */
   suspended: false,
+  /**
+   * **그 걸음을 굴리지 않고 넘긴다** — 씬이 걸음마다 맞춘다 (`scene/stepSystem`).
+   *
+   * 원작은 `Field_ProcessStep`이 참을 돌려준 걸음(알이 깼다)에서 야생 판정까지 안 간다(`field_control.c` 201·228).
+   * `suspended`와 달리 지나온 칸을 **소비한다** — 멈춰만 두면 장면이 닫힌 뒤 그 칸을 늦게 굴린다
+   */
+  skip: (): boolean => false,
   rng: Math.random as Rng,
 }
 
@@ -132,6 +139,7 @@ export const encounterSystem = {
     if (!grid || encounters.suspended || encounters.pending || world.pending) return
 
     const p = worldState.player.position
+    if (encounters.skip()) { trace.advance(p.x, p.z); return }
     // ⚠️ **칸마다 한 번씩이다.** 지나온 칸이 여럿이면 여럿을 묻되, 하나가
     // 나오면 거기서 멈춘다 — 한 틱에 조우를 두 번 굴리면 원작과 어긋난다
     for (const tile of trace.advance(p.x, p.z).tiles) {

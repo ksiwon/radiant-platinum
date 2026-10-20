@@ -340,6 +340,9 @@ function landShaymin(): void {
   })
 }
 
+/** 알이 깨는 장면이 떠 있는가 */
+const hatchOpen = (): boolean => useHatchStore.getState().slot >= 0
+
 export const stepSystem = {
   fixedUpdate(): void {
     checkDay()
@@ -349,6 +352,8 @@ export const stepSystem = {
     // 선두를 바꿀 수 있다 — 걸음에 붙이면 한 칸 늦게 먹는다
     publishMods()
     encounters.typeOf = typeOf
+    // 알이 깨는 장면이 떠 있는 동안 지나간 칸은 굴리지 않는다 (`encounters.skip` · 원작은 그 걸음에서 돌아온다)
+    encounters.skip = hatchOpen
     const grid = mapWorld.grid
     if (!grid || mapWorld.pending) return
     // 스크립트가 걸어 옮기는 중이면 그것은 내 걸음이 아니다

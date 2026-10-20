@@ -849,9 +849,15 @@ const services: FieldServices = {
     return useBattleStore.getState().phase !== 'off'
   },
 
-  /** 전멸 과제가 필드를 쥐고 있는가. 그동안은 필드가 새 스크립트를 안 시작하고 발도 묶인다 */
+  /**
+   * 필드 과제가 필드를 쥐고 있는가 — 전멸 과제, 그리고 **알이 깨는 장면**. 그동안은 필드가 새 스크립트를 안 시작하고 발도 묶인다.
+   *
+   * ⚠️ **부화는 원작에서 필드 과제다** (`egg_hatch.c`). 그동안 `FieldInput_Process`가 안 돌아서 트레이너 시선도 안 걸린다 —
+   * 한때 안 막아서, 알이 깬 걸음 바로 다음 틱에 눈이 마주쳐 배틀이 열리고 「토게피의 이름은?」 창이 배틀 위에 떠서
+   * 섰다(연쇄 `446138a3` 칸 4 · 210번도로 남 (554,713))
+   */
   taskUp(): boolean {
-    return blackOutRunning()
+    return blackOutRunning() || useHatchStore.getState().slot >= 0
   },
 
   /** 머리 위 표시. 눈이 마주친 트레이너의 느낌표가 이 길로 나온다 */
