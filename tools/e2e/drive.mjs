@@ -2418,7 +2418,13 @@ export async function driveStory(page, {
         if (dry.keys !== null) {
           return { keys: dry.keys, status: dry.status, why, grassAvoided: false, shy: shy.status }
         }
-        const plain = planned(here, from, isGoal, { ...opts, avoid }, why)
+        let plain = planned(here, from, isGoal, { ...opts, avoid }, why)
+        // 사람을 벽으로 쳐서 길이 없으면 사람을 빼고 한 번 더 — `talkTo`의 같은 자리와 같은 까닭이다
+        if (plain.keys === null && plain.status !== PLAN.budget && peopleNow.size > 0) {
+          peopleNow.clear()
+          plain = planned(here, from, isGoal, { ...opts, avoid }, `${why}/사람 빼고`)
+          if (plain.keys !== null && verbose) log(`      ${why} — 사람을 빼고 길을 냈다`)
+        }
         if (plain.status === PLAN.budget && verbose) {
           log(`      계획 상한 소진 (${why}) — 「길이 없다」가 아니다`)
         }
@@ -2935,7 +2941,7 @@ export async function driveStory(page, {
       }
       if (s.x !== side.at.x || s.z !== side.at.z) {
         await refreshPeople(mapId)
-        const keys = planned(here, { x: s.x, z: s.z },
+        const sidePlan = () => planned(here, { x: s.x, z: s.z },
           (x, z) => x === side.at.x && z === side.at.z,
           {
             avoid: (x, z) => shun.has(`${String(x)},${String(z)}`)
@@ -2944,6 +2950,17 @@ export async function driveStory(page, {
             // ⚠️ **말 걸러 가다 건물에 들어가지 않는다** (지시서 §1.1)
             avoidStep: noDoorStep(mapId),
           }, '말 걸 자리').keys
+        let keys = sidePlan()
+        /**
+         * ⚠️ **사람을 벽으로 쳐서 길이 없으면 사람을 빼고 한 번 더 찾는다.** 사람은 비켜 서기도 하고, 높이가 다른 판에 선 사람은
+         * 실제로는 안 막는다(격자는 층을 모른다). 실측(2026-10-21 최종 연쇄 `cc0bb5d0` 칸 5): 장막시티 창고 앞 동행 상대의 네 옆칸이
+         * 둔덕 위 조무래기 둘 때문에 「길이 없다」로 나와 30분을 돌았다 — 사람을 안 세던 판은 곧장 닿았다
+         */
+        if (keys === null && peopleNow.size > 0) {
+          peopleNow.clear()
+          keys = sidePlan()
+          if (keys !== null && verbose) log(`      ${String(side.at.x)},${String(side.at.z)} — 사람을 빼고 길을 냈다`)
+        }
         if (keys === null) {
           if (verbose) log(`      ${String(side.at.x)},${String(side.at.z)}로 가는 길이 없다`)
           if (shun.size > 0) shun.clear()
