@@ -3560,7 +3560,15 @@ export async function driveStory(page, {
     let rock = { ...boulder }
     for (let i = 0; i < n; i++) {
       const next = { x: rock.x + dx, z: rock.z + dz }
-      let moved = false
+      /**
+       * ⚠️ **다가가는 걸음이 이미 밀었으면 민 것이다.** 괴력이 켜진 맵에서는 바위 쪽으로 걷기만 해도 밀린다 — 실측(2026-10-20
+       * 진단 `d5dee1df` 칸 21): 챔피언로드 2F (22,37)로 다가가던 걸음이 한 칸 더 나가 (23,37) 바위를 (24,37)로 밀었고, 그 뒤 세 번을
+       * 「안 옮겨졌다」로 세어 칸을 잃었다
+       */
+      const was = await obs.obstacleAt(rock.x, rock.z)
+      const ahead = await obs.obstacleAt(next.x, next.z)
+      let moved = was.known && was.value === null && ahead.known && ahead.value !== null
+      if (moved) log(`      괴력 ${String(i + 1)}번째 밀기 — 다가가는 걸음이 이미 밀었다 (${String(next.x)},${String(next.z)})`)
       /**
        * ⚠️ **밀다가 야생이 붙으면 그 밀기만 다시 한다.** 실측(2026-10-10 P4 진단 · d421490): 천관산 2F 3번째 밀기에
        * 야생 배틀이 끼어 바위가 (14,47)에 남았고, 길이 안 열려 다리를 잃었다. 배틀을 끝내고 바위 뒤 칸에 다시 서서 민다
