@@ -204,6 +204,7 @@ export async function driveStory(page, {
     // 도로 들어가기를 121걸음씩 되풀이했다
     || standingObstacles.has(`${String(matrixOf(mapId))}:${String(x)},${String(z)}`)
     || peopleNow.has(`${String(matrixOf(mapId))}:${String(x)},${String(z)}`)
+    || gameWalls.has(`${String(matrixOf(mapId))}:${String(x)},${String(z)}`)
 
   /**
    * **지금 서 있는 사람 칸** — 계획을 세우기 직전에 다시 읽는다 (`refreshPeople`).
@@ -214,6 +215,12 @@ export async function driveStory(page, {
    * 아는 것은 **지금 맵**뿐이다 — 옆 구역 사람은 그 구역에 들어서서 다시 읽는다
    */
   const peopleNow = new Set()
+  /**
+   * **게임 격자가 막혔다는데 우리 격자는 열린 칸** — 막힌 걸음에서 배워 계획의 벽으로 친다(행렬:칸).
+   * 실측(2026-10-21 진단 `80ab090a` 칸 5): 장막시티 x 703 줄(z 608~618)을 게임은 막고 우리 격자는 열어 두어, 막힐 때마다 한 칸만
+   * 피하고 한 줄 아래로 다시 들이밀기를 되풀이했다. 한 번 어긋나면 둘레를 통째로 물어 배운다
+   */
+  const gameWalls = new Set()
   const refreshPeople = async (mapId, goal = null) => {
     const m = String(matrixOf(mapId))
     // ⚠️ **따라다니는 동행은 뺀다** — 원작도 제품도 동행은 길을 안 막는다(`actor/obstacles`의 `passable` · REPAIR §167)
@@ -2023,6 +2030,18 @@ export async function driveStory(page, {
             return r.known ? r.value : { why: r.why }
           })(),
         })
+        if (blockNotes.at(-1)?.game?.blocked === true && !grid0(mapId, stop.x, stop.z)) {
+          const win = await obs.blockedWindow(stop.x, stop.z, 12)
+          const m = String(matrixOf(mapId))
+          let learned = 0
+          if (win.known && Array.isArray(win.value)) {
+            for (const [wx, wz] of win.value) {
+              const key = `${m}:${String(wx)},${String(wz)}`
+              if (!grid0(mapId, wx, wz) && !gameWalls.has(key)) { gameWalls.add(key); learned++ }
+            }
+          }
+          if (verbose) log(`        게임 격자와 어긋난 벽 ${String(learned)}칸을 배웠다 (${String(stop.x)},${String(stop.z)} 둘레)`)
+        }
         if (verbose) {
           log(`        ${leg.key}×${String(leg.count)} 막혔다 — ${String(at.x)},${String(at.z)} `
             + `(원한 곳 ${String(leg.want.x)},${String(leg.want.z)})`

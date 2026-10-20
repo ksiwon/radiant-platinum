@@ -109,6 +109,21 @@ function devObserver(page) {
       return { blocked: g.isBlocked(tx, tz), behavior: g.behavior?.(tx, tz) ?? null }
     }, [x, z]),
     /**
+     * 둘레 칸 중 게임 격자가 막힌 칸 (`world.grid.isBlocked`) — 우리 격자와 어긋난 벽을 한 번에 배운다 (`drive`의 `gameWalls`)
+     *
+     * @returns `[[x, z], …]`
+     */
+    blockedWindow: (x, z, r) => read('게임 격자를 못 읽었다', async ([cx, cz, rr]) => {
+      const m = await import('/src/engine/map/world.ts')
+      const g = m.world.grid
+      if (!g) return null
+      const out = []
+      for (let dz = -rr; dz <= rr; dz++) for (let dx = -rr; dx <= rr; dx++) {
+        if (g.isBlocked(cx + dx, cz + dz) === true) out.push([cx + dx, cz + dz])
+      }
+      return out
+    }, [x, z, r]),
+    /**
      * 그 자리를 **사람이** 막고 있는가 (`actor/obstacles.ts`의 `solidNpcAt` —
      * 게임이 실제로 쓰는 그 함수다).
      *
@@ -1219,6 +1234,7 @@ function distObserver(page) {
       return got({ map: Number(m.map), x, z, facing: null, tileOnly: true })
     },
     blockedAt: async () => unknown(NO_SRC),
+    blockedWindow: async () => unknown(NO_SRC),
     solidAt: async () => unknown(NO_SRC),
     obstacleAt: async () => unknown(NO_SRC),
     perf: async () => unknown(NO_SRC),
