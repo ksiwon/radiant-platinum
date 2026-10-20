@@ -252,6 +252,19 @@ function blocked(x: number, z: number, y = worldState.player.position.y): boolea
   )
 }
 
+/**
+ * **그 칸이 막혔나** — 미끄럼 · 도는 판 · 진흙 비탈처럼 칸 단위로 끝을 미리 세는 쪽이 묻는다.
+ *
+ * ⚠️ **몸을 그 칸 한가운데에 놓아 보는 것만으로는 사람이 안 걸린다.** 귀퉁이(±0.3)에서 사람 한가운데까지가 0.42라 원기둥
+ * 0.4 밖이다 — 사람이 그 칸에 딱 서 있어도 「안 막혔다」가 나온다. 사람을 뚫고 걷던 동안(REPAIR §164)은 드러나지 않았고,
+ * 고친 뒤 미끄럼이 사람을 지나치는 끝을 세고 실제 걸음은 사람 몸에 막혀 **칸 사이**(x 16.86)에서 서, 입력을 안 받는 채로
+ * 갇혔다(진단 연쇄 `748bccb4` 칸 7 · 선단 체육관 (17,3)의 트레이너). 원작은 칸 단위라 그 앞 칸 한가운데에서 선다
+ */
+export function tileBlocked(tx: number, tz: number): boolean {
+  const y = worldState.player.position.y
+  return blocked(tx + 0.5, tz + 0.5, y) || solidNpcAt(tx + 0.5, tz + 0.5, y) !== null
+}
+
 /** 갈 칸 한가운데의 바닥이 지금 높이와 1.25칸 넘게 다른가 (`GetVerticalDirection`) */
 export function stepTooHigh(grid: Pick<CollisionGrid, 'heightAtWorld'>, x: number, z: number, y: number): boolean {
   const floor = grid.heightAtWorld(Math.floor(x) + 0.5, Math.floor(z) + 0.5, y) ?? 0
@@ -266,7 +279,7 @@ export function stepTooHigh(grid: Pick<CollisionGrid, 'heightAtWorld'>, x: numbe
  */
 const iceView: IceView = {
   behaviorAt: (tx, tz) => activeZone.grid?.behavior(tx, tz) ?? 0,
-  blockedAt: (tx, tz) => blocked(tx + 0.5, tz + 0.5),
+  blockedAt: (tx, tz) => tileBlocked(tx, tz),
   heightAt: (x, z) =>
     activeZone.grid?.heightAtWorld(x, z, worldState.player.position.y) ?? 0,
   breakAt: (tx, tz) => {

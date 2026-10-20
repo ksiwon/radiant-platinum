@@ -14,6 +14,8 @@ import { world, type EventFile, type MapHeader } from '../map/world'
 import { OBSTACLE_MOVE, STRENGTH_BOULDER, isObstacle, obstacleAt, pushBoulder, solidNpcAt } from './obstacles'
 import { worldState } from '../../state/worldState'
 import { npcActors, type NpcActor } from './npcs'
+import { tileBlocked } from './player'
+import { activeZone, type CollisionGrid } from '../map/zone'
 import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
@@ -212,5 +214,20 @@ describe('사람은 정면으로 걸어도 막는다 (`solidNpcAt`)', () => {
     worldState.player.position.set(5.5, 0, 5.5)
     for (const [dx, dz] of [[0.05, 0], [-0.05, 0], [0, 0.05], [0, -0.05]]) expect(shut(5.5 + dx!, 5.5 + dz!)).toBe(false)
     npcActors.list = []
+  })
+})
+
+describe('칸이 막혔나 — 칸 한가운데에 선 사람도 막는다 (`tileBlocked`)', () => {
+  it('미끄럼이 끝을 셀 때 사람이 선 칸을 막힌 칸으로 본다 — 귀퉁이만 보면 0.42라 원기둥 0.4 밖이다', () => {
+    const saved = activeZone.grid
+    activeZone.grid = {
+      isBlockedAtWorld: () => false, behaviorAtWorld: () => 0, behavior: () => 0, heightAtWorld: () => 0,
+    } as unknown as CollisionGrid
+    worldState.player.position.set(2.5, 0, 5.5)
+    npcActors.list = [actor(1, 5, 5)]
+    expect(tileBlocked(5, 5)).toBe(true)
+    expect(tileBlocked(4, 5)).toBe(false)
+    npcActors.list = []
+    activeZone.grid = saved
   })
 })
