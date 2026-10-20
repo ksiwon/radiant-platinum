@@ -620,6 +620,9 @@ async function toStarkRoom3(api, ctx, page, note) {
     const sprayed = await sprayBest(api)
     note('스프레이', sprayed.ok ? `뿌렸다 (남은 것 ${String(sprayed.left)})` : String(sprayed.why))
     note('227번도로 자전거 길', JSON.stringify(await bikeTo(api, ctx, page, STARK.outside, note)))
+    // 자전거 길이 끝을 못 맺고 227번도로에 남았으면 걸어서 마저 간다 — 그대로 두면 바위 방을 풀이 없이 길잡이로 밀고 들어가
+    // 방 1에서 선다. 실측(2026-10-20 진단 `d73fd793` 칸 20): 도약대 둘만 넘고 403에 남아 방 1 (17,29)에서 31분을 썼다
+    if ((await at()) === STARK.route227) note('바깥으로 걸어서', await api.goTo(STARK.outside, Math.min(600_000, api.left())))
   }
   if ((await at()) === STARK.outside) note('방 1로', await api.goTo(STARK.room1, Math.min(300_000, api.left())))
   if ((await at()) === STARK.room1) note('방 1 바위', JSON.stringify(await pushThrough(api, ctx, STARK.room1, { x: 17, z: 2 }, note, page)))
