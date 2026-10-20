@@ -19,6 +19,7 @@ import { installNodeAssets, withData } from '../data/romData.testkit'
 import { createNewSave, useSaveStore } from '../state/saveStore'
 import { installFieldServices } from './fieldServices'
 import { isOnCyclingRoad, setOnCyclingRoad } from '../engine/actor/bike'
+import { worldState } from '../state/worldState'
 
 const DATA = resolve(__dirname, '../../public/data')
 const read = (p: string): unknown => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
@@ -104,5 +105,15 @@ describe('맵 지역 표식', () => {
     expect(v.get(16384)).toBe(0)
     expect(v.get(16415)).toBe(0)
     expect(v.get(16416)).toBe(5)
+  })
+
+  it('이어하기로 세울 때는 안 비운다 — 사천왕 방의 「들어서며 걷기」가 다시 안 돈다 (REPAIR §168)', () => {
+    fieldScripts.vars = new VarStore()
+    const v = fieldScripts.vars
+    v.setFlag(33); v.set(16385, 1)
+    worldState.restoring = true
+    try { enterMap(350) } finally { worldState.restoring = false }
+    expect(v.checkFlag(33)).toBe(true)
+    expect(v.get(16385)).toBe(1)
   })
 })

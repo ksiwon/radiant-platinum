@@ -737,7 +737,9 @@ export function enterMap(mapId: number, arrival?: { x: number; z: number }): voi
   clearWarpOverrides()
   // 맵 지역 표식·변수는 맵(존)을 옮길 때마다 비운다 — `OnTransition`보다 먼저다 (REPAIR §126 ·
   // `FieldMapChange_UpdateGameData`의 첫 줄들 · 존 갈이도 같은 함수를 지난다 `fieldmap.c:417`)
-  fieldScripts.vars.clearMapLocals()
+  // ⚠️ **이어하기는 안 비운다** (REPAIR §168). 원작의 이어하기(`FieldTask_LoadSavedGameMap`)는 `UpdateGameData`를 안 지나고
+  // 세이브의 값을 그대로 쓴다 — 비우면 사천왕 방의 「들어서며 두 칸 걷기」(`VAR_MAP_LOCAL_0x01`)가 다시 돈다
+  if (!worldState.restoring) fieldScripts.vars.clearMapLocals()
   // 워프(도착 칸이 있는 것)만이다. 이어하기가 저장한 자리를 세우는 것은 워프가 아니다
   if (arrival && !worldState.restoring) {
     clearLightFlagsOnWarp(fieldScripts.vars, mapById(mapId)?.mapType ?? 0)
