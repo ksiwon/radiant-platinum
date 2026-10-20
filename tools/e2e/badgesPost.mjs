@@ -595,11 +595,14 @@ async function pushThrough(api, ctx, map, door, note, page, avoid = []) {
  * 되살릴 때만 쓴다(`scripts_pokemon_league_hall_of_fame.s:128,158-162`)
  */
 export const STARK = {
-  survivalCenter: 452, battleground: 454, route227: 403, outside: 262, room1: 263, room2: 264, room3: 265,
+  survival: 450, survivalCenter: 452, battleground: 454, route227: 403, outside: 262, room1: 263, room2: 264, room3: 265,
 }
 const V = { wake: 16523, buck227: 16665, outside: 16544, room1: 16557, room2: 16532, room3: 16542 }
 const F = { charon: 214, buckTalked: 293, heatranBattled: 215, heatranCaught: 288 }
 const BATTLEGROUND_BUCK_SCRIPT = 2
+/** 바깥 벅의 숨김 깃발 · 선 자리 (`events_survival_area` 8번) */
+const BUCK_OUTSIDE_GONE = 555
+const BUCK_OUTSIDE = { x: 652, z: 339 }
 const HEATRAN_SCRIPT = 4
 
 /**
@@ -725,7 +728,17 @@ export async function starkHeatran(api, ctx, page) {
   if (!v.buckTalked) {
     const fly = await api.flyTo(450, Math.min(180_000, api.left()))
     note('공중날기 → 서바이벌에리어', fly.ok ? '닿았다' : String(fly.why))
-    const said = await api.talkToNpc(STARK.battleground, BATTLEGROUND_BUCK_SCRIPT, Math.min(600_000, api.left()))
+    /**
+     * **바깥 벅이 배틀그라운드 문(652,338) 앞을 막고 선다** — 플루토 체포 뒤 숨김 깃발 555가 내려가 (652,339)에 나온다.
+     * 말을 걸면 문으로 들어가 `RemoveObject`된다(`scripts_survival_area.s` `SurvivalArea_Buck`). 사람을 뚫고 걷던 동안은 그냥
+     * 지나갔다 — 실측(2026-10-20 진단 `ab9ad9f5` 칸 20): 450에서 454로 가는 길이 없다고 27분을 돌았다
+     */
+    if ((await api.flag(BUCK_OUTSIDE_GONE)) === false) {
+      const outside = await api.talkTo(STARK.survival, BUCK_OUTSIDE, Math.min(300_000, api.left()))
+      await api.clearTalk(); await api.settle()
+      note('배틀그라운드 문 앞 벅 (652,339)', outside ? '말 걸었다' : '못 걸었다')
+    }
+    const said =await api.talkToNpc(STARK.battleground, BATTLEGROUND_BUCK_SCRIPT, Math.min(600_000, api.left()))
     await until(api, async () => (await read()).buckTalked === true, 60_000)
     v = await read()
     note('배틀그라운드 벅 (11,8)', `${said ? '말 걸었다' : '못 걸었다'} · 293 ${String(v.buckTalked)}`)
