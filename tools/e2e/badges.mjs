@@ -206,6 +206,14 @@ export async function boardWarp(api, mapId, warp, budgetMs) {
     if (stood === 'warped' && dest !== undefined && (await api.settle()).map === dest) return 'arrived'
     if (stood !== 'arrived') continue
     for (let i = 0; i < 8; i++) {
+      /**
+       * ⚠️ **옆칸에서 밀려났으면 다시 선다.** 실측(2026-10-20 진단 `021e2c68` 칸 21): 들국화의 방 출구 (8,2) 옆 (8,3)에 「닿았다」 뒤
+       * (9,3)에 서 있어 위로 여덟 번 민 것이 다 벽에 걸렸다
+       */
+      const now = await api.now()
+      if (now.map === mapId && (now.x !== side.at.x || now.z !== side.at.z)) {
+        await api.stepOn(mapId, side.at, Math.max(0, Math.min(60_000, till - Date.now())), { intoDoors: [warp] })
+      }
       await api.tap(side.key, 260)
       const s = await api.settle()
       if (s.map !== mapId) return 'arrived'
