@@ -369,7 +369,8 @@ export async function coronetToSpear(api, ctx,
      * ⚠️ **기다리는 동안에도 대사를 넘긴다.** 태홍 장면은 걷는 연출 사이사이에 대사가 다시 뜬다 — 실측(P4 진단 ·
      * 0db4446 · 8FPS): 한 번 넘기고 60초를 맵만 봤더니 「태홍: …역시나」 창 앞에서 220에 선 채로 다리를 잃었다
      */
-    for (const till = Date.now() + 300_000; Date.now() < till;) {
+    // 열다섯 분 — 실측(2026-10-21 진단 `390e3af6` 칸 10): 마스·쥬피터 태그 배틀이 20턴을 끌어 다섯 분이 배틀 안에서 다 갔다
+    for (const till = Date.now() + Math.min(900_000, api.left()); Date.now() < till;) {
       if (await untilMap(api, (m) => m !== MAP.spearPillar, 10_000)) break
       await api.clearTalk(); await api.settle()
     }
