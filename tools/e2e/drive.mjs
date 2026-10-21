@@ -3362,7 +3362,16 @@ export async function driveStory(page, {
     // 막 걸어 나온 자리에서 두 번 다 안 열려(「시작 메뉴에 공중날기가 없다 ([])」) 물가시티까지 걸어가다 207번도로 비탈에서
     // 30분을 맴돌았다. 시작 메뉴는 글이 오기 전에는 판을 안 그리므로(`StartMenu`) 바쁜 맵에서는 줄이 늦게 선다
     for (let attempt = 0; attempt < 4 && (menu === null || menu.n === 0); attempt++) {
-      if (attempt > 0) { await closeMenus(); await clearTalk(); await settle(); await backoffFrames(); await tap('KeyC') }
+      /**
+       * ⚠️ **다시 누르기 전에 Space를 함부로 안 누른다.** 느린 판에서는 시작 메뉴가 이미 열렸는데 줄이 늦게 서서 「안 열렸다」로 읽힌다 —
+       * 그때 `clearTalk`의 Space가 첫 줄 「도감」을 골라 도감이 떴다. 실측(2026-10-20 · 10-21 진단 칸 20 · 21): 도감 화면에서 8분 정체.
+       * 메뉴는 표식이 선 것만 닫고(X는 필드에서 시작 메뉴를 여는 키이기도 하다), 대사창이 정말 떠 있을 때만 걷는다
+       */
+      if (attempt > 0) {
+        await closeMenus()
+        if ((await now()).talk) await clearTalk()
+        await settle(); await backoffFrames(); await tap('KeyC')
+      }
       // 시작 메뉴 줄이 서기를 기다린다 — 서면 바로 나온다. 상한은 예전 20번 × 250ms = 5초 그대로(바깥 마감도 그대로 본다)
       await until(async () => {
         menu = await rowAt().catch(() => null)
@@ -3557,7 +3566,16 @@ export async function driveStory(page, {
     // 막 걸어 나온 자리에서 두 번 다 안 열려(「시작 메뉴에 공중날기가 없다 ([])」) 물가시티까지 걸어가다 207번도로 비탈에서
     // 30분을 맴돌았다. 시작 메뉴는 글이 오기 전에는 판을 안 그리므로(`StartMenu`) 바쁜 맵에서는 줄이 늦게 선다
     for (let attempt = 0; attempt < 4 && (menu === null || menu.n === 0); attempt++) {
-      if (attempt > 0) { await closeMenus(); await clearTalk(); await settle(); await backoffFrames(); await tap('KeyC') }
+      /**
+       * ⚠️ **다시 누르기 전에 Space를 함부로 안 누른다.** 느린 판에서는 시작 메뉴가 이미 열렸는데 줄이 늦게 서서 「안 열렸다」로 읽힌다 —
+       * 그때 `clearTalk`의 Space가 첫 줄 「도감」을 골라 도감이 떴다. 실측(2026-10-20 · 10-21 진단 칸 20 · 21): 도감 화면에서 8분 정체.
+       * 메뉴는 표식이 선 것만 닫고(X는 필드에서 시작 메뉴를 여는 키이기도 하다), 대사창이 정말 떠 있을 때만 걷는다
+       */
+      if (attempt > 0) {
+        await closeMenus()
+        if ((await now()).talk) await clearTalk()
+        await settle(); await backoffFrames(); await tap('KeyC')
+      }
       // 시작 메뉴 줄이 서기를 기다린다 — 서면 바로 나온다. 상한은 예전 20번 × 250ms = 5초 그대로(바깥 마감도 그대로 본다)
       await until(async () => {
         menu = await rowAt().catch(() => null)
