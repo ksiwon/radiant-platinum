@@ -31,7 +31,7 @@ import { makePen, makeStall, SLOW, STALLED } from './budget.mjs'
 // 고정 대기를 상태 기다리기로 — 상한은 예전 시간 그대로, 읽을 수 없으면(배포물) 예전 고정 시간 그대로다 (`waits.mjs`)
 import { pauseFrames, pauseIdle, pauseSettled, waitFor as pollUntil } from './waits.mjs'
 import {
-  allMaps, CLIMB_PREFIX, PANEL_PREFIX, PLAN, encounterTiles, grassAt, gridOf, mapRoute, matrixOf, nearestFlyable,
+  adoptTiles, allMaps, CLIMB_PREFIX, PANEL_PREFIX, PLAN, encounterTiles, grassAt, gridOf, mapRoute, matrixOf, nearestFlyable,
   npcsOf, planPath, slopeClimbBan, TILE_TABLE, trainersOn, waterAt, warpsOf,
 } from './route.mjs'
 
@@ -216,6 +216,38 @@ export async function driveStory(page, {
    */
   const peopleNow = new Set()
   /**
+   * **게임이 쓰는 격자를 행렬마다 한 번 받는다** (`route.adoptTiles`) — 파일의 격자에는 바닥 없는 칸을 막는 `sealFloor`가 안 들어 있다.
+   * 계획을 세우기 직전에 부른다. 지금 선 행렬만 받을 수 있다
+   */
+  const adoptedGrids = new Set()
+  const adoptGameGrid = async () => {
+    const got = await page.evaluate(async () => {
+      const z = await import('/src/engine/map/zone.ts')
+      const g = z.activeZone.grid
+      const id = g?.meta?.id
+      if (g === null || g === undefined || typeof id !== 'number' || typeof g.tileAt !== 'function') return null
+      return { id, w: g.meta.tileWidth, h: g.meta.tileHeight }
+    }).catch(() => null)
+    if (got === null || adoptedGrids.has(got.id)) return
+    const b64 = await page.evaluate(async () => {
+      const z = await import('/src/engine/map/zone.ts')
+      const g = z.activeZone.grid
+      const W = g.meta.tileWidth, H = g.meta.tileHeight
+      const out = new Uint16Array(W * H)
+      for (let zz = 0; zz < H; zz++) for (let x = 0; x < W; x++) out[zz * W + x] = g.tileAt(x, zz)
+      const bytes = new Uint8Array(out.buffer)
+      let bin = ''
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+      return btoa(bin)
+    }).catch(() => null)
+    if (b64 === null) return
+    const buf = Buffer.from(b64, 'base64')
+    const tiles = new Uint16Array(buf.buffer, buf.byteOffset, buf.byteLength / 2)
+    const ok = adoptTiles(got.id, tiles)
+    adoptedGrids.add(got.id)
+    if (verbose) log(`      게임 격자를 받았다 — 행렬 ${String(got.id)} · ${String(got.w)}×${String(got.h)} · ${ok ? '갈아 끼웠다' : '크기가 달라 안 바꿨다'}`)
+  }
+  /**
    * **게임 격자가 막혔다는데 우리 격자는 열린 칸** — 막힌 걸음에서 배워 계획의 벽으로 친다(행렬:칸).
    * 실측(2026-10-21 진단 `80ab090a` 칸 5): 장막시티 x 703 줄(z 608~618)을 게임은 막고 우리 격자는 열어 두어, 막힐 때마다 한 칸만
    * 피하고 한 줄 아래로 다시 들이밀기를 되풀이했다. 한 번 어긋나면 둘레를 통째로 물어 배운다
@@ -234,6 +266,7 @@ export async function driveStory(page, {
     return dropped
   }
   const refreshPeople = async (mapId, goal = null) => {
+    await adoptGameGrid()
     const m = String(matrixOf(mapId))
     // ⚠️ **따라다니는 동행은 뺀다** — 원작도 제품도 동행은 길을 안 막는다(`actor/obstacles`의 `passable` · REPAIR §167)
     const got = await page.evaluate(async () => {

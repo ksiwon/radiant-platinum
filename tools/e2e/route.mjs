@@ -97,7 +97,7 @@ export function gridOf(matrixId) {
     h: meta.tileHeight,
     at(x, z) {
       if (x < 0 || z < 0 || x >= meta.tileWidth || z >= meta.tileHeight) return IMPASSABLE
-      return tiles[z * meta.tileWidth + x]
+      return grid.tiles[z * meta.tileWidth + x]
     },
     blocked(x, z) { return (grid.at(x, z) & IMPASSABLE) !== 0 },
     /**
@@ -122,6 +122,23 @@ export function gridOf(matrixId) {
   }
   gridCache.set(matrixId, grid)
   return grid
+}
+
+/**
+ * **게임이 실제로 쓰는 칸으로 갈아 끼운다** (`scene/worldData`의 `seal` 뒤 격자).
+ *
+ * ⚠️ **파일의 격자는 게임 격자가 아니다.** 게임은 격자를 만들 때 발밑에 그린 것이 없는 칸을 막는다(`map/floorSeal`의 `sealFloor` ·
+ * `chunks/cover.bin` · 높이). 그 계산은 바닥 그림과 높이 자료를 다 써서 여기서 따라 하지 않고, 페이지에서 한 번 받아 쓴다.
+ * 실측(2026-10-21 진단 `80ab090a` 칸 5): 장막시티 x 703 줄(z 608~618)이 파일에서는 길이고 게임에서는 막혀, 그 줄로 길을 내고 막히기를
+ * 되풀이했다. 크기가 다르면 안 바꾼다
+ *
+ * @returns 바꿨으면 참
+ */
+export function adoptTiles(matrixId, tiles) {
+  const g = gridOf(matrixId)
+  if (tiles.length !== g.tiles.length) return false
+  g.tiles = tiles
+  return true
 }
 
 export const matrixOf = (mapId) => data().maps[mapId]?.matrix ?? -1
