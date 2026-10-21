@@ -540,6 +540,13 @@ async function pushThrough(api, ctx, map, door, note, page, avoid = []) {
       const back = await api.goTo(map, Math.min(300_000, api.left()))
       here = await api.now()
       if (here.map !== map) return { ok: false, why: `맵 ${String(here.map)}로 샜다가 못 돌아왔다 (${String(back)})` }
+      // 막 들어선 맵은 바위가 아직 안 섰다 — 안 기다리면 바위 없는 방으로 풀어 「밀기 0」이 나온다
+      await api.settle()
+      for (const till = Date.now() + 15_000; Date.now() < till;) {
+        if ((await live()).some(([, , gfx]) => gfx === 84 || gfx === 85)) break
+        await page.waitForTimeout(250)
+      }
+      continue
     }
     const plan = solvePush({
       start: { x: here.x, z: here.z },
