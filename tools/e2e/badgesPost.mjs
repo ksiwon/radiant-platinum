@@ -10,7 +10,7 @@
 import { boardWarp } from './badges.mjs'
 import { MAP as LEAGUE_MAP, eliteFour, victoryRoad } from './badgesLeague.mjs'
 import { snowpointSlide, sprayBest, teachTo } from './badges67.mjs'
-import { gridOf, matrixOf, npcsOf, waterAt } from './route.mjs'
+import { gridOf, matrixOf, npcsOf, warpsOf, waterAt } from './route.mjs'
 import { solvePush } from './pushSolve.mjs'
 
 /** 맵 번호 (`generated/map_headers.txt` 줄 − 1) */
@@ -528,8 +528,19 @@ async function pushThrough(api, ctx, map, door, note, page, avoid = []) {
   for (let round = 0; round < 4 && api.left() > 0; round++) {
     const actors = await live()
     const people = new Set(actors.filter(([, , gfx]) => gfx !== 84 && gfx !== 85).map(([x, z]) => `${String(x)},${String(z)}`))
-    const here = await api.now()
-    if (here.map !== map) return { ok: here.map !== map, why: `맵 ${String(here.map)}` }
+    let here = await api.now()
+    if (here.map !== map) {
+      /**
+       * ⚠️ **넘어간 데가 그 문의 저쪽일 때만 통과다.** 실측(2026-10-21 진단 `9df2573f` 칸 20): 하드마운틴 방 1에서 바위 뒤 칸으로 가던 걸음이
+       * 입구 계단 (20,29)를 밟아 바깥(262)으로 나갔는데 「통과」로 세고 방 2로 가다 칸을 잃었다. 다른 데로 샜으면 방으로 돌아와 다시 푼다
+       */
+      const dest = warpsOf(map).find((w) => w.x === door.x && w.z === door.z)?.to
+      if (dest === undefined || here.map === dest) return { ok: true, why: `맵 ${String(here.map)}` }
+      note(`맵 ${String(map)} 바위`, `맵 ${String(here.map)}로 샜다 — 돌아간다`)
+      const back = await api.goTo(map, Math.min(300_000, api.left()))
+      here = await api.now()
+      if (here.map !== map) return { ok: false, why: `맵 ${String(here.map)}로 샜다가 못 돌아왔다 (${String(back)})` }
+    }
     const plan = solvePush({
       start: { x: here.x, z: here.z },
       wall: (x, z) => x < 0 || z < 0 || x >= g.w || z >= g.h || g.blocked(x, z) || people.has(`${String(x)},${String(z)}`)
