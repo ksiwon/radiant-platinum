@@ -190,7 +190,7 @@ export async function boardWarp(api, mapId, warp, budgetMs) {
   if (sides.length === 0) return `계단 (${String(warp.x)},${String(warp.z)}) 옆이 사방 벽이다`
   const till = Date.now() + budgetMs
   const tried = []
-  for (const side of sides) {
+  for (const side of [...sides, ...sides]) {
     if (Date.now() >= till) break
     const stood = await api.stepOn(mapId, side.at,
       Math.max(0, Math.min(300_000, till - Date.now())), { intoDoors: [warp] })
@@ -204,6 +204,18 @@ export async function boardWarp(api, mapId, warp, budgetMs) {
     // 부르는 쪽은 대개 칸만 준다 (`{ x, z }`) — 어디로 가는지는 그 맵의 워프 표에 있다
     const dest = warp.to ?? others.find((w) => w.x === warp.x && w.z === warp.z)?.to
     if (stood === 'warped' && dest !== undefined && (await api.settle()).map === dest) return 'arrived'
+    /**
+     * ⚠️ **다른 계단으로 샜으면 돌아와서 다음 옆칸을 본다.** 실측(2026-10-22 최종 연쇄 `cc0bb5d0` 칸 21): 챔피언로드 1F 계단 (42,41) 옆칸으로
+     * 가던 걸음이 2F로 올라가는 계단을 밟아 (23,26)에 섰고, 남은 옆칸 둘을 2F에서 찾다 칸을 잃었다
+     */
+    if (stood === 'warped') {
+      const off = await api.settle()
+      if (off.map !== mapId && off.map !== dest) {
+        const back = await api.goTo(mapId, Math.max(0, Math.min(300_000, till - Date.now())))
+        tried.push(`맵 ${String(off.map)}로 샜다 → 돌아옴 ${String(back)}`)
+      }
+      continue
+    }
     if (stood !== 'arrived') continue
     for (let i = 0; i < 8; i++) {
       /**
