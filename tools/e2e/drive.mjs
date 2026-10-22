@@ -221,6 +221,8 @@ export async function driveStory(page, {
    */
   const adoptedGrids = new Set()
   const adoptGameGrid = async () => {
+    // 배포물에는 /src가 없다 — 거기서는 파일 격자로 간다(㉖이 「배포본에 /src 요청」을 막는다)
+    if (obs.kind !== 'dev') return
     const got = await page.evaluate(async () => {
       const z = await import('/src/engine/map/zone.ts')
       const g = z.activeZone.grid
@@ -267,6 +269,8 @@ export async function driveStory(page, {
   }
   const refreshPeople = async (mapId, goal = null) => {
     await adoptGameGrid()
+    // 배포물에서는 사람 자리를 못 읽는다 — 벽으로 안 친다(예전 계획 그대로)
+    if (obs.kind !== 'dev') { peopleNow.clear(); return }
     const m = String(matrixOf(mapId))
     // ⚠️ **따라다니는 동행은 뺀다** — 원작도 제품도 동행은 길을 안 막는다(`actor/obstacles`의 `passable` · REPAIR §167)
     const got = await page.evaluate(async () => {
@@ -4982,8 +4986,8 @@ export async function driveStory(page, {
     distortionWalk,
     runAway, useItem, healSlot, usePotions, stopPotions,
     /** 이야기 깃발 하나를 읽는다 — 못 읽으면 null (없는 값을 false로 접지 않는다) */
-    flag: async (id) => page.evaluate(async (n) => (await import('/src/engine/script/field.ts')).fieldScripts.vars.checkFlag(n) === true, id)
-      .catch(() => null),
+    flag: async (id) => (obs.kind !== 'dev' ? null : page.evaluate(async (n) => (await import('/src/engine/script/field.ts')).fieldScripts.vars.checkFlag(n) === true, id)
+      .catch(() => null)),
     fightThrough,
     // ⚠️ **소포를 받는 걸음도 같이 넘긴다.** 새 게임 갈래는 트레이너전이 0일 때만
     // 부르는데(라이벌전이 이미 붙었으면 건너뛴다), 그 뒤로 더 가는 쪽은
