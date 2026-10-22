@@ -608,6 +608,12 @@ export async function victoryRoad(api, ctx) {
     await door(MAP.victory1F, VR.up2F, '1F (4,37) → 2F')
   }
   if ((await at()) === MAP.victory2F) {
+    /**
+     * ⚠️ **2F 바위 앞에서 스프레이를 다시 뿌린다.** 1F에서 뿌린 것은 2F 풀이 중간에 다한다 — 실측(2026-10-22 최종 연쇄 `cc0bb5d0` 칸 21 두 판):
+     * (23,37) 큰바위를 밀 때마다 야생이 붙어 세 번 다 「안 옮겨졌다」로 칸을 잃었다. 야생이 없던 진단 판은 한 번에 밀었다
+     */
+    const sprayed2 = await sprayBest(api)
+    note('스프레이 (챔피언로드 2F)', sprayed2.ok ? `뿌렸다 (남은 것 ${String(sprayed2.left)})` : String(sprayed2.why))
     out.floor2 = await victory2F(api, ctx)
     note('챔피언로드 2F', out.floor2.ok ? '1F로 내려왔다' : String(out.floor2.why))
     if (!out.floor2.ok) return done()
