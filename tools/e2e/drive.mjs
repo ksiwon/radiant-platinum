@@ -3512,7 +3512,7 @@ export async function driveStory(page, {
    * 커서는 화면 안의 상태라 못 읽는다. 열린 첫 자리에서 시작해 방향키 한 번에 한 칸
    * 가는 규칙을 **제품의 표로** 셈하고(`flyPlan`), 날았는지는 **맵**으로 본다
    */
-  const flyTo = async (target, budgetMs = 120_000) => {
+  const flyTo = async (target, budgetMs = 120_000, tries = 2) => {
     const t0 = Date.now()
     const till = Math.min(Date.now() + budgetMs, started + totalMs)
     let before = await now()
@@ -3593,6 +3593,16 @@ export async function driveStory(page, {
     }
     const picked = await rowAt().catch(() => null)
     if (verbose) log(`      공중날기 고르기 — 줄 ${String(picked?.at)}/${String(menu.want)} · ${JSON.stringify(picked?.texts ?? null)}`)
+    /**
+     * ⚠️ **고른 줄이 공중날기가 아니면 안 누른다.** 느린 판에서 방향키가 씹혀 커서가 첫 줄 「도감」에 남은 채 Space를 눌렀다 — 실측(2026-10-22
+     * 최종 연쇄 `cc0bb5d0` 칸 21 · 그 전 진단 둘): 하드마운틴 바깥에서 도감이 떠 8분 정체. 메뉴를 닫고 실패로 돌려준다(부르는 쪽이 다시 부르거나 걷는다)
+     */
+    if (picked === null || picked.at !== picked.want || picked.want < 0) {
+      log(`      공중날기 줄이 아니다 (${String(picked?.at)}/${String(picked?.want)}) — 안 누르고 닫는다`)
+      await closeMenus()
+      if (tries > 0 && Date.now() < till) { await settle(); return flyTo(target, Math.max(0, till - Date.now()), tries - 1) }
+      return { ok: false, why: `시작 메뉴 커서가 공중날기에 안 섰다 (${String(picked?.at)}/${String(picked?.want)})` }
+    }
     await tap('Space', 400)
     await until(async () => (await now()).menu === 'fly', 6_000, 50)
     if ((await now()).menu !== 'fly') {
