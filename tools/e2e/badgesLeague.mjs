@@ -783,6 +783,18 @@ export async function eliteFour(api, ctx, page, {
       const said = await api.talkTo(e.room, ELITE_SPOT, Math.min(900_000, api.left()))
       await api.clearTalk(); await api.settle()
       v = await vars()
+      /**
+       * ⚠️ **배틀이 끝날 때까지 기다리고 나서 승패를 읽는다.** 실측(2026-10-22 최종 연쇄 `cc0bb5d0` 칸 21): 충호의 메가자리가 그림자분신을
+       * 쌓아 52턴을 끌었고, `settle`이 돌아온 그 순간 깃발이 아직 안 서서 「졌다」로 읽고 다음 방을 찾다 칸을 잃었다 — 영상에서는 이겼다.
+       * 방에 그대로 있고 깃발이 안 섰으면 배틀 · 대사가 끝나기를 더 민다
+       */
+      for (let i = 0; i < 40 && !v[e.flag] && api.left() > 0; i++) {
+        const n = await api.now()
+        if (n.map !== e.room) break
+        if (n.battle === null && !n.talk && !n.script) break
+        await api.clearTalk(); await api.settle()
+        v = await vars()
+      }
       const party = await api.partyState()
       out.rooms.push({ round, who: e.what, won: v[e.flag] === true, party: party?.map((m) => `${String(m.species)} L${String(m.level)} ${String(m.hp)}`) })
       note(`사천왕 ${e.what}`, `${said ? '붙었다' : '못 걸었다'} · 이겼다 ${String(v[e.flag])} · 파티 ${JSON.stringify(out.rooms.at(-1).party)}`)
