@@ -3679,6 +3679,16 @@ export async function driveStory(page, {
             const went = await stepOn(mapId, behind, Math.max(30_000, budgetMs - (Date.now() - t0)))
             if (went !== 'arrived') break
           }
+          /**
+           * ⚠️ **괴력이 아직 켜져 있는지 다시 본다.** 실측(2026-10-22 최종 연쇄 `cc0bb5d0` 칸 21): 챔피언로드 2F (23,37)에서 밀기 셋 사이에
+           * 야생이 두 번 끼었고, 셋 다 「안 옮겨졌다」였다. 꺼졌으면 바위를 보고 A로 다시 켠다
+           */
+          const fs = await obs.fieldState()
+          if (fs.known && fs.value?.strength !== true) {
+            await tap(key, 80); await settle(); await tap('Space', 400); await clearTalk()
+            const again = await obs.fieldState()
+            log(`      괴력을 다시 켰다 — ${JSON.stringify(again.known ? again.value?.strength : again.why)}`)
+          }
         }
         const here = await now()
         await page.keyboard.down(key)
