@@ -387,6 +387,9 @@ async function main() {
         p.position.z = best.z + 0.5
         p.prevPosition.copy(p.position)
         p.surfing = true
+        // ⚠️ **뛰어 내려야 수면에 앉는다.** 제품의 파도타기는 물 칸으로 뛰고(`field.hopTo`) 그 뜀이 칸마다 높이를 묻는다. 자리만 옮기면
+        // 옮기기 전 높이(뭍)에 남아, 몸이 탈것 위로 1칸 넘게 떠서 찍혔다. 제자리 뜀 한 번을 건다
+        p.hop = { active: true, t: 0, time: 0.4, rise: 0, fromX: p.position.x, fromZ: p.position.z, fromY: p.position.y, toX: p.position.x, toZ: p.position.z }
       })
       await page.waitForTimeout(6000)
     }
