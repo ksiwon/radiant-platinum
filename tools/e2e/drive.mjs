@@ -2141,6 +2141,8 @@ export async function driveStory(page, {
     let lost = 0
     /** 이번에 못 지나간 칸. 너무 많이 쌓이면 비우고 다시 본다 */
     const shun = new Set()
+    /** `shun`이 적힌 맵 */
+    let shunMap = null
     /** 제자리에서 몇 바퀴를 돌았나. 문 앞에서 이게 는다 */
     let stuckAt = ''
     let stuckFor = 0
@@ -2226,6 +2228,13 @@ export async function driveStory(page, {
       if (stall.idle > 0 && spent < ROUND_MS) await page.waitForTimeout(ROUND_MS - spent)
       roundAt = Date.now()
       const s = await now()
+      /**
+       * ⚠️ **맵이 바뀌면 기피 칸을 비운다.** 기피 칸은 맵 없이 `x,z`만 적으므로 다른 맵에서는 엉뚱한 칸을 피하고,
+       * 나갔다 돌아온 맵에서는 **그새 비켜 선 사람 자리**를 계속 피한다. 실측(2026-10-23 최종 연쇄 칸 9): 장막시티(132)에서
+       * 창고(143)로 가다 (702,620)에 선 사람에게 한 번 막혔고, 그 칸이 창고 앞 외길이라 「곧장 못 간다」로 381과 132 사이를
+       * 3분 오가다 섰다. 돌아 나갔다 들어오는 것은 사람도 하는 일이고, 돌아왔으면 길을 처음부터 다시 본다
+       */
+      if (s.map !== shunMap) { shun.clear(); shunMap = s.map }
       /**
        * **기는 바퀴는 안 센다** (`CRAWL_FPS`). 나아가지 못한 바퀴에서만 묻는다 —
        * 잘 가고 있으면 계기판을 읽을 까닭이 없다
