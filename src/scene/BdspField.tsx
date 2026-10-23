@@ -40,6 +40,7 @@ import { FieldFx } from './FieldFx'
 import { applyVariants, variantNodes, type VariantNode } from './fieldVariants'
 import { fieldScripts } from '../engine/script/field'
 import { DAY } from './fx/sky'
+import { applyLayoutFixes } from './bdspLayoutFixes'
 
 const loader = new GLTFLoader()
 
@@ -399,7 +400,9 @@ export function heldFields(): string[] {
 
 function dropBuilt(b: Built): void { b.motion.dispose(); disposeTree(b.scene) }
 
-function build(scene: Group, animations: readonly AnimationClip[] = []): Built {
+function build(scene: Group, animations: readonly AnimationClip[] = [], name = ''): Built {
+  // 원작 칸과 어긋나게 지은 자리를 먼저 맞춘다 — 그림자 · 물 · 흐림 · 간판 자리(`holdBdspSigns`)가 맞춘 씬을 본다
+  applyLayoutFixes(name, scene)
   scene.traverse((o) => {
     if (!(o instanceof Mesh)) return
     o.receiveShadow = true
@@ -478,7 +481,7 @@ function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
         const url = await provider.objectUrl(path)
         const gltf = await loader.loadAsync(url).finally(() => { provider.releaseObjectUrl(path) })
         if (!alive) { disposeTree(gltf.scene); return }
-        const b = build(gltf.scene, gltf.animations)
+        const b = build(gltf.scene, gltf.animations, name)
         mine = b
         // ⚠️ **제 파이프라인은 비동기로 굽는다** (`asyncPipelines`). 덮개가 걷힌 뒤에 서는 지역이 첫 프레임에 동기로 구우면 GPU
         // 프로세스가 수 초 멎는다 — 먼 지역이 안개 속에서 한두 프레임 늦게 보이는 편이 낫다.
