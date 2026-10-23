@@ -16,6 +16,7 @@ import { decodePng } from '../import/platinum/png'
 import { markSeeThrough } from './fx/seeThrough'
 import { retireTexture } from './retireTexture'
 import { readRawClip, type NodeBase, type PropClip } from './propAnim'
+import { ringSideRopes } from './ringRopes'
 
 /** `chunks/index.json` — 파일 하나에 담긴 규격 */
 interface ChunkFormat {
@@ -25,7 +26,7 @@ interface ChunkFormat {
   count: number
 }
 
-interface ChunkMeta {
+export interface ChunkMeta {
   verts: number
   indices: number
   materials: {
@@ -123,9 +124,12 @@ function build(buffer: ArrayBuffer, fmt: ChunkFormat, romNormals = false): Chunk
   const raw = new Uint16Array(buffer, head + n * stride, meta.indices)
   const sills: Sill[] = []
   closeCaveMouths(position, uv, raw, meta, color, sills)
+  // 링 옆줄을 세우고 누운 옆줄 그림은 안 그린다 (`ringRopes` · 장막 체육관)
+  const ring = ringSideRopes(position, uv, color, raw, meta)
+  sills.push(...ring.sills)
   const { position: allPos, uv: allUv, color: allColor, indices, submeshes } =
     withSills(position, uv, color, raw, meta.submeshes, sills)
-  meta.submeshes = submeshes
+  meta.submeshes = submeshes.map(([mat, start, count], i) => [mat, start, ring.drop.has(i) ? 0 : count])
 
   const geometry = new BufferGeometry()
   geometry.setAttribute('position', new BufferAttribute(allPos, 3))
