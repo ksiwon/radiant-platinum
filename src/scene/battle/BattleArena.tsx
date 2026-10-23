@@ -1,6 +1,6 @@
 // 배틀 무대 (`public/models/arena/g0xx.glb`) — 모델 · 시간대 물들임 · 시퀀스 배경 물들임 · 카메라 충돌.
 import { useEffect, useMemo, useRef } from 'react'
-import { useFrame, useLoader } from '@react-three/fiber'
+import { useFrame, useLoader, useThree } from '@react-three/fiber'
 import { Color, Mesh, MeshStandardMaterial, NormalBlending, Vector3, type BufferGeometry, type Group, type Material } from 'three'
 import { MeshStandardNodeMaterial } from 'three/webgpu'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
@@ -117,6 +117,9 @@ export function Arena({ look, file, radius, shape, onUp }: {
     onUp(true)
     return () => { onUp(false) }
   }, [onUp])
+  // ⚠️ **거울은 WebGPU에서만 켠다** (`arenaMirror`). WebGL2 폴백에서 거울 판을 그리면 드라이버가 `GL_INVALID_OPERATION: Active draw buffers
+  // with missing fragment shader outputs`를 배틀 내내 냈다(최종 연쇄 `e690c33e` 칸 2 · 맵 201 g016 · 70건)
+  const webgl = useThree((s) => (s.gl as unknown as { backend?: { isWebGLBackend?: boolean } }).backend?.isWebGLBackend === true)
   const scene = useMemo(() => {
     const root = gltf.scene.clone(true)
     root.traverse((o) => {
@@ -130,9 +133,9 @@ export function Arena({ look, file, radius, shape, onUp }: {
     // 그림 셋 섞기 · 발광 세기 (`arenaCascade`) — 창빛을 가른 뒤에 편다
     liveArenaMaterials(root)
     // 거울 바닥 (`arenaMirror`) — 섞기 재질을 편 뒤에
-    liveMirrors(root)
+    if (!webgl) liveMirrors(root)
     return root
-  }, [gltf])
+  }, [gltf, webgl])
   // 배틀 종류별 물체 — 물 체육관 바닥 덮개 (`battleHides`)
   useEffect(() => { battleHides(scene, shape) }, [scene, shape])
   // 카메라 충돌 — 무대 파일마다 한 번(`arenaColliderFor`). 지으면 이 판의 `arenaRoom`으로 건다

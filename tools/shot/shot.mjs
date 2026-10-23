@@ -57,7 +57,7 @@ import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 import { decodePng, looksFlat, statsOf } from './png.mjs'
 import { freePort, startVite } from '../devServer.mjs'
-import { gpuArgs } from '../gpuFlags.mjs'
+import { gpuArgs, gpuInitScript } from '../gpuFlags.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const OUT = resolve(ROOT, 'shots')
@@ -184,6 +184,9 @@ async function main() {
    */
   const browser = await chromium.launch({ args: gpuArgs(flag('gpu', 'software')) })
   const page = await browser.newPage({ viewport: DRIVE, deviceScaleFactor: 1 })
+  // mac에서는 깃발로 WebGPU가 안 꺼진다 — `gl`이면 페이지 쪽에서 지운다 (journey와 같다 · `gpuFlags`의 `gpuInitScript`)
+  const gpuInit = gpuInitScript(flag('gpu', 'software'))
+  if (gpuInit) await page.addInitScript(gpuInit)
   // 표현 레시피 모드 — 초안(`draft`)은 `candidate`에서만 돈다 (`visual/recipes.recipeMode`).
   // 검수 전 전후를 같은 화각으로 찍으려고 둔다 (`firstPersonAudit --mode`와 같은 자리)
   const visual = flag('visual', null)

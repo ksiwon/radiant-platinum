@@ -6347,7 +6347,8 @@ z 방향 판 둘을 `gym07rope` 서브메시에 끼운다. 그림 · UV · 정�
 **고친 것** — `scene/battle/arenaMirror`가 무대를 세울 때 그 33재질(이름 표 `MIRROR_FLOORS` — 무대 조사 `survey.json`의 `mirror`)을 노드 재질로 바꿔
 three의 `reflector`(평면 거울 · 반 해상도)를 `lerp(바닥, 비친 것, 0.5 × (1 − |n·v|))`로 섞는다(우리 식). 무대 파일이 캐시에 남으므로 거울은 재질마다
 하나이고 배틀마다 거울 자리를 그 무대에 단다. 굽는 쪽은 안 바뀐다 — 설치본을 다시 받지 않는다. 첫 배틀은 거울 파이프라인을 막 뒤에서 굽느라
-막이 그만큼 늦게 걷힌다(`settleAsyncPipelines` 상한 4초). 시험 `scene/battle/arenaMirror.test.ts`. 그림: `shots/mirror-elite-wait.png` · `mirror-gym5.png`.
+막이 그만큼 늦게 걷힌다(`settleAsyncPipelines` 상한 4초). **WebGPU에서만 켠다** — WebGL2 폴백에서는 거울 판을 그리는 동안 드라이버가
+`GL_INVALID_OPERATION: Active draw buffers with missing fragment shader outputs`를 냈다(최종 연쇄 `e690c33e` 칸 2 · g016 · 70건). 시험 `scene/battle/arenaMirror.test.ts`. 그림: `shots/mirror-elite-wait.png` · `mirror-gym5.png`.
 
 ## 175. 시원의 공간 지평선 밑이 흰 땅이었다
 
