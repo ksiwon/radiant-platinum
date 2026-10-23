@@ -10,13 +10,13 @@
 import { InstancedMesh, Matrix4, Mesh, type Material, type Object3D } from 'three'
 
 /** 인스턴스 하나를 고르는 자리 — 재질 이름과 그 인스턴스의 놓인 자리(월드 x, z) */
-export interface InstanceAt {
+interface InstanceAt {
   material: string
   x: number
   z: number
 }
 
-export interface LayoutFix {
+interface LayoutFix {
   /** 이 인스턴스를 (x, z)로 옮긴다 */
   move?: { from: InstanceAt, to: readonly [number, number] }
   /** 이 인스턴스를 본떠 이 자리들에 더 세운다 */

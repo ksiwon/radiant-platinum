@@ -791,7 +791,7 @@ const HIDE_LISTS = [['_singleBattleHideObjects', 'single'], ['_doubleBattleHideO
  * 물 체육관 g027의 바닥 덮개(`Cover_P_001` …)가 그렇다 — 여섯 장이 겹쳐 서 있고 목록마다 둘씩 적혀 있다. 안 읽으면 다 겹쳐 그린다.
  * 목록의 뜻은 굽는 쪽이 정하지 않는다 — 사실(`listedIn`)만 싣고 실행 쪽(`battleHides`)이 읽는다
  */
-export function hideLists(env: Environment): Map<number, string[]> {
+function hideLists(env: Environment): Map<number, string[]> {
   const out = new Map<number, string[]>()
   for (const e of env.ofType('MonoBehaviour')) {
     const mb = env.readEntry(e) as Props | null

@@ -12,6 +12,10 @@ import {
 } from './pcParts'
 import { withModels } from '../data/romData.testkit'
 
+/** 사람이 서는 자리 — 몸 가운데에서 가로 · 앞뒤로 이만큼(번들 단위). 발 둘레다 */
+const FOOT_X = 0.2
+const FOOT_Z = 0.35
+
 const GLB = resolve(__dirname, '../../public/models/pcParts.glb')
 const maybe = withModels('pcParts.glb')
 
@@ -109,6 +113,8 @@ maybe('주인공이 타고 드는 것들', () => {
     const joint = read(prim.attributes.JOINTS_0!)
     const weight = read(prim.attributes.WEIGHTS_0!)
     const box = new Box3()
+    /** 사람이 서는 자리(가운데 · 발 둘레) 위 가장 높은 정점 — 등판 꼭대기 */
+    let back = -Infinity
     const v = new Vector3(), t = new Vector3(), sum = new Vector3()
     for (let i = 0; i < pos.length / 3; i++) {
       v.set(pos[i * 3]!, pos[i * 3 + 1]!, pos[i * 3 + 2]!)
@@ -119,6 +125,7 @@ maybe('주인공이 타고 드는 것들', () => {
         sum.addScaledVector(t.copy(v).applyMatrix4(bones[joint[i * 4 + k]!]!), w)
       }
       box.expandByPoint(sum)
+      if (Math.abs(sum.x) < FOOT_X && Math.abs(sum.z) < FOOT_Z) back = Math.max(back, sum.y)
     }
 
     // 번들 원점을 물 높이로 올린 뒤의 자리 (`SURF_MOUNT.lift`)
@@ -126,8 +133,12 @@ maybe('주인공이 타고 드는 것들', () => {
     expect(-lifted.min).toBeCloseTo(SURF_MOUNT.draft, 3)
     expect(lifted.max - lifted.min).toBeCloseTo(SURF_MOUNT.height, 3)
 
-    // ⚠️ **사람은 등판 **위**에 선다.** 몸 속으로 들어가면 다리가 파묻힌다
-    expect(SURF_MOUNT.stand).toBeCloseTo(lifted.max, 3)
+    // ⚠️ **사람은 발밑 등판 **위**에 선다** (REPAIR §172). 몸 상자의 위는 위로 솟은 꼬리 끝이라 거기 세우면 발이 뜬다
+    // 발 둘레 정점의 꼭대기는 0.621이다. 둘레 밖 정점에서 건너오는 면이 그 위로 지나가서, 220번수로에서 위로부터 쏘아 잰 등판은 0.65 언저리다 —
+    // 서는 높이는 그 사이(정점 꼭대기 위 0.03 안)에 있어야 한다. 상자 위(0.876)는 꼬리 끝이다
+    expect(SURF_MOUNT.stand).toBeGreaterThanOrEqual(back + SURF_MOUNT.lift)
+    expect(SURF_MOUNT.stand).toBeLessThan(back + SURF_MOUNT.lift + 0.03)
+    expect(SURF_MOUNT.stand).toBeLessThan(lifted.max - 0.2)
     // 번들이 적어 둔 `scaffold_Attach`는 몸 속이라 사람 자리가 아니다
     const scaffold = new Vector3().setFromMatrixPosition(world(byName.get('scaffold_Attach')!))
     expect(scaffold.y + SURF_MOUNT.lift).toBeLessThan(SURF_MOUNT.stand)
