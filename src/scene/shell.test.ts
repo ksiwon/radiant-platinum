@@ -284,6 +284,36 @@ maybe('소품 빠진 면', () => {
   // 590종을 방향 다섯으로 64×64 래스터라이즈한다. 5초 기본값으로는 모자란다
   }, 30_000)
 
+  it('뚫린 칸만 메우는 소품(470 · 541 · 542)은 원작 면 앞에 판을 안 세우고, 뚫린 칸은 그대로 막는다', () => {
+    const rows: string[] = []
+    for (const id of [470, 541, 542]) {
+      const mesh = readProp(id, fmt)
+      const src = triangles(mesh.geometry)
+      const paint2 = shellPaint(mesh, readSheet(id))
+      const full = shellPlates(mesh, paint2)
+      const holes = shellPlates(mesh, paint2, true)
+      for (const dir of FILLABLE) {
+        const box = boxOf(src, dir[0])
+        const faced = cover(src, box, N, dir[0], dir[1])
+        // 판이 원작 면 칸을 덮는 수 — 그쪽을 보는 판 삼각형의 칸 중 원작 면이 이미 덮는 칸. 「뚫림 원본→판 전부/뚫린 칸만」
+        const over = (g: BufferGeometry | null): number => (g === null ? 0
+          : [...cover(triangles(g), box, N, dir[0], dir[1])].filter((c) => faced.has(c)).length)
+        const openFull = openIn(src, full ? [...src, ...triangles(full)] : src, dir)
+        const openHoles = openIn(src, holes ? [...src, ...triangles(holes)] : src, dir)
+        if (openIn(src, src, dir) === 0) continue
+        rows.push(`${String(id)}${dirName(dir)} 뚫림 ${String(openIn(src, src, dir))}→${String(openFull)}/${String(openHoles)} 겹침 ${String(over(full))}→${String(over(holes))}`)
+      }
+    }
+    // 뚫린 칸은 전부 막고(가운데 0), 원작 면 칸에 겹친 판은 26,329칸 → 3,990칸이다 (REPAIR §173)
+    expect(rows).toEqual([
+      '470−X 뚫림 21→0/0 겹침 2828→44', '470+X 뚫림 26→0/0 겹침 2823→71', '470+Y 뚫림 1→0/0 겹침 3994→1269',
+      '470−Z 뚫림 3422→0/0 겹침 314→186', '470+Z 뚫림 2→0/0 겹침 3734→127',
+      '541−X 뚫림 59→0/0 겹침 2024→395', '541+X 뚫림 866→0/0 겹침 1217→383', '541+Y 뚫림 19→0/0 겹침 3172→362',
+      '541−Z 뚫림 2037→0/0 겹침 1093→265',
+      '542+X 뚫림 1750→0/0 겹침 994→186', '542+Y 뚫림 1→0/0 겹침 3433→440', '542−Z 뚫림 1779→0/0 겹침 703→262',
+    ])
+  }, 30_000)
+
   it('판은 본체 바깥에 얇게 붙는다 — 소품이 두꺼워지지 않는다', () => {
     const mesh = readProp(23, fmt)
     const src = mesh.geometry.getAttribute('position') as BufferAttribute

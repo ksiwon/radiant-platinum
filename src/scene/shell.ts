@@ -583,6 +583,8 @@ export const stripGroup = (mesh: ChunkMesh): number => mesh.materials.length
  */
 export function facePlate(
   mesh: ChunkMesh, paint: ShellPaint, axis: number, sign: number,
+  /** 뚫린 칸만 메운다 (`HOLES_ONLY`) — 그쪽을 보는 원작 면이 이미 덮는 칸에 눌러 붙을 삼각형은 버린다 */
+  holesOnly = false,
 ): BufferGeometry | null {
   const src = mesh.geometry
   const pos = (src.getAttribute('position') as BufferAttribute).array as ArrayLike<number>
@@ -600,6 +602,33 @@ export function facePlate(
 
   const u = (axis + 1) % 3, v = (axis + 2) % 3
   const depthAt = hullDepth(pos, index, bounds(pos), axis, sign)
+  // 그쪽을 보는 원작 면이 덮는 칸 (`coverage`와 같은 눈금 · `[c_v × GRID + c_u]`)
+  const box = holesOnly ? boxOf(pos, axis) : null
+  const faced = box === null ? null : coverage(pos, index, box, axis, sign)
+  /** 삼각형 `p`(그 축으로 눌러 본 모양)가 덮는 칸 가운데 원작 면이 없는 칸이 하나라도 있는가 — `coverage`와 같은 칸 판정이다 */
+  const coversHole = (p: readonly (readonly [number, number, number])[]): boolean => {
+    if (box === null || faced === null) return true
+    const [u0, u1] = box[0] as [number, number]
+    const [v0, v1] = box[1] as [number, number]
+    const area = (p[1]![u] - p[0]![u]) * (p[2]![v] - p[0]![v]) - (p[2]![u] - p[0]![u]) * (p[1]![v] - p[0]![v])
+    const lo = (w: number) => Math.min(p[0]![w], p[1]![w], p[2]![w])
+    const hi = (w: number) => Math.max(p[0]![w], p[1]![w], p[2]![w])
+    const cu0 = Math.max(0, Math.floor(((lo(u) - u0) / (u1 - u0)) * GRID))
+    const cu1 = Math.min(GRID - 1, Math.ceil(((hi(u) - u0) / (u1 - u0)) * GRID))
+    const cv0 = Math.max(0, Math.floor(((lo(v) - v0) / (v1 - v0)) * GRID))
+    const cv1 = Math.min(GRID - 1, Math.ceil(((hi(v) - v0) / (v1 - v0)) * GRID))
+    for (let cv = cv0; cv <= cv1; cv++) {
+      for (let cu = cu0; cu <= cu1; cu++) {
+        const x = u0 + ((cu + 0.5) / GRID) * (u1 - u0)
+        const y = v0 + ((cv + 0.5) / GRID) * (v1 - v0)
+        const w1 = ((x - p[0]![u]) * (p[2]![v] - p[0]![v]) - (p[2]![u] - p[0]![u]) * (y - p[0]![v])) / area
+        const w2 = ((p[1]![u] - p[0]![u]) * (y - p[0]![v]) - (x - p[0]![u]) * (p[1]![v] - p[0]![v])) / area
+        if (w1 < 0 || w2 < 0 || w1 + w2 > 1) continue
+        if (!faced.has(cv * GRID + cu)) return true
+      }
+    }
+    return false
+  }
 
   /**
    * **없는 벽이 있었을 자리**로 누른다 (`hullDepth`).
@@ -631,6 +660,8 @@ export function facePlate(
       const area = (p[1]![u] - p[0]![u]) * (p[2]![v] - p[0]![v])
         - (p[2]![u] - p[0]![u]) * (p[1]![v] - p[0]![v])
       if (Math.abs(area) < FLAT) continue
+      // 원작 면이 이미 다 덮는 자리에 눌러 붙을 삼각형은 버린다 — 뚫린 칸을 하나라도 덮으면 남긴다
+      if (holesOnly && !coversHole(p)) continue
 
       // 이 삼각형이 벽이면 옆벽에서, 지붕이면 제 것 그대로. 지붕은 위에서 봐야
       // 뜻이 있는 그림이라 옮겨 오면 오히려 틀린다
@@ -708,11 +739,11 @@ export function facePlate(
  * 재질 수만큼만 는다
  */
 export function shellPlates(
-  mesh: ChunkMesh, paint: ShellPaint,
+  mesh: ChunkMesh, paint: ShellPaint, holesOnly = false,
 ): BufferGeometry | null {
   const parts: BufferGeometry[] = []
   for (const [axis, sign] of openDirections(mesh)) {
-    const p = facePlate(mesh, paint, axis, sign)
+    const p = facePlate(mesh, paint, axis, sign, holesOnly)
     if (p) parts.push(p)
   }
   if (parts.length === 0) return null

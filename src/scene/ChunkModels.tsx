@@ -665,6 +665,15 @@ interface Back {
 
 const backCache = new Map<number, Back>()
 
+/**
+ * **뚫린 칸만 메우는 소품** (`shell.facePlate`의 `holesOnly`).
+ *
+ * 축에 맞춘 판은 비주얼 헐 깊이에 선다. 둥글거나 안으로 들어간 건물은 헐이 건물보다 커서 판이 그 방향에서 보이는 원작 면 **앞에** 선다 —
+ * 소품 590종을 다 재면(REPAIR §161) 가리는 칸이 470 `kingSta` 7,235 · 540 천막 4,285(둥근 처마라 `RING_BACKS`가 맡는다) · 541 프런티어 돔
+ * 3,786 · 542 3,140 순이다. 이 소품들은 판 삼각형 가운데 그쪽을 보는 원작 면이 이미 덮는 칸에 떨어지는 것을 버린다(REPAIR §173)
+ */
+const HOLES_ONLY: ReadonlySet<number> = new Set([470, 541, 542])
+
 function cachedBack(mesh: ChunkMesh, sheet: TexSheet | null, id: number): Back {
   const hit = backCache.get(id)
   if (hit !== undefined) return hit
@@ -701,7 +710,7 @@ function cachedBack(mesh: ChunkMesh, sheet: TexSheet | null, id: number): Back {
     strip.needsUpdate = true
   }
   const made: Back = {
-    geometry: ring ? ringBack(body, ring) : shellPlates(body, paint),
+    geometry: ring ? ringBack(body, ring) : shellPlates(body, paint, HOLES_ONLY.has(id)),
     strip,
     spec: band ? mesh.materials[band.group] ?? null : null,
   }
