@@ -805,8 +805,9 @@ export function BdspDungeon({ name }: { name: string }) {
         lights.current.update(worldState.time.gameHour)
         for (const c of cover) root.add(c)
         root.updateMatrixWorld(true)
-        // 가장자리 너머를 받치는 원판의 높이 (`OuterFloor`)
-        setDungeonLow(lowestGround(root))
+        // 가장자리 너머를 받치는 원판의 높이 (`OuterFloor`). ⚠️ **제 하늘을 갖고 온 던전에는 안 깐다** — 시원의 공간은 구름바다 위 하늘에 뜬
+        // 판이라 원판이 지평선 밑을 흰 땅으로 덮고, 유리 바닥 너머의 구름도 가렸다(DEFECTS_20261017 §3 · REPAIR §175)
+        setDungeonLow(own.length > 0 ? null : lowestGround(root))
         firstOnly.current = [...ceilings, ...cover]
         for (const c of firstOnly.current) c.visible = firstPersonView()
         release = [holdBdspDoors(root), holdBdspSigns(root)]
