@@ -160,6 +160,13 @@ const SHORTCUTS = []
  */
 if (args.includes('--diag-gear-press')) SHORTCUTS.push('diag-gear-press')
 /**
+ * **진단 깃발 `--diag-blackout-at=<맵>`** (기본 꺼짐 · 봉투 `scope.shortcuts`에 `diag-blackout-at-<맵>`으로 적힌다).
+ * 그 맵에 들면 파티를 HP 1 · PP 0으로 두고 리펠을 지우고 걸음마다 야생을 붙인다 — 몸부림 반동으로 쓰러져 **전멸한다.** 맵이 바뀌면
+ * 확률을 되돌린다. 전멸 뒤 다시 찾아가는 길(칸 7 `PAST_BOULDER` · 217번도로)을 일부러 밟아 보는 것이지 통과가 아니다
+ */
+const DIAG_BLACKOUT_AT = flag('diag-blackout-at') === null ? null : Number(flag('diag-blackout-at'))
+if (DIAG_BLACKOUT_AT !== null) SHORTCUTS.push(`diag-blackout-at-${String(DIAG_BLACKOUT_AT)}`)
+/**
  * **전당 뒤 칸(17~)의 지름길 `--shortcut=a,b`** (기본 꺼짐 · 봉투 `scope.shortcuts`에 적힌다). 이름과 근거는
  * `badgesPost.SHORTCUT_NAMES` 머리 주석 — 원작이 걸어서는 못 여는 조건(신오 210종을 다 봄 · 배포로만 오는 레지 셋)만 둔다.
  * 안 켜면 그 다리가 「못 간다」를 까닭과 함께 적고 실패한다
@@ -1424,6 +1431,36 @@ try {
     // 이어 달리는 판은 이야기 길목을 다시 안 걷는다 — 이미 그 자리에 서 있다
     skipStory: resume.ok,
     after: async (api) => {
+      if (DIAG_BLACKOUT_AT !== null) {
+        let armed = false
+        ;(async () => {
+          for (;;) {
+            const at = (await api.now().catch(() => ({ map: NaN }))).map
+            if (at === DIAG_BLACKOUT_AT) {
+              const did = await page.evaluate(async () => {
+                const save = await import('/src/state/saveStore.ts')
+                const enc = await import('/src/engine/battle/encounterSystem.ts')
+                save.useSaveStore.setState((st) => ({
+                  party: st.party.map((m) => ({ ...m, hp: Math.min(m.hp, 1), moves: m.moves.map((one) => ({ ...one, pp: 0 })) })),
+                  steps: { ...st.steps, repel: 0 },
+                }))
+                enc.encounters.rng = () => 0
+                return true
+              }).catch(() => false)
+              if (did && !armed) console.log(`      진단 전멸 — 맵 ${String(DIAG_BLACKOUT_AT)} · HP 1 · PP 0 · 리펠 0 · 걸음마다 야생`)
+              armed = armed || did
+            } else if (armed && Number.isFinite(at)) {
+              await page.evaluate(async () => {
+                (await import('/src/engine/battle/encounterSystem.ts')).encounters.rng = Math.random
+              }).catch(() => {})
+              console.log(`      진단 전멸 — 맵 ${String(at)}로 옮겼다 · 확률을 되돌렸다`)
+              return
+            }
+            await page.waitForTimeout(1000).catch(() => {})
+            if (page.isClosed()) return
+          }
+        })()
+      }
       const seen = []
       /** 트레이너 표에 없는 사람들을 실제로 만났는가 */
       const metNpcs = []

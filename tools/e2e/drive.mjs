@@ -2128,7 +2128,13 @@ export async function driveStory(page, {
    * 한 번에 다 못 가는 것이 정상이다 — 문을 지나면 맵이 바뀌고, 이야기가
    * 주인공을 데려가기도 한다. 그래서 **매번 다시 계획한다**
    */
-  const goTo = async (target, budgetMs) => {
+  /**
+   * @param opts.stopOnBlackOut 배틀 뒤 맵이 **문으로 안 이어진 맵**으로 바뀌면(전멸해 회복 자리로 갔다) 그 자리에서 `blacked-out`을
+   *   돌려준다. 기본은 거기서 다시 계획한다 — 대개는 센터에서 다시 걸어 닿는다(최종 연쇄 칸 2 · 영원의 숲 두 번).
+   *   ⚠️ 되돌아갈 길에 원작이 되돌려 놓는 기믹이 있으면 부르는 쪽이 켠다. 실측(10-18 칸 7 `67a7edab`): 217번도로에서 져서 봉신
+   *   센터(443)로 갔고, 그 자리에서 340으로 다시 짠 길이 제자리로 돌아온 천관산 큰바위에 막혀 14분을 돌다 예산이 끝났다
+   */
+  const goTo = async (target, budgetMs, { stopOnBlackOut = false } = {}) => {
     const till = Math.min(Date.now() + budgetMs, started + totalMs)
     const ep = openEpisode('zone', { target }, await now())
     const done = (end) => closeEpisode(ep, end)
@@ -2322,7 +2328,15 @@ export async function driveStory(page, {
         noteArrival(seenMaps.at(-1) ?? null, s.map, { x: s.x, z: s.z })
         seenMaps.push(s.map)
       }
-      if (s.scene === 'battle') { await fightThrough(); continue }
+      if (s.scene === 'battle') {
+        const n = fights.length
+        await fightThrough()
+        const f = fights.length > n ? fights.at(-1) : null
+        if (stopOnBlackOut && f?.movedAfter === true && !warpsOf(f.from).some((w) => w.to === f.to)) {
+          return done(`blacked-out — 배틀 뒤 맵 ${String(f.from)}→${String(f.to)} (문으로 안 이어진 자리)`)
+        }
+        continue
+      }
       if (s.talk || s.scene === 'menu') { await clearTalk(); continue }
       // 스크립트가 도는 동안은 발이 묶인다 — 밀어 봐야 안 움직인다. 넘겨 준다
       if (s.script) { await tap('Space'); continue }
@@ -3713,7 +3727,12 @@ export async function driveStory(page, {
         }
         await page.keyboard.up(key)
         await settledFor(300)               // 밀고 난 뒤 주인공이 멈춰 서기를 기다린다 — 다음 밀기는 선 자리에서 시작한다
-        if (!moved) log(`      괴력 ${String(i + 1)}번째 밀기 — 바위가 안 옮겨졌다 (${String(here.x)},${String(here.z)}) · ${String(retry + 1)}번째`)
+        if (!moved) {
+          // 왜 안 밀렸는지를 제품이 보는 그대로 남긴다 — 야생 배틀이 낀 뒤에만 안 밀린 까닭을 아직 못 박았다(챔피언로드 2F (23,37))
+          const why = await obs.pushBlockers(rock.x, rock.z, next.x, next.z)
+          log(`      괴력 ${String(i + 1)}번째 밀기 — 바위가 안 옮겨졌다 (${String(here.x)},${String(here.z)}) · ${String(retry + 1)}번째`
+            + ` · ${JSON.stringify(why.known ? why.value : why.why)}`)
+        }
       }
       if (!moved) break
       obstacleGone(mapId, rock.x, rock.z)

@@ -727,8 +727,9 @@ export async function coronetToSnowpoint(api, ctx,
   const out = { steps: [] }
   const note = noteOf(out, ctx)
   const done = () => { out.ms = Date.now() - t0; return out }
+  // 지면 봉신 센터부터 큰바위를 다시 민다 — 아래 `PAST_BOULDER` 고리가 이어 받는다
   const walk = async (mapId, what, budget = 1_200_000) => {
-    const went = await api.goTo(mapId, Math.min(budget, api.left()))
+    const went = await api.goTo(mapId, Math.min(budget, api.left()), { stopOnBlackOut: true })
     note(what, went)
     return went
   }

@@ -147,6 +147,27 @@ function devObserver(page) {
      * 바위·나무·큰바위만 가리지도 않는다 — 실측(2026-09-16 `_north42` 3판)에서
      * 못 깬 바위를 「깼다」로 읽었다
      */
+    /**
+     * **큰바위가 왜 안 밀렸나** — `actor/obstacles`의 `pushBoulder`가 보는 넷을 그대로 읽는다: 괴력이 켜졌나 · 갈 칸이 지형으로 막혔나 ·
+     * 갈 칸에 장애물 · 갈 칸에 선 객체(그림 · 움직임 종류). 진단 줄에만 쓴다 — 판정에 안 쓴다
+     */
+    pushBlockers: (x, z, tx, tz) => read('밀기 조건을 못 읽었다', async ([bx, bz, nx, nz]) => {
+      const o = await import('/src/engine/actor/obstacles.ts')
+      const n = await import('/src/engine/actor/npcs.ts')
+      const m = await import('/src/engine/map/world.ts')
+      const st = await import('/src/state/worldState.ts')
+      const p = st.worldState.player
+      const rock = o.obstacleAt(bx, bz)
+      const ahead = o.obstacleAt(nx, nz)
+      const standing = n.npcActors.list
+        .filter((a) => a !== rock && a.visible && Math.round(a.x) === nx && Math.round(a.z) === nz)
+        .map((a) => ({ gfx: a.gfx, move: a.movementType ?? null, script: a.info?.script ?? null }))
+      return {
+        strength: p.strength === true, at: { x: Number(p.position.x.toFixed(2)), z: Number(p.position.z.toFixed(2)) },
+        facing: Number(p.facing.toFixed(2)), rock: rock === null ? null : { gfx: rock.gfx, x: rock.x, z: rock.z },
+        wall: m.world.grid?.isBlocked(nx, nz) ?? null, ahead: ahead === null ? null : ahead.gfx, standing,
+      }
+    }, [x, z, tx, tz]),
     obstacleAt: (x, z) => read('물체를 못 읽었다', async ([tx, tz]) => {
       const o = await import('/src/engine/actor/obstacles.ts')
       const hit = o.obstacleAt(tx, tz)
@@ -1237,6 +1258,7 @@ function distObserver(page) {
     blockedWindow: async () => unknown(NO_SRC),
     solidAt: async () => unknown(NO_SRC),
     obstacleAt: async () => unknown(NO_SRC),
+    pushBlockers: async () => unknown(NO_SRC),
     perf: async () => unknown(NO_SRC),
     motion: async () => unknown(NO_SRC),
     npcSpot: async () => unknown(NO_SRC),
