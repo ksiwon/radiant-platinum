@@ -6,6 +6,7 @@ import { MeshStandardNodeMaterial } from 'three/webgpu'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { applyLightMode } from './arenaLight'
 import { battleHides, liveArenaMaterials, type BattleShape } from './arenaCascade'
+import { liveMirrors } from './arenaMirror'
 import { arenaRoom, seqStage } from './stageRefs'
 import { buildArenaCollider, type ArenaCollider } from '../../engine/battle/fx/arenaCollider'
 import { onProviderSwap } from '../../data/providers/assetProvider'
@@ -128,6 +129,8 @@ export function Arena({ look, file, radius, shape, onUp }: {
     })
     // 그림 셋 섞기 · 발광 세기 (`arenaCascade`) — 창빛을 가른 뒤에 편다
     liveArenaMaterials(root)
+    // 거울 바닥 (`arenaMirror`) — 섞기 재질을 편 뒤에
+    liveMirrors(root)
     return root
   }, [gltf])
   // 배틀 종류별 물체 — 물 체육관 바닥 덮개 (`battleHides`)

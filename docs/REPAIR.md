@@ -6193,7 +6193,8 @@ g001의 `M_B_001_Ground_01_01`이 같은 판에서 배틀 셋을 열면 0.597 �
 - 설치본 판 `arenas` 3 → 4(옛 판은 안 받는다 — 다시 굽는다). 무대 30벌 130 → 148MB.
 
 두 굽는 쪽은 30벌 전부 `glbDiff`(기하 · 그림 픽셀 최대 차 0)와 `.audit/arena-mats-20261018/matdiff.py`(재질 · 노드 extras · `TEXCOORD_1` · 그림 차례)가
-같다(`parity.log`). 화면은 `.audit/arena-mats-20261018/beforeShots` · `after`. 거울 반사(`MIRRORMAP` — g027 바닥)와 방의 같은 재질은 아직 안 옮긴다.
+같다(`parity.log`). 화면은 `.audit/arena-mats-20261018/beforeShots` · `after`. 거울 반사(`MIRRORMAP`)는 §174. 방의 같은 재질은 옮기지 않는다 —
+세 벌(센터 · 무쇠 체육관 · 백화점)을 다시 구워 견줬더니 화면 차이가 없었다(문빛은 원래 안 그리고 창빛은 빛줄기가 맡는다). 방 117벌 150MB를 다시 받게 할 값이 없다.
 시험 `scene/battle/arenaCascade.test.ts` · `import/bdsp/arena.test.ts`.
 
 ## 163. 발버둥만 남은 마리가 검은눈빛에 묶인 채 **상처약을 쓰면 다음 턴 명령 창이 안 섰다**
@@ -6334,3 +6335,16 @@ z 방향 판 둘을 `gym07rope` 서브메시에 끼운다. 그림 · UV · 정�
 그쪽을 보는 원작 면이 이미 덮는 칸에만 떨어지는 삼각형). 64×64 눈금으로 다시 재면 뚫린 칸은 방향 열둘 모두 0으로 그대로 막히고,
 판이 원작 면 칸에 겹친 수는 26,329 → 3,990이다(`shell.test`의 「뚫린 칸만 메우는 소품」). 다른 소품은 그대로다.
 그림: `shots/fr541-after.png`.
+
+## 174. 무대 거울 바닥이 비치지 않았다
+
+**원작** — 무대 바닥 33재질(체육관 · 사천왕 방 · 챔피언 방 · 몇 야외 바닥)이 `_ENVIRONMENTMAPENABLE_MIRRORMAP`을 켠다. `_MirrorMap`은 그림이 아니라 실행 때
+거울 카메라가 그리는 판이고 재질 값은 다 같다 — `_Reflectivity` 0.5 · `_FresnelPower` 1 (g027 · g038 · g042를 UnityPy로 읽었다). 섞는 식은
+`Delphis/Map/Standard`가 Switch 바이너리라 못 읽는다.
+
+**우리** — 거울을 안 그렸다. 바닥은 섞은 색(§162)만 있었다.
+
+**고친 것** — `scene/battle/arenaMirror`가 무대를 세울 때 그 33재질(이름 표 `MIRROR_FLOORS` — 무대 조사 `survey.json`의 `mirror`)을 노드 재질로 바꿔
+three의 `reflector`(평면 거울 · 반 해상도)를 `lerp(바닥, 비친 것, 0.5 × (1 − |n·v|))`로 섞는다(우리 식). 무대 파일이 캐시에 남으므로 거울은 재질마다
+하나이고 배틀마다 거울 자리를 그 무대에 단다. 굽는 쪽은 안 바뀐다 — 설치본을 다시 받지 않는다. 첫 배틀은 거울 파이프라인을 막 뒤에서 굽느라
+막이 그만큼 늦게 걷힌다(`settleAsyncPipelines` 상한 4초). 시험 `scene/battle/arenaMirror.test.ts`. 그림: `shots/mirror-elite-wait.png` · `mirror-gym5.png`.
