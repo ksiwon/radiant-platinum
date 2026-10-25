@@ -23,7 +23,10 @@ import { VarStore } from '../script/vars'
 import { world as mapWorld, type EventFile, type MapHeader } from '../map/world'
 import { worldState } from '../../state/worldState'
 import { siwonNpcOf, SIWON_MAP } from './siwonPlace'
+import { whyNotSaveNow } from '../../scene/autosave'
+import { useSessionStore } from '../../state/sessionStore'
 
+const FLAG_USED_ROTOM_APPLIANCE = 119
 const FLAG_CAUGHT_ARCEUS = 286
 const FLAG_CAUGHT_SHAYMIN = 291
 const FLAG_CAUGHT_DARKRAI = 344
@@ -31,13 +34,12 @@ const VAR_ROCK_PEAK_RUINS_STATE = 16491
 
 /** 아무것도 안 한 사람 */
 function probe(over: Partial<{
-  flags: number[]; vars: Record<number, number>; rotom: number
+  flags: number[]; vars: Record<number, number>
 }> = {}): SiwonProbe {
   const flags = new Set(over.flags ?? [])
   return {
     flag: (id) => flags.has(id),
     variable: (id) => over.vars?.[id] ?? 0,
-    rotomForms: () => over.rotom ?? 0,
   }
 }
 
@@ -56,7 +58,7 @@ describe('시원의 차례', () => {
   it('전당등록 전에는 하나도 안 준다', () => {
     expect(siwonTurn(0, probe()).kind).toBe('locked')
     // 이미 다 잡아 놨어도 마찬가지다 — 등록이 먼저다
-    expect(siwonTurn(0, probe({ flags: [FLAG_CAUGHT_DARKRAI], rotom: 1 })).kind).toBe('locked')
+    expect(siwonTurn(0, probe({ flags: [FLAG_CAUGHT_DARKRAI] })).kind).toBe('locked')
   })
 
   it('⚠️ 전당등록 뒤 첫 번째는 화강돌이다 — 배가 필요 없는 자리라 맨 앞이다', () => {
@@ -80,11 +82,17 @@ describe('시원의 차례', () => {
     expect(turn).toEqual({ kind: 'wait', at: 1 })
   })
 
-  it('로토무 폼을 하나라도 바꾸면 다음으로 넘어간다', () => {
-    const turn = siwonTurn(2, probe({ flags: CLEARED, rotom: 0b00001 }))
+  it('가전에 넣어 본 깃발이 서면 다음으로 넘어간다', () => {
+    const turn = siwonTurn(2, probe({ flags: [...CLEARED, FLAG_USED_ROTOM_APPLIANCE] }))
     expect(turn.kind).toBe('gift')
     if (turn.kind !== 'gift') return
     expect(turn.entry.gift).toEqual({ kind: 'item', item: SIWON_ITEM.memberCard, event: 0 })
+  })
+
+  it('⚠️ 가전에 넣은 적이 없으면 기다린다 — 맨 로토무가 있어도, 놓아주고 없어도 깃발만 본다', () => {
+    // 로토무 폼 비트(맨 로토무=비트 0)로 재면 맨 로토무만 있어도 참이었고, 놓아주면 영영 거짓이었다
+    expect(siwonTurn(2, probe({ flags: CLEARED }))).toEqual({ kind: 'wait', at: 1 })
+    expect(siwonTurn(2, probe({ flags: [...CLEARED, FLAG_USED_ROTOM_APPLIANCE] })).kind).toBe('gift')
   })
 
   it('일곱을 다 주면 끝난다', () => {
@@ -126,11 +134,11 @@ describe('막히지 않는다', () => {
   /** N번째를 받으려면 밟아야 하는 것들 */
   function upTo(n: number): SiwonProbe {
     const flags = [...CLEARED]
+    if (n >= 2) flags.push(FLAG_USED_ROTOM_APPLIANCE)
     if (n >= 3) flags.push(FLAG_CAUGHT_DARKRAI)
     if (n >= 4) flags.push(FLAG_CAUGHT_SHAYMIN)
     return probe({
       flags,
-      rotom: n >= 2 ? 0b00001 : 0,
       vars: n >= 6 ? { [VAR_ROCK_PEAK_RUINS_STATE]: 290 } : {},
     })
   }
@@ -144,8 +152,7 @@ describe('막히지 않는다', () => {
   it('⚠️ 레지를 놓쳤으면 기다린다 — 유적 밖이 상태를 0으로 되돌려 다시 만날 수 있다', () => {
     // 놓친 상태(280)는 유적을 나서는 순간 0이 된다(`scripts_iron_island_b3f.s:18`) — 사람이 막히지 않는다
     const missed = probe({
-      flags: [...CLEARED, FLAG_CAUGHT_DARKRAI, FLAG_CAUGHT_SHAYMIN],
-      rotom: 1,
+      flags: [...CLEARED, FLAG_USED_ROTOM_APPLIANCE, FLAG_CAUGHT_DARKRAI, FLAG_CAUGHT_SHAYMIN],
       vars: { [VAR_ROCK_PEAK_RUINS_STATE]: 280 },
     })
     expect(siwonTurn(6, missed)).toEqual({ kind: 'wait', at: 5 })
@@ -153,8 +160,7 @@ describe('막히지 않는다', () => {
 
   it('석상을 안 깨웠으면 아직 기다린다', () => {
     const untouched = probe({
-      flags: [...CLEARED, FLAG_CAUGHT_DARKRAI, FLAG_CAUGHT_SHAYMIN],
-      rotom: 1,
+      flags: [...CLEARED, FLAG_USED_ROTOM_APPLIANCE, FLAG_CAUGHT_DARKRAI, FLAG_CAUGHT_SHAYMIN],
       vars: { [VAR_ROCK_PEAK_RUINS_STATE]: 260 },
     })
     expect(siwonTurn(6, untouched)).toEqual({ kind: 'wait', at: 5 })
@@ -185,7 +191,7 @@ describe('막히지 않는다', () => {
       locale: 'ko',
       given: 5,
       probe: probe({
-        flags: [...CLEARED, FLAG_CAUGHT_DARKRAI, FLAG_CAUGHT_SHAYMIN], rotom: 1,
+        flags: [...CLEARED, FLAG_USED_ROTOM_APPLIANCE, FLAG_CAUGHT_DARKRAI, FLAG_CAUGHT_SHAYMIN],
       }),
       canFitItem: () => true,
       hasPartyRoom: () => false,
@@ -197,6 +203,53 @@ describe('막히지 않는다', () => {
     })
     expect(plan.text).toBe(siwonLines('ko').partyFull)
     expect(plan.commit).toBeNull()
+  })
+})
+
+describe('못 줬으면 「주었다」를 안 센다', () => {
+  const ALL = [...CLEARED, FLAG_USED_ROTOM_APPLIANCE, FLAG_CAUGHT_DARKRAI, FLAG_CAUGHT_SHAYMIN]
+  const deps = (over: Partial<Parameters<typeof planSiwonTalk>[0]>) => ({
+    locale: 'ko',
+    given: 0,
+    probe: probe({ flags: ALL }),
+    canFitItem: () => true,
+    hasPartyRoom: () => true,
+    giveFateful: () => true,
+    giveMon: () => true,
+    giveEgg: () => true,
+    setVar: () => {},
+    countGiven: () => { throw new Error('세면 안 된다') },
+    ...over,
+  })
+
+  it('화강돌 — 표가 안 와서 giveMon이 false면 세지 않는다', () => {
+    planSiwonTalk(deps({ giveMon: () => false })).commit!()
+  })
+
+  it('레지기가스 — giveFateful이 false면 세지 않는다', () => {
+    planSiwonTalk(deps({ given: 5, giveFateful: () => false })).commit!()
+  })
+
+  it('마나피 알 — giveEgg가 false면 세지 않는다', () => {
+    planSiwonTalk(deps({ given: 4, giveEgg: () => false })).commit!()
+  })
+
+  it('줬으면 한 번 센다 — 셋 다', () => {
+    let counted = 0
+    const countGiven = () => { counted++ }
+    planSiwonTalk(deps({ countGiven })).commit!()
+    planSiwonTalk(deps({ given: 5, countGiven })).commit!()
+    planSiwonTalk(deps({ given: 4, countGiven })).commit!()
+    expect(counted).toBe(3)
+  })
+
+  it('물건 — commit을 안 부르면 세지 않는다 (공용 스크립트가 시작된 뒤에만 `field.ts`가 부른다)', () => {
+    let counted = 0
+    const plan = planSiwonTalk(deps({ given: 1, countGiven: () => { counted++ } }))
+    expect(plan.giveItem).toBe(SIWON_ITEM.secretKey)
+    expect(counted).toBe(0)
+    plan.commit!()
+    expect(counted).toBe(1)
   })
 })
 
@@ -268,6 +321,50 @@ describe('세 나라 말', () => {
     expect(cameo).not.toContain('콘도미니엄')
   })
 
+  it('⚠️ 지하에서 나눈 인사는 32번이다 — 108번이 아니다 (`scripts_route_209.s` `GoToIfGe VAR_RESULT, 32`)', () => {
+    const text = (l: 'ko' | 'en' | 'ja') => siwonLines(l).gift[0]!
+    expect(text('ko')).toContain('서른두 번')
+    expect(text('en')).toContain('thirty-two')
+    expect(text('ja')).toContain('３２かい')
+    for (const l of ['ko', 'en', 'ja'] as const) {
+      expect(text(l), l).not.toMatch(/백여덟|hundred and eight|１０８/)
+    }
+  })
+
+  it('회원 카드 · 편지는 전국도감이 먼저라고 말한다', () => {
+    const dex = { ko: '전국도감', en: 'National Pokédex', ja: 'ぜんこくずかん' } as const
+    for (const l of ['ko', 'en', 'ja'] as const) {
+      expect(siwonLines(l).gift[2], `${l} 카드`).toContain(dex[l])
+      expect(siwonLines(l).gift[3], `${l} 편지`).toContain(dex[l])
+    }
+    // 카드는 달의날개(만월섬)도 먼저다 — 롬 이름
+    expect(siwonLines('ko').gift[2]).toContain('만월섬')
+    expect(siwonLines('ko').gift[2]).toContain('초승달날개')
+    expect(siwonLines('en').gift[2]).toContain('Lunar Wing')
+    expect(siwonLines('ja').gift[2]).toContain('みかづきのはね')
+  })
+
+  it('⚠️ 다크라이 · 쉐이미를 기다리는 말은 「잡았는가」다 — 판정이 `FLAG_CAUGHT_*`라서', () => {
+    expect(siwonLines('ko').wait[2]).toContain('못 잡았')
+    expect(siwonLines('ko').wait[3]).toContain('못 잡았')
+    expect(siwonLines('en').wait[2]).toContain('haven’t caught')
+    expect(siwonLines('en').wait[3]).toContain('haven’t caught')
+    expect(siwonLines('ja').wait[2]).toContain('つかまえて')
+    expect(siwonLines('ja').wait[3]).toContain('つかまえて')
+  })
+
+  it('⚠️ 롬 표기 — 일본어는 전각 공백 · 「しんげつじま」 · 「コトブキ　マンション」, 영어는 「Jubilife Condominiums」', () => {
+    const ja = Object.values(siwonLines('ja')).flatMap(textsOf).join('')
+    expect(ja).not.toMatch(/ /)
+    expect(ja).not.toContain('シンゲツじま')
+    expect(ja).toContain('しんげつじま')
+    expect(siwonLines('ja').cameo).toContain('コトブキ　マンション')
+    expect(siwonLines('ja').cameo).not.toContain('コトブキシティ')
+    expect(siwonLines('ja').gift[4]).toContain('めを　さまさない')
+    expect(siwonLines('en').cameo).toContain('Jubilife\nCondominiums')
+    expect(siwonLines('en').cameo).not.toContain('Jubilife City')
+  })
+
   it('한 쪽이 두 줄을 안 넘는다', () => {
     // 대사창이 두 줄이다. `\r`·`\f`가 쪽을 나누고 그 안에서는 `\n` 하나뿐이다
     for (const locale of ['ko', 'en', 'ja'] as const) {
@@ -332,6 +429,14 @@ decomp('시원이 읽는 롬의 수', () => {
     expect(table.get('FLAG_CAUGHT_DARKRAI')).toBe(FLAG_CAUGHT_DARKRAI)
     expect(table.get('FLAG_CAUGHT_SHAYMIN')).toBe(FLAG_CAUGHT_SHAYMIN)
     expect(table.get('FLAG_CAUGHT_ARCEUS')).toBe(FLAG_CAUGHT_ARCEUS)
+  })
+
+  it('가전에 넣어 본 깃발', () => {
+    expect(table.get('FLAG_USED_ROTOM_APPLIANCE')).toBe(FLAG_USED_ROTOM_APPLIANCE)
+    // 로토무의 방 스크립트가 폼을 바꿀 때 그 깃발을 세운다
+    const room = readFileSync(
+      resolve(__dirname, '../../../raw/decomp/res/field/scripts/scripts_rotoms_room.s'), 'utf8')
+    expect(room).toMatch(/SetFlag FLAG_USED_ROTOM_APPLIANCE/)
   })
 
   it('⚠️ 배포 변수 넷이 잇달아 붙어 있다 — 첫 칸에 번호를 더해 쓴다', () => {
@@ -401,7 +506,7 @@ handOff('시원이 건넨 것이 가방에 들어간다', () => {
   const names = read('names/items.ko.json') as string[]
 
   /** 시원에게 말을 걸고 끝까지 간다. 가방에 들어온 것을 돌려준다 */
-  function talk(): { got: number[]; said: string[] } {
+  function talk(): { got: number[]; said: string[]; given: number; gapFrames: number; gapBlocked: number } {
     mapWorld.maps = (read('maps.json') as { maps: MapHeader[] }).maps
     mapWorld.events = (read('events.json') as { events: Record<string, EventFile> }).events
     mapWorld.mapId = SIWON_MAP
@@ -417,7 +522,7 @@ handOff('시원이 건넨 것이 가방에 들어간다', () => {
     fieldScripts.vars = new VarStore()
     fieldScripts.services = {
       siwon: { given: () => given, gave: () => { given += 1 } },
-      party: { rotomForms: () => 0, count: () => 1, giveFateful: () => {}, give: () => {} },
+      party: { count: () => 1, giveFateful: () => {}, give: () => {} },
       // 도구표를 안 읽고 답한다 — 여기 넷은 다 소중한 물건이다 (`POCKET_KEY_ITEMS`)
       bag: {
         pocketOf: () => POCKET_KEY_ITEMS,
@@ -445,9 +550,17 @@ handOff('시원이 건넨 것이 가방에 들어간다', () => {
     resetTriggerTile()
 
     const said: string[] = []
+    // 자동 저장 틈 — 롬 스크립트가 안 돌고 우리 글(`native`)만 도는 프레임에 저장이 막히는가
+    useSessionStore.getState().setPhase('overworld')
+    let gapFrames = 0
+    let gapBlocked = 0
     for (let frame = 0; frame < 600; frame++) {
       worldState.input.interact = frame % 4 === 0
       scriptSystem.fixedUpdate()
+      if (fieldScripts.ctx === null && scriptBusy()) {
+        gapFrames++
+        if (whyNotSaveNow() === '스크립트가 돈다') gapBlocked++
+      }
       // 마지막 쪽이 **보였을 때** 적는다 — 원작 `Message`는 끝에서 누름을 안 받으므로(`world.printed`)
       // 누름까지 받기를 기다리면 뒤따르는 `CloseMessage`가 같은 프레임에 창을 비워 그 줄을 놓친다
       const printer = fieldScripts.world?.printer
@@ -458,7 +571,8 @@ handOff('시원이 건넨 것이 가방에 들어간다', () => {
       if (frame > 8 && !scriptBusy()) break
     }
     worldState.input.interact = false
-    return { got, said }
+    useSessionStore.getState().setPhase('title')
+    return { got, said, given, gapFrames, gapBlocked }
   }
 
   it('⚠️ 첫 선물이 진짜로 들어간다 — 이름이 「없음」이면 지역 칸이 비워진 것이다', () => {
@@ -467,6 +581,16 @@ handOff('시원이 건넨 것이 가방에 들어간다', () => {
     expect(said.join(' / ')).toContain('비밀의열쇠')
     expect(fieldScripts.lastError).toBeNull()
   })
+
+  it('실제로 줬을 때만 「주었다」가 하나 오른다', () => {
+    expect(talk().given).toBe(2)
+  })
+
+  it('⚠️ 우리 글만 도는 동안에도 자동 저장이 막힌다 — 복도 기습이 `meet()` 뒤 저장으로 사라지는 틈', () => {
+    const { gapFrames, gapBlocked } = talk()
+    expect(gapFrames).toBeGreaterThan(0)
+    expect(gapBlocked).toBe(gapFrames)
+  })
 })
 
 /**
@@ -474,7 +598,7 @@ handOff('시원이 건넨 것이 가방에 들어간다', () => {
  */
 describe('시원 — 편지가 함께 세우는 변수', () => {
   const probeWith = (shaymin: number) => ({
-    flag: () => false, variable: (id: number) => (id === 16471 ? shaymin : 0), rotomForms: () => 0,
+    flag: () => false, variable: (id: number) => (id === 16471 ? shaymin : 0),
   })
   const letter = SIWON_GIFTS[3]!.gift
 

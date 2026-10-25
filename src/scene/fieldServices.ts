@@ -55,15 +55,11 @@ import { fillMenuText } from '../data/uiText'
 import { loadWallpaperWords } from '../data/gameData'
 import { loadWordLookup, type WordLookup } from '../ui/menu/easyChatWords'
 import { loadPokedexSort } from '../data/gameData'
+import { nationalDexCompleted } from '../ui/menu/dexCounts'
 /** 종족 번호의 끝. 전국도감이 이 수만큼이다 */
 const NATIONAL_DEX_COUNT = 493
-/**
- * 전국도감을 「다 찼다」로 볼 때 빼는 종.
- *
- * ⚠️ **원작도 셋을 뺀다** — 다크라이·아르세우스·쉐이미는 배포로만 오므로
- * 넣어 두면 아무도 상장을 못 받는다 (`Pokedex_NationalDexCompleted`)
- */
-const NATIONAL_DEX_EXEMPT = new Set([491, 492, 493])
+// 전국도감 완성 기준은 `ui/menu/dexCounts`의 `nationalDexCompleted` 한 곳이다 —
+// 원작 `sExcludedMonsNational` 열하나(`pokedex.c:15-26`)를 빼고 잡은 수가 482 이상인가
 /** 난수. 원작 LCRNG와 같은 자리에서 쓴다 */
 const randMod = (bound: number): number => (bound <= 1 ? 0 : Math.floor(Math.random() * bound))
 import { setOnCyclingRoad } from '../engine/actor/bike'
@@ -439,6 +435,10 @@ function giveMon(species: number, level: number, heldItem: number, fateful = fal
       fateful,
     },
   })
+  // `Party_AddPokemon`이 성공하면 `SaveData_UpdateCatchRecords`가 본 것·잡은 것을 적는다
+  // (`unk_02054884.c:32-60`). 시원의 화강돌처럼 선물이 유일한 「잡은 것」 길인 종이 전국도감을 채우려면 필요하다.
+  // 스타터·화석처럼 스크립트가 따로 적는 길과 겹쳐도 비트 OR이라 해가 없다
+  save.markCaught(species)
   return true
 }
 
@@ -1155,12 +1155,7 @@ const services: FieldServices = {
     dexCompleted: (national) => {
       const dex = useSaveStore.getState().pokedex
       // ⚠️ **신오는 「본 것」, 전국은 「잡은 것」이다** (`Pokedex_*DexCompleted`)
-      if (national) {
-        for (let s = 1; s <= NATIONAL_DEX_COUNT; s++) {
-          if (!dexHas(dex.caught, s) && !NATIONAL_DEX_EXEMPT.has(s)) return false
-        }
-        return true
-      }
+      if (national) return nationalDexCompleted(dex.caught)
       return sinnohList !== null && sinnohList.every((n: number) => dexHas(dex.seen, n))
     },
     hasSeen: (species) => dexHas(useSaveStore.getState().pokedex.seen, species),

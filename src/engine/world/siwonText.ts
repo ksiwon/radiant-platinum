@@ -61,16 +61,21 @@ const KO: SiwonLines = {
     '먼저 이 아이부터.\n'
     + '209번도로의 무덤에 갇혀 있던 아이야.\r'
     + '그 돌을 여는 건 땅 밑에서 나눈 인사\n'
-    + '백여덟 번인데, 그 길이 여기엔 없어.\r'
+    + '서른두 번인데, 그 길이 여기엔 없어.\r'
     + '그래서 내가 데리고 나왔어.',
     '영원시티의 잠긴 문을 여는 열쇠야.\r'
     + '로토무를 데려가서 가전에 넣어 봐.\n'
     + '아직 로토무가 없다면 숲의 양옥집이야. 밤에.',
     '신월섬으로 가는 배는 이게 있어야 타.\n'
     + '운하시티 여관에서 물어봐.\r'
-    + '그 섬에 있는 건… 직접 보는 게 낫겠어.',
+    + '먼저 전국도감이 있어야 해.\n'
+    + '신오도감을 다 본 뒤 마박사님께 가 봐.\r'
+    + '만월섬의 초승달날개도 먼저 받아 와.\n'
+    + '신월섬에 있는 건… 직접 보는 게 낫겠어.',
     '오박사님이 남긴 편지야.\n'
     + '224번도로 끝에서 읽어 줘.\r'
+    + '전국도감이 먼저야. 신오도감을 다 본 뒤\n'
+    + '마박사님께 가면 받을 수 있어.\r'
     + '길이 하나 더 생길 거야.',
     '이건 알이야.\n'
     + '많이 걸어야 깨어나.\r'
@@ -87,10 +92,10 @@ const KO: SiwonLines = {
   wait: {
     1: '열쇠는 아직 안 써 봤구나.\n'
       + '로토무를 가전에 넣어 보고 다시 와.',
-    2: '신월섬에는 아직 안 갔구나.\n'
-      + '거기서 만날 걸 만나고 다시 와.',
-    3: '편지는 아직 그대로네.\n'
-      + '224번도로 끝까지 가 보고 다시 와.',
+    2: '신월섬의 그 아이를 아직 못 잡았구나.\n'
+      + '만나서 잡고 다시 와.',
+    3: '편지 속 아이를 아직 못 잡았구나.\n'
+      + '224번도로 끝에서 만나 보고 다시 와.',
     5: '유적은 아직 조용한가 봐.\n'
       + '그 아이를 데리고 다녀오고 다시 와.',
   },
@@ -118,7 +123,7 @@ const EN: SiwonLines = {
     '…Hold on!\r'
     + 'I’m Siwon. I built this world.\n'
     + 'No time for a proper hello here.\r'
-    + 'Come to the Jubilife City\n'
+    + 'Come to the Jubilife\n'
     + 'Condominiums, second floor.\r'
     + 'There are things I never got to hand\n'
     + 'out — given away once, long ago,\r'
@@ -128,7 +133,7 @@ const EN: SiwonLines = {
     'This one first.\n'
     + 'It was sealed in the tower on\r'
     + 'Route 209. What opens that stone is\n'
-    + 'a hundred and eight greetings traded\r'
+    + 'thirty-two greetings traded\r'
     + 'underground — and that road isn’t\n'
     + 'here. So I brought it out myself.',
     'It opens a locked door in Eterna.\r'
@@ -137,10 +142,17 @@ const EN: SiwonLines = {
     + 'No Rotom yet? Old Chateau. At night.',
     'You need this to board the ship to\n'
     + 'Newmoon Island.\r'
-    + 'Ask at the Canalave inn.\n'
-    + 'What waits there — better you see it.',
+    + 'Ask at the Canalave inn.\r'
+    + 'You need the National Pokédex first.\n'
+    + 'See every Sinnoh Pokémon, then Rowan.\r'
+    + 'Fetch the Lunar Wing on Fullmoon\n'
+    + 'Island first.\r'
+    + 'What waits on Newmoon Island…\n'
+    + 'better you see it.',
     'A letter the Professor left behind.\n'
     + 'Read it at the end of Route 224.\r'
+    + 'The National Pokédex comes first.\n'
+    + 'See every Sinnoh Pokémon, then Rowan.\r'
     + 'A new path will open.',
     'This one’s an Egg.\r'
     + 'It needs a lot of walking to wake up.\n'
@@ -157,10 +169,10 @@ const EN: SiwonLines = {
   wait: {
     1: 'You haven’t used the key yet.\n'
       + 'Let a Rotom into an appliance first.',
-    2: 'You haven’t been to Newmoon Island.\n'
-      + 'Meet what’s there, then come back.',
-    3: 'The letter’s still sealed.\n'
-      + 'Go to the end of Route 224 first.',
+    2: 'You haven’t caught it on Newmoon.\n'
+      + 'Meet it, catch it, then come back.',
+    3: 'You haven’t caught what the letter\n'
+      + 'points to. Try Route 224’s end.',
     5: 'The ruins are still quiet.\n'
       + 'Take that friend there, then come back.',
   },
@@ -178,71 +190,76 @@ const EN: SiwonLines = {
 
 const JA: SiwonLines = {
   locked:
-    'おや おきゃくさんだ。\n'
-    + 'ぼくは シウォン。この せかいを つくってる。\r'
-    + 'わたしたい ものが あるんだけど…\n'
-    + 'まだ はやいな。\r'
-    + 'なまえを でんどういりさせてから\n'
-    + 'また きて ほしい。',
+    'おや　おきゃくさんだ。\n'
+    + 'ぼくは　シウォン。この　せかいを　つくってる。\r'
+    + 'わたしたい　ものが　あるんだけど⋯\n'
+    + 'まだ　はやいな。\r'
+    + 'なまえを　でんどういりさせてから\n'
+    + 'また　きて　ほしい。',
   cameo:
-    '……ちょっと まって！\r'
-    + 'ぼくは シウォン。この せかいを つくった。\n'
-    + 'ここで あいさつしてる ひまは ない。\r'
-    + 'コトブキシティの マンション ２かいへ\n'
-    + 'きて ほしい。\r'
-    + 'わたしそびれた ものが あるんだ。\n'
-    + 'むかし いちどだけ くばって\r'
-    + 'そのまま とじた ものたち。\n'
+    '⋯⋯ちょっと　まって！\r'
+    + 'ぼくは　シウォン。この　せかいを　つくった。\n'
+    + 'ここで　あいさつしてる　ひまは　ない。\r'
+    + 'コトブキ　マンション　２かいへ\n'
+    + 'きて　ほしい。\r'
+    + 'わたしそびれた　ものが　あるんだ。\n'
+    + 'むかし　いちどだけ　くばって\r'
+    + 'そのまま　とじた　ものたち。\n'
     + 'まってるよ。',
   gift: [
-    'まずは この こから。\n'
-    + '２０９ばんどうろの はかに\r'
-    + 'とじこめられて いた こだ。\n'
-    + 'あの いしを ひらくのは ちかで かわす\r'
-    + 'あいさつ １０８かい だけど\n'
-    + 'その みちは ここには ない。\r'
-    + 'だから ぼくが つれて きた。',
-    'ハクタイの とじた とびらの かぎだ。\r'
-    + 'ロトムを つれて かでんに いれてみて。\n'
-    + 'ロトムが いないなら もりの ようかん。よるだ。',
-    'シンゲツじまへの ふねは これが いる。\n'
-    + 'ミオシティの やどで きいてみて。\r'
-    + 'あそこに いる ものは… じぶんの めで。',
-    'オーキドはかせの てがみだ。\n'
-    + '２２４ばんどうろの はてで よんで。\r'
-    + 'みちが ひとつ ふえる。',
-    'これは タマゴだよ。\r'
-    + 'たくさん あるかないと めを ささない。\n'
-    + 'うみから きた こ とだけ いっておく。',
-    'これは どうぐじゃない。なかまだ。\n'
-    + 'からだが おもくて はじめは のろい。\r'
-    + 'この こと いっしょに ３つの いせきへ。\n'
-    + 'とじた せきぞうが こたえる。',
+    'まずは　この　こから。\n'
+    + '２０９ばんどうろの　はかに\r'
+    + 'とじこめられて　いた　こだ。\n'
+    + 'あの　いしを　ひらくのは　ちかで　かわす\r'
+    + 'あいさつ　３２かい　だけど\n'
+    + 'その　みちは　ここには　ない。\r'
+    + 'だから　ぼくが　つれて　きた。',
+    'ハクタイの　とじた　とびらの　かぎだ。\r'
+    + 'ロトムを　つれて　かでんに　いれてみて。\n'
+    + 'ロトムが　いないなら　もりの　ようかん。よるだ。',
+    'しんげつじまへの　ふねは　これが　いる。\n'
+    + 'ミオシティの　やどで　きいてみて。\r'
+    + 'ぜんこくずかんが　さきだ。\n'
+    + 'シンオウずかんを　みおえて　ナナカマドはかせへ。\r'
+    + 'まんげつじまの　みかづきのはねも　さきに。\n'
+    + 'あそこに　いる　ものは⋯　じぶんの　めで。',
+    'オ－キドはかせの　てがみだ。\n'
+    + '２２４ばんどうろの　はてで　よんで。\r'
+    + 'ぜんこくずかんが　さきだよ。\n'
+    + 'シンオウずかんを　みおえて　ナナカマドはかせへ。\r'
+    + 'みちが　ひとつ　ふえる。',
+    'これは　タマゴだよ。\r'
+    + 'たくさん　あるかないと　めを　さまさない。\n'
+    + 'うみから　きた　こ　とだけ　いっておく。',
+    'これは　どうぐじゃない。なかまだ。\n'
+    + 'からだが　おもくて　はじめは　のろい。\r'
+    + 'この　こと　いっしょに　３つの　いせきへ。\n'
+    + 'とじた　せきぞうが　こたえる。',
     'さいごだ。\n'
-    + 'これは おとを だす もの。\r'
-    + 'やりのはしらでしか ひびかない。\n'
-    + 'なにが おりてくるかは… いわないでおく。',
+    + 'これは　おとを　だす　もの。\r'
+    + 'やりのはしらでしか　ひびかない。\n'
+    + 'なにが　おりてくるかは⋯　いわないでおく。',
   ],
   wait: {
-    1: 'かぎは まだ つかってないね。\n'
-      + 'ロトムを かでんに いれてから また きて。',
-    2: 'シンゲツじまへ まだ いってないね。\n'
-      + 'あそこで あうべき ものに あってから。',
-    3: 'てがみは まだ そのままだ。\n'
-      + '２２４ばんどうろの はてまで いってみて。',
-    5: 'いせきは まだ しずかだ。\n'
-      + 'あの こを つれて いってから また きて。',
+    1: 'かぎは　まだ　つかってないね。\n'
+      + 'ロトムを　かでんに　いれてから　また　きて。',
+    2: 'しんげつじまの　こを　まだ　つかまえて\n'
+      + 'ないね。あってから　また　きて。',
+    3: 'てがみの　こを　まだ　つかまえて　ない。\n'
+      + '２２４ばんどうろの　はてを　めざして。',
+    5: 'いせきは　まだ　しずかだ。\n'
+      + 'あの　こを　つれて　いってから　また　きて。',
   },
   done:
-    'もう てもとには なにも ない。\r'
-    + 'とじた とびらは ぜんぶ あいた。\n'
-    + 'あとは きみの ものがたりだ。またね。',
+    'もう　てもとには　なにも　ない。\r'
+    + 'とじた　とびらは　ぜんぶ　あいた。\n'
+    + 'あとは　きみの　ものがたりだ。またね。',
   partyFull:
-    'てもちが いっぱいだね。\n'
-    + 'いっぴき あずけてから また きて。',
+    'てもちが　いっぱいだね。\n'
+    + 'いっぴき　あずけてから　また　きて。',
   bagFull:
-    'バッグが もう うけとれないって。\n'
-    + 'あけてから また きて。',
+    'バッグが　もう　うけとれないって。\n'
+    + 'あけてから　また　きて。',
 }
 
 const TABLE: Readonly<Record<SiwonLocale, SiwonLines>> = { ko: KO, en: EN, ja: JA }

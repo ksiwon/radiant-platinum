@@ -54,6 +54,14 @@ export const DISTRIBUTION_EVENT = {
 export const FLAG_GAME_COMPLETED = 2404
 
 /** 잡았는가 플래그 (`generated/vars_flags.txt`) */
+/**
+ * `FLAG_USED_ROTOM_APPLIANCE` — 로토무를 가전에 넣어 폼을 바꾸면 세워진다
+ * (`scripts_rotoms_room.s:359·515` `RotomsRoom_SetRotomForm` → `SetStateEnterProfRowan`).
+ *
+ * ⚠️ **로토무 폼 비트로는 못 잰다.** 맨 로토무(비트 0)만 있어도 참이고, 로토무를 놓아주면 영영 거짓이다.
+ * 양옥집 로토무는 `FLAG_CAUGHT_OLD_CHATEAU_ROTOM`이라 다시 못 얻는다
+ */
+const FLAG_USED_ROTOM_APPLIANCE = 119
 const FLAG_CAUGHT_ARCEUS = 286
 const FLAG_CAUGHT_SHAYMIN = 291
 const FLAG_CAUGHT_DARKRAI = 344
@@ -88,8 +96,6 @@ type SiwonGift =
 export interface SiwonProbe {
   flag: (id: number) => boolean
   variable: (id: number) => number
-  /** 어느 가전을 써 본 로토무가 리포트에 있는가. 다섯 비트 */
-  rotomForms: () => number
 }
 
 interface SiwonEntry {
@@ -127,14 +133,15 @@ export const SIWON_GIFTS: readonly SiwonEntry[] = [
     // 레벨 25는 그 무덤의 `StartWildBattle SPECIES_SPIRITOMB, 25`와 같다
     gift: { kind: 'mon', species: SIWON_SPECIES.spiritomb, level: 25, fateful: false },
     // 받자마자 다음 차례다. 「썼는가」를 잴 신호가 원작에 없다 —
-    // 무덤을 여는 것이 지하통로 인사 수인데 그 계통이 범위 밖이다 (PARITY §9)
+    // 무덤을 여는 것이 지하통로 인사 32번(`scripts_route_209.s` `GoToIfGe VAR_RESULT, 32`)인데
+    // 그 계통이 범위 밖이다 (PARITY §9)
     used: () => true,
   },
   {
     at: 1,
     gift: { kind: 'item', item: SIWON_ITEM.secretKey, event: DISTRIBUTION_EVENT.rotom },
-    // 로토무의 방에서 가전에 한 번이라도 들어갔는가
-    used: (p) => p.rotomForms() !== 0,
+    // 로토무의 방에서 가전에 한 번이라도 들어갔는가 — 원작이 그때 세우는 깃발이다
+    used: (p) => p.flag(FLAG_USED_ROTOM_APPLIANCE),
   },
   {
     at: 2,

@@ -27,10 +27,12 @@ interface SiwonPlan {
   /** 대사창에 올릴 시원의 말. 원작 규칙대로 `\r`이 쪽을 넘긴다 */
   text: string
   /**
-   * 말이 끝난 **뒤에** 할 일. 선물을 실제로 넣고 배포 변수를 세운다.
+   * 말이 끝난 **뒤에** 할 일. 마리·알은 실제로 넣고, 물건은 배포 변수를 세운다.
+   * 어느 쪽이든 **실제로 줬을 때만** 「주었다」를 센다 — 못 줬으면 다시 말을 걸 때 같은 선물이 나온다.
    *
    * ⚠️ 말보다 먼저 하면 안 된다 — 넣다 실패했을 때 되돌릴 자리가 없다.
-   * 그래서 받을 수 있는지는 계획을 세울 때 미리 본다
+   * 그래서 받을 수 있는지는 계획을 세울 때 미리 본다.
+   * ⚠️ **물건은 `giveItem`의 공용 스크립트가 시작된 뒤에만 부른다** (`field.ts`) — 시작이 거절되면 부르지 않는다
    */
   commit: (() => void) | null
   /**
@@ -56,11 +58,11 @@ interface SiwonDeps {
    * ⚠️ **레지기가스만 이 길이다.** 유적 셋의 석상이 그 표시만 보기 때문이고,
    * 그 표시는 리본과 만난 자리도 같이 바꾼다 — 아무 데나 붙이면 안 된다
    */
-  giveFateful: (species: number, level: number) => void
-  /** 그냥 한 마리 준다. 잡은 것과 같은 갈래다 (화강돌) */
-  giveMon: (species: number, level: number) => void
-  /** 알을 준다. 자리 번호는 원작의 「여행하는 남자」와 같다 */
-  giveEgg: (species: number) => void
+  giveFateful: (species: number, level: number) => boolean
+  /** 그냥 한 마리 준다. 잡은 것과 같은 갈래다 (화강돌). 못 줬으면 false */
+  giveMon: (species: number, level: number) => boolean
+  /** 알을 준다. 자리 번호는 원작의 「여행하는 남자」와 같다. 못 줬으면 false */
+  giveEgg: (species: number) => boolean
   /** 배포 변수를 세운다 */
   setVar: (id: number, value: number) => void
   /** 하나 줬다고 리포트에 센다 */
@@ -121,9 +123,10 @@ export function planSiwonTalk(deps: SiwonDeps): SiwonPlan {
     return {
       text: say,
       commit: () => {
-        if (gift.fateful) deps.giveFateful(gift.species, gift.level)
-        else deps.giveMon(gift.species, gift.level)
-        deps.countGiven()
+        const ok = gift.fateful
+          ? deps.giveFateful(gift.species, gift.level)
+          : deps.giveMon(gift.species, gift.level)
+        if (ok) deps.countGiven()
       },
       giveItem: null,
     }
@@ -132,8 +135,7 @@ export function planSiwonTalk(deps: SiwonDeps): SiwonPlan {
   return {
     text: say,
     commit: () => {
-      deps.giveEgg(gift.species)
-      deps.countGiven()
+      if (deps.giveEgg(gift.species)) deps.countGiven()
     },
     giveItem: null,
   }

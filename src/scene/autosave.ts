@@ -12,7 +12,7 @@
 // 얹히면 안 된다 (DEPLOY.md §2).
 import { create } from 'zustand'
 import { world } from '../engine/map/world'
-import { fieldScripts } from '../engine/script/field'
+import { fieldScripts, scriptBusy } from '../engine/script/field'
 import { fadeDone } from '../engine/script/fade'
 import { distortionBridge } from '../engine/world/distortion'
 import { frameStats } from '../engine/loop/frameStats'
@@ -38,7 +38,8 @@ const POLL_MS = 1_000
 export function whyNotSaveNow(): string | null {
   if (useSessionStore.getState().phase !== 'overworld') return '필드가 아니다'
   if (worldState.restoring) return '복원 중이다'
-  if (fieldScripts.ctx !== null) return '스크립트가 돈다'
+  // ⚠️ **우리 글(`native`)도 스크립트다.** 복도의 시원은 `meet()`을 대사 전에 세워서, 그 사이에 쓰면 이어하기에서 기습이 영영 안 뜬다
+  if (scriptBusy()) return '스크립트가 돈다'
   if (useBattleStore.getState().phase !== 'off') return '배틀 중이다'
   if (fieldTaskRunning()) return '필드 태스크가 돈다'
   if (useMenuStore.getState().stack.length > 0) return '메뉴가 열려 있다'

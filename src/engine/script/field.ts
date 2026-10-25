@@ -496,20 +496,25 @@ function talkToSiwon(mapFile: number): void {
     probe: {
       flag: (id) => vars.checkFlag(id),
       variable: (id) => vars.get(id),
-      rotomForms: () => party.rotomForms(),
     },
     canFitItem: (item) => bag.canFit(item, 1),
     hasPartyRoom: () => party.count() < PARTY_SLOTS,
-    giveFateful: (species, level) => { party.giveFateful(species, level) },
+    giveFateful: (species, level) => party.giveFateful(species, level),
     // 화강돌은 원작에서 그냥 잡는 마리라 표시를 안 붙인다 (`world/siwon`)
-    giveMon: (species, level) => { party.give(species, level, 0) },
-    giveEgg: (species) => { services.giveEgg?.(species, EGG_GIVER_TRAVELING_MAN) },
+    giveMon: (species, level) => party.give(species, level, 0),
+    // 알 서비스는 값을 안 돌려준다 — 파티가 늘었는지로 줬는지를 잰다
+    giveEgg: (species) => {
+      const before = party.count()
+      services.giveEgg?.(species, EGG_GIVER_TRAVELING_MAN)
+      return party.count() > before
+    },
     setVar: (id, value) => { vars.set(id, value) },
     countGiven: () => { siwon.gave() },
   })
 
   showOurText(plan.text, () => {
-    plan.commit?.()
+    // 마리·알은 여기서 준다. 물건은 아래에서 공용 스크립트가 시작된 뒤에 부른다
+    if (plan.giveItem === null) plan.commit?.()
     // 가방에 넣는 것과 「받았다」는 **원작 공용 스크립트**가 한다. 그래야 그
     // 한 줄이 롬의 글 그대로다 (SIWON.md §4)
     if (plan.giveItem !== null) {
@@ -517,9 +522,11 @@ function talkToSiwon(mapFile: number): void {
       // `start()`가 첫머리에서 `resetLocals()`로 지역 칸을 통째로 비운다 — 먼저
       // 적어 두면 시작하는 그 순간 0이 된다. 실측: 시원에게 첫 선물을 받으면
       // 「**없음**을 손에 넣었다!」가 뜨고 가방에는 아무것도 안 들어갔다
+      // 시작이 거절되면 배포 변수도 「주었다」 수도 올리지 않는다 — 다시 말을 걸면 같은 선물이 나온다
       if (start(COMMON_SCRIPT_GIVE_ITEM, mapFile)) {
         vars.set(VAR_GIVE_ITEM, plan.giveItem)
         vars.set(VAR_GIVE_COUNT, 1)
+        plan.commit?.()
       }
     }
   })
