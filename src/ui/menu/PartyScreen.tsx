@@ -18,7 +18,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from
 import {
   loadItemIcons, loadItemNames, loadMoveNames, loadSpecies, loadSpeciesNames, type SpeciesTable,
 } from '../../data/gameData'
-import type { ItemIcons } from '../../data/schema'
+import type { Item, ItemIcons } from '../../data/schema'
 import { fillMenuText, loadUiText, PARTY_CAPSULE, PARTY_GIVE, partyHeader } from '../../data/uiText'
 import { detachCapsule } from '../../engine/world/ballCapsule'
 import { genderOf, maxHp } from '../../engine/pokemon/instance'
@@ -35,7 +35,7 @@ import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import type { PokemonInstance } from '../../engine/pokemon/instance'
 import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
-import { loadItems, loadMoves, type ItemTable, type MoveTable } from '../../data/gameData'
+import { loadDialogueBank, loadItems, loadMoves, type ItemTable, type MoveTable } from '../../data/gameData'
 import { planItemUse } from '../../engine/battle/meta/bagItem'
 import {
   applyFieldPlan, fieldTarget, isHmMove, teachMoveCheck, tmIndex, tmMove,
@@ -43,6 +43,10 @@ import {
 import { EvoClass, evolutionTarget } from '../../engine/pokemon/evolution'
 import { maxPpOf } from '../../engine/pokemon/instance'
 import { canLevelUp, fieldFriendship, isLevelUpItem, levelUpOnce } from '../../engine/bag/rareCandy'
+import { evChanges, evUseLine, applyEvItem } from '../../engine/bag/evUse'
+import { partyItemKind } from '../../engine/bag/partyItem'
+import { ppUpsGiven, raisePpUps } from '../../engine/bag/ppUse'
+import { faintedSlots, reviveFull } from '../../engine/bag/sacredAsh'
 import { isNight } from '../../engine/map/timeOfDay'
 import { mapById, world as mapWorld } from '../../engine/map/world'
 import { useEvolutionStore } from '../../state/evolutionStore'
@@ -109,6 +113,9 @@ const DENIAL_LINE: Record<string, number> = {
  * 비전기술 칸은 `FieldMove0`~`3`인데 넷 다 `{COLOR 1}{기술 이름}{COLOR 0}`
  * 하나뿐이라 우리는 기술 이름을 바로 쓴다
  */
+/** 뱅크 551 — 능력 이름 여섯(+랭크 셋) */
+const STAT_NAME_BANK = 551
+
 const P = {
   askMon: 37, askItem: 38,
   /**
@@ -126,6 +133,13 @@ const P = {
    * 「배웠다!」다. 그 사이의 능력치 창(185~192)은 `LevelPanel`이 적는다
    */
   levelUp: 193, levelLearned: 194,
+  /**
+   * PP 도구 · 노력치 도구 · 성스러운재 (`PartyMenuCB_UseItem_*` · `PartyMenu_MoveSelection_*`).
+   * 40·41이 기술 고르기의 물음, 69·72가 PP 회복·증가, 75가 비타민, 110~112가 깎는 열매,
+   * 70이 성스러운재가 마리마다 띄우는 「기력을 회복했다」다
+   */
+  restoreWhich: 40, boostWhich: 41, ppRestored: 69, regained: 70, ppIncreased: 72, baseRose: 75,
+  friendFell: 110, friendMax: 111, friendFloor: 112,
   switch_: 145, summary: 146, item: 147, mail: 148, mailRead: 149, mailTake: 150,
   cancel: 152, give: 160, take: 161,
   /** 아래 글 띠의 「취소」 단추 (`POS_CANCEL`) */
@@ -168,6 +182,11 @@ type Learning =
   | { kind: 'tm'; item: number; pocket: number; index: number; move: number; slot: number }
   | { kind: 'level'; move: number; slot: number; rest: number[] }
 
+/** 파티 뱅크(453)의 알림 줄 — 편지함이 가득 참(50) · 지닌 도구 없음(81) · 도구를 지녀 편지를 못 줌(128) */
+const MAILBOX_FULL_LINE = 50
+const NOT_HOLDING_LINE = 81
+const MAIL_NEEDS_EMPTY_HAND_LINE = 128
+
 /** 한 글을 쪽으로 가른다 — 원작의 `\r`·`\f`가 A·B를 기다리는 자리다 */
 function pagesOf(text: string): string[] {
   return text.split(/[\r\f]/).map((one) => one.trim()).filter((one) => one !== '')
@@ -206,7 +225,7 @@ export function PartyScreen() {
   const [notice, setNotice] = useState<string | null>(null)
   /** 떠 있는 갈래 메뉴. null이면 카드를 고르는 중이다 */
   const [menu, setMenu] = useState<
-    'root' | 'item' | 'mail' | 'learnAsk' | 'learnStop' | 'learnForget' | 'daycare' | 'giveSwap' | 'detach' | null
+    'root' | 'item' | 'mail' | 'learnAsk' | 'learnStop' | 'learnForget' | 'daycare' | 'giveSwap' | 'detach' | 'ppMove' | null
   >(null)
   /**
    * 기술 칸이 다 차서 **무엇을 잊을지 묻는 중**. null이면 안 묻고 있다.
@@ -251,6 +270,8 @@ export function PartyScreen() {
   const givingItem = useMenuStore((s) => s.givingItem)
   /** 도구 이름 — 건네줄 때의 말에 들어간다 */
   const [itemNames, setItemNames] = useState<string[]>([])
+  /** 능력 이름 (`TEXT_BANK_POKEMON_STAT_NAMES` 551) — 「~의 기초포인트가 올라갔다」의 빈칸 */
+  const [statNames, setStatNames] = useState<string[]>([])
   /**
    * 스크립트가 「한 마리 골라」로 열었는가 (`SelectMoveTutorPokemon`).
    *
@@ -294,13 +315,15 @@ export function PartyScreen() {
       loadUiText('partyMenu', locale),
       loadUiText('summary', locale).catch(() => [] as string[]),
       loadItemNames(locale),
+      loadDialogueBank(locale, STAT_NAME_BANK).catch(() => [] as string[]),
     ])
-      .then(([table, list, moves, party, summary, items]) => {
+      .then(([table, list, moves, party, summary, items, stats]) => {
         if (!alive) return
         setSpecies(table); setNames(list); setMoveNames(moves)
         setPartyText(party)
         setSummaryText(summary)
         setItemNames(items)
+        setStatNames(stats)
       })
       .catch(() => { /* 이름만 빈다 */ })
     return () => { alive = false }
@@ -491,7 +514,7 @@ export function PartyScreen() {
   const takeMail = (): void => {
     if (!selected?.mail) { setNotice('메일을 지니고 있지 않다.'); return }
     const moved = toMailbox(useSaveStore.getState().mailbox, selected.mail)
-    if (!moved) { setNotice('메일박스가 가득 차 있다.'); return }
+    if (!moved) { setNotice(plainText(partyText[MAILBOX_FULL_LINE]) || null); return }
     const next = [...party]
     next[at] = withHeldItem({ ...selected, heldItem: 0, mail: null }, species, tables?.moves)
     useSaveStore.setState({ party: next, mailbox: moved.box })
@@ -499,7 +522,12 @@ export function PartyScreen() {
 
   /** 들고 있던 것을 가방으로 돌려받는다 (`PartyMenu_SelectItemTake`) */
   const takeItem = (): void => {
-    if (!selected || selected.heldItem === 0) { setNotice('아무것도 안 들고 있다.'); return }
+    if (!selected || selected.heldItem === 0) {
+      // 롬 453:81 「{이름}…도구를 아무것도 지니고 있지 않습니다!」
+      const who = selected ? (selected.nickname ?? names[selected.species] ?? '') : ''
+      setNotice(fillMenuText(partyText[NOT_HOLDING_LINE] ?? '', [who]) || null)
+      return
+    }
     const held = selected.heldItem
     const next = [...party]
     // 기라티나는 백금옥을 뺀 순간 어나더로 돌아간다 (PARITY §3.4) — ⚠️ 깨어진 세계 안에서는
@@ -768,6 +796,17 @@ export function PartyScreen() {
     { label: partyText[P.no] ?? '', run: () => { setMenu(null) } },
   ]
 
+  /**
+   * 「어느 기술을 늘릴까?」 · 「어느 기술을 회복할까?」 — 네 칸이 전부다 (`PartyMenu_MoveSelection_Display`).
+   *
+   * 취소는 B뿐이고 그러면 「누구에게 쓸까」로 돌아간다 (`PartyMenu_MoveSelection_HandleInput`)
+   */
+  const ppMoveChoices = (): Choice[] => {
+    const mon = selected
+    if (!mon) return []
+    return mon.moves.map((one, i) => ({ label: moveNames[one.move] ?? '', run: () => { pickPpMove(i) } }))
+  }
+
   const choices = menu === 'root' ? rootChoices()
     : menu === 'daycare' ? daycareChoices()
     : menu === 'item' ? itemChoices()
@@ -776,7 +815,21 @@ export function PartyScreen() {
           : menu === 'learnStop' ? learnStopChoices()
             : menu === 'learnForget' ? learnForgetChoices()
               : menu === 'giveSwap' ? giveSwapChoices()
-                : menu === 'detach' ? detachChoices() : []
+                : menu === 'detach' ? detachChoices()
+                  : menu === 'ppMove' ? ppMoveChoices() : []
+
+  /**
+   * 효과가 든 뒤의 친밀도 (`Pokemon_ApplyItemEffects` 끝). 필드 쪽 계산은
+   * 평온의방울을 **먼저** 곱한다 — `engine/bag/rareCandy`의 `fieldFriendship`
+   */
+  const friendlyAfter = (item: Item, mon: PokemonInstance): PokemonInstance => ({
+    ...mon,
+    friendship: fieldFriendship(item, mon, {
+      heldEffect: mon.heldItem > 0 && tables !== null ? tables.items.get(mon.heldItem).holdEffect ?? 0 : 0,
+      // 원작이 넘기는 것은 맵 번호가 아니라 **지역명 번호**다 (`GetCurrentMapLabel`)
+      mapLabel: mapById(useSessionStore.getState().mapId)?.label ?? 0,
+    }),
+  })
 
   /**
    * 들고 온 도구를 고른 마리에게 쓴다 (`item_use_pokemon.c`).
@@ -837,23 +890,12 @@ export function PartyScreen() {
       const type = mailTypeOfItem(usingItem.item)
       if (type === null) { setNotice('지금은 쓸 수 없다.'); return }
       if (selected.isEgg) { setNotice('알에게는 지니게 할 수 없다.'); return }
-      if (selected.heldItem !== 0) { setNotice('이미 도구를 지니고 있다.'); return }
+      if (selected.heldItem !== 0) { setNotice(plainText(partyText[MAIL_NEEDS_EMPTY_HAND_LINE]) || null); return }
       openMail({ mode: 'write', type, item: usingItem.item, slot: at, lines: emptyMailLines() })
       return
     }
 
-    /**
-     * 효과가 든 뒤의 친밀도 (`Pokemon_ApplyItemEffects` 끝). 필드 쪽 계산은
-     * 평온의방울을 **먼저** 곱한다 — `engine/bag/rareCandy`의 `fieldFriendship`
-     */
-    const befriend = (mon: PokemonInstance): PokemonInstance => ({
-      ...mon,
-      friendship: fieldFriendship(item, mon, {
-        heldEffect: mon.heldItem > 0 ? tables.items.get(mon.heldItem).holdEffect ?? 0 : 0,
-        // 원작이 넘기는 것은 맵 번호가 아니라 **지역명 번호**다 (`GetCurrentMapLabel`)
-        mapLabel: mapById(useSessionStore.getState().mapId)?.label ?? 0,
-      }),
-    })
+    const befriend = (mon: PokemonInstance): PokemonInstance => friendlyAfter(item, mon)
 
     // 이상한사탕 — 회복 갈래(1)에 들어 있지만 **레벨업 칸을 먼저** 본다
     // (`NormalizeItemEffect`). 도구는 판정이 서자마자 빠진다(`ApplyItemEffectOnPokemon`)
@@ -874,6 +916,33 @@ export function PartyScreen() {
           then: () => { setNotice(null); nextLevelMove(slot, got.moves) },
         })
       })
+      return
+    }
+
+    // 성스러운재는 마리를 안 고른다 — 열리자마자 아래 효과가 돈다 (`CheckItemSacredAsh`)
+    const kind = usingItem.use === 'heal' ? partyItemKind(item) : null
+    if (kind === 'sacredAsh') return
+
+    // 포인트업 · 에테르류 — 쓰기 **전에** 기술 칸부터 묻는다 (`ApplyItemEffectOnPokemon`)
+    if (kind === 'ppUp' || kind === 'ppRestoreOne') {
+      setMenu('ppMove')
+      setMenuAt(0)
+      return
+    }
+
+    // 비타민 · 노력치 깎는 열매 (`PartyMenuCB_UseItem_Basic` · `_SubtractEVs`)
+    if (kind === 'ev') {
+      const got = applyEvItem(selected, info, item)
+      if (got === null) { setNotice(plainText(partyText[P.noEffect])); return }
+      const after = befriend(got.mon)
+      const next = [...party]
+      next[at] = after
+      useSaveStore.setState({ party: next })
+      removeItem(item.pocket ?? 0, usingItem.item, 1)
+      const line = evUseLine(item, got.evChanged, after.friendship !== selected.friendship)
+      const stat = statNames[evChanges(item)[0]?.name ?? 0] ?? ''
+      const text = line === 'rose' ? P.baseRose : line === 'fell' ? P.friendFell : line === 'adores' ? P.friendMax : P.friendFloor
+      say(fillMenuText(partyText[text] ?? '', [nameOf(selected), stat]), () => { clearUsingItem(); back() })
       return
     }
 
@@ -942,6 +1011,74 @@ export function PartyScreen() {
     closeAll()
     open('evolution')
   }
+
+  /**
+   * 고른 기술 칸에 PP 도구를 쓴다 (`PartyMenu_MoveSelection_HandleInput`).
+   *
+   * 포인트업·맥스는 `raisePpUps`, 에테르류는 배틀 가방과 같은 `planItemUse`에 칸을 넘긴다.
+   * 효과가 없으면 105를 띄우고 도구는 그대로다. 끝나면 글을 넘기고 가방으로 돌아간다
+   */
+  const pickPpMove = (slotIdx: number): void => {
+    if (usingItem === null || !tables || !species || !selected) return
+    const item = tables.items.get(usingItem.item)
+    const info = species.of(selected)
+    const picked = selected.moves[slotIdx]
+    if (!info || !picked) return
+    setMenu(null)
+    const ppOf = (slot: { move: number; ppUps: number; pp: number }): number =>
+      maxPpOf(slot, tables.moves.get(slot.move).pp)
+    let after: PokemonInstance | null
+    let line: number
+    if (partyItemKind(item) === 'ppUp') {
+      after = raisePpUps(selected, slotIdx, tables.moves.get(picked.move).pp, ppUpsGiven(item))
+      line = P.ppIncreased
+    } else {
+      const plan = planItemUse(item, fieldTarget(selected, maxHp(selected, info), ppOf), slotIdx)
+      after = plan === null ? null : applyFieldPlan(selected, plan, maxHp(selected, info), ppOf)
+      line = P.ppRestored
+    }
+    if (after === null) { setNotice(plainText(partyText[P.noEffect])); return }
+    const next = [...party]
+    next[at] = friendlyAfter(item, after)
+    useSaveStore.setState({ party: next })
+    removeItem(item.pocket ?? 0, usingItem.item, 1)
+    say(fillMenuText(partyText[line] ?? '', [moveNames[picked.move] ?? '']), () => { clearUsingItem(); back() })
+  }
+
+  /**
+   * 성스러운재 (`PartyMenuCB_HandleSacredAsh`) — 열리자마자 쓰러진 마리를 **앞에서부터 전부** 살린다.
+   *
+   * 마리마다 70 「기력을 회복했다」를 A·B로 넘기고, 도구는 **마지막 뒤에 한 번만** 빠진다.
+   * 한 마리도 없으면 105를 띄우고 그대로 가방으로 간다. 한 번만 돈다(`ashRan`)
+   */
+  const ashRan = useRef(false)
+  useEffect(() => {
+    if (ashRan.current || usingItem === null || !tables || !species || partyText.length === 0) return
+    const item = tables.items.get(usingItem.item)
+    if (partyItemKind(item) !== 'sacredAsh') return
+    ashRan.current = true
+    const id = usingItem.item
+    const sick = faintedSlots(useSaveStore.getState().party)
+    const leave = (): void => { clearUsingItem(); back() }
+    if (sick.length === 0) { say(plainText(partyText[P.noEffect]), leave); return }
+    const step = (k: number): void => {
+      const slot = sick[k]
+      const now = useSaveStore.getState().party
+      const mon = slot === undefined ? undefined : now[slot]
+      if (slot === undefined || !mon) { leave(); return }
+      const next = [...now]
+      next[slot] = reviveFull(mon, maxHp(mon, species.of(mon)))
+      useSaveStore.setState({ party: next })
+      setCursor(slot)
+      say(fillMenuText(partyText[P.regained] ?? '', [nameOf(mon)]), () => {
+        if (k + 1 < sick.length) { step(k + 1); return }
+        removeItem(item.pocket ?? 0, id, 1)
+        leave()
+      })
+    }
+    step(0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 한 번만 돈다. 화면의 나머지 도우미는 매 렌더 새로 만들어진다
+  }, [usingItem, tables, species, partyText])
 
   /**
    * 글이나 능력치 창을 **하나 넘긴다.** 원작은 둘 다 A·B 아무거나로 넘긴다
@@ -1071,6 +1208,11 @@ export function PartyScreen() {
     }
     if (menu === 'detach') return flatLines(partyText[PARTY_CAPSULE.detach] ?? '')
     if (menu === 'learnForget') return plainText(partyText[P.whichForget])
+    // 늘리는 도구는 41, 회복하는 도구는 40 (`PartyMenu_MoveSelection_Display`의 `restore`)
+    if (menu === 'ppMove') {
+      const lifting = usingItem !== null && tables !== null && partyItemKind(tables.items.get(usingItem.item)) === 'ppUp'
+      return plainText(partyText[lifting ? P.boostWhich : P.restoreWhich])
+    }
     if (menu === 'learnAsk' || menu === 'learnStop') {
       return fillMenuText(partyText[menu === 'learnAsk' ? P.learnAsk : P.stopAsk] ?? '',
         [learning === null ? '' : nameOf(party[learning.slot] ?? selected), learning === null ? '' : moveNames[learning.move] ?? ''])
