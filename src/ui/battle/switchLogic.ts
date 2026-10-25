@@ -1,7 +1,8 @@
 // 교체 화면의 순수한 규칙 — 처음 커서 · 못 고르는 까닭의 롬 줄 · 상성 표시.
 //
 // 화면(`SwitchScreen`)이 그리는 일만 하도록 판단을 여기로 뺀다. 시험이 이 함수를 직접 본다.
-import { MATCH_LABEL, sharedMatch, type MoveMatch } from '../../engine/battle/movePreview'
+import { matchLabel, sharedMatch, type MoveMatch } from '../../engine/battle/movePreview'
+import type { DataLocale } from '../../data/gameData'
 import type { Move, Stats } from '../../data/schema'
 import { PARTY } from './romText'
 
@@ -52,10 +53,10 @@ export function matchView(data: Move | undefined, foes: readonly Foe[], ivs: Sta
 }
 
 /** 표시 글 — 기술 메뉴와 같은 말이다 */
-export function matchText(view: MatchView): string {
+export function matchText(view: MatchView, locale: DataLocale): string {
   return view.kind === 'one'
-    ? MATCH_LABEL[view.match]
-    : view.parts.map((p) => `${p.name} ${MATCH_LABEL[p.match]}`).join(' · ')
+    ? matchLabel(view.match, locale)
+    : view.parts.map((p) => `${p.name} ${matchLabel(p.match, locale)}`).join(' · ')
 }
 
 const RANK: Record<MoveMatch, number> = { super: 3, resisted: 2, immune: 1 }

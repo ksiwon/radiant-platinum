@@ -161,13 +161,13 @@ export function MonSheet(
                     <span className={css.num}>{m.data ? powerText(m.data.power) ?? none : ''}</span>
                     <span className={css.num}>{m.data ? accuracyText(m.data.accuracy) ?? none : ''}</span>
                     <span className={css.moveMatch}>
-                      {m.match?.kind === 'one' && <span className={css.hint[m.match.match]}>{matchText(m.match)}</span>}
+                      {m.match?.kind === 'one' && <span className={css.hint[m.match.match]}>{matchText(m.match, locale)}</span>}
                       {m.match?.kind === 'split' && m.match.parts.map((p) => (
                         <span
                           key={p.name} className={`${css.hint[p.match]} ${css.matchSplit}`}
-                          title={`${p.name} ${matchText({ kind: 'one', match: p.match })}`}
+                          title={`${p.name} ${matchText({ kind: 'one', match: p.match }, locale)}`}
                         >
-                          {p.name} {matchText({ kind: 'one', match: p.match })}
+                          {p.name} {matchText({ kind: 'one', match: p.match }, locale)}
                         </span>
                       ))}
                     </span>

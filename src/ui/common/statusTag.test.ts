@@ -6,7 +6,10 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { STATUS_VARS } from '../theme/window.css'
-import { STATUS_LABEL, StatusTag, statusKey } from './StatusTag'
+import { StatusTag, statusKey } from './StatusTag'
+import { STATUS_WORDS } from './statusWords'
+
+const STATUS_LABEL = STATUS_WORDS.ko
 
 describe('낱말', () => {
   it('롬 낱말이다 — 잠듦 · 독 · 맹독 · 화상 · 얼음 · 마비 · 기절', () => {
@@ -46,6 +49,6 @@ describe('그린 것', () => {
   it('낱말이 글자로 나온다', () => {
     expect(renderToStaticMarkup(createElement(StatusTag, { status: 'par' }))).toContain('>마비<')
     expect(renderToStaticMarkup(createElement(StatusTag, { fainted: true }))).toContain('>기절<')
-    expect(renderToStaticMarkup(createElement(StatusTag, { pkrs: true }))).toContain('>포켓루스<')
+    expect(renderToStaticMarkup(createElement(StatusTag, { pkrs: true }))).toContain('>포켓러스<')
   })
 })

@@ -65,6 +65,7 @@ import { useSheet } from '../common/useSheet'
 import { PIXEL, type PixelScale } from '../theme/scale'
 import { berryNumber, pad2, tmNumber } from './bagRows'
 import { MenuScreen } from './MenuScreen'
+import { menuUiText } from './menuUiText'
 import * as css from './menuChrome.css'
 import * as own from './shopScreen.css'
 import {
@@ -681,27 +682,28 @@ export function ShopScreen() {
   const entries = entriesOf(rows, tab === 'sell')
   const kind = isBP ? 'bp' : tab
   const noSell = isBP || isSeal || isDecor
+  const ui = menuUiText(locale)
   const foot = step.kind === 'count'
-    ? '↑↓ 개수 · ←→ ±10 · Z 결정 · X 그만둔다'
+    ? ui.shopFootCount
     : step.kind === 'confirm'
-      ? '↑↓ 고르기 · Z 결정 · X 그만둔다'
+      ? ui.shopFootConfirm
       : step.kind !== 'list'
-        ? 'Z 다음'
+        ? ui.shopFootNext
         : noSell
-          ? '↑↓ 고르기 · Z 결정 · X 닫기'
-          : '←→ 산다/판다 · ↑↓ 고르기 · Z 결정 · X 닫기'
+          ? ui.shopFootListNoSell
+          : ui.shopFootList
 
   return (
     <MenuScreen
-      title={kind === 'sell' ? '판다' : kind === 'bp' ? (data?.frontierTitle ?? walletLabel) : '산다'}
+      title={kind === 'sell' ? ui.sell : kind === 'bp' ? (data?.frontierTitle ?? walletLabel) : ui.buy}
       {...(noSell ? {} : {
         tabs: {
-          pages: [{ key: 'buy', label: '산다' }, { key: 'sell', label: '판다' }],
+          pages: [{ key: 'buy', label: ui.buy }, { key: 'sell', label: ui.sell }],
           at: tab === 'buy' ? 0 : 1,
           onPick: (i: number) => { if (step.kind === 'list' && (i === 0) !== (tab === 'buy')) switchTab() },
         },
       })}
-      note={`${String(rows.length - 1)}종`}
+      note={ui.shopKinds(rows.length - 1)}
       foot={foot}
     >
       <div className={own.stage}>

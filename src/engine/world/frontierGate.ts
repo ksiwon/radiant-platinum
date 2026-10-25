@@ -116,7 +116,7 @@ export function deferredScriptNotice(map: number, script: number, locale: DataLo
     const name = SYNDICATE_NAMES[locale]
     switch (locale) {
       case 'en': return `The ${name}'s shop\risn't available right now.`
-      case 'ja': return `${name}の　おみせは\rいまは　りようできない。`
+      case 'ja': return `${name}の\u3000おみせは\rいまは\u3000りようできない。`
       default: return `${name}의 리본 가게는\r지금은 이용할 수 없다.`
     }
   }

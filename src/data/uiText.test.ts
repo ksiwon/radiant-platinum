@@ -310,8 +310,8 @@ maybe('한국어 판의 새 줄', () => {
 
 describe('파티 머리 글', () => {
   it('숫자를 명사구 뒤에 두고 동사 뒤에 매달지 않는다', () => {
-    expect(partyHeader(5, 6)).toBe('전투 가능 5마리 · 파티 6/6')
-    expect(partyHeader(1, 3)).not.toMatch(/있다/)
+    expect(partyHeader(5, 6, 'ko')).toBe('전투 가능 5마리 · 파티 6/6')
+    expect(partyHeader(1, 3, 'ko')).not.toMatch(/있다/)
   })
 })
 

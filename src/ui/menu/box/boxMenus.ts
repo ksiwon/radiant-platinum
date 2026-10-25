@@ -3,7 +3,9 @@
 // ⚠️ **격자는 벽지 안에 다 든다.** 한때 아이콘을 원작 값(원본 32px을 3배 = 96px, 칸 간격 72px) 그대로 깔았고, 맨 아랫줄이
 // 벽지 아래로 12px 삐져나왔다 (DECISIONS 사용자 지적 ②). 아이콘 배율은 **벽지 안쪽 크기에서 거꾸로 정한다** —
 // 안쪽에 정수배가 안 들어가면 한 단 낮춘다 (`fitGrid`). 벽지 밖으로 나가는 픽셀은 0이다.
+import type { DataLocale } from '../../../data/gameData'
 import type { PokeIcons } from '../../../data/schema'
+import { menuUiText } from '../menuUiText'
 import { BOX_COLS, BOX_ROWS, BOX_SIZE, countInBox } from '../../../engine/pokemon/boxes'
 import type { Boxes } from '../../../engine/pokemon/boxes'
 import { iconSlot, SPECIES_EGG } from '../../../engine/pokemon/form'
@@ -239,26 +241,22 @@ interface FootState {
   heldItem: boolean
   /** 비교 쪽 이름 */
   comparePage: string
+  locale: DataLocale
 }
 
 /** 바닥 안내. 키 토큰 · 순서는 지금 것 그대로이고(시험이 문자열을 본다), 낱말만 「X 닫기」로 모았다 */
 export function boxFoot(state: FootState, modes: { compare: number, items: number }): string {
-  if (state.say) return 'Z 다음'
-  if (state.menu) return '↑↓ 고르기 · Z 결정 · X 그만둔다'
-  if (state.mode === modes.compare) return `↑↓←→ 고르기 · Z 올린다/내린다 · Tab ${state.comparePage} · X 닫기`
-  if (state.mode === modes.items) {
-    return state.heldItem
-      ? '↑↓←→ 옮기기 · Z 놓기 · Q/E 박스 · X 도구 돌려놓기'
-      : '↑↓←→ 고르기 · Z 도구 집기 · Tab 파티/박스 · Q/E 박스 · X 닫기'
-  }
-  return state.held
-    ? '↑↓←→ 옮기기 · Z 놓기 · Q/E 박스 · X 되돌리기'
-    : '↑↓←→ 고르기 · Z 메뉴 · Tab 파티/박스 · Q/E 박스 · X 닫기'
+  return menuUiText(state.locale).boxFoot({
+    say: state.say, menu: state.menu, compare: state.mode === modes.compare, items: state.mode === modes.items,
+    held: state.held, heldItem: state.heldItem, comparePage: state.comparePage,
+  })
 }
 
 /** 머리 오른쪽 한 줄 — 지금 박스의 채움과 전체 · 파티 (모두 실제 수) */
-export function boxNote(here: number, total: number, party: number, partyMax: number, capacity: number): string {
-  return `박스 ${String(here)}/${String(BOX_SIZE)} · 전체 ${String(total)}/${String(capacity)} · 파티 ${String(party)}/${String(partyMax)}`
+export function boxNote(
+  here: number, total: number, party: number, partyMax: number, capacity: number, locale: DataLocale,
+): string {
+  return menuUiText(locale).boxNote(here, BOX_SIZE, total, capacity, party, partyMax)
 }
 
 // ── 비교 ───────────────────────────────────────────────────────────────────

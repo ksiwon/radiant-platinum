@@ -164,7 +164,7 @@ describe('알림은 바닥에 안 뜬다', () => {
   const source = readFileSync(resolve(__dirname, 'BagScreen.tsx'), 'utf8')
 
   it('바닥(foot)은 bagFoot뿐이고 알림 · 칸 수가 섞이지 않는다', () => {
-    expect(source).toContain('foot={bagFoot(mode, canMove)}')
+    expect(source).toContain('foot={bagFoot(mode, canMove, locale)}')
     expect(source).not.toContain('notice ??')
     expect(source).not.toMatch(/칸`/)
   })

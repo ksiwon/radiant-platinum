@@ -14,7 +14,7 @@ import { dexSet } from '../../engine/pokemon/dex'
 import { useSaveStore } from '../../state/saveStore'
 
 const {
-  backupLine, failedLine, SAVE_HINT, saveKeys, saveMenuKeys, savedChime, writingLine,
+  backupLine, failedLine, saveHint, saveKeys, saveMenuKeys, savedChime, writingLine,
 } = await import('./SaveScreen')
 const { SaveInfo } = await import('./SaveInfo')
 
@@ -119,10 +119,14 @@ describe('결정 키', () => {
 
 describe('안내 줄', () => {
   it('그 자리에서 먹는 키만 적는다', () => {
-    expect(SAVE_HINT.answer).toContain('X 그만둔다')
-    for (const keys of ['retry', 'close', 'wait'] as const) expect(SAVE_HINT[keys]).not.toContain('X')
-    expect(SAVE_HINT.retry).toContain('←→ 고르기')
-    expect(SAVE_HINT.close).toBe('Z 닫기')
+    expect(saveHint('answer', 'ko')).toContain('X 그만둔다')
+    for (const locale of ['ko', 'en', 'ja'] as const) {
+      for (const keys of ['retry', 'close', 'wait'] as const) expect(saveHint(keys, locale)).not.toContain('X')
+      expect(saveHint('answer', locale)).toContain('X')
+    }
+    expect(saveHint('retry', 'ko')).toContain('←→ 고르기')
+    expect(saveHint('close', 'ko')).toBe('Z 닫기')
+    expect(saveHint('close', 'en')).toBe('Z Close')
   })
 })
 
@@ -139,15 +143,15 @@ describe('못 썼을 때의 대사', () => {
 
 describe('백업 줄', () => {
   it('받았는지 막혔는지만 적는다 — 파일 이름·확장자를 안 찍는다', () => {
-    expect(backupLine(got)).toBe('백업 파일도 받았다')
+    expect(backupLine(got, 'ko')).toBe('백업 파일도 받았다')
     for (const b of [got, blocked]) {
-      expect(backupLine(b)).not.toMatch(/rpsave|radiant|_/)
+      expect(backupLine(b, 'ko')).not.toMatch(/rpsave|radiant|_/)
     }
   })
 
   it('막혔으면 리포트는 남았다고 따로 알린다', () => {
-    expect(backupLine(blocked)).toContain('막았다')
-    expect(backupLine(blocked)).toContain('리포트는 남아 있다')
+    expect(backupLine(blocked, 'ko')).toContain('막았다')
+    expect(backupLine(blocked, 'ko')).toContain('리포트는 남아 있다')
   })
 })
 

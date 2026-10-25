@@ -11,10 +11,11 @@
 import { useEffect, useState } from 'react'
 import type { BattleAction } from '../../engine/battle/choice'
 import type { SafariCommand } from '../../engine/battle/safariBattle'
-import { MATCH_LABEL, type MoveMatch } from '../../engine/battle/movePreview'
+import { matchLabel, type MoveMatch } from '../../engine/battle/movePreview'
 import type { Move, PokeIcons } from '../../data/schema'
 import { loadPokeIcons } from '../../data/gameData'
 import { fillMenuText } from '../../data/uiText'
+import { useGameLocale } from '../../state/optionsStore'
 import { PIXEL } from '../theme/scale'
 import { TypeBadge } from '../common/TypeBadge'
 import { monIconAt } from '../menu/pokeIcon'
@@ -378,8 +379,9 @@ export function MoveMenu(
 
 /** 기술 이름 밑 한 줄. 상성이 없으면 자리도 안 잡는다 */
 function MatchLine({ match }: { match: MoveMatch | null }) {
+  const locale = useGameLocale()
   if (match === null) return null
-  return <span className={`${css.matchLine} ${css.matchTone[match]}`}>{MATCH_LABEL[match]}</span>
+  return <span className={`${css.matchLine} ${css.matchTone[match]}`}>{matchLabel(match, locale)}</span>
 }
 
 /**

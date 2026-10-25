@@ -17,12 +17,13 @@ import {
 import { atlasUrl } from '../../data/providers/atlas'
 import { useAssetImage } from '../../data/providers/useAssetUrl'
 import type { PokeIcons } from '../../data/schema'
-import { loadUiText } from '../../data/uiText'
+import { loadUiText, UI_BANK } from '../../data/uiText'
 import { typeMultiplier } from '../../engine/battle/ai/typeChart'
 import { BG_EVENT_TYPE, mapById, signsOf, world } from '../../engine/map/world'
 import { fieldScripts, HIDDEN_ITEM_FLAG_BASE, HIDDEN_ITEM_SCRIPT_BASE } from '../../engine/script/field'
 import { compatibility, compatibilityLevel } from '../../engine/pokemon/breeding'
 import { statsOf } from '../../engine/pokemon/instance'
+import { SPECIES_EGG } from '../../engine/pokemon/form'
 import {
   DOTART_HEIGHT, DOTART_WIDTH, MOVE_TESTER_TYPE_ORDER, POKETCH_COLOR_COUNT, POKETCH_HISTORY_MAX,
   POKETCH_MARKER_COUNT, PoketchApp, dotArtGet, dotArtSet, dowsingInRange,
@@ -39,6 +40,7 @@ import { useSaveStore } from '../../state/saveStore'
 import { worldState } from '../../state/worldState'
 import { monIcon } from '../menu/pokeIcon'
 import { usePoketchMemory } from './usePoketchMemory'
+import { usePoketchUiText } from './poketchText'
 import * as css from './poketch.css'
 
 export interface Nav {
@@ -124,6 +126,7 @@ function AnalogWatch({ large }: Nav) {
  * ⚠️ **맞춘 시각은 리포트에 남는다** — 원작이 `Poketch` 구조체에 넣어 두었다
  */
 function AlarmClock({ x, press, large }: Nav) {
+  const ui = usePoketchUiText()
   const poketch = useSaveStore((s) => s.poketch)
   useTicker(true, 1000)
   const { hour, minute } = gameClock()
@@ -143,7 +146,7 @@ function AlarmClock({ x, press, large }: Nav) {
   return (
     <div className={css.center}>
       {/* 울리는 동안은 글자가 깜빡인다 — 액정 글씨 그대로다. 컬러 그림 문자를 얹으면 OS 글꼴이 끼어든다 */}
-      <div className={ringing ? css.smallBlink : css.small}>{ringing ? '알람!' : poketch.alarm.set ? '켜짐' : '꺼짐'}</div>
+      <div className={ringing ? css.smallBlink : css.small}>{ringing ? ui.alarmRinging : poketch.alarm.set ? ui.alarmOn : ui.alarmOff}</div>
       <div className={css.bigNumber}>
         <span style={{ outline: large && x === 0 ? '1px solid currentColor' : 'none' }}>
           {pad2(poketch.alarm.hour)}
@@ -155,7 +158,7 @@ function AlarmClock({ x, press, large }: Nav) {
       </div>
       {large && (
         <div className={css.small} style={{ outline: x === 2 ? '1px solid currentColor' : 'none' }}>
-          {poketch.alarm.set ? '끈다' : '켠다'}
+          {poketch.alarm.set ? ui.alarmTurnOff : ui.alarmTurnOn}
         </div>
       )}
     </div>
@@ -164,6 +167,7 @@ function AlarmClock({ x, press, large }: Nav) {
 
 /** 스톱워치. 실제 시간으로 돈다 — 게임 시계가 아니다 */
 function Stopwatch({ press, large }: Nav) {
+  const ui = usePoketchUiText()
   const [state, setState] = usePoketchMemory<{ running: boolean; base: number; acc: number }>(
     PoketchApp.STOPWATCH, { running: false, base: 0, acc: 0 },
   )
@@ -180,13 +184,14 @@ function Stopwatch({ press, large }: Nav) {
         {pad2(ms / 60000)}:{pad2((ms / 1000) % 60)}
         <span className={css.small}>.{pad2((ms % 1000) / 10)}</span>
       </div>
-      {large && <div className={css.small}>{state.running ? 'Z 멈춘다' : 'Z 잰다'}</div>}
+      {large && <div className={css.small}>{state.running ? ui.stopwatchStop : ui.stopwatchStart}</div>}
     </div>
   )
 }
 
 /** 키친타이머. 위아래로 분을 맞추고 Z로 센다 */
 function KitchenTimer({ y, press, large }: Nav) {
+  const ui = usePoketchUiText()
   const [state, setState] = usePoketchMemory<{ minutes: number; until: number | null }>(
     PoketchApp.KITCHEN_TIMER, { minutes: 3, until: null },
   )
@@ -205,7 +210,7 @@ function KitchenTimer({ y, press, large }: Nav) {
   return (
     <div className={css.center}>
       <div className={css.bigNumber}>{pad2(left / 60000)}:{pad2((left / 1000) % 60)}</div>
-      <div className={done ? css.smallBlink : css.small}>{done ? '끝!' : state.until !== null ? '재는 중' : '↑↓ 분 · Z 시작'}</div>
+      <div className={done ? css.smallBlink : css.small}>{done ? ui.timerDone : state.until !== null ? ui.timerRunning : ui.timerSet}</div>
     </div>
   )
 }
@@ -251,6 +256,7 @@ function Calculator({ x, y, press, large }: Nav) {
 
 /** 카운터. Z로 하나씩 올리고 아래쪽 버튼으로 0으로 되돌린다 */
 function Counter({ y, press, large }: Nav) {
+  const ui = usePoketchUiText()
   const [count, setCount] = usePoketchMemory<number>(PoketchApp.COUNTER, 0)
   useOnPress(press, () => {
     if (!large) return
@@ -263,7 +269,7 @@ function Counter({ y, press, large }: Nav) {
         <div className={css.small}>
           <span style={{ outline: y !== 1 ? '1px solid currentColor' : 'none' }}>+1</span>
           {'  '}
-          <span style={{ outline: y === 1 ? '1px solid currentColor' : 'none' }}>0으로</span>
+          <span style={{ outline: y === 1 ? '1px solid currentColor' : 'none' }}>{ui.reset}</span>
         </div>
       )}
     </div>
@@ -272,6 +278,7 @@ function Counter({ y, press, large }: Nav) {
 
 /** 만보기. 걸음은 세이브에 쌓인다 */
 function Pedometer({ y, press, large }: Nav) {
+  const ui = usePoketchUiText()
   const steps = useSaveStore((s) => s.poketch.stepCount)
   useOnPress(press, () => {
     if (!large || y !== 1) return
@@ -281,10 +288,10 @@ function Pedometer({ y, press, large }: Nav) {
   return (
     <div className={css.center}>
       <div className={css.hugeNumber}>{String(steps % 100000).padStart(5, '0')}</div>
-      <div className={css.small}>걸음</div>
+      <div className={css.small}>{ui.steps}</div>
       {large && (
         <div className={css.small} style={{ outline: y === 1 ? '1px solid currentColor' : 'none' }}>
-          0으로
+          {ui.reset}
         </div>
       )}
     </div>
@@ -293,12 +300,13 @@ function Pedometer({ y, press, large }: Nav) {
 
 /** 동전던지기. 잉어킹 동전을 던진다 */
 function CoinToss({ press, large }: Nav) {
+  const ui = usePoketchUiText()
   const [heads, setHeads] = usePoketchMemory<boolean>(PoketchApp.COIN_TOSS, true)
   useOnPress(press, () => { if (large) setHeads(Math.random() < 0.5) })
   return (
     <div className={css.center}>
-      <div className={css.hugeNumber}>{heads ? '앞' : '뒤'}</div>
-      {large && <div className={css.small}>Z 던진다</div>}
+      <div className={css.hugeNumber}>{heads ? ui.heads : ui.tails}</div>
+      {large && <div className={css.small}>{ui.coinToss}</div>}
     </div>
   )
 }
@@ -556,10 +564,11 @@ function MonIcon(
  * 아이콘을 못 받은 때만 이름을 적는다 — 아이콘이 없으면 누군지 말할 것이 이름뿐이다
  */
 function PartyStatus({ large }: Nav) {
+  const ui = usePoketchUiText()
   const party = useSaveStore((s) => s.party)
   const { names, maxHp } = useSpeciesNames()
   const { icons, sheet } = useMonIcons()
-  if (!party.length) return <div className={css.missing}>포켓몬이 없다</div>
+  if (!party.length) return <div className={css.missing}>{ui.noMon}</div>
   const px = large ? 32 : 24
   return (
     <div className={css.monGrid}>
@@ -588,10 +597,11 @@ function PartyStatus({ large }: Nav) {
  * 원작도 여섯 마리를 두 줄 셋으로 처음 세운다 (`initialLocations`)
  */
 function FriendshipChecker({ large }: Nav) {
+  const ui = usePoketchUiText()
   const party = useSaveStore((s) => s.party)
   const { names } = useSpeciesNames()
   const { icons, sheet } = useMonIcons()
-  if (!party.length) return <div className={css.missing}>포켓몬이 없다</div>
+  if (!party.length) return <div className={css.missing}>{ui.noMon}</div>
   const px = large ? 32 : 24
   return (
     <div className={css.monGrid}>
@@ -750,6 +760,7 @@ function leftFlips(table: SpeciesLookup | null, mon: IconOf | undefined): boolea
  * 상관없이 늘 4다
  */
 function MatchupChecker({ x, press, large }: Nav) {
+  const ui = usePoketchUiText()
   const party = useSaveStore((s) => s.party)
   const { names, table } = useSpeciesNames()
   const { icons, sheet } = useMonIcons()
@@ -800,10 +811,10 @@ function MatchupChecker({ x, press, large }: Nav) {
     setState({ pick: next, level: null, run: state.run })
   })
 
-  if (!party.length) return <div className={css.missing}>포켓몬이 없다</div>
+  if (!party.length) return <div className={css.missing}>{ui.noMon}</div>
   // 표가 오는 중에는 아무것도 안 그린다 — 「없다」가 깜빡이면 거짓말이다
   if (!table) return <div />
-  if (!count) return <div className={css.missing}>포켓몬이 없다</div>
+  if (!count) return <div className={css.missing}>{ui.noMon}</div>
 
   const px = large ? 32 : 24
   const k = px / 32
@@ -888,11 +899,12 @@ function MatchupChecker({ x, press, large }: Nav) {
  * (`leftFlips`). 둘째는 늘 6, 알은 늘 4라 깃발을 안 본다
  */
 function DaycareChecker({ large }: Nav) {
+  const ui = usePoketchUiText()
   const daycare = useSaveStore((s) => s.daycare)
   const { names, table } = useSpeciesNames()
   const { icons, sheet } = useMonIcons()
   const slots = daycare.slots.filter((s) => s !== null)
-  if (!slots.length) return <div className={css.missing}>맡긴 포켓몬이 없다</div>
+  if (!slots.length) return <div className={css.missing}>{ui.noDaycareMon}</div>
   // 원작의 첫째는 **찬 칸 중 첫째**다 — 맡긴 수만큼 앞에서부터 채워 그린다
   const first = daycare.slots.findIndex((s) => s !== null)
   const px = large ? 32 : 24
@@ -911,8 +923,8 @@ function DaycareChecker({ large }: Nav) {
       <div className={css.row}>
         {/* 알 속은 아직 정해지지 않았다 — 흰 알이다 */}
         <MonIcon icons={icons} sheet={sheet} mon={daycare.eggPid !== 0 ? EGG : null} px={px} />
-        <span className={css.name}>알</span>
-        <span className={css.small}>{daycare.eggPid !== 0 ? '있다!' : '없다'}</span>
+        <span className={css.name}>{names[SPECIES_EGG] || ui.egg}</span>
+        <span className={css.small}>{daycare.eggPid !== 0 ? ui.eggHere : ui.eggNone}</span>
       </div>
     </div>
   )
@@ -977,6 +989,7 @@ export function historyCell(x: number, y: number): number {
 // ── 기술효과체커 ─────────────────────────────────────────────────────────────
 
 function MoveTester({ x, y, large }: Nav) {
+  const ui = usePoketchUiText()
   const [types, setTypes] = useState<readonly string[]>([])
   const [says, setSays] = useState<readonly string[]>([])
   useEffect(() => {
@@ -995,7 +1008,7 @@ function MoveTester({ x, y, large }: Nav) {
       <div className={css.small}>{types[attack] ?? '?'} → {types[defend] ?? '?'}</div>
       <div className={css.bigNumber} style={{ fontSize: 20 }}>{'!'.repeat(count) || '×'}</div>
       <div className={css.small}>{says[count] ?? ''}</div>
-      {large && <div className={css.small}>←→ 기술 · ↑↓ 상대</div>}
+      {large && <div className={css.small}>{ui.moveTesterKeys}</div>}
     </div>
   )
 }
@@ -1182,6 +1195,7 @@ function hereCell(): { x: number, y: number } | null {
  * 좌표를 32로 나눈다) — 마을 안을 걸어 다니는 동안 점이 안 움직이는 것이 원작이다
  */
 function MarkingMap({ x, press, large }: Nav) {
+  const ui = usePoketchUiText()
   const poketch = useSaveStore((s) => s.poketch)
   const at = ((x % POKETCH_MARKER_COUNT) + POKETCH_MARKER_COUNT) % POKETCH_MARKER_COUNT
   useOnPress(press, () => {
@@ -1212,7 +1226,7 @@ function MarkingMap({ x, press, large }: Nav) {
           />
         ))}
       </PoketchMapView>
-      {large && <div className={css.small}>←→ 표식 {at + 1} · Z 여기에 꽂는다</div>}
+      {large && <div className={css.small}>{ui.markerKeys(at + 1)}</div>}
     </div>
   )
 }
@@ -1231,6 +1245,7 @@ function MarkingMap({ x, press, large }: Nav) {
  * 이야기가 변수에 정해진 값을 적어야 나온다 (`SystemVars_CheckHiddenLocation`).
  */
 function BerrySearcher({ large }: Nav) {
+  const ui = usePoketchUiText()
   const patches = useSaveStore((s) => s.berryPatches)
   const dots = useMemo(() => readyBerrySpots(patches), [patches])
   const hidden = hiddenSpots((id) => fieldScripts.vars.get(id))
@@ -1247,7 +1262,7 @@ function BerrySearcher({ large }: Nav) {
           <span key={s.name} className={css.mapHidden} style={mapAt(s, large)} />
         ))}
       </PoketchMapView>
-      {large && <div className={css.small}>열린 밭 {dots.length}곳</div>}
+      {large && <div className={css.small}>{ui.berryPlots(dots.length)}</div>}
     </div>
   )
 }
@@ -1266,6 +1281,7 @@ function BerrySearcher({ large }: Nav) {
  * ⚠️ **원작은 아이콘을 세 마리 띄운다.** 우리 액정은 글자라 이름으로 적는다.
  */
 function TrainerCounter() {
+  const ui = usePoketchUiText()
   const records = useSaveStore((s) => s.radar.records)
   const { names } = useSpeciesNames()
   const chain = radarChain()
@@ -1276,7 +1292,7 @@ function TrainerCounter() {
     <div className={css.rows} style={{ fontSize: 10 }}>
       <div className={css.row}>
         <span className={css.name}>
-          {chain.species === 0 ? '지금 잇는 사슬 없음' : nameOf(chain.species)}
+          {chain.species === 0 ? ui.noChain : nameOf(chain.species)}
         </span>
         <span>{chain.species === 0 ? '' : chain.count}</span>
       </div>
@@ -1286,7 +1302,7 @@ function TrainerCounter() {
           <span>{r.count}</span>
         </div>
       ))}
-      {best.length === 0 && <div className={css.small}>기록 없음</div>}
+      {best.length === 0 && <div className={css.small}>{ui.noRecords}</div>}
     </div>
   )
 }
@@ -1299,6 +1315,7 @@ function TrainerCounter() {
  * 손짓만 없다. 탐지 반경(0·1·2)은 점 크기로 남긴다
  */
 function DowsingMachine({ large }: Nav) {
+  const ui = usePoketchUiText()
   const [ranges, setRanges] = useState<Map<number, { range: number }> | null>(null)
   useEffect(() => {
     let live = true
@@ -1335,7 +1352,7 @@ function DowsingMachine({ large }: Nav) {
           )
         })}
       </div>
-      <div className={css.small}>{found.length ? `반응 ${String(found.length)}` : '반응 없음'}</div>
+      <div className={css.small}>{found.length ? ui.dowsingFound(found.length) : ui.dowsingNone}</div>
     </div>
   )
 }
@@ -1343,9 +1360,12 @@ function DowsingMachine({ large }: Nav) {
 // ── 캘린더 · 색 ──────────────────────────────────────────────────────────────
 
 function Calendar({ x, y, press, large }: Nav) {
+  const ui = usePoketchUiText()
   const poketch = useSaveStore((s) => s.poketch)
   const now = new Date()
   const month = now.getMonth() + 1
+  // 롬 월 이름 뱅크(414) — 일본 롬에는 없어 비면 우리 글이다
+  const monthNames = useBank(UI_BANK.monthNames)
   const today = now.getDate()
   const days = new Date(now.getFullYear(), month, 0).getDate()
   const first = new Date(now.getFullYear(), month - 1, 1).getDay()
@@ -1363,7 +1383,7 @@ function Calendar({ x, y, press, large }: Nav) {
 
   return (
     <div className={css.center} style={{ justifyContent: 'flex-start', gap: 2 }}>
-      <div className={css.small}>{month}월</div>
+      <div className={css.small}>{monthNames[month - 1] || ui.month(month)}</div>
       <div className={css.month}>
         {Array.from({ length: first }, (_, i) => <span key={`p${String(i)}`} />)}
         {Array.from({ length: days }, (_, i) => {
@@ -1383,6 +1403,7 @@ function Calendar({ x, y, press, large }: Nav) {
 }
 
 function ColorChanger({ x, press, large }: Nav) {
+  const ui = usePoketchUiText()
   const color = useSaveStore((s) => s.poketch.screenColor)
   const at = ((x % POKETCH_COLOR_COUNT) + POKETCH_COLOR_COUNT) % POKETCH_COLOR_COUNT
   // 칸에 그리는 색은 그 액정의 **바탕**이다. 그게 화면의 86%를 덮는 색이라
@@ -1411,7 +1432,7 @@ function ColorChanger({ x, press, large }: Nav) {
           />
         ))}
       </div>
-      {large && <div className={css.small}>←→ 고르기 · Z 바꾼다</div>}
+      {large && <div className={css.small}>{ui.colorKeys}</div>}
     </div>
   )
 }
@@ -1430,12 +1451,13 @@ const LINK_SEARCHER_TEXT = { title: 0, unusable: 3 } as const
  * 기기 화면에 안 올린다. 뱅크를 못 받은 자료에서는 그 줄의 뜻을 우리 말로 적는다
  */
 function LinkSearcher() {
+  const ui = usePoketchUiText()
   const lines = useBank(POKETCH_TEXT_BANK.linkSearcher)
   const title = lines[LINK_SEARCHER_TEXT.title]
   return (
     <div className={css.missing}>
       {title && <div className={css.title}>{title}</div>}
-      <div>{lines[LINK_SEARCHER_TEXT.unusable] ?? '이곳에서는 검색할 수 없다'}</div>
+      <div>{lines[LINK_SEARCHER_TEXT.unusable] ?? ui.linkUnusable}</div>
     </div>
   )
 }

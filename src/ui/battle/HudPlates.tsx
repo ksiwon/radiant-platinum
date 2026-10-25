@@ -11,8 +11,9 @@ import { seqStage } from '../../scene/battle/stageRefs'
 import type { BattleView, ViewMon } from '../../engine/battle/view'
 import type { KeyOwner } from '../../engine/battle/aftermath'
 import type { RosterEntry } from '../../state/battleStore'
+import { useGameLocale } from '../../state/optionsStore'
 import { HP_VARS, STATUS_VARS } from '../theme/window.css'
-import { STATUS_LABEL } from '../common/StatusTag'
+import { statusWord } from '../common/statusWords'
 import { benchStatusOf } from './benchStatus'
 import { GAUGE_SLOTS, gaugeSlots } from './partyGauge'
 import { shownColor, shownHp, useDrain, useSlide } from './hpDrain'
@@ -150,6 +151,7 @@ export function MonCard(
   // ⚠️ **변신해도 이름은 제 것이다** (`baseSpecies`). 뷰의 `species`는 따라 한 쪽의 종이라
   // 그대로 쓰면 메타몽 판이 「꼬마돌」로 바뀐다 — 원작 체력판은 제 별명을 그대로 둔다
   const own = mon.baseSpecies ?? mon.species
+  const locale = useGameLocale()
   const name = nickname ?? (own !== null ? names?.species[own] : null) ?? mon.speciesName
   const ratio = mon.maxHp > 0 ? Math.max(0, Math.min(mon.hp, mon.maxHp)) / mon.maxHp : 0
   const maxHp = mon.maxHp
@@ -215,7 +217,7 @@ export function MonCard(
             ? (
               <span className={css.hpHome}>
                 <span className={css.statusTag} style={STATUS_VARS[mon.status]}>
-                  {STATUS_LABEL[mon.status] ?? mon.status}
+                  {statusWord(mon.status, locale)}
                 </span>
               </span>
             )

@@ -19,7 +19,7 @@ import {
   loadItemIcons, loadItemNames, loadMoveNames, loadSpecies, loadSpeciesNames, type SpeciesTable,
 } from '../../data/gameData'
 import type { Item, ItemIcons } from '../../data/schema'
-import { fillMenuText, loadUiText, PARTY_CAPSULE, PARTY_GIVE, partyHeader } from '../../data/uiText'
+import { fillMenuText, loadUiText, PARTY_CAPSULE, PARTY_GIVE, partyHeader, START_MENU } from '../../data/uiText'
 import { detachCapsule } from '../../engine/world/ballCapsule'
 import { genderOf, maxHp } from '../../engine/pokemon/instance'
 import { FIELD_MOVES, MENU_MOVES, type FieldMoveId, type MenuMoveId } from '../../engine/script/fieldMoves'
@@ -35,6 +35,7 @@ import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import type { PokemonInstance } from '../../engine/pokemon/instance'
 import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
+import { menuUiText } from './menuUiText'
 import { loadDialogueBank, loadItems, loadMoves, type ItemTable, type MoveTable } from '../../data/gameData'
 import { planItemUse } from '../../engine/battle/meta/bagItem'
 import {
@@ -260,6 +261,8 @@ export function PartyScreen() {
   const [partyText, setPartyText] = useState<string[]>([])
   /** 요약 화면 뱅크(455) — 「중요한 기술입니다. 잊게 할 수 없습니다!」(156)가 여기 있다 */
   const [summaryText, setSummaryText] = useState<string[]>([])
+  /** 시작 메뉴 뱅크 367 — 화면 제목 「포켓몬」(`START_MENU.party`) */
+  const [startText, setStartText] = useState<string[]>([])
   /** 가방에서 들고 온 도구. 있으면 이 화면은 "누구에게 쓸까"다 (PARITY §4.1) */
   const usingItem = useMenuStore((s) => s.usingItem)
   const clearUsingItem = useMenuStore((s) => s.clearUsingItem)
@@ -316,14 +319,16 @@ export function PartyScreen() {
       loadUiText('summary', locale).catch(() => [] as string[]),
       loadItemNames(locale),
       loadDialogueBank(locale, STAT_NAME_BANK).catch(() => [] as string[]),
+      loadUiText('startMenu', locale).catch(() => [] as string[]),
     ])
-      .then(([table, list, moves, party, summary, items, stats]) => {
+      .then(([table, list, moves, party, summary, items, stats, start]) => {
         if (!alive) return
         setSpecies(table); setNames(list); setMoveNames(moves)
         setPartyText(party)
         setSummaryText(summary)
         setItemNames(items)
         setStatNames(stats)
+        setStartText(start)
       })
       .catch(() => { /* 이름만 빈다 */ })
     return () => { alive = false }
@@ -1221,15 +1226,16 @@ export function PartyScreen() {
   }
   const dockLines = pages[0] ?? notice ?? (inMenu ? menuAsk() : modeText)
 
+  const footUi = menuUiText(locale)
   const footKeys = inMenu
-    ? '↑↓ 고르기 · Z 결정 · X 되돌리기'
+    ? footUi.partyFootMenu
     : transfer !== null || choosingMon || givingItem !== null
-      ? '↑↓←→ 고르기 · Z 결정 · X 그만둔다'
+      ? footUi.partyFootPick
       : usingItem !== null
-        ? `↑↓←→ 누구에게 · Z ${usingItem.use === 'tmhm' ? '가르친다' : '쓴다'} · X 그만둔다`
+        ? footUi.partyFootUse(usingItem.use === 'tmhm')
         : held !== null
-          ? '↑↓←→ 옮기기 · Z 놓기 · X 되돌리기'
-          : '↑↓←→ 고르기 · Z 메뉴 · X 닫기'
+          ? footUi.partyFootHeld
+          : footUi.partyFootList
 
   /** 글 띠 왼쪽 — 가방에서 들고 온 도구의 아이콘과 이름(기술머신이면 기술 이름) */
   const carried = usingItem?.item ?? givingItem
@@ -1291,8 +1297,8 @@ export function PartyScreen() {
 
   return (
     <MenuScreen
-      title="포켓몬"
-      note={partyHeader(alive, party.length)}
+      title={startText[START_MENU.party] ?? ''}
+      note={partyHeader(alive, party.length, locale)}
       foot={footKeys}
       message={(
         <MessageDock

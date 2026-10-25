@@ -11,6 +11,7 @@
 // ⚠️ **크게 펼치면 필드 입력이 멈춘다.** 원작은 손가락으로 아래 화면을 만지며
 // 걸을 수 있었지만 우리는 키보드가 하나다. 작게 접힌 채로는 시계도 걸음도
 // 파티 체력도 살아서 도니, 걸으면서 보는 쪽은 그대로 남는다.
+import { usePoketchUiText } from './poketchText'
 import { useEffect, useRef, useState } from 'react'
 import { assignInlineVars } from '@vanilla-extract/dynamic'
 import { loadUiText } from '../../data/uiText'
@@ -42,6 +43,7 @@ function othersBusy(): boolean {
 }
 
 export function PoketchWidget() {
+  const ui = usePoketchUiText()
   const poketch = useSaveStore((s) => s.poketch)
   // 메뉴 스택이 비어 있지 않은 동안에는 늘 걷는다 — 시작 메뉴 · 전당 · 크레딧 · 상장 같은 의식 화면도 여기 든다.
   // 포켓치는 한 자리를 다투는 물건이라 메뉴가 서 있는 동안 위로 비켜선다 (SYSTEM §0 포켓치)
@@ -187,7 +189,7 @@ export function PoketchWidget() {
           </div>
         </div>
         <div className={css.label}>{names[poketch.appIndex] ?? ''}</div>
-        {large && <div className={css.hint}>Q E 앱 · R 접는다 · R 길게 감춘다</div>}
+        {large && <div className={css.hint}>{ui.widgetKeys}</div>}
       </div>
     </div>
   )

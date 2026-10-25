@@ -217,12 +217,12 @@ describe('박스 개수는 실제 칸 수다 (사용자 지적 ②)', () => {
   })
 
   it('머리 한 줄은 지금 박스의 실제 수 · 전체 · 파티다', () => {
-    expect(boxNote(2, 3, 4, 6, 540)).toBe('박스 2/30 · 전체 3/540 · 파티 4/6')
+    expect(boxNote(2, 3, 4, 6, 540, 'ko')).toBe('박스 2/30 · 전체 3/540 · 파티 4/6')
   })
 })
 
 describe('바닥 안내와 비교 막대', () => {
-  const base = { say: false, menu: false, mode: 2, held: false, heldItem: false, comparePage: '능력치' }
+  const base = { say: false, menu: false, mode: 2, held: false, heldItem: false, comparePage: '능력치', locale: 'ko' as const }
   const modes = { compare: 4, items: 3 }
 
   it('지금 문장 그대로다 — 낱말만 「X 닫기」로 모였다', () => {

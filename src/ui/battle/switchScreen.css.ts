@@ -268,7 +268,7 @@ export const push = style({ marginLeft: 'auto', display: 'inline-flex' })
 /**
  * 상대에게 얼마나 통하는가 (귀띔이지 판정이 아니다).
  *
- * 키는 `movePreview`의 `MoveMatch`와 같다 — 글도 그쪽 `MATCH_LABEL`을 쓴다. 기술 메뉴와 말끝이 갈리지 않게
+ * 키는 `movePreview`의 `MoveMatch`와 같다 — 글도 그쪽 `matchLabel`을 쓴다. 기술 메뉴와 말끝이 갈리지 않게
  * 한 표에서 받는다
  */
 const hintBase = { fontWeight: 800, fontSize: 11, flex: '0 0 auto' } as const

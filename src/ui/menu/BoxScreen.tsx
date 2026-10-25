@@ -33,6 +33,8 @@ import type { BoxSpot } from '../../engine/pokemon/boxes'
 import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
+import { fieldScripts } from '../../engine/script/field'
+import { regigigasLockedForRuins } from '../../engine/world/siwon'
 import { SPECIES_CHATOT } from '../../engine/pokemon/chatotCry'
 import type { PixelScale } from '../theme/scale'
 import { ITEM_GRISEOUS_ORB, SPECIES_GIRATINA } from '../../engine/pokemon/form'
@@ -47,6 +49,7 @@ import { MessageDock } from '../common/MessageDock'
 import { boxFoot, boxNote, filled, filmCells, nameOfMon, occupancyDots } from './box/boxMenus'
 import { BoxCensus, BoxDetail } from './box/BoxDetail'
 import { BoxCompare, COMPARE_PAGES } from './box/BoxCompare'
+import { menuUiText } from './menuUiText'
 import { BoxFilm } from './box/BoxFilm'
 import { BoxParty } from './box/BoxParty'
 import { BoxWall } from './box/BoxWall'
@@ -133,7 +136,7 @@ const MON_TEXT = {
 } as const
 
 /** 묻기 전에 막는 까닭의 줄 (`BoxAppMan_CheckReleaseMonValid`) */
-const REFUSAL_TEXT: Record<ReleaseRefusal, number> = { egg: 31, mail: 30, capsule: 29, lastMon: BOX_TEXT.lastMon }
+const REFUSAL_TEXT: Record<Exclude<ReleaseRefusal, 'siwonRegi'>, number> = { egg: 31, mail: 30, capsule: 29, lastMon: BOX_TEXT.lastMon }
 
 /** 테마 줄 (`BoxMenu_FillWallpaperMenu`) — 애호가 줄은 푼 벽지가 있어야 서고, 다섯부터 둘째 줄이 선다 */
 function themeItems(unlocked: number): number[] {
@@ -411,7 +414,11 @@ export function BoxScreen() {
         setMenu({ kind: 'store', items: [...Array(BOX_COUNT).keys()], at: box, target })
         return
       case BOX_MENU.release: {
-        const refusal = releaseRefusal(mon, party, target.pane === 'party')
+        // 시원이 준 레지기가스는 레지를 잡기 전까지 못 놓는다 — 유적 셋과 마지막 선물이 그 마리에 걸려 있다 (SIWON.md §5).
+        // 원작에 없는 규칙이라 글은 「되돌아와 버렸다!」「걱정했었나...」 줄이다
+        const lockRegi = regigigasLockedForRuins(mon, useSaveStore.getState().siwonGiven, (id) => fieldScripts.vars.get(id))
+        const refusal = releaseRefusal(mon, party, target.pane === 'party', lockRegi)
+        if (refusal === 'siwonRegi') { setMenu(null); setSay([line(MON_TEXT.returned, mon), line(MON_TEXT.worried)]); return }
         if (refusal !== null) { setMenu(null); setSay([msg[REFUSAL_TEXT[refusal]] ?? '']); return }
         setMenu({ kind: 'release', items: [BOX_MENU.yes, BOX_MENU.no], at: 1, target })
         return
@@ -662,7 +669,8 @@ export function BoxScreen() {
       mode,
       held: held !== null,
       heldItem: heldItem !== null,
-      comparePage: COMPARE_PAGES[comparePage],
+      comparePage: menuUiText(locale).comparePages[comparePage] ?? '',
+      locale,
     },
     { compare: BOX_MODE.compare, items: BOX_MODE.items },
   )
@@ -828,7 +836,7 @@ export function BoxScreen() {
   return (
     <MenuScreen
       title={title}
-      note={boxNote(inBox, countAll(boxes), party.length, PARTY_MAX, BOX_COUNT * BOX_SIZE)}
+      note={boxNote(inBox, countAll(boxes), party.length, PARTY_MAX, BOX_COUNT * BOX_SIZE, locale)}
       foot={foot}
     >
       <div className={own.stage} ref={setStageEl}>

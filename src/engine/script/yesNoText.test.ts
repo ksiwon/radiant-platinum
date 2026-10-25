@@ -49,7 +49,7 @@ describe('오프닝 화면 글', () => {
     }
     const ja = introUiText('ja')
     expect(ja.ballHint.includes('ー')).toBe(false)
-    expect(ja.choiceHint.includes('　')).toBe(true)
+    expect(ja.choiceHint.includes('\u3000')).toBe(true)
     expect(introUiText('en').nameHint(7)).toContain('7')
   })
 })

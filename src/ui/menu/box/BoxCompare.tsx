@@ -9,6 +9,7 @@ import { statsOf } from '../../../engine/pokemon/instance'
 import type { PokemonInstance } from '../../../engine/pokemon/instance'
 import * as own from '../boxScreen.css'
 import { compareBar } from './boxMenus'
+import { useMenuUiText } from '../menuUiText'
 
 /**
  * 비교 쪽 둘 (`enum CompareMode`의 능력치 · 기술).
@@ -17,10 +18,8 @@ import { compareBar } from './boxMenus'
  */
 export const COMPARE_PAGES = ['능력치', '기술'] as const
 
-const STAT_ROWS: readonly (readonly [string, keyof ReturnType<typeof statsOf>])[] = [
-  ['HP', 'hp'], ['공격', 'atk'], ['방어', 'def'],
-  ['특공', 'spa'], ['특방', 'spd'], ['스피드', 'spe'],
-]
+/** 능력 여섯의 키. 이름표는 `menuUiText`의 `compareStats`가 같은 차례로 준다 */
+const STAT_ROWS: readonly (keyof ReturnType<typeof statsOf>)[] = ['hp', 'atk', 'def', 'spa', 'spd', 'spe']
 
 /**
  * ⚠️ **알은 능력치도 기술도 안 보인다.** 안에 든 종족이 새기 때문이다 — 원작도 알이면 성격 · 능력치 · 기술 줄을 안 찍는다
@@ -37,7 +36,7 @@ function statMax(
   for (const mon of mons) {
     if (mon === null || mon.isEgg) continue
     const stats = statsOf(mon, species.of(mon))
-    for (const [, key] of STAT_ROWS) top = Math.max(top, stats[key])
+    for (const key of STAT_ROWS) top = Math.max(top, stats[key])
   }
   return top
 }
@@ -68,8 +67,9 @@ export function BoxCompare(
   // 알은 「알」이다 (`BoxApp_LoadBoxMonIntoComparison`이 알이면 종족 이름 칸을 쓴다)
   const nameOf = (mon: PokemonInstance): string =>
     (mon.isEgg ? names[SPECIES_EGG] : mon.nickname ?? names[mon.species]) ?? `#${String(mon.species)}`
+  const ui = useMenuUiText()
   const [left, right] = mons
-  if (!left && !right) return <div className={own.compareNote}>Z로 두 마리를 올린다 · Tab으로 쪽을 넘긴다</div>
+  if (!left && !right) return <div className={own.compareNote}>{ui.compareEmpty}</div>
   const top = statMax(mons, species)
 
   return (
@@ -79,14 +79,15 @@ export function BoxCompare(
         <Face mon={right ?? null} name={right ? nameOf(right) : ''} />
       </div>
       <div className={own.compareTabs}>
-        {COMPARE_PAGES.map((label, i) => (
+        {ui.comparePages.map((label, i) => (
           <span key={label} className={i === page ? `${own.compareTab} ${own.compareTabOn}` : own.compareTab}>{label}</span>
         ))}
       </div>
 
       {page === 0 && species && left && right && (
         <div className={own.compareRows}>
-          {STAT_ROWS.map(([label, key]) => {
+          {STAT_ROWS.map((key, row) => {
+            const label = ui.compareStats[row] ?? key
             const a = seen(left) ? statsOf(left, species.of(left))[key] : null
             const b = seen(right) ? statsOf(right, species.of(right))[key] : null
             // 이긴 쪽은 둘 다 보일 때만 가린다
@@ -135,7 +136,7 @@ export function BoxCompare(
         </div>
       )}
 
-      {(!left || !right) && <div className={own.compareNote}>한 마리를 더 올린다</div>}
+      {(!left || !right) && <div className={own.compareNote}>{ui.compareOneMore}</div>}
     </div>
   )
 }

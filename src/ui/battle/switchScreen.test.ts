@@ -9,7 +9,7 @@ import { partySummary } from '../../engine/battle/choice'
 import type { BattleRequest } from '../../engine/battle/events'
 import { romAbility } from '../../engine/battle/sim/bridge'
 import { TYPE } from '../../engine/battle/ai/typeChart'
-import { MATCH_LABEL, sharedMatch } from '../../engine/battle/movePreview'
+import { MATCH_WORDS, sharedMatch } from '../../engine/battle/movePreview'
 import type { Move, Stats } from '../../data/schema'
 import * as css from './switchScreen.css'
 import { bestMatch, firstPickable, matchText, matchView, whyLine, type Foe } from './switchLogic'
@@ -156,8 +156,8 @@ describe('교체 화면의 상성 귀띔', () => {
 
   /** 말은 기술 메뉴의 표 하나에서 온다. 색 칸도 그 키를 그대로 쓴다 */
   it('색 칸의 키가 기술 메뉴의 말과 같다', () => {
-    expect(Object.keys(css.hint).sort()).toEqual(Object.keys(MATCH_LABEL).sort())
-    expect(MATCH_LABEL).toEqual({
+    expect(Object.keys(css.hint).sort()).toEqual(Object.keys(MATCH_WORDS.ko).sort())
+    expect(MATCH_WORDS.ko).toEqual({
       super: '효과가 굉장함', resisted: '효과가 별로임', immune: '효과가 없음',
     })
   })
@@ -233,7 +233,7 @@ describe('교체 화면의 판단 (`switchLogic`)', () => {
   it('더블에서 상대 둘의 결과가 갈리면 이름을 붙여 둘 다 적는다', () => {
     const view = matchView(thunder(), [foe('무우마직', TYPE.WATER), foe('팽태자', TYPE.GROUND)], null)
     expect(view).toEqual({ kind: 'split', parts: [{ name: '무우마직', match: 'super' }, { name: '팽태자', match: 'immune' }] })
-    expect(matchText(view!)).toBe('무우마직 효과가 굉장함 · 팽태자 효과가 없음')
+    expect(matchText(view!, 'ko')).toBe('무우마직 효과가 굉장함 · 팽태자 효과가 없음')
     // 같으면 한 마디다
     expect(matchView(thunder(), [foe('a', TYPE.WATER), foe('b', TYPE.FLYING)], null)).toEqual({ kind: 'one', match: 'super' })
   })

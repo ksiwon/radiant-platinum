@@ -302,10 +302,16 @@ export const MART_TEXT = {
  * 파티 화면 머리의 한 줄 — 싸울 수 있는 마리와 데리고 있는 마리.
  *
  * ⚠️ **롬 글이 아니다.** 원작 파티 화면에는 이 줄이 없고(판 여섯이 그 자체로 말한다) 우리 창 머리에만 붙는다.
- * 그래서 숫자를 동사 뒤에 매달지 않고 명사구로 둔다 — 「싸울 수 있다 6」은 읽다가 걸린다
+ * 그래서 숫자를 동사 뒤에 매달지 않고 명사구로 둔다 — 「싸울 수 있다 6」은 읽다가 걸린다.
+ * 영어 · 일본어도 우리 글이다(일본어는 히라가나 · 전각 공백)
  */
-export function partyHeader(alive: number, size: number): string {
-  return `전투 가능 ${String(alive)}마리 · 파티 ${String(size)}/6`
+export function partyHeader(alive: number, size: number, locale: DataLocale): string {
+  const [a, n] = [String(alive), String(size)]
+  switch (locale) {
+    case 'en': return `Able to battle ${a} · Party ${n}/6`
+    case 'ja': return `たたかえる\u3000${a}ひき\u3000·\u3000てもち\u3000${n}/6`
+    case 'ko': return `전투 가능 ${a}마리 · 파티 ${n}/6`
+  }
 }
 
 /** 코인 창의 문장 틀 (`FieldMenu_PrintCoinsToWindow` — `menu_entries` 뱅크) */

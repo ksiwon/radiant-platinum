@@ -8,7 +8,7 @@
 // 안 남는다 (`state/saveStore.ts` 머리말).
 import { useEffect, useRef, useState } from 'react'
 import { fillMenuText, loadUiText, SAVE_TEXT, UI_BANK, YES_NO } from '../../data/uiText'
-import { loadDialogueBank } from '../../data/gameData'
+import { loadDialogueBank, type DataLocale } from '../../data/gameData'
 import { world } from '../../engine/map/world'
 import { fieldScripts } from '../../engine/script/field'
 import { useMenuStore } from '../../state/menuStore'
@@ -24,6 +24,7 @@ import { useMenuKeys } from './useMenuKeys'
 import { SaveInfo } from './SaveInfo'
 import * as pop from '../common/choiceMenu.css'
 import * as own from './saveScreen.css'
+import { menuUiText } from './menuUiText'
 
 type Phase = 'ask' | 'overwrite' | 'writing' | 'done' | 'failed'
 
@@ -61,11 +62,14 @@ export function saveKeys(phase: Phase, backup: Backup): SaveKeys {
  * 아래 안내 줄. **그 자리에서 실제로 먹는 키만** 적는다 — 다 쓴 뒤에는 X가 아무것도
  * 안 하므로 「X 그만둔다」를 안 띄운다
  */
-export const SAVE_HINT: Record<SaveKeys, string> = {
-  answer: '←→ 고르기 · Z 결정 · X 그만둔다',
-  retry: '←→ 고르기 · Z 결정',
-  close: 'Z 닫기',
-  wait: '',
+export function saveHint(keys: SaveKeys, locale: DataLocale): string {
+  const ui = menuUiText(locale)
+  switch (keys) {
+    case 'answer': return ui.saveAnswer
+    case 'retry': return ui.saveRetry
+    case 'close': return ui.saveClose
+    case 'wait': return ''
+  }
 }
 
 /** 키가 부르는 일 — 화면이 넘겨준다 */
@@ -126,10 +130,9 @@ export function failedLine(common: readonly string[]): string {
  * 처럼 저장소 이름·밑줄·확장자가 대사 아래에 그대로 찍혔다. 받은 파일은 브라우저가
  * 내려받기 목록에 이미 보여 주고, 여기서 알릴 것은 받았는지 막혔는지 하나다
  */
-export function backupLine(backup: NonNullable<Backup>): string {
-  return backup.started
-    ? '백업 파일도 받았다'
-    : '브라우저가 백업 파일 다운로드를 막았다. 리포트는 남아 있다'
+export function backupLine(backup: NonNullable<Backup>, locale: DataLocale): string {
+  const ui = menuUiText(locale)
+  return backup.started ? ui.backupDone : ui.backupBlocked
 }
 
 /**
@@ -284,7 +287,7 @@ export function SaveScreen() {
         : phase === 'done' ? fillMenuText(common[SAVE_TEXT.done] ?? '', [save.trainer.name])
           : common[SAVE_TEXT.ask]
 
-  const hint = SAVE_HINT[keys]
+  const hint = saveHint(keys, locale)
 
   return (
     <div className={own.root}>
@@ -298,14 +301,14 @@ export function SaveScreen() {
         */}
         {backup && phase === 'done' && (
           <div className={backup.started ? own.backup : `${own.backup} ${own.backupBad}`}>
-            {backupLine(backup)}
+            {backupLine(backup, locale)}
           </div>
         )}
 
         {keys === 'answer' && (
           <ReportChoices
             label="예 아니오"
-            labels={[entries[YES_NO.yes] ?? '예', entries[YES_NO.no] ?? '아니오']}
+            labels={[entries[YES_NO.yes] ?? menuUiText(locale).yes, entries[YES_NO.no] ?? menuUiText(locale).no]}
             yes={yes}
             onHover={setYes}
             onPick={(first) => { if (first) write(); else back() }}
@@ -315,7 +318,7 @@ export function SaveScreen() {
         {keys === 'retry' && (
           <ReportChoices
             label="백업"
-            labels={['백업 파일 받기', '닫기']}
+            labels={menuUiText(locale).backupButtons}
             yes={yes}
             onHover={setYes}
             onPick={(first) => { if (first) retryBackup(); else closeAll() }}

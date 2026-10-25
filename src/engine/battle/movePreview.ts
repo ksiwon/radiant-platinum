@@ -8,6 +8,7 @@
 // **명령을 고르는 동안 보여 줄 어림**이다. 그래서 sim을 안 부른다 — 기술 칸
 // 네 개를 그리자고 심판을 돌릴 수는 없다.
 import { effectivenessOf } from './ai/typeChart'
+import type { DataLocale } from '../../data/gameData'
 import type { Move, Stats } from '../../data/schema'
 
 /** 화면에 뜨는 네 가지. 1배는 아무 말도 안 한다 */
@@ -68,11 +69,22 @@ export function moveMatch(
   return null
 }
 
-/** 기술 칸 밑에 적히는 말. BDSP 한국어판 그대로다 */
-export const MATCH_LABEL: Record<MoveMatch, string> = {
-  super: '효과가 굉장함',
-  resisted: '효과가 별로임',
-  immune: '효과가 없음',
+/**
+ * 기술 칸 밑에 적히는 말. 한국어는 BDSP 한국어판 그대로다.
+ *
+ * ⚠️ 롬에는 이 미리보기 라벨이 없다(DS는 이 칸이 없다). 영어·일본어는 롬 배틀 뱅크 368의 상성 문장
+ * (779 「It's not very effective...」 · 780 「It's super effective!」 · 27 「It doesn't affect」 ·
+ * ja 「こうかは\u3000いまひとつ」 · 「こうかは\u3000ばつぐん」 · 「こうかが\u3000ない」)에서 문장 끝만 덜어 낸 낱말로 쓴다.
+ * 일본어는 롬처럼 전각 공백이다
+ */
+export const MATCH_WORDS: Readonly<Record<DataLocale, Readonly<Record<MoveMatch, string>>>> = {
+  ko: { super: '효과가 굉장함', resisted: '효과가 별로임', immune: '효과가 없음' },
+  en: { super: 'Super effective', resisted: 'Not very effective', immune: 'No effect' },
+  ja: { super: 'こうかは\u3000ばつぐん', resisted: 'こうかは\u3000いまひとつ', immune: 'こうかが\u3000ない' },
+}
+
+export function matchLabel(match: MoveMatch, locale: DataLocale): string {
+  return MATCH_WORDS[locale][match]
 }
 
 /**

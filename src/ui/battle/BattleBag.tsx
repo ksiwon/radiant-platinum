@@ -19,6 +19,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   loadItemDescriptions, loadItemIcons, loadItemNames, loadItems, loadMoveNames,
+  type DataLocale,
   type ItemTable,
 } from '../../data/gameData'
 import type { ItemIcons } from '../../data/schema'
@@ -34,7 +35,6 @@ import { clampCursor, useMenuKeys, wrapCursor } from '../menu/useMenuKeys'
 import { itemIcon } from '../menu/itemIcon'
 import { GroundShadow } from '../common/GroundShadow'
 import { KeyHints } from '../common/KeyHints'
-import { withSubject } from '../korean'
 import type { BattleNames } from './messages'
 import { PartyCards, type PartyCard } from './PartyCards'
 import { romLine } from './romLine'
@@ -42,6 +42,7 @@ import {
   BAG, BAG_BANK, BATTLE_BANK, MSG, PARTY, PARTY_BANK, STAT_SLOT,
 } from './romText'
 import { useBattleWords } from './battleWords'
+import { planText } from './planText'
 import { useRomLines } from './useRomLines'
 import * as css from './battleBag.css'
 import { pointerMoved } from '../pointerMoved'
@@ -88,20 +89,6 @@ const BALL_IDS = new Set<number>(Object.values(Ball))
  * `StringTemplate_SetMoveName(…, 1, MOVE_EMBARGO)`로 채운다
  */
 const EMBARGO_MOVE = 373
-
-/**
- * 상태가 낫는 것을 말하는 한 줄. 낱말에 「낫는다」를 붙이면 「잠 낫는다」·「얼음
- * 낫는다」가 된다 — 상태마다 우리말로 말하는 동사가 다르다 (원작 글창도 「잠에서
- * 깨어났다」·「얼음 상태가 나았다」처럼 상태마다 다른 줄을 쓴다)
- */
-const STATUS_CURE: Record<string, string> = {
-  slp: '잠에서 깬다',
-  frz: '얼음이 녹는다',
-  psn: '독이 낫는다',
-  tox: '독이 낫는다',
-  brn: '화상이 낫는다',
-  par: '마비가 풀린다',
-}
 
 /**
  * 가방이 **배틀 하나 동안** 기억하는 자리 (`BagCursor`의 배틀 몫).
@@ -176,17 +163,18 @@ interface Props {
  * 랭크 이름만은 롬 것을 쓴다 (`pokemon_stat_names` · us 551). 「공격」·「명중률」은
  * 이름표에 이미 있는 낱말이라 손으로 또 적을 이유가 없다
  */
-function planSummary(plan: ItemPlan, stats: readonly string[]): string {
+function planSummary(plan: ItemPlan, stats: readonly string[], locale: DataLocale): string {
+  const text = planText(locale)
   const parts: string[] = []
-  if (plan.revive) parts.push('되살아난다')
-  if (plan.heal > 0) parts.push(`체력 ${String(plan.heal)} 회복`)
-  for (const s of plan.cure) parts.push(STATUS_CURE[s] ?? `${s} 상태가 낫는다`)
-  for (const v of plan.clear) parts.push(v === 'confusion' ? '혼란이 풀린다' : '헤롱헤롱이 풀린다')
-  if (plan.mist) parts.push('능력이 안 떨어진다')
-  for (const b of plan.boosts) parts.push(`${withSubject(stats[STAT_SLOT[b]] ?? b)} 올라간다`)
-  if (plan.focusEnergy) parts.push('급소에 잘 맞는다')
+  if (plan.revive) parts.push(text.revive)
+  if (plan.heal > 0) parts.push(text.heal(plan.heal))
+  for (const s of plan.cure) parts.push(text.cure[s] ?? text.cureOther(s))
+  for (const v of plan.clear) parts.push(v === 'confusion' ? text.clearConfusion : text.clearInfatuation)
+  if (plan.mist) parts.push(text.mist)
+  for (const b of plan.boosts) parts.push(text.boost(stats[STAT_SLOT[b]] ?? b))
+  if (plan.focusEnergy) parts.push(text.focus)
   const pp = plan.pp.reduce((sum, one) => sum + one.amount, 0)
-  if (pp > 0) parts.push(`PP ${String(pp)} 회복`)
+  if (pp > 0) parts.push(text.pp(pp))
   return parts.join(' · ')
 }
 
@@ -398,7 +386,7 @@ export function BattleBag({
         level: it?.level ?? '?',
         mon: it ? { species: it.species, form: it.form, isEgg: egg } : null,
         can: !egg && made !== null,
-        note: made === null ? null : planSummary(made, names?.stats ?? []),
+        note: made === null ? null : planSummary(made, names?.stats ?? [], locale),
       }
     })
     const here = cards[target]
@@ -494,7 +482,7 @@ export function BattleBag({
       // ⚠️ **도망 도구 쪽은 우리 말이다.** 롬의 그 줄(`CommonStrings_Text_
       // CantDoThatRightNow`)은 마박사가 세 쪽에 걸쳐 타이르는 글이라 한 줄짜리
       // 안내 칸에 안 들어간다 — 뜻만 옮겨 한 줄로 줄였다
-      : '지금은 그럴 때가 아니다')
+      : planText(locale).notNow)
     // 배틀용은 대상 단을 안 거치므로 막힌 이유를 여기서 말해야 한다.
     // 이 단은 가방 화면이라 **가방 뱅크**의 줄이다 (`battle_bag.c`의 `TryUseItem`)
     : item !== null && !needsTarget(item) && embargoBlocks(item, embargo)
@@ -537,7 +525,7 @@ export function BattleBag({
           data-cursor={at}
           data-items={list.length}
         >
-          {list.length === 0 && <div className={css.empty}>아무것도 없다</div>}
+          {list.length === 0 && <div className={css.empty}>{planText(locale).empty}</div>}
           {shown.map((one, i) => {
             const index = page * PER_PAGE + i
             return (
@@ -575,7 +563,7 @@ export function BattleBag({
                   <span key={p} className={p === page ? css.dot.on : css.dot.off} />
                 ))}
               </span>
-              <span>{page + 1} / {pages}쪽</span>
+              <span>{planText(locale).page(page + 1, pages)}</span>
             </>
           )}
         </div>

@@ -11,9 +11,10 @@ import { useEffect, useState, type CSSProperties } from 'react'
 import { hpColor } from '../../engine/battle/healthbar'
 import type { PartySlot } from '../../engine/battle/choice'
 import type { MoveMatch } from '../../engine/battle/movePreview'
-import { MATCH_LABEL } from '../../engine/battle/movePreview'
+import { matchLabel } from '../../engine/battle/movePreview'
 import { loadPokeIcons } from '../../data/gameData'
 import type { PokeIcons } from '../../data/schema'
+import { useGameLocale } from '../../state/optionsStore'
 import { GenderMark } from '../common/MonIdentity'
 import { iconHop } from '../common/iconHop'
 import { StatusTag } from '../common/StatusTag'
@@ -53,6 +54,7 @@ export function PartyCards(
     replacing?: string | null
   },
 ) {
+  const locale = useGameLocale()
   const [icons, setIcons] = useState<PokeIcons>()
   useEffect(() => {
     let alive = true
@@ -135,7 +137,7 @@ export function PartyCards(
               <span className={css.cornerTag}>
                 {!egg && <StatusTag status={slot.status} fainted={slot.fainted} />}
               </span>
-              {best != null && <span className={css.hint[best]}>{MATCH_LABEL[best]}</span>}
+              {best != null && <span className={css.hint[best]}>{matchLabel(best, locale)}</span>}
             </span>
           </button>
         )

@@ -21,7 +21,8 @@ import {
   loadBagSprite, loadItemDescriptions, loadItemIcons, loadItemNames, loadItems, loadMoveNames, loadMoves,
   loadPokeIcons, loadSpecies, loadSpeciesNames, type ItemTable, type MoveTable, type SpeciesTable,
 } from '../../data/gameData'
-import { BAG_MENU, fillMenuText, loadUiText, SHOP_TEXT, YES_NO } from '../../data/uiText'
+import { BAG_MENU, fillMenuText, loadUiText, MONEY_WINDOW_TEXT, SHOP_TEXT, START_MENU, YES_NO } from '../../data/uiText'
+import type { DataLocale } from '../../data/gameData'
 import { POCKET_BERRIES, POCKET_SIZE, POCKET_TMHMS } from '../../engine/bag/bag'
 import { BINDINGS } from '../../engine/input/keys'
 import { keyList } from '../../engine/input/keyNames'
@@ -54,6 +55,7 @@ import { usePopPlacement } from '../common/usePopPlacement'
 import { YesNo } from '../common/YesNo'
 import * as popCss from '../common/choiceMenu.css'
 import { MenuScreen } from './MenuScreen'
+import { menuUiText, type BagFootMode } from './menuUiText'
 import { monIcon } from './pokeIcon'
 import {
   berryNumber, cursorRows, movablePocket, pad2, reorder, rowKind, tmNumber,
@@ -104,6 +106,10 @@ interface Loaded {
   bagText: string[]
   /** 메뉴 뱅크 — 예·아니오 (`YES_NO`) */
   menuText: string[]
+  /** 시작 메뉴 뱅크 367 — 화면 제목 「가방」(`START_MENU.bag`). 이미 시작 메뉴가 받아 둔 뱅크다 */
+  menuTitles: string[]
+  /** 상점 뱅크 543 — 소지금 틀 (`MONEY_WINDOW_TEXT.amount`). 소지금 창(`CurrencyWindow`)과 같은 뱅크다 */
+  shopText: string[]
   /**
    * 종족·기술 표.
    *
@@ -255,16 +261,9 @@ type Menu =
 
 /** 바닥 안내. 메뉴가 떠 있으면 그 단계의 키만 적는다 */
 export function bagFoot(
-  mode: 'normal' | 'pick' | 'give' | 'menu' | 'count' | 'move', movable = false,
+  mode: BagFootMode, movable = false, locale: DataLocale = 'ko',
 ): string {
-  switch (mode) {
-    case 'normal': return `←→ 주머니 · ↑↓ 고르기 · Z 메뉴${movable ? ' · Shift 옮기기' : ''} · X 닫기`
-    case 'move': return '↑↓ 옮기기 · Z 놓기 · X 그만둔다'
-    case 'give': return '←→ 주머니 · ↑↓ 고르기 · Z 결정 · X 그만둔다'
-    case 'pick': return '↑↓ 고르기 · Z 결정 · X 그만둔다'
-    case 'menu': return '↑↓ 고르기 · Z 결정 · X 그만둔다'
-    case 'count': return '↑↓ 하나씩 · ←→ 열씩 · Z 결정 · X 그만둔다'
-  }
+  return menuUiText(locale).bagFoot(mode, movable)
 }
 
 /**
@@ -280,11 +279,14 @@ export async function loadBagData(locale: Parameters<typeof loadItemNames>[0]): 
     try {
       const [
         items, names, descriptions, icons, pockets, species, moves,
-        bagText, menuText, bag, moveNames, pokeIcons, speciesNames,
+        bagText, menuText, menuTitles, shopText, bag, moveNames, pokeIcons, speciesNames,
       ] = await Promise.all([
         loadItems(), loadItemNames(locale), loadItemDescriptions(locale),
         loadItemIcons(), loadUiText('bagPockets', locale), loadSpecies(), loadMoves(),
         loadUiText('bag', locale), loadUiText('menuEntries', locale),
+        // 제목과 소지금 틀은 없어도 가방이 뜬다 — 낱개로 받는다
+        loadUiText('startMenu', locale).catch(() => [] as string[]),
+        loadUiText('shop', locale).catch(() => [] as string[]),
         // ⚠️ **이 하나만 낱개로 받는다.** 나머지는 다 필수 그룹이라 없으면
         // 애초에 게임이 안 열리는데, 이것은 아니다 — 한 뭉치로 묶으면 그림
         // 한 장 때문에 도구 목록까지 같이 없어진다 (위 `bag` 주석)
@@ -295,7 +297,7 @@ export async function loadBagData(locale: Parameters<typeof loadItemNames>[0]): 
         loadSpeciesNames(locale).catch(() => [] as string[]),
       ])
       return {
-        items, names, descriptions, icons, bag, pockets, species, moves, bagText, menuText,
+        items, names, descriptions, icons, bag, pockets, species, moves, bagText, menuText, menuTitles, shopText,
         moveNames, pokeIcons, speciesNames,
       }
     } catch (e) {
@@ -551,9 +553,10 @@ export function BagScreen() {
         setOpen(null)
         // 원작은 표식만 바꾸고 말이 없다. 우리는 **무슨 키로 쓰는지**를 한 줄 적는다 —
         // 그 키가 DS의 Y가 아니라서 말해 주지 않으면 찾을 길이 없다
+        const ui = menuUiText(locale)
         setNotice(next === 0
-          ? `${itemName(id)}의 등록을 해제했다.`
-          : `${withObject(itemName(id))} ${registerKey}에 등록했다!`)
+          ? ui.bagUnregistered(itemName(id))
+          : ui.bagRegistered(itemName(id), locale === 'ko' ? withObject(itemName(id)) : itemName(id), registerKey))
         return
       }
     }
@@ -718,15 +721,18 @@ export function BagScreen() {
     ? tmMove(data.items.get(selected.item), data.items.tmMoves) : null
   const moveRow = move === null ? undefined : data.moves.byId.get(move)
   const closeLabel = data.bagText[BAG_LINE.close] ?? ''
+  // 소지금 — 상점 뱅크 543의 19번 틀(ko 「N원」 · en 「$N」 · ja 「N¥」)이다. 없으면 숫자만 둔다
+  const moneyFormat = data.shopText[MONEY_WINDOW_TEXT.amount]
+  const moneyNote = moneyFormat ? fillMenuText(moneyFormat, [money.toLocaleString('ko-KR')]) : String(money)
   const giver = giveTo !== null ? party[giveTo] : undefined
   const giverName = giver ? giver.nickname ?? data.speciesNames[giver.species] ?? '' : ''
 
   return (
     <MenuScreen
-      title="가방"
-      note={`${money.toLocaleString('ko-KR')}원`}
+      title={data.menuTitles[START_MENU.bag] ?? ''}
+      note={moneyNote}
       // 바닥은 **키 안내만** 남는다 — 알림 · 물음 · 칸 수는 설명 띠와 레일 밑으로 옮겼다
-      foot={bagFoot(mode, canMove)}
+      foot={bagFoot(mode, canMove, locale)}
       {...(giver
         ? {
           tag: (

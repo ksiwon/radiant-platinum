@@ -1,6 +1,6 @@
 // 기술 칸의 상성 표시 (PARITY §2.22)
 import { describe, expect, it } from 'vitest'
-import { hiddenPowerType, MATCH_LABEL, moveMatch, shownType } from './movePreview'
+import { hiddenPowerType, MATCH_WORDS, moveMatch, shownType } from './movePreview'
 import { TYPE } from './ai/typeChart'
 import type { Move, Stats } from '../../data/schema'
 
@@ -114,8 +114,8 @@ describe('무엇을 적을지', () => {
   })
 
   it('BDSP 한국어판의 말 그대로다', () => {
-    expect(MATCH_LABEL.super).toBe('효과가 굉장함')
-    expect(MATCH_LABEL.resisted).toBe('효과가 별로임')
-    expect(MATCH_LABEL.immune).toBe('효과가 없음')
+    expect(MATCH_WORDS.ko.super).toBe('효과가 굉장함')
+    expect(MATCH_WORDS.ko.resisted).toBe('효과가 별로임')
+    expect(MATCH_WORDS.ko.immune).toBe('효과가 없음')
   })
 })
