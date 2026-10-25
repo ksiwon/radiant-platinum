@@ -27,6 +27,7 @@ vi.mock('../data/gameData', () => ({
 const { world } = await import('../engine/map/world')
 const { npcActors } = await import('../engine/actor/npcs')
 const { useSaveStore } = await import('../state/saveStore')
+const { worldState } = await import('../state/worldState')
 const mod = await import('./distortion')
 
 const FLOORS = [573, 574, 575, 576, 577, 579, 580, 581, 582, 583]
@@ -122,6 +123,51 @@ describe.runIf(real)('층에 들어서면 그 층 사람이 선다', () => {
       if ((row.flagCond as number) !== FLAG_COND.manualAddOnly) continue
       expect(npcActors.byLocalID.has(row.localID as number)).toBe(false)
     }
+  })
+
+  // 원작은 맵 물체를 세이브에 담는다(`field_overworld_state.c:143`) — 장면 뒤 이어하기엔 난천이 서 있다.
+  // 장면 앞에 미리 세우면 스크립트가 부를 때 두 명이 되므로 진짜 이어하기 + 진행도 14일 때만 선다
+  describe('이어하기로 기라티나 방에 서면 난천의 몸이 선다', () => {
+    const enter = (progress: number, restoring: boolean, z = 14) => {
+      mod.distortionHooks.progress = () => progress
+      worldState.restoring = restoring
+      try { mod.distortionEnter(MAP.giratinaRoom, 15, 1, z) } finally { worldState.restoring = false }
+    }
+
+    it('진행도 14 + 이어하기 — 장면이 끝난 자리(15,17) 북향에 선다', () => {
+      enter(PROGRESS.battledGiratina, true)
+      const a = npcActors.byLocalID.get(129)
+      expect(a?.info.sprite).toBe(138)
+      expect(Math.floor(a!.x)).toBe(15)
+      expect(Math.floor(a!.z)).toBe(17)
+      expect(a!.dir).toBe(0)
+      // 태홍은 장면에서 떠났다
+      expect(npcActors.byLocalID.has(130)).toBe(false)
+    })
+
+    it('이어하기가 아니면(B7F에서 되돌아온 워프 · 층 들어서기) 안 선다', () => {
+      enter(PROGRESS.battledGiratina, false)
+      expect(npcActors.byLocalID.has(129)).toBe(false)
+    })
+
+    it('장면 앞(진행도 13 이하)에는 이어하기여도 안 선다 — 스크립트가 부를 때 두 명이 되지 않는다', () => {
+      enter(PROGRESS.giratinaArrived, true)
+      expect(npcActors.byLocalID.has(129)).toBe(false)
+      enter(13, true)
+      expect(npcActors.byLocalID.has(129)).toBe(false)
+    })
+
+    it('난천 남쪽(z ≥ 17)에서 저장한 세이브(B7F에서 되돌아온 길)는 안 세운다', () => {
+      enter(PROGRESS.battledGiratina, true, 20)
+      expect(npcActors.byLocalID.has(129)).toBe(false)
+    })
+
+    it('스크립트가 같은 번호를 다시 부르면 한 명이다', async () => {
+      enter(PROGRESS.battledGiratina, true)
+      const { distortionAddObject } = await import('./distortionObjects')
+      distortionAddObject(129, mod.distortionHooks.vars!()!)
+      expect(npcActors.list.filter((a) => a.localID === 129)).toHaveLength(1)
+    })
   })
 
   // ⚠️ **바위가 안 서면 수수께끼가 통째로 없다.** B5F에서 밀어 떨어뜨릴

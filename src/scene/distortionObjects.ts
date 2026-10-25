@@ -2,7 +2,7 @@
 //
 // 배치표가 세계 좌표와 고정소수점 높이를 들고 있어서, 세우는 자리에서
 // 우리 맵 좌표로 되돌린다.
-import { FLAG_COND, TELEPORT, flagHolds } from '../engine/world/distortion'
+import { FLAG_COND, MAP, PROGRESS, TELEPORT, flagHolds } from '../engine/world/distortion'
 import { addNpcFrom, npcActors, removeNpc } from '../engine/actor/npcs'
 import type { VarStore } from '../engine/script/vars'
 import {
@@ -77,11 +77,15 @@ export function distortionAddObject(localID: number, vars: VarStore): void {
   addObjectRow(row, vars, floor.map)
 }
 
-function addObjectRow(row: Record<string, unknown>, vars: VarStore, map?: number): void {
+function addObjectRow(
+  row: Record<string, unknown>, vars: VarStore, map?: number, at?: { x: number; z: number; dir: number },
+): void {
   const worldY = Math.round((row.y as number) / FX32_PER_TILE)
   // 배치표 자리를 떠난 바위면 그 자리에 세운다 (`DistortionState.boulders`)
   const moved = map === undefined ? undefined : boulderSpot(map, row.localID as number)
-  const [lx, ly, lz] = toLocalTiles(moved?.x ?? (row.x as number), worldY, moved?.z ?? (row.z as number))
+  const [lx, ly, lz] = toLocalTiles(
+    at?.x ?? moved?.x ?? (row.x as number), worldY, at?.z ?? moved?.z ?? (row.z as number),
+  )
   const hidden = row.hiddenFlag as number
   addNpcFrom({
     x: lx, z: lz, height: ly,
@@ -89,7 +93,7 @@ function addObjectRow(row: Record<string, unknown>, vars: VarStore, map?: number
     sprite: row.graphicsID as number,
     move: row.movementType as number,
     trainerType: row.trainerType as number,
-    facing: row.dir as number,
+    facing: at?.dir ?? (row.dir as number),
     script: row.script as number,
     flag: hidden === 0 ? null : hidden,
     range: [row.movementRangeX as number, row.movementRangeZ as number],
@@ -141,6 +145,43 @@ export function spawnFloorObjects(mapId: number, keepExisting = false): void {
     if (hidden !== 0 && vars.checkFlag(hidden)) continue
     addObjectRow(row, vars, mapId)
   }
+}
+
+/**
+ * 기라티나 방 장면이 끝난 뒤 난천이 서 있는 자리 — 북쪽으로 3칸 × 2번 뛰어 (15,23)에서 (15,17)에 서고
+ * 북쪽을 본다 (`scripts_distortion_world_giratina_room.s`의 `Movement_CynthiaJumpNorth`(`JumpDistortionWorldNorth 2`,
+ * 한 번에 3칸 — `ledge.ts` `HOP_TWICE_TILES`) · `Movement_CynthiaWalkOnSpotNorth`)
+ */
+const CYNTHIA_AFTER_SCENE = { x: 15, z: 17, dir: 0 } as const
+/** 기라티나 방의 난천 번호 (`DIST_WORLD_MAP_OBJECT_GIRATINA_ROOM_CYNTHIA`) */
+const GIRATINA_ROOM_CYNTHIA = 129
+
+/**
+ * **이어하기로 기라티나 방에 서면 난천의 몸을 세운다.**
+ *
+ * 원작은 맵 물체를 세이브에 담아(`field_overworld_state.c:143` `FieldSystem_SaveObjects`) 장면에서 스크립트가
+ * 부른 난천이 이어하기에도 서 있다. 우리는 스크립트가 부른 사람을 담지 않아 보이지 않는 말(#132)만 섰다.
+ *
+ * 그래서 **진짜 이어하기**(`worldState.restoring`을 부르는 쪽이 가른다)이고 진행도가 14(기라티나 전투 뒤)일 때만
+ * 장면이 끝난 자리에 세운다. 장면 앞에 미리 세우지 않는다 — 스크립트가 `AddDistortionWorldMapObject`로 부를 때
+ * 같은 번호가 이미 서 있으면 두 명이 된다.
+ *
+ * ⚠️ 이야기가 14일 때 B7F로 갔다가 되돌아와 방 남쪽(z ≥ 17)에서 저장한 세이브는 원작에도 난천이 없다 —
+ * 장면 동안 주인공은 난천이 막은 북쪽(z ≤ 16)에 있으므로 그 경우는 세우지 않는다
+ */
+export function spawnSavedScenePeople(mapId: number, playerZ: number): void {
+  if (mapId !== MAP.giratinaRoom) return
+  const progress = distortionHooks.progress?.() ?? 0
+  if (progress !== PROGRESS.battledGiratina) return
+  if (playerZ >= CYNTHIA_AFTER_SCENE.z) return
+  const data = distortionData()
+  const vars = distortionHooks.vars?.()
+  if (data === null || vars === undefined || vars === null) return
+  if (npcActors.byLocalID.has(GIRATINA_ROOM_CYNTHIA)) return
+  const row = data.mapObjects.find((m) => m.map === mapId)?.objects
+    .find((o) => o.localID === GIRATINA_ROOM_CYNTHIA)
+  if (row === undefined) return
+  addObjectRow(row, vars, mapId, CYNTHIA_AFTER_SCENE)
 }
 
 // ── 배치표 자리를 떠난 바위 (`DistortionState.boulders`) ───────────────────────

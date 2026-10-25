@@ -432,6 +432,18 @@ export function mapOf(data: Pick<DistortionData, 'maps'>, map: number): Distorti
 }
 
 /**
+ * 롬 스크립트 `Warp`가 적은 세계 칸 → 그 층의 지역 칸 (층 오프셋을 뺀다, REPAIR §83).
+ * 제품(`scene/distortionCore`의 `romTileToLocal`)과 풀이 도구(`tools/e2e/distortionSolve.mjs`)가
+ * 이 한 함수를 같이 쓴다
+ */
+export function romTileToLocalIn(
+  data: Pick<DistortionData, 'maps'>, map: number, x: number, z: number,
+): { x: number; z: number } | null {
+  const m = mapOf(data, map)
+  return m === null ? null : { x: x - m.offsetX, z: z - m.offsetZ }
+}
+
+/**
  * 서 있는 판이 정하는 **걷는 축**.
  *
  * · 바닥·천장 — (x, z)를 걷고 y가 판의 높이에 붙는다

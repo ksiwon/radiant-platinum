@@ -14,7 +14,7 @@ import type { DistortionData, DistortionMap } from '../data/schema'
 import {
   ATTRS_INVALID, MAP, PLATFORM_CEILING, PLATFORM_EAST_WALL, PLATFORM_FLOOR,
   PLATFORM_NONE, PLATFORM_WEST_WALL, TELEPORT, blocked, cynthiaBlocksJump, findPlatform, flagHolds,
-  MAX_PERSISTED_PLATFORMS, hasPlatformAt, mapOf, newDistortionState, tileAttributes, tileBehavior,
+  MAX_PERSISTED_PLATFORMS, hasPlatformAt, mapOf, newDistortionState, romTileToLocalIn, tileAttributes, tileBehavior,
   type DistortionFrame, type DistortionState,
 } from '../engine/world/distortion'
 import { DIR, type Movable, type MovementTable } from '../engine/script/movement'
@@ -244,9 +244,7 @@ export function toWorldTiles(x: number, y: number, z: number): [number, number, 
  */
 export function romTileToLocal(mapId: number, x: number, z: number): { x: number; z: number } | null {
   if (data === null) return null
-  const m = mapOf(data, mapId)
-  if (m === null) return null
-  return { x: x - m.offsetX, z: z - m.offsetZ }
+  return romTileToLocalIn(data, mapId, x, z)
 }
 
 /** 세계 좌표 → 우리 맵 좌표 */

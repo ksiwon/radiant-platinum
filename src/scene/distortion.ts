@@ -14,6 +14,7 @@
 import { connectionOf, findPlatform, initialHiddenGroups, mapOf } from '../engine/world/distortion'
 import { distortionBridge } from '../engine/world/distortion'
 import { world as mapWorld } from '../engine/map/world'
+import { worldState } from '../state/worldState'
 import { initialPlatformFlags } from '../engine/world/distortionElevator'
 import { initialPuzzleFlags } from '../engine/world/distortionBoulder'
 import { applyCamera, distortionCameraSwing, seatCamera } from './distortionCamera'
@@ -36,6 +37,7 @@ import { cameraSystem } from '../engine/actor/camera'
 import { snapPlayerPose } from '../engine/actor/bodyTurn'
 import {
   applyTeleport, distortionBoulderMoved, keepBoulderSpots, resetDistortionObjects, spawnFloorObjects,
+  spawnSavedScenePeople,
 } from './distortionObjects'
 
 // ── 밖이 쓰는 것만 다시 내보낸다 ─────────────────────────────────────────────
@@ -151,6 +153,8 @@ export function distortionEnter(mapId: number, x: number, y: number, z: number):
   seatPose()
   initPlayer()
   spawnFloorObjects(mapId)
+  // 이어하기면 스크립트가 불렀던 사람도 세이브에서 되살아난다 (`FieldSystem_SaveObjects`)
+  if (worldState.restoring) spawnSavedScenePeople(mapId, Math.floor(z))
 }
 
 /**

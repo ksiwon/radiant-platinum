@@ -1020,7 +1020,7 @@ function devObserver(page) {
         grid: (m) => grids.get(m) ?? null,
         // 판 밖 지형의 칸 높이 — 제품이 딛는 그 규칙(`player.ts` → `terrainTileY`)
         terrainY: (m, lx, lz) => D.terrainTileY(grids.get(m)?.heightAtWorld(lx + 0.5, lz + 0.5, 1)),
-        cynthiaBlocksJump: D.cynthiaBlocksJump,
+        cynthiaBlocksJump: D.cynthiaBlocksJump, romTileToLocalIn: D.romTileToLocalIn,
         initialPlatformFlags: E.initialPlatformFlags,
         // 지금 층만 살아 있는 배우로 답한다. 바위는 `boulders`가 든다
         solidAt: (m, lx, lz) => {

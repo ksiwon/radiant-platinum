@@ -46,8 +46,8 @@ export const KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']
  * - B7F (89,65,57) 북향 → 스크립트 2 → `Warp GIRATINA_ROOM, 15, 25, DIR_NORTH`
  *   (`scripts_distortion_world_b7f.s:19`). 기라티나 방은 오프셋이 0이라 지역 = 세계다
  * - 기라티나 방 (15,1,25) 남향 → 스크립트 4 → `Warp B7F, 89, 57, DIR_SOUTH`
- *   (`scripts_distortion_world_giratina_room.s:56`). ⚠️ 롬의 89,57은 세계 칸인데 제품은 지역으로
- *   받는다 — 되돌아가는 이 길은 쓰지 않는다(`DISTORTION_HARNESS.md` §6)
+ *   (`scripts_distortion_world_giratina_room.s:56`). 롬의 89,57은 세계 칸이다 — 제품이 오프셋을 빼
+ *   (`romTileToLocal`) 지역 (15,25)에 세우고, 풀이는 세계 칸으로 든다
  */
 export const TELEPORT_WARP = {
   b7f: { map: 582, x: 15, z: 25, facing: 0 },
@@ -66,7 +66,7 @@ const isWallKind = (P, kind) => kind === P.PLATFORM.WEST_WALL || kind === P.PLAT
  *   `flagHolds` · `connectionOf` · `mapOf` · `TELEPORT` · `CYNTHIA_BLOCK` · `EVENT_CMD` · `MAP` ·
  *   `elevatorAt` · `elevatorLegs` · `upStartFlags` · `downEndFlags` · `withFlag` · `ELEVATOR_DIR` ·
  *   `PLATFORM_FLAG` · `cascadeAt` · `terrainY(map, lx, lz)`(판 밖 지형의 칸 높이 — 지역 y, 판이 없으면 null ·
- *   `terrainTileY(grid.heightAtWorld)`) · `cynthiaBlocksJump` · `initialPlatformFlags` · `fallLocationAt` ·
+ *   `terrainTileY(grid.heightAtWorld)`) · `cynthiaBlocksJump` · `initialPlatformFlags` · `romTileToLocalIn` · `fallLocationAt` ·
  *   `fallDestination` · `fellToB6F` ·
  *   `fellIntoPit` · `fellIntoWrongPit` · `puzzleSolved` · `FALL_DEST` · `hopDirOf` · `HOP_TILES` ·
  *   `distortionJump` · `HOP_TWICE_TILES` · `ledgeHop` · `isOnWater` · `isSurfable` · `DIR_STEP` ·
@@ -380,10 +380,12 @@ export function distortionModel(P) {
       if (name === 'b7f' && s.progress < 10) continue
       const w = TELEPORT_WARP[name]
       const f = floorOf(w.map)
-      // 스크립트의 `Warp`는 좌표를 **지역 칸**으로 받는다(`MapStreamer.tsx:412-418` — 층 오프셋을
-      // 안 뺀다). 서는 높이는 층 오프셋 + 1(`distortionCore.ts:298-307`)
-      const x = w.x + f.offsetX
-      const z = w.z + f.offsetZ
+      // 스크립트의 `Warp`는 좌표를 **롬의 세계 칸**으로 적는다 — 제품은 층 오프셋을 빼 지역 칸에 세운다
+      // (`MapStreamer.tsx:1233` · `romTileToLocal`, REPAIR §83). 이 상태는 세계 칸이라 지역 + 오프셋 = 롬 칸 그대로.
+      // 서는 높이는 층 오프셋 + 1(`distortionCore.ts:298-307`)
+      const local = P.romTileToLocalIn(P.data, w.map, w.x, w.z)
+      const x = local.x + f.offsetX
+      const z = local.z + f.offsetZ
       const y = f.offsetY + 1
       // 워프는 세이브 자리를 비운다(REPAIR §100) — 발밑의 판을 새로 찾고, 판 밖이면 높이 계산을 켜고,
       // 발판 자리는 닿은 층의 첫 값이다(`InitPersistedData`)

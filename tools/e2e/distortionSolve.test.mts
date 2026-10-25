@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ATTRS_INVALID, CYNTHIA_BLOCK, EVENT_CMD, FLAG_COND, MAP, PLATFORM_CEILING, PLATFORM_EAST_WALL,
   PLATFORM_FLOOR, PLATFORM_NONE, PLATFORM_WEST_WALL, STEP, TELEPORT, blocked, connectionOf,
-  cynthiaBlocksJump, findPlatform, flagHolds, hasPlatformAt, jumpAt, mapOf, terrainTileY, tileAttributes,
+  cynthiaBlocksJump, findPlatform, flagHolds, hasPlatformAt, jumpAt, mapOf, romTileToLocalIn, terrainTileY, tileAttributes,
   tileBehavior,
 } from '../../src/engine/world/distortion'
 import { heightField } from '../../src/engine/map/height'
@@ -100,7 +100,7 @@ function productP(data: DistortionData, grids: Map<number, MapGrid>) {
     // 판 밖 지형의 칸 높이 — 제품이 딛는 그 규칙(`player.ts` → `terrainTileY`)
     terrainY: (map: number, lx: number, lz: number) =>
       terrainTileY(grids.get(map)?.heightAtWorld(lx + 0.5, lz + 0.5, 1)),
-    cynthiaBlocksJump, initialPlatformFlags,
+    cynthiaBlocksJump, initialPlatformFlags, romTileToLocalIn,
     grid: (map: number) => grids.get(map) ?? null,
     solidAt: () => null,
   }
@@ -318,6 +318,23 @@ describe.runIf(HAVE)('깨어진 세계 풀이 — 제품 규칙', () => {
       expect(cynthiaBlocksJump(MAP.giratinaRoom, 15, 14, 1, 14)).toBe(false)
       expect(M.press(s, 1).act).not.toBe('hop')
       expect(M.press({ ...s, progress: 13 }, 1).act).toBe('hop')
+    })
+
+    it('기라티나 방 → B7F 되돌아가는 워프는 롬의 세계 칸 (89,65,57)에 서고 나가는 길이 있다', () => {
+      // `Warp B7F, 89, 57`은 세계 칸이다 — 제품은 오프셋을 빼 지역 (15,25)에 세운다(`romTileToLocal`).
+      // 예전 풀이는 오프셋을 더해 가짜 칸 (163,65,89)에 세웠고 지도 밖이라 길이 없었다
+      const s: St = { ...arrival1F(data), map: MAP.giratinaRoom, x: 15, y: 1, z: 25, facing: 1, progress: 14 }
+      const r = M.stepped(s, 1)
+      expect(r.exit).toMatchObject({ kind: 'teleport', to: MAP.b7f })
+      expect(r.state).toMatchObject({ map: MAP.b7f, x: 89, y: 65, z: 57, facing: 1 })
+      const f = mapOf(data, MAP.b7f)!
+      expect(romTileToLocalIn(data, MAP.b7f, 89, 57)).toEqual({ x: 89 - f.offsetX, z: 57 - f.offsetZ })
+      // 되돌아온 칸에서 다음 이야기 줄까지 길이 있다 (p=11~14)
+      for (const progress of [11, 12, 13, 14]) {
+        const back = { ...r.state, progress, pi: r.state.pi }
+        const exit = planFloor(P, back, (q: any) => q.exit != null)
+        expect(exit, `${String(progress)} ${HERE(back)}`).not.toBeNull()
+      }
     })
 
     it('B5F 뭍(129)에서 파도타기로 웅덩이에 들면 128이다 — 폭포를 거슬러 오르는 길이 산다', () => {
