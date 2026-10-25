@@ -790,6 +790,10 @@ export function PartyScreen() {
     const item = tables.items.get(usingItem.item)
     const info = species.of(selected)
     if (!info) return
+    // ⚠️ **알에게는 어떤 도구도 안 먹는다.** 원작은 아이템 모드에서 알에 A를 누르면
+    // 확인음 대신 `SEQ_SE_DP_CUSTOM06` 버저만 내고 아무것도 안 시작한다
+    // (`party_menu/main.c:2643-2650` `HandleSpecialInput`). 도구는 가방에 그대로 남는다
+    if (selected.isEgg) { void music.playEffect(HP_TRANSFER_SE.buzz); return }
     const ppOf = (slot: { move: number; ppUps: number; pp: number }): number =>
       maxPpOf(slot, tables.moves.get(slot.move).pp)
 

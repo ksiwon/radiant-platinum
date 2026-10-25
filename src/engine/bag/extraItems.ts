@@ -42,12 +42,12 @@ export const EXTRA_ITEM_DESCRIPTIONS: Readonly<Record<string, readonly string[]>
     '무지개색으로 빛나는\n아주 아름다운 비늘.',
   ],
   en: [
-    'A cord that evolves a POKéMON\nas if it had been traded.',
+    'A cord that evolves a Pokémon\nas if it had been traded.',
     'A scale that shines a rainbow\nof colors. Very beautiful.',
   ],
   ja: [
-    'つうしんこうかんしたときのように\nポケモンを しんかさせる ヒモ。',
-    'にじいろに かがやく\nとても うつくしい ウロコ。',
+    'つうしんこうかんしたときのように\nポケモンを　しんかさせる　ヒモ。',
+    'にじいろに　かがやく\nとても　うつくしい　ウロコ。',
   ],
 }
 

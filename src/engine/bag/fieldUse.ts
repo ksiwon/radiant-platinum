@@ -59,6 +59,22 @@ export const MAP_TYPE_CAVE = 3
 
 export type { Rod }
 
+/** 창기둥 셋 (`MapHeader_IsAzureFluteAllowed`) — 본당 · 디아루가 쪽 · 펄기아 쪽. 공용 스크립트도 같은 셋을 센다 */
+const AZURE_FLUTE_MAPS: readonly number[] = [220, 584, 585]
+
+/**
+ * 가방에서 천계의피리를 쓸 수 있는가 (`CanUseAzureFlute`).
+ *
+ * ⚠️ **넷이 다 맞아야 한다** — 명예의 전당에 올랐고(`SystemFlag_CheckGameCompleted`), 아르세우스 배포 표식이 있고
+ * (`SystemVars_CheckDistributionEvent`), 전국도감이 열렸고, 지금 서 있는 맵이 창기둥이다.
+ * 칸 (31,52)과 이미 잡았는가는 문에서 안 보고 공용 스크립트(`CommonScript_TryUseAzureFlute`)가 본다
+ */
+export function azureFluteReady(
+  state: { mapId: number, gameCompleted: boolean, arceusEvent: boolean, nationalDex: boolean },
+): boolean {
+  return state.gameCompleted && state.arceusEvent && state.nationalDex && AZURE_FLUTE_MAPS.includes(state.mapId)
+}
+
 /**
  * 낚시를 막는 맵 열하나 (`CanUseFishingRod`) — 파멸의세계 전부다.
  *
@@ -82,13 +98,34 @@ export type PartyItemUse = 'heal' | 'tmhm' | 'evoStone' | 'mail' | 'gracidea'
 /**
  * `SCRIPT_ID(COMMON_SCRIPTS, 39)` — `CommonScript_TryUseAzureFlute`.
  *
- * ⚠️ **천계의피리는 우리가 판정할 것이 하나도 없다.** 원작의 공용 스크립트가
+ * ⚠️ **문은 가방이 지키고(`azureFluteReady`) 나머지는 스크립트가 묻는다.** 원작의 공용 스크립트가
  * 자리(창기둥 셋)·칸(31,52)·전당등록·전국도감·배포 표식·이미 잡았는가를 다
  * 물어보고, 안 맞으면 제 대사(「써 봐도 뜻이 없을 것 같다」)로 닫는다.
  * 맞으면 곡을 틀고 화면을 하얗게 지운 뒤 시작의 방으로 워프한다 —
  * **그 계단은 롬이 놓는다.** 우리가 하는 일은 이 번호를 거는 것뿐이다
  */
 export const COMMON_SCRIPT_AZURE_FLUTE = 2039
+
+/**
+ * 도구를 못 쓸 때 원작이 띄우는 줄 (`BagContext_FormatErrorMessage` · `TryUseRepel`).
+ *
+ * - `generic` 공용 뱅크 36 — 마박사의 말이 울린다 (`ITEM_USE_CANNOT_USE_GENERIC`)
+ * - `partner` 가방 뱅크 111 — 둘이서 있을 때는 쓸 수 없다 (`ITEM_USE_CANNOT_USE_WITH_PARTNER`)
+ * - `noFishing` 가방 뱅크 112 — 파멸의세계에서 낚싯대 (`ITEM_USE_CANNOT_FISH_HERE`)
+ * - `repelLinger` 가방 뱅크 62 — 리펠 효과가 아직 남아 있다 (`Bag_Text_RepelEffectsLinger`)
+ */
+type BlockedLine = 'generic' | 'partner' | 'noFishing' | 'repelLinger'
+
+/** 롬 뱅크 위치. 세 언어가 같은 번호다 */
+export const BLOCKED_LINE_AT: Readonly<Record<BlockedLine, { bank: 'bag' | 'common', line: number }>> = {
+  generic: { bank: 'common', line: 36 },
+  partner: { bank: 'bag', line: 111 },
+  noFishing: { bank: 'bag', line: 112 },
+  repelLinger: { bank: 'bag', line: 62 },
+}
+
+const NOT_NOW = '지금은 쓸 수 없다.'
+const blocked = (line: BlockedLine, why: string = NOT_NOW): FieldItemAction => ({ kind: 'blocked', why, line })
 
 export type FieldItemAction =
   /** 누구에게 쓸지 골라야 한다. 파티 화면이 열린다 */
@@ -133,8 +170,11 @@ export type FieldItemAction =
   | { kind: 'bagMessage'; what: 'coins' | 'seals' | 'fashion' | 'points' }
   /** 편지를 쓴다 (PARITY §4.8). `type`이 편지지 번호다 */
   | { kind: 'mail'; type: number }
-  /** 원작도 여기서는 못 쓴다. `why`가 그 이유다 */
-  | { kind: 'blocked'; why: string }
+  /**
+   * 원작도 여기서는 못 쓴다. `line`이 어느 롬 줄로 말하는지(`BagContext_FormatErrorMessage`)고
+   * `why`는 롬 뱅크가 아직 안 왔을 때만 쓰는 대비 문장이다
+   */
+  | { kind: 'blocked'; why: string; line: BlockedLine }
   /** 그 계통이 이 게임에 없다. `message`가 화면에 그대로 뜨는 완성 문장이다 */
   | { kind: 'missing'; message: string }
 
@@ -151,6 +191,11 @@ export interface FieldContext {
   berryAhead?: { localID: number, empty: boolean, canMulch: boolean, hasBerry: boolean } | null
   /** 그 맵이 탈출로프를 허락하는가 (`isEscapeRopeAllowed`) */
   escapeRopeAllowed: boolean
+  /**
+   * 천계의피리를 쓸 자리와 조건이 맞는가 (`CanUseAzureFlute` — `azureFluteReady`).
+   * **빠지면 못 쓴다**로 읽는다 — 조건을 안 알려 주고 열어 주지 않는다
+   */
+  azureFluteReady?: boolean
   /** 남은 리펠 걸음. 남아 있으면 새로 못 쓴다 */
   repelSteps: number
   /** 앞 칸이 물인가 — 낚싯대는 물을 봐야 던진다 */
@@ -262,29 +307,31 @@ export function fieldAction(item: Item, ctx: FieldContext): FieldItemAction {
 
     // 물뿌리개 (`CanUseSprayDuck`) — 동행이 없고, 앞 밭에 무엇이 자라야 한다
     case FieldUse.SPRAYDUCK: {
-      if (ctx.hasPartner === true) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
+      if (ctx.hasPartner === true) return blocked('partner')
       const patch = ctx.berryAhead ?? null
-      if (patch?.hasBerry !== true) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
+      if (patch?.hasBerry !== true) return blocked('generic')
       return { kind: 'commonScript', id: BERRY_SCRIPT_SPRAYDUCK, localID: patch.localID, withItem: true }
     }
 
     // 퇴비 넷 (`CanUseMulch`) — 앞 밭이 비었고 퇴비도 없어야 한다
     case FieldUse.MULCH: {
       const patch = ctx.berryAhead ?? null
-      if (patch?.canMulch !== true) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
+      if (patch?.canMulch !== true) return blocked('generic')
       return { kind: 'commonScript', id: BERRY_SCRIPT_MULCH, localID: patch.localID, withItem: true }
     }
 
     case FieldUse.OLD_ROD:
     case FieldUse.GOOD_ROD:
     case FieldUse.SUPER_ROD:
+      // `CanUseFishingRod` — 첫 검사가 동행이다. 그다음이 파멸의세계, 앞 칸이 물인가
+      if (ctx.hasPartner === true) return blocked('partner')
       if (ctx.mapId >= NO_FISHING_FIRST && ctx.mapId <= NO_FISHING_LAST) {
-        return { kind: 'blocked', why: '여기서는 낚시를 할 수 없다.' }
+        return blocked('noFishing', '여기서는 낚시를 할 수 없다.')
       }
-      if (!ctx.waterAhead) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
+      if (!ctx.waterAhead) return blocked('generic')
       // ⚠️ **다리 위에서는 못 던진다** (PARITY §1.16). 밑을 지나갈 때는
       // 같은 칸에서도 던진다 — 「위인가 밑인가」가 여기서도 갈린다
-      if (ctx.onBridge === true) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
+      if (ctx.onBridge === true) return blocked('generic')
       return {
         kind: 'fish',
         rod: item.fieldUseFunc === FieldUse.OLD_ROD ? 'old'
@@ -294,20 +341,22 @@ export function fieldAction(item: Item, ctx: FieldContext): FieldItemAction {
     // `CanUsePokeRadar` — 동행이 없고, 자전거를 안 탔고, **선 칸이 큰 풀**이어야
     // 한다. 배터리가 덜 찼는지는 여기서 안 본다 — 원작도 켠 다음에 대사로 말한다
     case FieldUse.POKE_RADAR:
-      if (ctx.hasPartner === true) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
-      if (ctx.onBike === true) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
-      if (ctx.inTallGrass !== true) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
+      if (ctx.hasPartner === true) return blocked('partner')
+      if (ctx.onBike === true) return blocked('generic')
+      if (ctx.inTallGrass !== true) return blocked('generic')
       return { kind: 'radar' }
 
     // `CanUseVsSeeker` — **신오 본판 위에서만** 쓴다. 배터리가 덜 찼는지는
     // 여기서 안 본다 (레이더와 같다) — 원작도 켠 다음에 롬의 대사로 말한다
     case FieldUse.VS_SEEKER:
-      if (ctx.mainMatrix !== true) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
+      if (ctx.mainMatrix !== true) return blocked('generic')
       return { kind: 'vsSeeker' }
 
-    // 천계의피리 (`UseAzureFluteInField`). 조건 여섯을 롬이 다 묻는다 — 위의
-    // 상수 설명 참고. **여기서 아무것도 안 막는다**
+    // 천계의피리. **가방의 문(`CanUseAzureFlute`)이 먼저다** — 명예의 전당 · 배포 표식 · 전국도감 ·
+    // 창기둥 세 맵이 하나라도 안 맞으면 스크립트까지 안 가고 공용 거절 줄로 닫힌다. 문을 지나면
+    // 칸(31,52)과 이미 잡았는가는 공용 스크립트가 묻는다 — 위의 상수 설명 참고
     case FieldUse.AZURE_FLUTE:
+      if (ctx.azureFluteReady !== true) return blocked('generic')
       return { kind: 'commonScript', id: COMMON_SCRIPT_AZURE_FLUTE }
 
     // 그라시데아꽃 (`UseGracideaInField`). 누구에게 쓸지부터 고른다 —
@@ -321,7 +370,7 @@ export function fieldAction(item: Item, ctx: FieldContext): FieldItemAction {
     // 아이콘 셋(그 자리부터 파티 끝까지)이 정해진다
     case FieldUse.MAIL: {
       const type = mailTypeOfConstant(item.constant)
-      if (type === null) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
+      if (type === null) return blocked('generic')
       return { kind: 'mail', type }
     }
 
@@ -329,10 +378,9 @@ export function fieldAction(item: Item, ctx: FieldContext): FieldItemAction {
       return { kind: 'honey' }
 
     case FieldUse.ESCAPE_ROPE:
-      // `CanUseEscapeRope` — 동굴이고 그 맵이 허락해야 한다
-      if (ctx.mapType !== MAP_TYPE_CAVE || !ctx.escapeRopeAllowed) {
-        return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
-      }
+      // `CanUseEscapeRope` — 첫 검사가 동행이고, 그다음이 동굴이며 그 맵이 허락하는가
+      if (ctx.hasPartner === true) return blocked('partner')
+      if (ctx.mapType !== MAP_TYPE_CAVE || !ctx.escapeRopeAllowed) return blocked('generic')
       return { kind: 'escapeRope' }
 
     case FieldUse.BAG_MESSAGE: {
@@ -343,16 +391,16 @@ export function fieldAction(item: Item, ctx: FieldContext): FieldItemAction {
       const message = BAG_MESSAGES[item.constant]
       if (message !== undefined) return { kind: 'bagMessage', what: message }
       const steps = repelStepsOf(item)
-      if (steps === null) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
-      // `TryUseRepel` — 남아 있으면 새로 안 쓴다. 개수도 안 깎는다
-      if (ctx.repelSteps > 0) return { kind: 'blocked', why: '아직 효과가 남아 있다.' }
+      if (steps === null) return blocked('generic')
+      // `TryUseRepel` — 남아 있으면 새로 안 쓴다. 개수도 안 깎는다 (가방 뱅크 62)
+      if (ctx.repelSteps > 0) return blocked('repelLinger', '아직 효과가 남아 있다.')
       return { kind: 'repel', steps, sound: SEQ_SE_DP_CARD2 }
     }
 
     default: {
       const message = MISSING[item.fieldUseFunc ?? FieldUse.NONE]
       if (message !== undefined) return { kind: 'missing', message }
-      return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
+      return blocked('generic')
     }
   }
 }

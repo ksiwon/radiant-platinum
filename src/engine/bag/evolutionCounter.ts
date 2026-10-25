@@ -66,6 +66,15 @@ export const EVOLUTION_COUNTER_STOCK: readonly number[] = [
   ...WEATHER_ROCKS,
 ]
 
+/**
+ * 열린 가게의 재고가 이 창구의 것인가. 상점 화면이 「판다」 갈래를 접는 데 쓴다 —
+ * 원작 decor 가게는 「산다·그만둔다」 둘뿐이다 (`shop_menu.c:377-400,919`).
+ * 가게 종류(`ShopCurrency`)가 계산대 구분을 안 실어 와서 재고로 알아본다
+ */
+export function isEvolutionCounterStock(items: readonly number[]): boolean {
+  return items.length === EVOLUTION_COUNTER_STOCK.length && items.every((n, i) => n === EVOLUTION_COUNTER_STOCK[i])
+}
+
 /** 그 번호가 이 창구인가. 원작이 넘기는 값은 둘뿐이다 */
 export function isDecorMart(martID: number): boolean {
   return (DECOR_MART_IDS as readonly number[]).includes(martID)

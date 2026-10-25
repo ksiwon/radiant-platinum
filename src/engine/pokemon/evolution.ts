@@ -140,6 +140,9 @@ export function evolutionTarget(
   species: Species,
   ctx: EvoContext = {},
 ): EvoResult | null {
+  // ⚠️ 알은 진화하지 않는다. 원작은 알을 파티 메뉴에서 못 고르게 막고(`party_menu/main.c:2643-2650`)
+  // 레벨 갈래도 알의 레벨을 올리지 않는다 — 우리는 도구가 알에게 닿는 길을 여기서도 닫는다
+  if (mon.isEgg) return null
   const list = species.evolutions
   const hit = cls === EvoClass.LEVEL ? byLevel(list, mon, species, ctx)
     : cls === EvoClass.TRADE ? byTrade(list, mon)
@@ -352,7 +355,12 @@ export function evolve(
   mon: PokemonInstance, from: Species, to: Species, method?: EvoMethod,
 ): PokemonInstance {
   const next = { ...mon, species: to.id }
-  const heldItem = method !== undefined && CONSUMES_HELD_ITEM.has(method) ? 0 : mon.heldItem
+  // ⚠️ **쓰는 것은 그 갈래의 도구 하나다.** 원작이 교환·낮·밤 갈래에서 지우는 것은
+  // 진화를 연 그 도구뿐이다 (`evolution.c:772-776`). 우리는 교환 갈래를 가방의 도구로도
+  // 걸어서(PARITY §12.2) 쥔 것이 전혀 다른 물건일 수 있다 — 그 물건(열매·편지)은 남긴다
+  const spent = method !== undefined && CONSUMES_HELD_ITEM.has(method)
+    && from.evolutions.some((e) => e.method === method && e.to === to.id && e.param === mon.heldItem)
+  const heldItem = spent ? 0 : mon.heldItem
   return { ...next, heldItem, hp: carriedHp(mon.hp, statsOf(mon, from).hp, statsOf(next, to).hp) }
 }
 

@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { itemFileSchema, speciesFileSchema, type Item } from '../../data/schema'
 import { withData } from '../../data/romData.testkit'
 import {
-  canLearnTm, fieldAction, FieldUse, isHmMove, MAP_TYPE_CAVE, repelStepsOf, teachMoveCheck,
+  azureFluteReady, BLOCKED_LINE_AT, canLearnTm, fieldAction, FieldUse, isHmMove, MAP_TYPE_CAVE, repelStepsOf, teachMoveCheck,
   tmIndex, tmMove,
   type FieldContext,
 } from './fieldUse'
@@ -137,6 +137,58 @@ maybe('필드 도구', () => {
       expect(fieldAction(rod, town({ mapId, waterAhead: true })).kind, `맵 ${String(mapId)}`)
         .toBe('fish')
     }
+  })
+
+  it('동행이 있으면 낚싯대와 탈출로프를 못 쓴다 — 첫 검사가 hasPartner다 (`CanUseFishingRod` · `CanUseEscapeRope`)', () => {
+    const partner = { hasPartner: true }
+    for (const name of ['ITEM_OLD_ROD', 'ITEM_GOOD_ROD', 'ITEM_SUPER_ROD']) {
+      expect(fieldAction(named(name), town({ ...partner, waterAhead: true })), name)
+        .toMatchObject({ kind: 'blocked', line: 'partner' })
+    }
+    expect(fieldAction(named('ITEM_ESCAPE_ROPE'), town({ ...partner, mapType: MAP_TYPE_CAVE, escapeRopeAllowed: true })))
+      .toMatchObject({ kind: 'blocked', line: 'partner' })
+    // 동행이 없으면 그대로 된다
+    expect(fieldAction(named('ITEM_OLD_ROD'), town({ hasPartner: false, waterAhead: true })).kind).toBe('fish')
+  })
+
+  it('못 쓰는 까닭은 원작이 가르는 롬 줄로 말한다 (`BagContext_FormatErrorMessage`)', () => {
+    // 물 없는 땅의 낚싯대 · 동굴 아닌 곳의 로프 — 공용 줄(`ITEM_USE_CANNOT_USE_GENERIC`)
+    expect(fieldAction(named('ITEM_OLD_ROD'), town())).toMatchObject({ line: 'generic' })
+    expect(fieldAction(named('ITEM_ESCAPE_ROPE'), town())).toMatchObject({ line: 'generic' })
+    // 파멸의세계 낚시는 가방 뱅크 112 (`ITEM_USE_CANNOT_FISH_HERE`)
+    expect(fieldAction(named('ITEM_SUPER_ROD'), town({ mapId: 573, waterAhead: true })))
+      .toMatchObject({ line: 'noFishing' })
+    // 물뿌리개·레이더도 동행이 첫 검사다
+    expect(fieldAction(named('ITEM_SPRAYDUCK'), town({ hasPartner: true }))).toMatchObject({ line: 'partner' })
+    expect(fieldAction(named('ITEM_POKE_RADAR'), town({ hasPartner: true })))
+      .toMatchObject({ line: 'partner' })
+    // 리펠 효과가 남았을 때는 가방 뱅크 62
+    expect(fieldAction(named('ITEM_REPEL'), town({ repelSteps: 1 }))).toMatchObject({ line: 'repelLinger' })
+    expect(BLOCKED_LINE_AT).toEqual({
+      generic: { bank: 'common', line: 36 },
+      partner: { bank: 'bag', line: 111 },
+      noFishing: { bank: 'bag', line: 112 },
+      repelLinger: { bank: 'bag', line: 62 },
+    })
+  })
+
+  it('천계의피리는 문(`CanUseAzureFlute`)을 지나야 스크립트로 간다', () => {
+    const flute = named('ITEM_AZURE_FLUTE')
+    expect(fieldAction(flute, town({ azureFluteReady: true }))).toEqual({ kind: 'commonScript', id: 2039 })
+    // 문 판정이 안 왔거나 거짓이면 스크립트까지 안 간다
+    expect(fieldAction(flute, town())).toMatchObject({ kind: 'blocked', line: 'generic' })
+    expect(fieldAction(flute, town({ azureFluteReady: false }))).toMatchObject({ kind: 'blocked', line: 'generic' })
+  })
+
+  it('천계의피리의 문은 네 조건이 다 맞아야 열린다', () => {
+    const ok = { mapId: 220, gameCompleted: true, arceusEvent: true, nationalDex: true }
+    expect(azureFluteReady(ok)).toBe(true)
+    // 창기둥 셋 (`MapHeader_IsAzureFluteAllowed`) 모두 통한다
+    for (const mapId of [220, 584, 585]) expect(azureFluteReady({ ...ok, mapId })).toBe(true)
+    for (const mapId of [219, 221, 583, 586, 510]) expect(azureFluteReady({ ...ok, mapId }), String(mapId)).toBe(false)
+    expect(azureFluteReady({ ...ok, gameCompleted: false })).toBe(false)
+    expect(azureFluteReady({ ...ok, arceusEvent: false })).toBe(false)
+    expect(azureFluteReady({ ...ok, nationalDex: false })).toBe(false)
   })
 
   it('계통이 없는 것과 원작이 막는 것을 가른다', () => {

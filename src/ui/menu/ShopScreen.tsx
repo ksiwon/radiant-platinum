@@ -38,6 +38,7 @@ import {
 } from '../../engine/world/gameRecords'
 import { SFX } from '../../engine/audio/sfx'
 import { canFit, POCKET_BERRIES } from '../../engine/bag/bag'
+import { isEvolutionCounterStock } from '../../engine/bag/evolutionCounter'
 import { tmMove } from '../../engine/bag/fieldUse'
 import { typeColor } from '../../engine/battle/typeColor'
 import { fieldScripts } from '../../engine/script/field'
@@ -240,6 +241,11 @@ export function ShopScreen() {
    * 이름은 롬 12다. 돈으로 사고 되팔지 않는다 (판다 없음 — BP 가게와 같다)
    */
   const isSeal = currency === 'seal'
+  /**
+   * 장막백화점 4층 계산대 (`MART_TYPE_DECOR`). 원작은 이 가게도 「산다·그만둔다」 둘뿐이다
+   * (`overlay007/shop_menu.c:377-400`) — 판다를 안 띄운다 (PARITY §12.1)
+   */
+  const isDecor = currency === 'money' && isEvolutionCounterStock(stock)
   const sealCase = useSaveStore((s) => s.sealCase)
   const battlePoints = useSaveStore((s) => s.battlePoints)
   const purse = isBP ? battlePoints : money
@@ -469,8 +475,8 @@ export function ShopScreen() {
     return false
   }
   const switchTab = (): boolean => {
-    // BP 가게와 씰 가게에는 「판다」가 없다 — 갈래를 안 바꾼다
-    if (isBP || isSeal) return false
+    // BP 가게와 씰 가게, 4층 계산대에는 「판다」가 없다 — 갈래를 안 바꾼다
+    if (isBP || isSeal || isDecor) return false
     setTab((t) => (t === 'buy' ? 'sell' : 'buy'))
     setCursor(0)
     return true
@@ -674,7 +680,7 @@ export function ShopScreen() {
 
   const entries = entriesOf(rows, tab === 'sell')
   const kind = isBP ? 'bp' : tab
-  const noSell = isBP || isSeal
+  const noSell = isBP || isSeal || isDecor
   const foot = step.kind === 'count'
     ? '↑↓ 개수 · ←→ ±10 · Z 결정 · X 그만둔다'
     : step.kind === 'confirm'

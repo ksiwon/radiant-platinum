@@ -332,6 +332,48 @@ maybe('진화', () => {
     expect(evolve(mon(387, { heldItem: 155 }), of(387), of(plain.to), Evo.LEVEL).heldItem).toBe(155)
   })
 
+  it('⚠️ 알은 어떤 도구로도 진화하지 않는다 — 원작은 알에 A를 눌러도 버저만 난다 (`party_menu/main.c:2643-2650`)', () => {
+    const stone = of(25).evolutions.find((e) => e.method === Evo.USE_ITEM)!
+    const cases: Array<[number, number]> = [
+      [349, ITEM_PRISM_SCALE], // 빈티나 + 고운 비늘
+      [64, ITEM_LINKING_CORD], // 윤겔라 + 연결의 끈
+      [123, of(123).evolutions.find((e) => e.method === Evo.TRADE_WITH_HELD_ITEM)!.param], // 스라크 + 금속코트
+      [25, stone.param], // 피카츄 + 돌
+    ]
+    for (const [species, item] of cases) {
+      const egg = mon(species, { isEgg: true })
+      expect(evolutionTarget(EvoClass.ITEM, egg, of(species), { item }), `알 ${String(species)}`).toBeNull()
+      // 같은 종이 알이 아니면 걸린다 — 막는 것이 알 하나뿐이다
+      expect(evolutionTarget(EvoClass.ITEM, mon(species), of(species), { item }), `마리 ${String(species)}`).not.toBeNull()
+    }
+    // 지닌 채 교환하는 갈래도 알은 안 건다
+    const coat = of(123).evolutions.find((e) => e.method === Evo.TRADE_WITH_HELD_ITEM)!
+    expect(evolutionTarget(EvoClass.TRADE, mon(123, { isEgg: true, heldItem: coat.param }), of(123))).toBeNull()
+  })
+
+  it('⚠️ 교환 도구를 가방에서 써도 쥔 다른 도구는 안 지운다 — 지우는 것은 갈래를 연 그 도구뿐이다', () => {
+    const coat = of(123).evolutions.find((e) => e.method === Evo.TRADE_WITH_HELD_ITEM)!
+    const BERRY = 135 // 오랭열매 자리 — 어느 갈래의 param도 아닌 아무 도구
+    expect(coat.param).not.toBe(BERRY)
+    // 오랭열매를 쥔 스라크가 금속코트를 쓰고 핫삼이 된다 → 열매는 그대로
+    const withBerry = evolve(mon(123, { heldItem: BERRY }), of(123), of(coat.to), Evo.TRADE_WITH_HELD_ITEM)
+    expect(withBerry.species).toBe(coat.to)
+    expect(withBerry.heldItem).toBe(BERRY)
+    // 편지를 쥔 마리의 편지도 그대로다 (지닌 도구 칸이 비어 편지가 고아가 되지 않는다)
+    const mail = { type: 0 } as never
+    const withMail = evolve(mon(123, { heldItem: 137, mail }), of(123), of(coat.to), Evo.TRADE_WITH_HELD_ITEM)
+    expect(withMail.heldItem).toBe(137)
+    expect(withMail.mail).toBe(mail)
+    // 진짜로 그 도구를 쥐고 있었다면 원작처럼 쓴다
+    expect(evolve(mon(123, { heldItem: coat.param }), of(123), of(coat.to), Evo.TRADE_WITH_HELD_ITEM).heldItem).toBe(0)
+    // 진주몽: 이빨을 쥐고 비늘로 진화하면 이빨은 남고, 비늘을 쥐고 비늘로 진화하면 비늘이 쓰인다
+    const [tooth, scale] = of(366).evolutions.filter((e) => e.method === Evo.TRADE_WITH_HELD_ITEM)
+    expect(evolve(mon(366, { heldItem: tooth!.param }), of(366), of(scale!.to), Evo.TRADE_WITH_HELD_ITEM).heldItem)
+      .toBe(tooth!.param)
+    expect(evolve(mon(366, { heldItem: scale!.param }), of(366), of(scale!.to), Evo.TRADE_WITH_HELD_ITEM).heldItem)
+      .toBe(0)
+  })
+
   it('진화한 자리에서 새 종족의 기술을 배운다', () => {
     // "진화한 그 레벨에 새 종족이 배우는 것이 있는" 짝을 표에서 직접 찾는다.
     // 종을 손으로 고르면 표가 바뀔 때 시험이 먼저 낡는다

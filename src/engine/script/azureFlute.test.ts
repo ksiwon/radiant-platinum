@@ -42,7 +42,7 @@ const FLAG_CAUGHT_ARCEUS = 286
 it('도구표가 천계의피리를 공용 스크립트로 보낸다', () => {
   const flute = { constant: 'ITEM_AZURE_FLUTE', fieldUseFunc: FieldUse.AZURE_FLUTE } as never
   expect(fieldAction(flute, {
-    mapId: SPEAR_PILLAR, mapType: 0, escapeRopeAllowed: false, repelSteps: 0, waterAhead: false,
+    mapId: SPEAR_PILLAR, mapType: 0, escapeRopeAllowed: false, repelSteps: 0, waterAhead: false, azureFluteReady: true,
   })).toEqual({ kind: 'commonScript', id: COMMON_SCRIPT_AZURE_FLUTE })
 })
 

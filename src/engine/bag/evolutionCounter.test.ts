@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  DECOR_MART_IDS, EVOLUTION_COUNTER_STOCK, EVOLUTION_STONES, FOSSILS, isDecorMart,
+  DECOR_MART_IDS, EVOLUTION_COUNTER_STOCK, EVOLUTION_STONES, FOSSILS, isDecorMart, isEvolutionCounterStock,
   WEATHER_ROCKS,
 } from './evolutionCounter'
 import { FIRST_EXTRA_ITEM, ITEM_LINKING_CORD, ITEM_PRISM_SCALE } from './extraItems'
@@ -98,5 +98,16 @@ maybe('창구가 실제로 열린다', () => {
     const stocks = openedStocks()
     expect(stocks.length, '열린 상점 수').toBeGreaterThan(0)
     for (const stock of stocks) expect(stock).toEqual([...EVOLUTION_COUNTER_STOCK])
+  })
+})
+
+describe('상점 화면이 계산대를 알아본다', () => {
+  it('이 창구의 재고만 4층 계산대로 읽는다 — 「판다」를 접는 근거다 (`shop_menu.c:377-400`)', () => {
+    expect(isEvolutionCounterStock([...EVOLUTION_COUNTER_STOCK])).toBe(true)
+    expect(isEvolutionCounterStock([])).toBe(false)
+    expect(isEvolutionCounterStock([4, 17, 18])).toBe(false)
+    // 순서·길이가 하나라도 다르면 다른 가게다
+    expect(isEvolutionCounterStock(EVOLUTION_COUNTER_STOCK.slice(1))).toBe(false)
+    expect(isEvolutionCounterStock([...EVOLUTION_COUNTER_STOCK].reverse())).toBe(false)
   })
 })

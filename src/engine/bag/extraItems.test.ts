@@ -60,3 +60,13 @@ it('잇는 것이지 덮는 것이 아니다', () => {
   expect(merged).toHaveLength(470)
   expect(merged.slice(0, 468)).toEqual(rom)
 })
+
+it('설명 표기가 롬을 따른다 — en은 Pokémon, ja는 전각 공백', () => {
+  // 롬 en 설명: `Pokémon` 293회 · `POKéMON` 0회 / 롬 ja 설명: U+3000 2,261회 · ASCII 공백 0회
+  for (const line of EXTRA_ITEM_DESCRIPTIONS.en!) expect(line).not.toContain('POKéMON')
+  expect(EXTRA_ITEM_DESCRIPTIONS.en![0]).toContain('Pokémon')
+  for (const line of EXTRA_ITEM_DESCRIPTIONS.ja!) {
+    expect(line).not.toContain(' ')
+    expect(line).toContain('　')
+  }
+})

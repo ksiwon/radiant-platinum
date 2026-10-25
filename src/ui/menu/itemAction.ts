@@ -9,6 +9,7 @@
 // 앞쪽이 순수 함수라 시험이 표 전량을 훑을 수 있어서다
 import { BIKE_PARTNER_LINE, BIKE_WHY_LINE, bikeBlock, isOnCyclingRoad } from '../../engine/actor/bike'
 import { onElevatedBridge } from '../../engine/actor/bridge'
+import { azureFluteReady, BLOCKED_LINE_AT } from '../../engine/bag/fieldUse'
 import type { FieldContext, FieldItemAction, PartyItemUse } from '../../engine/bag/fieldUse'
 import { isRadarGrass } from '../../engine/battle/encounter'
 import { isSurfable } from '../../engine/map/zone'
@@ -23,6 +24,7 @@ import { useSaveStore } from '../../state/saveStore'
 import { worldState } from '../../state/worldState'
 import { useMenuStore } from '../../state/menuStore'
 import { fillMenuText, loadUiText } from '../../data/uiText'
+import { DISTRIBUTION_EVENT, DISTRIBUTION_MAGIC, VAR_DISTRIBUTION_EVENT_FIRST } from '../../engine/world/siwon'
 import { totalAccessories } from '../../engine/world/fashionCase'
 import { totalSeals } from '../../engine/world/sealCase'
 import { berryPatchAhead } from '../../scene/berryPatches'
@@ -50,6 +52,14 @@ function prefetchBagText(): void {
 function bikeRefusalLine(where: { bank: 'bag' | 'common', line: number }): string {
   const raw = (where.bank === 'bag' ? bagText : commonText)?.[where.line] ?? ''
   return fillMenuText(raw, [useSaveStore.getState().trainer.name])
+}
+
+/**
+ * 못 쓰는 까닭의 롬 글 (`BagContext_FormatErrorMessage`). 줄 위치는 `BLOCKED_LINE_AT`다.
+ * 뱅크가 아직 안 왔을 때만 `why`(대비 문장)로 내려간다
+ */
+function blockedLineText(action: Extract<FieldItemAction, { kind: 'blocked' }>): string {
+  return bikeRefusalLine(BLOCKED_LINE_AT[action.line]) || action.why
 }
 
 function bagMessageLine(what: keyof typeof BAG_MESSAGE_LINE): string {
@@ -105,6 +115,14 @@ export function fieldContextNow(evoItems: ReadonlySet<string> | undefined): Fiel
     onBike: p.cycling,
     // VS시커는 신오 본판 위에서만 쓴다 (`MapHeader_IsOnMainMatrix`)
     mainMatrix: header?.matrix === 0,
+    // 천계의피리의 문 (`CanUseAzureFlute`) — 명예의 전당 · 아르세우스 배포 표식 · 전국도감 · 창기둥
+    azureFluteReady: azureFluteReady({
+      mapId: world.mapId,
+      gameCompleted: fieldScripts.vars?.checkFlag(SYSTEM_FLAG.gameCompleted) === true,
+      arceusEvent: fieldScripts.vars?.get(VAR_DISTRIBUTION_EVENT_FIRST + DISTRIBUTION_EVENT.arceus)
+        === DISTRIBUTION_MAGIC[DISTRIBUTION_EVENT.arceus],
+      nationalDex: useSaveStore.getState().nationalDex,
+    }),
     ...(evoItems === undefined ? {} : { evoItems }),
   }
 }
@@ -166,8 +184,9 @@ export function performItemAction(action: FieldItemAction, deps: ItemActionDeps)
     }
     case 'flute':
       // 걸음을 안 센다. 이 맵을 벗어나면 풀린다 (`FieldSystem_InitFlagsWarp`)
+      // ⚠️ **피리는 안 줄어든다.** 원작은 가방에서 불 때 `selectedItemCount = 0`으로 두어 버리는 단계
+      // (`TrashSelectedItem`)를 건너뛴다 (`applications/bag/main.c:2238-2245·2305`)
       useSaveStore.setState({ flute: action.factor })
-      deps.consume(deps.pocket, deps.item, 1)
       // `FLUTE_FACTOR_USED_BLACK` 1 · `_WHITE` 2 (`engine/bag/fieldUse`의 `fluteFactorOf`)
       deps.say(usedLine(action.factor === 1 ? 'blackFlute' : 'whiteFlute', deps.name))
       return true
@@ -235,7 +254,7 @@ export function performItemAction(action: FieldItemAction, deps: ItemActionDeps)
       deps.openParty('mail')
       return true
     default:
-      deps.say(action.why)
+      deps.say(blockedLineText(action))
       return false
   }
 }

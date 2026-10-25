@@ -5,7 +5,7 @@
 import { useEffect } from 'react'
 import { BINDINGS } from '../../engine/input/keys'
 import { worldState } from '../../state/worldState'
-import { fieldScripts } from '../../engine/script/field'
+import { fieldScripts, sayOurs, scriptBusy } from '../../engine/script/field'
 import { runRegisteredItem } from '../../scene/registeredItem'
 import { fieldTaskRunning } from '../../scene/fieldTask'
 import { useBattleStore } from '../../state/battleStore'
@@ -81,7 +81,12 @@ export function MenuLayer() {
       if (poketch.view === 'large') poketch.setView('small')
       // ⚠️ **Y는 메뉴를 안 연다.** 등록한 도구를 그 자리에서 쓴다 — 아무것도
       // 등록 안 했으면 원작처럼 조용히 아무 일도 안 한다
-      if (REGISTERED_KEYS.has(e.code)) { runRegisteredItem(); return }
+      // 못 쓰는 자리의 한 줄(`say`)은 필드 대사창으로 띄운다 — 원작도 `FieldSystem_UseRegisteredItem`이
+      // 막힘 글을 필드 창에 올린다. 우리 글이 이미 떠 있으면 겹쳐 올리지 않는다
+      if (REGISTERED_KEYS.has(e.code)) {
+        if (!scriptBusy()) runRegisteredItem((line) => { void sayOurs(line) })
+        return
+      }
       open('start')
     }
     window.addEventListener('keydown', onKey, true)
