@@ -149,15 +149,15 @@ async function reachField(page, limit = 300) {
       return { n: items.length, at: at < 0 ? 0 : at, last: items.at(-1)?.textContent ?? '' }
     })
     // 이름 자판과 몬스터볼은 키로 안 넘어간다 — `playOpening`과 같은 손이다
-    const input = page.getByLabel('이름')
+    const input = page.getByLabel(/^(이름|Name|なまえ)$/)
     if (await input.count() > 0) {
       seen.push('이름')
       await input.fill('레디')
-      await page.getByRole('button', { name: '결정' }).click()
+      await page.locator('form button[type="submit"]').click()
       await page.waitForTimeout(200)
       continue
     }
-    const ball = page.getByLabel('몬스터볼')
+    const ball = page.getByLabel(/^(몬스터볼|Poké Ball|モンスタ－ボ－ル)$/)
     if (await ball.count() > 0) {
       seen.push('몬스터볼')
       await ball.click(); await page.waitForTimeout(200); continue

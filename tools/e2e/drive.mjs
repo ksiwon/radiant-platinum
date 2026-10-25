@@ -5297,16 +5297,16 @@ export async function playOpening(page, names = OPENING_NAMES) {
     // ⚠️ **입력 직전마다 다시 본다.** `/intro`를 벗어난 뒤에 보낸 키는 다음
     // 화면이 받는다 — 오프닝을 끝낸 마지막 스페이스가 필드로 새는 자리다
     if (await where() !== '/intro') break
-    const input = page.getByLabel('이름')
+    const input = page.getByLabel(/^(이름|Name|なまえ)$/)
     if (await input.count() > 0) {
       await input.fill(list[Math.min(filled, list.length - 1)])
       filled += 1
-      await page.getByRole('button', { name: '결정' }).click()
+      await page.locator('form button[type="submit"]').click()
       // 이름칸이 사라지기를 기다린다 (다음 화면이 선 것) — 사라지면 바로 나온다. 안 사라져도 상한 뒤에 이어 간다
       await pollUntil(async () => (await input.count()) === 0, { timeout: 400, poll: 30 })
       continue
     }
-    const ball = page.getByLabel('몬스터볼')
+    const ball = page.getByLabel(/^(몬스터볼|Poké Ball|モンスタ－ボ－ル)$/)
     if (await ball.count() > 0) {
       await ball.click()
       await pollUntil(async () => (await ball.count()) === 0, { timeout: 400, poll: 30 })   // 몬스터볼 단추가 걷히기를 기다린다

@@ -121,13 +121,13 @@ async function measure(where, url, browser, install = false) {
     for (let i = 0; i < 300; i++) {
       const m = await page.evaluate(() => ({ ...document.documentElement.dataset }))
       if (m.scene === 'overworld') break
-      const input = page.getByLabel('이름')
+      const input = page.getByLabel(/^(이름|Name|なまえ)$/)
       if (await input.count() > 0) {
         await input.fill('레디')
-        await page.getByRole('button', { name: '결정' }).click()
+        await page.locator('form button[type="submit"]').click()
         await page.waitForTimeout(200); continue
       }
-      const ball = page.getByLabel('몬스터볼')
+      const ball = page.getByLabel(/^(몬스터볼|Poké Ball|モンスタ－ボ－ル)$/)
       if (await ball.count() > 0) { await ball.click(); await page.waitForTimeout(200); continue }
       const row = await page.evaluate(() => {
         const g = document.querySelector('[role="radiogroup"]')

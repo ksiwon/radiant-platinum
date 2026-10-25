@@ -1606,6 +1606,9 @@ await ((haveRom && haveBdsp) ? run : () => {})(
 
     // ── 새 게임 ──
     await page.getByRole('button', { name: '시작', exact: true }).click()
+    // 앞 판이 남긴 리포트가 있으면 「하던 모험이 있습니다」 확인 창이 먼저 선다 — 새 게임이 목적이므로 확정한다
+    const again = page.getByRole('button', { name: '처음부터 시작하기' })
+    if (await again.waitFor({ timeout: 1500 }).then(() => true, () => false)) await again.click()
     await where(page, () => location.pathname === '/intro', '새 게임을 눌렀는데 오프닝이 안 뜬다')
 
     // 오프닝은 글 → 몬스터볼 → 이름 → 고르기가 섞여 있고 길이가 롬 글에 달렸다.
@@ -1621,15 +1624,15 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     const trail = []
     let steps = 0
     for (; steps < 400 && new URL(page.url()).pathname === '/intro'; steps++) {
-      const input = page.getByLabel('이름')
+      const input = page.getByLabel(/^(이름|Name|なまえ)$/)
       if (await input.count() > 0) {
         trail.push('이름')
         await input.fill(NAME)
-        await page.getByRole('button', { name: '결정' }).click()
+        await page.locator('form button[type="submit"]').click()
         await page.waitForTimeout(200)
         continue
       }
-      const ball = page.getByLabel('몬스터볼')
+      const ball = page.getByLabel(/^(몬스터볼|Poké Ball|モンスタ－ボ－ル)$/)
       if (await ball.count() > 0) { trail.push('볼'); await ball.click(); await page.waitForTimeout(200); continue }
 
       const { n: choices, at } = await page.evaluate(() => {
@@ -1787,7 +1790,7 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     //
     // 다 쓴 자리에서만 뜨는 것은 **백업 줄**이다 (`phase === 'done'`). 우리가
     // 그리는 글이라 어느 롬에서나 같고, 받았든 막혔든 한 줄이 뜬다
-    await seen(page, page.getByText(/백업 파일도 받았다|백업 파일 다운로드를 막았다/).first(),
+    await seen(page, page.getByText(/백업 파일도 받았다|백업 파일 다운로드를 막았다|Backup file saved too|The browser blocked the backup download|バックアップの.ファイルも.うけとった|ダウンロ－ドを.とめた/).first(),
       '리포트를 다 썼다는 표시가 안 뜬다')
     const wrote = await page.locator('body').innerText()
     assert(wrote.includes(NAME), `다 쓴 화면에 이름이 없다: ${wrote.replace(/\s+/g, ' ').slice(0, 120)}`)
@@ -1796,7 +1799,7 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     // 다시 떠서 사람이 또 답하게 됐다. 뜬 것만 보고 넘어가면 그 되돌아감을 못 잡는다
     await page.waitForTimeout(2_000)
     const held = await page.locator('body').innerText()
-    assert(/백업 파일도 받았다|백업 파일 다운로드를 막았다/.test(held),
+    assert(/백업 파일도 받았다|백업 파일 다운로드를 막았다|Backup file saved too|The browser blocked the backup download|バックアップの.ファイルも.うけとった|ダウンロ－ドを.とめた/.test(held),
       `다 썼다는 줄이 도로 사라졌다: ${held.replace(/\s+/g, ' ').slice(0, 160)}`)
     await page.keyboard.press('Space')
 
@@ -1964,6 +1967,9 @@ await ((haveRom && haveBdsp && haveRoute) ? run : () => {})(
     const mark = requests.length
 
     await page.getByRole('button', { name: '시작', exact: true }).click()
+    // 앞 판이 남긴 리포트가 있으면 「하던 모험이 있습니다」 확인 창이 먼저 선다 — 새 게임이 목적이므로 확정한다
+    const again = page.getByRole('button', { name: '처음부터 시작하기' })
+    if (await again.waitFor({ timeout: 1500 }).then(() => true, () => false)) await again.click()
     await where(page, () => location.pathname === '/intro', '새 게임을 눌렀는데 오프닝이 안 뜬다')
     const after = await playOpening(page, OPENING_NAMES)
     assert(after === '/play', `오프닝이 안 끝났다 — ${after}`)
