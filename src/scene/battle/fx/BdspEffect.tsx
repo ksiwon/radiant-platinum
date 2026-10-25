@@ -341,7 +341,10 @@ function buildRigs(effect: FxEffect, maps: ReadonlyMap<string, Texture>): Rig[] 
       const texs = spec.textures.map((t) => maps.get(t.name) ?? whiteTexture())
       material = buildFxMaterial(spec, texs, mode !== RenderMode.Mesh)
       material.userData.fxKey = materialKey(spec)
-      materials.set(key, material)
+      // ⚠️ **그림을 못 받아 흰 판으로 메운 재질은 캐시에 굳히지 않는다.** 일시적 로드 실패 한 번이
+      // 세션이 끝날 때까지 그 이펙트를 흰 입자로 남겼다(`fxAssets`는 실패를 캐시에서 지워 재시도가 되는데
+      // 재질 캐시가 그걸 막았다). 이번 한 판만 흰 채로 쓰고 다음 판에 다시 짠다
+      if (spec.textures.every((t) => maps.has(t.name))) materials.set(key, material)
     }
     const inst = makeInstances(cap)
     // ⚠️ **정점 버퍼는 여덟 개까지다** (WebGPU `maxVertexBuffers`). 칸마다 따로 두면
