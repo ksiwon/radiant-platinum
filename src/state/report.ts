@@ -30,6 +30,7 @@ import { checksum, encodePayload } from './save/codec'
 // DEPLOY.md §2). 읽고 쓰는 자리가 전부 async라 그때 받으면 된다
 import type { MigrateResult } from './save/migrate'
 import { LEGACY_REPORT_DB, REPORT_DB } from './storageNames'
+import { canWrite, NOT_WRITER_WHY } from './writerLock'
 
 const dbStore = createStore(REPORT_DB, 'save')
 /** 슬롯 하나. 원작도 세이브가 한 벌이다 */
@@ -55,6 +56,8 @@ let migrated = false
 
 async function migrate(): Promise<void> {
   if (migrated) return
+  // 읽기 전용 탭은 옛 창고를 옮기지 않는다(쓰기다). 쓰는 탭이 옮긴다
+  if (!canWrite()) return
   migrated = true
   try {
     // 새 자리에 이미 있으면 옮길 것이 없다. 덮어쓰면 최신 리포트를 잃는다
@@ -127,6 +130,7 @@ type WriteResult =
  * 말할 수 있다
  */
 export async function writeReportVerified(data: SaveData): Promise<WriteResult> {
+  if (!canWrite()) return { ok: false, why: NOT_WRITER_WHY }
   const got = await writeSlotVerified(data, SLOT, TMP)
   if (got.ok) await set(SLOT_META, { savedAt: Date.now() }, dbStore).catch(() => undefined)
   return got
@@ -134,6 +138,7 @@ export async function writeReportVerified(data: SaveData): Promise<WriteResult> 
 
 /** 자동 저장 칸에 쓴다 — 리포트와 같은 검증을 거치고, 리포트 칸은 안 건드린다 */
 export async function writeAutosaveVerified(data: SaveData): Promise<WriteResult> {
+  if (!canWrite()) return { ok: false, why: NOT_WRITER_WHY }
   const got = await writeSlotVerified(data, AUTO, AUTO_TMP)
   if (got.ok) await set(AUTO_META, { savedAt: Date.now() }, dbStore).catch(() => undefined)
   return got
@@ -160,6 +165,7 @@ export async function readSaveTimes(): Promise<{ report: number | null, auto: nu
 
 /** 자동 저장을 지운다 — 새 모험을 열 때 옛 판의 자동 저장이 「더 최근」으로 남지 않게 */
 export async function clearAutosave(): Promise<void> {
+  assertWriter()
   await del(AUTO, dbStore)
   await del(AUTO_META, dbStore)
 }
@@ -209,7 +215,8 @@ async function writeSlotVerified(data: SaveData, slot: string, tmp: string): Pro
 }
 
 /** 검증 없이 쓴다. 시험과 이사 경로에만 쓴다 */
-export function writeReport(data: SaveData): Promise<void> {
+export async function writeReport(data: SaveData): Promise<void> {
+  assertWriter()
   return set(SLOT, data, dbStore)
 }
 
@@ -221,6 +228,7 @@ export function writeReport(data: SaveData): Promise<void> {
  * 같이 사라지므로 **대신**이 아니라 **덤**이다
  */
 export async function backupReport(): Promise<boolean> {
+  assertWriter()
   const data: unknown = await get(SLOT, dbStore)
   if (data === undefined || data === null) return false
   await set(BACKUP, data, dbStore)
@@ -235,6 +243,7 @@ export async function backupReport(): Promise<boolean> {
  * 그대로 한 번의 `set`이다
  */
 export async function backupAutosave(): Promise<boolean> {
+  assertWriter()
   const data: unknown = await get(AUTO, dbStore)
   if (data === undefined || data === null) return false
   await set(BACKUP, data, dbStore)
@@ -260,9 +269,15 @@ export function readBackupDetailed(expectVersion: number): Promise<ReportRead> {
   return readSlotDetailed(BACKUP, expectVersion)
 }
 
-export function clearReport(): Promise<void> {
+export async function clearReport(): Promise<void> {
+  assertWriter()
   return del(SLOT, dbStore)
 }
+/** 쓰기 계열의 마지막 방어선 — 읽기 전용 탭이면 던진다 (부르는 쪽이 앞에서 먼저 거절하지만, 빠진 길이 저장소를 덮지 않게) */
+function assertWriter(): void {
+  if (!canWrite()) throw new Error(NOT_WRITER_WHY)
+}
+
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }

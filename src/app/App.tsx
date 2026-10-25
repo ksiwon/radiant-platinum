@@ -3,7 +3,7 @@
 // 코드 스플리팅 (PLAN §10.4): three.js와 엔진은 이 모듈의 정적 그래프에 들어오면 안 된다.
 // 타이틀 화면은 three.js 없이 뜨고, 게임 청크는 /play 진입 시점에 지연 로드된다.
 // 한번 마운트되면 라우트가 바뀌어도 언마운트하지 않으므로 영속 Canvas 불변식은 유지된다.
-import { type ComponentType, lazy, Suspense, useEffect, useState } from 'react'
+import { type ComponentType, lazy, Suspense, useEffect, useState, useSyncExternalStore } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router'
 import { TitleScreen } from '../ui/screens/TitleScreen'
 import { ZoneBanner } from '../ui/hud/ZoneBanner'
@@ -16,6 +16,7 @@ import { RendererTrouble } from '../ui/screens/RendererTrouble'
 import { SceneBoundary } from '../ui/screens/SceneBoundary'
 import { ChunkBoundary } from '../ui/screens/ChunkBoundary'
 import { markMap, markMenu, markScene } from './sceneMark'
+import { isReadOnlyTab, subscribeWriter } from '../state/writerLock'
 
 const Stage = lazy(() => import('../scene/Stage').then((m) => ({ default: m.Stage })))
 // ⚠️ **배틀 화면도 지연이다.** 늘 그려 두면(안에서 null을 내더라도) 배틀 UI
@@ -26,6 +27,8 @@ const BattleScreen = lazy(() =>
 const PlayRoute = lazy(() => import('./PlayRoute').then((m) => ({ default: m.PlayRoute })))
 /** 오래 한 판 경고 (`scene/autosave`) — 필드에서만 받는다. 엔진을 끌고 오므로 타이틀 첫 청크에 안 얹는다 */
 const PlayNotice = lazy(() => import('../ui/hud/PlayNotice'))
+/** 다른 탭이 저장소를 쥐고 있을 때의 한 줄 (`state/writerLock`) — 그때만 받는다 */
+const WriterTabNotice = lazy(() => import('../ui/hud/WriterTabNotice'))
 // 인트로는 three를 안 쓴다. 그래도 타이틀 청크에 안 넣는 이유는 대사 인쇄기와
 // 뱅크 로더를 끌고 오기 때문이다 — "이어하기"로 들어오면 한 번도 안 쓴다
 const IntroRoute = lazy(() =>
@@ -36,6 +39,7 @@ let bootstrapped = false
 export function App() {
   const stageMounted = useSessionStore((s) => s.stageMounted)
   const battleUp = useSessionStore((s) => s.battleScreen)
+  const readOnlyTab = useSyncExternalStore(subscribeWriter, isReadOnlyTab)
   /**
    * 개발용 연장을 붙이는가 — **개발 서버에서만**이다.
    *
@@ -148,6 +152,7 @@ export function App() {
       {/* 이펙트 시험대는 화면 전체가 찍는 판이라 계기판을 안 얹는다 */}
       {devTools && !window.location.pathname.startsWith('/fxlab') && <PerfOverlayHost />}
       <ZoneBanner />
+      {readOnlyTab && <Suspense fallback={null}><WriterTabNotice /></Suspense>}
       {phase === 'overworld' && <Suspense fallback={null}><PlayNotice /></Suspense>}
       {/*
         그래픽이 멈췄을 때의 창 (기획서 RP-03). 3D를 한 조각도 안 잡으므로

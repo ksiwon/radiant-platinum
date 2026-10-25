@@ -12,6 +12,7 @@ import {
   readSaveTimes,
   writeAutosaveVerified, writeReportVerified,
 } from './report'
+import { canWrite, NOT_WRITER_WHY } from './writerLock'
 import { downloadPortable, saveFileName, type DownloadOutcome } from './save/download'
 import {
   buildPortable, buildPortableRaw, explainFailure, parsePortable, type PortableSave,
@@ -680,7 +681,8 @@ interface SaveStore extends SaveData {
    * ⚠️ **지우기 전에 백업을 시도한다** (IMPORT.md §11 끝). 파일 다운로드와
    * IndexedDB 백업 슬롯 둘 다 — 둘 중 하나는 남을 확률을 올린다
    */
-  resetSave: (options?: { backup?: boolean }) => Promise<void>
+  /** 지웠으면 true. 읽기 전용 탭(다른 탭이 저장소를 쥠)이면 아무것도 안 지우고 false (`state/writerLock`) */
+  resetSave: (options?: { backup?: boolean }) => Promise<boolean>
 }
 
 /** 리포트 한 번의 결과. **내부 저장과 파일 백업이 따로다** (IMPORT.md §10) */
@@ -1104,6 +1106,7 @@ export const useSaveStore = create<SaveStore>()(
       },
 
       commitImport: async (preview) => {
+        if (!canWrite()) return { ok: false, why: NOT_WRITER_WHY }
         // ⚠️ **덮기 전에 지금 것을 먼저 받는다** (IMPORT.md §11-8). 여기서
         // 실패해도 들이는 것을 막지는 않는다 — 막으면 다운로드가 차단된 브라우저에서
         // 영영 못 들인다
@@ -1127,6 +1130,7 @@ export const useSaveStore = create<SaveStore>()(
       },
 
       restoreBackup: async (save) => {
+        if (!canWrite()) return { ok: false, why: NOT_WRITER_WHY }
         // ⚠️ **파일로만 지킨다.** 백업 슬롯에도 한 벌 옮기는 평소 길로 가면
         // 지금 되찾으려는 그 한 벌이 **현재 리포트로 덮인다**
         const backedUp = await backupBeforeOverwrite(false)
@@ -1161,11 +1165,14 @@ export const useSaveStore = create<SaveStore>()(
       },
 
       resetSave: async (options) => {
+        // 다른 탭이 저장소를 쥐고 있으면 지우지 않는다 — 그 탭의 진행을 이 탭이 지우게 되므로
+        if (!canWrite()) return false
         if (options?.backup !== false) await backupBeforeOverwrite(true, true)
         await clearReport()
         // 옛 판의 자동 저장이 새 모험보다 「더 최근」으로 타이틀에 남지 않게 같이 지운다
         await clearAutosave().catch(() => undefined)
         set({ ...createNewSave(), hydrated: true, loaded: false })
+        return true
       },
     }),
 )

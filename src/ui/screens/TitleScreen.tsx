@@ -24,6 +24,7 @@ import { Fragment, lazy, Suspense, useEffect, useLayoutEffect, useRef, useState,
 import { useNavigate } from 'react-router'
 import { loadUiText, MAIN_MENU } from '../../data/uiText'
 import { readAutosaveDetailed, readReportDetailed, readSaveTimes } from '../../state/report'
+import { NOT_WRITER_WHY } from '../../state/writerLock'
 import { useMenuStore } from '../../state/menuStore'
 import { useSessionStore } from '../../state/sessionStore'
 import { APP_ROOT } from '../../data/assetBase'
@@ -305,7 +306,11 @@ function TitleMenu() {
     const save = useSaveStore.getState()
     if (fresh) {
       // 지우기 전에 백업을 시도한다 — 스토어가 알아서 한다 (IMPORT.md §11-8)
-      void save.resetSave().then(() => { navigate('/intro') })
+      void save.resetSave().then((ok) => {
+        // 다른 탭이 저장소를 쥐고 있으면 지우지 않았다 — 인트로로 보내면 이 탭에서는 저장도 못 하는 새 모험이 된다
+        if (ok) void navigate('/intro')
+        else setNotice(NOT_WRITER_WHY)
+      })
       return
     }
     void save.loadReport().then(() => { navigate('/play') })

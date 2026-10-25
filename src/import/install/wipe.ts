@@ -18,6 +18,7 @@ import { OPFS_ROOT } from '../../data/providers/packStore'
 import {
   LEGACY_OPTIONS_KEY, LEGACY_REPORT_DB, OPTIONS_KEY, REPORT_DB, SOURCES_DB,
 } from '../../state/storageNames'
+import { canWrite, NOT_WRITER_WHY } from '../../state/writerLock'
 
 interface WipeReport {
   /** OPFS 나무를 지웠는가 (애초에 없었으면 지운 것으로 친다) */
@@ -74,6 +75,10 @@ export async function wipeSiteData(): Promise<WipeReport> {
   const out: WipeReport = {
     opfs: false, databases: [], caches: [], workers: 0, keys: [], failed: [],
   }
+
+  // ⚠️ **다른 탭이 저장소를 쥐고 있으면 아무것도 안 지운다** — 이 함수는 리포트 칸(IndexedDB)과 세이브 폴더(OPFS)를 통째로
+  // 지우므로, 읽기 전용 탭이 하면 쓰는 탭의 진행이 날아간다 (`state/writerLock`). 못 지운 것으로 돌려 화면이 그대로 적는다
+  if (!canWrite()) { out.failed.push(NOT_WRITER_WHY); return out }
 
   // ① OPFS — 에셋·세이브 폴더·저널·매니페스트가 다 이 아래다
   try {

@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client'
 import { BootGate } from './app/BootGate'
 import { registerOffline } from './app/offline'
+import { startWriterLock } from './state/writerLock'
 import { ChunkBoundary } from './ui/screens/ChunkBoundary'
 
 // ⚠️ `<App />`을 곧바로 그리지 않는다. 공개판은 설치본이 있어야 콘텐츠를 부를
@@ -10,6 +11,9 @@ import { ChunkBoundary } from './ui/screens/ChunkBoundary'
 // 안쪽 경계가 없는 지연 화면이 청크를 못 받으면 여기서 받는다 — 없으면 루트가
 // 통째로 내려가 빈 화면만 남는다. `vite:preloadError`는 듣지 않는다: 거기서
 // 새로 고치면 필드의 진행이 말없이 사라진다 (PLAN §4.6)
+// 같은 저장소를 쓰는 탭이 둘이면 먼저 뜬 쪽만 쓴다 — 락이 없는 환경에서는 아무 일도 안 한다 (`state/writerLock`)
+startWriterLock()
+
 createRoot(document.getElementById('root')!).render(
   <ChunkBoundary where="앱" outermost>
     <BootGate />
