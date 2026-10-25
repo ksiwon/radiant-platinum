@@ -101,6 +101,18 @@ describe('망가진 파일', () => {
     expect(explainFailure(got.fail)).toContain('손상')
   })
 
+  it('⚠️ 끝이 잘린 파일은 「우리 파일이 아님」이 아니라 손상으로 안내한다', () => {
+    const cut = good().slice(0, -50)
+    const got = parsePortable(cut)
+    expect(got.ok).toBe(false)
+    if (got.ok) return
+    expect(got.fail.kind).toBe('truncated')
+    expect(explainFailure(got.fail)).toContain('손상')
+    // 우리 표지가 없는 깨진 글은 그대로 「이 게임의 파일이 아님」
+    const other = parsePortable('{"a":')
+    expect(other.ok === false && other.fail.kind).toBe('not-json')
+  })
+
   it('체크섬은 payload를 해석하기 전에 본다', () => {
     // 순서가 뒤집히면 손상된 바이트를 JSON.parse가 먼저 만나서, 왜 실패했는지
     // 알 수 없는 오류가 나온다

@@ -97,6 +97,7 @@ type ParseFailure =
   | { kind: 'too-big'; bytes: number; limit: number }
   | { kind: 'not-json' }
   | { kind: 'not-ours' }
+  | { kind: 'truncated' }
   | { kind: 'format-too-new'; found: number; expected: number }
   | { kind: 'unknown-codec'; found: string }
   | { kind: 'checksum'; expected: string; found: string }
@@ -125,7 +126,13 @@ export function parsePortable(text: string): ParseResult {
   }
 
   let raw: unknown
-  try { raw = JSON.parse(text) } catch { return { ok: false, fail: { kind: 'not-json' } } }
+  // ⚠️ **봉투 표지가 보이면 우리 파일이 깨진 것이다.** 끝이 잘린 `.rpsave`가 「이 게임의 파일이 아닙니다」로
+  // 안내돼 사람이 원본을 버렸다 — 표지(`magic`)로 가른다
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    return { ok: false, fail: { kind: text.includes(PORTABLE_MAGIC) ? 'truncated' : 'not-json' } }
+  }
   if (!isRecord(raw) || raw.magic !== PORTABLE_MAGIC || typeof raw.payload !== 'string') {
     return { ok: false, fail: { kind: 'not-ours' } }
   }
@@ -182,6 +189,8 @@ export function explainFailure(fail: ParseFailure): string {
   switch (fail.kind) {
     case 'too-big':
       return `파일이 너무 큽니다 (${mb(fail.bytes)} · 상한 ${mb(fail.limit)})`
+    case 'truncated':
+      return '파일이 손상됐습니다 (끝이 잘렸거나 깨졌습니다). 원본을 그대로 보관해 주세요'
     case 'not-json':
     case 'not-ours':
       return '이 게임의 리포트 파일이 아닙니다'

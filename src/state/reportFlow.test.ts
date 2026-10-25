@@ -11,7 +11,7 @@ import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { get, set, del, createStore } from 'idb-keyval'
 import { createNewSave, SAVE_VERSION, useSaveStore, type SaveData } from './saveStore'
-import { readReportDetailed } from './report'
+import { readReportDetailed, writeAutosaveVerified } from './report'
 import { buildPortable, buildPortableRaw, serializePortable } from './save/portable'
 import { dexSet } from '../engine/pokemon/dex'
 
@@ -75,6 +75,7 @@ beforeEach(async () => {
   await del('report', DB)
   await del('report.tmp', DB)
   await del('report.bak', DB)
+  for (const k of ['report.meta', 'report.auto', 'report.auto.tmp', 'report.auto.meta']) await del(k, DB)
   useSaveStore.setState({ ...createNewSave(), hydrated: false, loaded: false, pendingInit: false })
 })
 
@@ -134,6 +135,63 @@ describe('리포트를 쓴다', () => {
 })
 
 describe('백업 받기', () => {
+  it('⚠️ 더 최근인 자동 저장도 지우기 전에 백업 슬롯과 파일로 남는다', async () => {
+    useSaveStore.setState({ ...saveWith('옛리포트', 1111) })
+    await useSaveStore.getState().report(where)
+    await writeAutosaveVerified(saveWith('최근자동', 9999))
+    // 시각을 못 박는다 — 리포트가 먼저, 자동 저장이 나중
+    await set('report.meta', { savedAt: 1000 }, DB)
+    await set('report.auto.meta', { savedAt: 2000 }, DB)
+    grabbed = []
+
+    await useSaveStore.getState().resetSave()
+
+    expect((await get<SaveData>('report.bak', DB))?.money).toBe(9999)
+    const names = await Promise.all(grabbed.map(async (g) => (
+      (JSON.parse(await g.blob.text()) as { summary: { trainer: string } }).summary.trainer
+    )))
+    expect(names.sort()).toEqual(['옛리포트', '최근자동'])
+    // 자동 저장 칸은 새 모험 때문에 지워진다 — 되찾을 길은 백업이다
+    expect(await get('report.auto', DB)).toBeUndefined()
+    const kept = await useSaveStore.getState().previewBackup()
+    expect(kept.kind === 'ok' && kept.save.money).toBe(9999)
+  })
+
+  it('자동 저장이 더 오래됐으면 백업 슬롯은 리포트 그대로다', async () => {
+    useSaveStore.setState({ ...saveWith('리포트', 1111) })
+    await useSaveStore.getState().report(where)
+    await writeAutosaveVerified(saveWith('옛자동', 9999))
+    await set('report.meta', { savedAt: 2000 }, DB)
+    await set('report.auto.meta', { savedAt: 1000 }, DB)
+    grabbed = []
+
+    await useSaveStore.getState().resetSave()
+
+    expect((await get<SaveData>('report.bak', DB))?.money).toBe(1111)
+    expect(grabbed).toHaveLength(1)
+  })
+
+  it('내보내기는 더 최근인 자동 저장을 담는다', async () => {
+    useSaveStore.setState({ ...saveWith('옛리포트', 1111) })
+    await useSaveStore.getState().report(where)
+    await writeAutosaveVerified(saveWith('최근자동', 9999))
+    await set('report.meta', { savedAt: 1000 }, DB)
+    await set('report.auto.meta', { savedAt: 2000 }, DB)
+    grabbed = []
+
+    const got = await useSaveStore.getState().exportReport()
+    expect(got.kind).toBe('done')
+    expect(grabbed).toHaveLength(1)
+    const env = JSON.parse(await grabbed[0]!.blob.text()) as { summary: { trainer: string } }
+    expect(env.summary.trainer).toBe('최근자동')
+  })
+
+  it('못 읽는 리포트가 있어도 리포트 슬롯은 백업으로 남는다', async () => {
+    await set('report', { version: 99, junk: true }, DB)
+    await useSaveStore.getState().resetSave()
+    expect(await get('report.bak', DB)).toEqual({ version: 99, junk: true })
+  })
+
   it('리포트가 없으면 받을 것도 없다', async () => {
     expect(await useSaveStore.getState().exportReport()).toEqual({ kind: 'none' })
   })

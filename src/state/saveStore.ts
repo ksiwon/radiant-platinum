@@ -8,7 +8,8 @@
 import { addPlaytimeCapped } from '../engine/world/playTime'
 import { create } from 'zustand'
 import {
-  backupReport, clearAutosave, clearReport, readAutosaveDetailed, readBackupDetailed, readReport, readReportDetailed,
+  backupAutosave, backupReport, clearAutosave, clearReport, readAutosaveDetailed, readBackupDetailed, readReport, readReportDetailed,
+  readSaveTimes,
   writeAutosaveVerified, writeReportVerified,
 } from './report'
 import { downloadPortable, saveFileName, type DownloadOutcome } from './save/download'
@@ -1051,7 +1052,12 @@ export const useSaveStore = create<SaveStore>()(
       },
 
       exportReport: async () => {
-        const got = await readReportDetailed(SAVE_VERSION)
+        // ⚠️ **더 최근인 자동 저장이 있으면 그쪽을 내보낸다.** 타이틀의 「이어하기」는 리포트를 열지만 탭이
+        // 죽은 사람이 잃은 것은 자동 저장 쪽의 진행이다 — 리포트만 받으면 그 진행은 어디에도 안 남는다
+        const auto = await newerAutosave()
+        const got: Awaited<ReturnType<typeof readReportDetailed>> = auto !== null
+          ? { kind: 'ok', save: auto, migrated: false }
+          : await readReportDetailed(SAVE_VERSION)
         if (got.kind === 'none') return { kind: 'none' }
         const at = new Date()
         if (got.kind === 'ok') {
@@ -1155,7 +1161,7 @@ export const useSaveStore = create<SaveStore>()(
       },
 
       resetSave: async (options) => {
-        if (options?.backup !== false) await backupBeforeOverwrite()
+        if (options?.backup !== false) await backupBeforeOverwrite(true, true)
         await clearReport()
         // 옛 판의 자동 저장이 새 모험보다 「더 최근」으로 타이틀에 남지 않게 같이 지운다
         await clearAutosave().catch(() => undefined)
@@ -1176,16 +1182,37 @@ export const useSaveStore = create<SaveStore>()(
  * 리포트를 백업 슬롯에 쓰는 것이 이 함수가 하는 일이기 때문이다.
  * 그 길에서는 파일 한 벌만 남기고, 백업 슬롯은 손대지 않는다 (`restoreBackup`)
  */
-async function backupBeforeOverwrite(toSlot = true): Promise<DownloadOutcome> {
+async function backupBeforeOverwrite(toSlot = true, withAuto = false): Promise<DownloadOutcome> {
   const got = await readReportDetailed(SAVE_VERSION)
-  if (got.kind === 'none') return { started: false, why: 'no-dom' }
-  if (toSlot) await backupReport().catch(() => false)
+  // ⚠️ **더 최근인 자동 저장도 같이 지킨다** (`withAuto` — 새 모험이 자동 저장을 지우는 길에서만 켠다).
+  // 가져오기·되찾기는 자동 저장 칸을 안 건드리므로 거기서는 지킬 것이 없다
+  const auto = withAuto ? await newerAutosave() : null
+  if (got.kind === 'none' && auto === null) return { started: false, why: 'no-dom' }
+  // 백업 슬롯은 한 칸이다 — 더 최근인 쪽이 들어가고, 덜 최근인 리포트는 파일로만 남는다
+  if (toSlot) await (auto !== null ? backupAutosave() : backupReport()).catch(() => false)
   const at = new Date()
+  const outcomes: DownloadOutcome[] = []
   if (got.kind === 'ok') {
-    return downloadPortable(buildPortable(got.save, at), saveFileName(got.save.trainer.name, at))
+    outcomes.push(downloadPortable(buildPortable(got.save, at), saveFileName(got.save.trainer.name, at)))
+  } else if (got.kind === 'unreadable') {
+    const found = got.reason.kind === 'invalid' ? (got.reason.found ?? 0) : got.reason.found
+    outcomes.push(downloadPortable(buildPortableRaw(got.raw, found, at), saveFileName('복구', at)))
   }
-  const found = got.reason.kind === 'invalid' ? (got.reason.found ?? 0) : got.reason.found
-  return downloadPortable(buildPortableRaw(got.raw, found, at), saveFileName('복구', at))
+  if (auto !== null) {
+    outcomes.push(downloadPortable(buildPortable(auto, at), saveFileName(`${auto.trainer.name}-자동`, at)))
+  }
+  // 하나라도 못 받았으면 못 받은 쪽을 알린다
+  return outcomes.find((o) => !o.started) ?? { started: true }
+}
+
+/** 자동 저장이 리포트보다 더 최근이고 읽을 수 있으면 그 저장. 아니면 null (타이틀의 「자동 저장에서 이어하기」와 같은 판정) */
+async function newerAutosave(): Promise<SaveData | null> {
+  try {
+    const t = await readSaveTimes()
+    if (t.auto === null || (t.report !== null && t.report >= t.auto)) return null
+    const got = await readAutosaveDetailed(SAVE_VERSION)
+    return got.kind === 'ok' ? got.save : null
+  } catch { return null }
 }
 
 /**

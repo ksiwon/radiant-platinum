@@ -228,6 +228,20 @@ export async function backupReport(): Promise<boolean> {
 }
 
 /**
+ * 자동 저장 칸을 **백업 슬롯으로** 옮긴다 — `backupReport`와 같은 한 칸이다.
+ *
+ * ⚠️ 자동 저장이 리포트보다 더 최근일 때 새 모험이 둘 다 지운다. 사람이 잃는 것은 더 최근인
+ * 쪽이라 슬롯에는 그쪽을 남긴다 (`saveStore`의 `backupBeforeOverwrite`). 같은 원자성 — 값
+ * 그대로 한 번의 `set`이다
+ */
+export async function backupAutosave(): Promise<boolean> {
+  const data: unknown = await get(AUTO, dbStore)
+  if (data === undefined || data === null) return false
+  await set(BACKUP, data, dbStore)
+  return true
+}
+
+/**
  * 지우기 직전에 옮겨 둔 것을 **판정까지 붙여서** 읽는다
  * (REPAIR.md §10 · IMPORT.md §11-8).
  *

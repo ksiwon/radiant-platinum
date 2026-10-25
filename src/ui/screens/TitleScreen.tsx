@@ -32,7 +32,7 @@ import {
   dexHas, SAVE_VERSION, useSaveStore,
   type BackupPreview, type ImportPreview, type SaveData,
 } from '../../state/saveStore'
-import { PORTABLE_EXT } from '../../state/save/portable'
+import { explainFailure, MAX_PORTABLE_BYTES, PORTABLE_EXT } from '../../state/save/portable'
 import { APP_VERSION } from '../../state/save/contract'
 import {
   integrityFinding, subscribeIntegrity, verifyEverything, watchIntegrity,
@@ -344,6 +344,13 @@ function TitleMenu() {
 
   const pickFile = (file: File): void => {
     setNotice(null)
+    // ⚠️ **읽기 전에 크기부터 본다.** 상한 검사가 `parsePortable` 안이라 잘못 고른 큰 파일을 통째로 읽은 뒤에야
+    // 거절했다 (탭이 죽는 자리). 안내 글은 같은 `too-big` 길이다
+    if (file.size > MAX_PORTABLE_BYTES) {
+      setPending(null)
+      setNotice(explainFailure({ kind: 'too-big', bytes: file.size, limit: MAX_PORTABLE_BYTES }))
+      return
+    }
     void file.text().then(async (raw) => {
       const preview = await useSaveStore.getState().previewImport(raw)
       if (!preview.ok) { setPending(null); setNotice(preview.why); return }
@@ -431,7 +438,10 @@ function TitleMenu() {
       // ⚠️ **리포트를 아직 읽는 중이면 아무 일도 안 한다.** 그 사이(`report === undefined`)에는 하던 것이 있는지 몰라
       // 확인 창 없이 곧바로 지우는 갈래로 갔다 — 타이틀이 뜨자마자 누른 Enter가 리포트를 지웠다(실측 2026-10-17 · 칸 21
       // 재대결 엔딩 뒤 다시 켜진 타이틀에서 연타가 새 모험으로 들어갔다). 커서는 읽은 뒤 「이어하기」로 옮겨진다
-      go: () => { if (report === undefined) return; if (hasSave) askNew(); else go(true) },
+      //
+      // ⚠️ **못 읽는 리포트도 「하던 것」이다.** `hasSave`만 보면 미래 판·스키마를 어긴 리포트가 있는 사람의
+      // Enter 한 번이 확인 없이 `resetSave()`로 갔다 (실측 2026-10-25 · 칸의 리포트가 지워지고 백업 한 칸만 남음)
+      go: () => { if (report === undefined) return; if (hasSave || unreadable !== null) askNew(); else go(true) },
     },
     {
       key: 'continue',
