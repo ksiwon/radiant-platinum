@@ -498,6 +498,7 @@ function talkToSiwon(mapFile: number): void {
     probe: {
       flag: (id) => vars.checkFlag(id),
       variable: (id) => vars.get(id),
+      hasFatefulRegigigas: siwon.hasFatefulRegigigas,
     },
     canFitItem: (item) => bag.canFit(item, 1),
     hasPartyRoom: () => party.count() < PARTY_SLOTS,

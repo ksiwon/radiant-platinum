@@ -67,7 +67,7 @@ const FLAG_CAUGHT_SHAYMIN = 291
 const FLAG_CAUGHT_DARKRAI = 344
 
 /** 유적 셋의 진행 변수 */
-const VAR_RUINS_STATE = [16489, 16490, 16491] as const
+export const VAR_RUINS_STATE = [16489, 16490, 16491] as const
 
 /**
  * `RUINS_STATE_CAUGHT_REGI` (`include/constants/regi_ruins.h`) — **레지를 잡았다**.
@@ -96,6 +96,12 @@ type SiwonGift =
 export interface SiwonProbe {
   flag: (id: number) => boolean
   variable: (id: number) => number
+  /**
+   * 시원이 준 「운명적 만남」 레지기가스가 **파티·박스·육성가 어딘가에** 있는가.
+   *
+   * ⚠️ 안 채우면 「있다」로 본다 — 재지급은 이 신호가 있어야만 한다 (`siwonTurn`)
+   */
+  hasFatefulRegigigas?: () => boolean
 }
 
 interface SiwonEntry {
@@ -166,7 +172,7 @@ export const SIWON_GIFTS: readonly SiwonEntry[] = [
     // Regigigas`). 눈설신전에서 잡는 마리로는 안 열린다 — 원작도 그렇다.
     // 레벨 1은 원작 배포(TRU 레지기가스)와 같다
     gift: { kind: 'mon', species: SIWON_SPECIES.regigigas, level: 1, fateful: true },
-    used: (p) => VAR_RUINS_STATE.some((v) => p.variable(v) >= RUINS_STATE_CAUGHT_REGI),
+    used: (p) => ruinsRegiCaught(p.variable),
   },
   {
     at: 6,
@@ -177,12 +183,49 @@ export const SIWON_GIFTS: readonly SiwonEntry[] = [
   },
 ]
 
+/** 레지기가스 선물의 자리 (`SIWON_GIFTS`의 `at`) */
+const REGI_GIFT_AT = 5
+
+/** 유적 셋 중 하나에서 레지를 잡았는가 (`VAR_*_RUINS_STATE` ≥ 290) */
+function ruinsRegiCaught(variable: (id: number) => number): boolean {
+  return VAR_RUINS_STATE.some((v) => variable(v) >= RUINS_STATE_CAUGHT_REGI)
+}
+
+/**
+ * 이 마리가 **시원이 준 운명적 만남 레지기가스**인가. 눈설신전에서 잡은 마리(`fateful`이 거짓)는 아니다.
+ */
+export function isSiwonRegigigas(mon: { species: number; origin: { fateful: boolean } }): boolean {
+  return mon.species === SIWON_SPECIES.regigigas && mon.origin.fateful
+}
+
+/**
+ * 그 마리를 **놓아줄 수 없는가** — 레지 유적 셋과 시원의 마지막 선물이 아직 그 마리에 걸려 있다.
+ *
+ * 유적 석상은 파티의 운명적 만남 레지기가스만 보고(`CheckPartyHasFatefulEncounterRegigigas`),
+ * 선물 6의 「썼다」는 레지를 잡았는가(290)다. 놓아주면 둘 다 영영 막히므로 **레지를 잡기 전까지** 막는다.
+ * 판정 입력은 전부 리포트에 남는 것이다 — 선물 개수(`siwonGiven`) · 유적 변수 · 개체의 `origin.fateful`.
+ *
+ * @param given 여태 준 개수. 레지기가스 선물(6번째)을 받기 전이면 해당 개체가 없으니 해당 없다
+ */
+export function regigigasLockedForRuins(
+  mon: { species: number; origin: { fateful: boolean } },
+  given: number,
+  variable: (id: number) => number,
+): boolean {
+  if (!isSiwonRegigigas(mon)) return false
+  if (given <= REGI_GIFT_AT) return false
+  return !ruinsRegiCaught(variable)
+}
+
 /** 말을 걸었을 때 시원이 할 일 */
 type SiwonTurn =
   /** 전당등록 전이다. 다시 오라고만 한다 */
   | { kind: 'locked' }
-  /** 이번에 이것을 준다 */
-  | { kind: 'gift'; entry: SiwonEntry }
+  /**
+   * 이번에 이것을 준다. `regift`면 **이미 센 선물을 다시 주는 것**이라 개수를 올리지 않는다
+   * (놓아 버린 레지기가스 — 옛 리포트)
+   */
+  | { kind: 'gift'; entry: SiwonEntry; regift?: boolean }
   /** 앞의 것을 아직 안 썼다. `at`은 그 안 쓴 선물의 자리다 */
   | { kind: 'wait'; at: number }
   /** 일곱을 다 줬다 */
@@ -195,6 +238,12 @@ type SiwonTurn =
  */
 export function siwonTurn(given: number, probe: SiwonProbe): SiwonTurn {
   if (!probe.flag(FLAG_GAME_COMPLETED)) return { kind: 'locked' }
+  // 이미 놓아 버린 레지기가스: 선물을 받았는데(6번째 이후) 그 마리가 어디에도 없고 레지를 잡지도 못했으면 다시 준다.
+  // ⚠️ 마리가 어딘가 있으면(파티·박스·육성가) 안 준다 — 중복 지급 방지. 신호가 없으면 안 준다
+  if (given > REGI_GIFT_AT && probe.hasFatefulRegigigas !== undefined
+    && !ruinsRegiCaught(probe.variable) && !probe.hasFatefulRegigigas()) {
+    return { kind: 'gift', entry: SIWON_GIFTS[REGI_GIFT_AT]!, regift: true }
+  }
   if (given >= SIWON_GIFTS.length) return { kind: 'done' }
   if (given > 0) {
     const prev = SIWON_GIFTS[given - 1]!

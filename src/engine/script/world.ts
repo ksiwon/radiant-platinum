@@ -1305,6 +1305,8 @@ export interface FieldServices {
     met: () => boolean
     /** 만났다고 적는다. 그 연출은 한 번만 돈다 */
     meet: () => void
+    /** 시원이 준 운명적 만남 레지기가스가 파티·박스·육성가 어딘가에 있는가 */
+    hasFatefulRegigigas?: () => boolean
   }
   /**
    * 독으로 쓰러지기 직전 1로 버틴다 (`Pokemon_TrySurvivePoison`).

@@ -126,7 +126,8 @@ export function planSiwonTalk(deps: SiwonDeps): SiwonPlan {
         const ok = gift.fateful
           ? deps.giveFateful(gift.species, gift.level)
           : deps.giveMon(gift.species, gift.level)
-        if (ok) deps.countGiven()
+        // 다시 주는 것(`regift`)은 이미 센 선물이다 — 개수를 올리면 선물 7이 건너뛰어진다
+        if (ok && turn.regift !== true) deps.countGiven()
       },
       giveItem: null,
     }

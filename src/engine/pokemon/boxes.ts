@@ -159,7 +159,7 @@ export function onLastAliveMon(party: readonly PokemonInstance[], mon: PokemonIn
 }
 
 /** 놓아주기를 묻기도 전에 막는 까닭. 글은 `box_messages`의 31 · 30 · 6이다 */
-export type ReleaseRefusal = 'egg' | 'mail' | 'capsule' | 'lastMon'
+export type ReleaseRefusal = 'egg' | 'mail' | 'capsule' | 'lastMon' | 'siwonRegi'
 
 /**
  * 물어보기 전에 막는다 (`BoxAppMan_CheckReleaseMonValid`). 차례도 원작대로다 —
@@ -167,15 +167,21 @@ export type ReleaseRefusal = 'egg' | 'mail' | 'capsule' | 'lastMon'
  *
  * ⚠️ 편지 다음에 **볼캡슐**도 본다 (`MON_DATA_BALL_CAPSULE_ID`) — 달린 마리는 먼저 떼어야 한다 (`BoxText_DetachBallCapsule`)
  *
+ * ⚠️ 마지막으로 **시원이 준 운명적 만남 레지기가스**를 레지를 잡기 전까지 막는다 (`regigigasLockedForRuins`) —
+ * 놓아주면 레지 유적 셋과 시원의 마지막 선물이 영영 닫힌다. 원작에는 없는 규칙이라 글은 「되돌아와 버렸다」
+ * 줄(`box_messages` 32·33)을 쓴다
+ *
  * @param inParty 파티 자리에서 고른 것인가. 박스 자리면 마지막 한 마리를 안 본다
+ * @param lockRegi 시원의 레지기가스를 잡아 두는가 (`regigigasLockedForRuins`가 이 마리에 참인가). 판정은 호출처가 한다
  */
 export function releaseRefusal(
-  mon: PokemonInstance, party: readonly PokemonInstance[], inParty: boolean,
+  mon: PokemonInstance, party: readonly PokemonInstance[], inParty: boolean, lockRegi = false,
 ): ReleaseRefusal | null {
   if (mon.isEgg) return 'egg'
   if (isMailItem(mon.heldItem)) return 'mail'
   if (mon.capsule !== undefined) return 'capsule'
   if (inParty && onLastAliveMon(party, mon)) return 'lastMon'
+  if (lockRegi) return 'siwonRegi'
   return null
 }
 

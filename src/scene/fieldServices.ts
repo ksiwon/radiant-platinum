@@ -100,6 +100,7 @@ import {
 } from '../engine/world/turnbackCave'
 import { entryNumber } from '../engine/world/hallOfFame'
 import { addCoins, canAddCoins, subtractCoins } from '../engine/world/coins'
+import { isSiwonRegigigas } from '../engine/world/siwon'
 import { overworldWeather } from '../engine/world/overworldWeather'
 import { addBattlePoints, spendBattlePoints } from '../engine/bag/frontierMart'
 import { sizeFactor } from '../engine/world/sizeContest'
@@ -1711,6 +1712,13 @@ const services: FieldServices = {
     gave: () => { useSaveStore.getState().giveSiwonGift() },
     met: () => useSaveStore.getState().siwonMet,
     meet: () => { useSaveStore.getState().meetSiwon() },
+    // 파티·박스·육성가 — 놓아 버린 옛 리포트를 가려내려면 마리가 어디에도 없어야 한다 (SIWON.md §5)
+    hasFatefulRegigigas: () => {
+      const st = useSaveStore.getState()
+      if (st.party.some(isSiwonRegigigas)) return true
+      if (st.boxes.some((box) => box.some((m) => m !== null && isSiwonRegigigas(m)))) return true
+      return st.daycare.slots.some((d) => d !== null && isSiwonRegigigas(d.mon))
+    },
   },
 
   giveEgg: (species, giver) => {
