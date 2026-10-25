@@ -327,6 +327,27 @@ maybe('통신', () => {
     })
   })
 
+  describe('콘테스트 로비 사진 액자 다섯 — 늘 같은 「액자다」로 끝난다 (PARITY §9.1)', () => {
+    it('ContestPhotoHasData가 만들어져 있다', () => {
+      const op = meta.commands.findIndex((c) => c?.name === 'ContestPhotoHasData')
+      expect(op).toBeGreaterThanOrEqual(0)
+      expect(unhandled.has(op), '안 만들어져 있다').toBe(false)
+    })
+
+    // 진입점 0은 입장 프레임 스크립트, 1~5가 액자 0~4 (`scripts_contest_hall_lobby.s:6-12` · 스크립트 번호로는 2~6)
+    it.each([1, 2, 3, 4, 5])('액자 진입점 %i — 어두운 채 안 끝나고 「액자다」 글만 뜬다', (entry) => {
+      screenFade.now = null
+      const r = talk(fileOf('scripts_contest_hall_lobby'), entry, [0])
+      expect(r.ended, `얼어붙었다: ${r.ran.slice(-8).join(' → ')}`).toBe(true)
+      // 묵은 값(1)으로 갈렸다면 FadeScreen → ScrCmd_0A8로 간다 — 그 길이 아니다
+      expect(r.ran).toContain('ContestPhotoHasData')
+      expect(r.ran).toContain('Message')
+      expect(r.ran).not.toContain('ScrCmd_0A8')
+      expect(r.ran).not.toContain('FadeScreenOut')
+      expect(fadeAlpha()).toBe(0)
+    })
+  })
+
   describe('글로벌터미널 1층 브리더 남 — 화면을 어둡게 해 두고 끝내지 않는다 (진입점 18)', () => {
     it('「예」를 골라도 화면이 되살아나고 「할 말이 없다」로 끝난다', () => {
       screenFade.now = null

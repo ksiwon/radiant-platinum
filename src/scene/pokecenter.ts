@@ -119,6 +119,11 @@ export interface BlackOutHost {
   blacken: (on: boolean) => void
   /** 부활 자리로 워프를 건다. 도착할 맵 번호 — 못 걸면 null */
   warp: () => number | null
+  /**
+   * 출구 자리를 그 부활 마을의 공중날기 칸으로 덮는다 (`Location_InitFly(warpId, GetExitLocation())`,
+   * `unk_020528D0.c:214`). 우리 맵 갈이(`MapStreamer.enter`)가 떠나는 자리로 도로 쓰므로 **맵을 다 간 뒤에** 부른다
+   */
+  setExit: (healSpot: number) => void
   /** 곡을 줄인다 (`Sound_FadeOutBGM(0, frames)`) */
   fadeOutBgm: (frames: number) => void
   /** 곡을 끊어 둔다 · 놓는다 (`FieldBGM_Stop` · `FieldTransition_StartMap`) */
@@ -162,6 +167,7 @@ export async function runBlackOut(host: BlackOutHost, healSpot: number): Promise
   host.fadeOutBgm(BLACK_OUT_BGM_FADE)
   if (!await host.frames(BLACK_OUT_BGM_FADE)) return false
   if (!await host.until(host.settled)) return false
+  host.setExit(healSpot)
   // ⚠️ **맵을 간 뒤에 끊는다.** 맵을 갈면 곡 가로채기가 비워진다(`enterMap` · `FieldBGM_ClearOverride`)
   host.silence(true)
   const page = await text
@@ -207,6 +213,10 @@ function liveHost(run: number): BlackOutHost {
       // 문·계단 소리는 없다 — 걸어 든 것이 아니다
       world.pending = { ...at, facing: FACE_UP, silent: true }
       return at.to
+    },
+    setExit: (healSpot) => {
+      const at = spawnWarp(healSpot, 'fly')
+      if (at) useSaveStore.setState({ exit: { map: at.to, matrix: at.matrix, x: at.x, z: at.z, facing: 0 } })
     },
     fadeOutBgm: (frames) => { music.fadeVolume(0, frames) },
     silence: (on) => { fieldBgm.override = on ? 'stop' : null },

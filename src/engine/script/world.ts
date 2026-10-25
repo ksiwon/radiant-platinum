@@ -1137,6 +1137,8 @@ export interface FieldServices {
   setHealSpot?: (index: number) => void
   /** 전멸 — 회복하고 부활 지점으로 옮긴다 (`ScrCmd_BlackOutFromBattle`) */
   blackOut?: () => void
+  /** 출구 자리를 옮긴다 (`ScrCmd_2B5`). 칸은 롬 칸이다 */
+  setExit?: (map: number, x: number, z: number) => void
   /**
    * 지금 시간대 (`FieldSystem_GetTimeOfDay`).
    *

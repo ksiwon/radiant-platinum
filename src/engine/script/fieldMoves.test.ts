@@ -75,6 +75,12 @@ describe('여기서 무엇이 통하는가', () => {
     expect(movesUsableHere({ ...water, surfing: true })).toEqual([])
   })
 
+  it('내 칸이 다리 위면 물 앞에서도 파도타기가 안 뜬다 (PlayerAvatar_CanUseSurf)', () => {
+    const water = { ...bare, frontBehavior: Behavior.WATER_OPEN }
+    expect(movesUsableHere({ ...water, onBridge: true })).toEqual([])
+    expect(movesUsableHere({ ...water, onBridge: false })).toEqual(['surf'])
+  })
+
   it('폭포는 거동 하나로 정해진다', () => {
     expect(movesUsableHere({ ...bare, frontBehavior: TILE_BEHAVIOR_WATERFALL }))
       .toEqual(['surf', 'waterfall'])

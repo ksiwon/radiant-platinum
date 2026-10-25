@@ -63,6 +63,7 @@ function fakeHost(over: Partial<BlackOutHost> & { to?: number | null, text?: str
     clearPartner: () => { log.push('partner') },
     blacken: (on) => { log.push(`blacken:${String(on)}`) },
     warp: () => { log.push('warp'); return over.to === undefined ? PLAYER_HOUSE_1F : over.to },
+    setExit: (healSpot) => { log.push(`exit:${String(healSpot)}`) },
     fadeOutBgm: (frames) => { log.push(`fade:${String(frames)}`) },
     silence: (on) => { log.push(`silence:${String(on)}`) },
     settled: () => settled,
@@ -97,6 +98,8 @@ describe('전멸 — 과제의 차례', () => {
       'fade:20', 'frames:20',
       // 맵이 다 갈리고 돌던 스크립트가 끝나기를
       'wait',
+      // 출구 자리를 부활 마을의 날기 칸으로 (`unk_020528D0.c:214`) — 맵 갈이가 다 끝난 뒤다
+      'exit:0',
       // 맵을 간 **뒤에** 곡을 끊는다 — 맵 갈이가 가로채기를 비우므로
       'silence:true',
       // 3 — 검은 화면의 글

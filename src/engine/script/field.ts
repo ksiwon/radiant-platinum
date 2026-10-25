@@ -29,6 +29,8 @@ import {
 import { disguiseOf, setAmbientTables } from '../actor/ambient'
 import { frameTableScript, INIT_SCRIPT, parseInitScripts, type InitScripts } from './initScripts'
 import { fieldBgm } from '../audio/songs'
+import { setOnCyclingRoad } from '../actor/bike'
+import { isBridge, isBridgeStart, onElevatedBridge } from '../actor/bridge'
 import { SFX } from '../audio/sfx'
 import { distortionBridge } from '../world/distortion'
 import { HONEY_TREE_MODEL } from '../world/honeyTree'
@@ -750,6 +752,11 @@ export function clearLightFlagsOnWarp(
   vars.clearFlag(SYSTEM_FLAG.defogActive)
 }
 
+function clearCyclingRoadOnWarp(vars: { clearFlag(flag: number): void }): void {
+  vars.clearFlag(SYSTEM_FLAG.onCyclingRoad)
+  setOnCyclingRoad(false)
+}
+
 export function enterMap(mapId: number, arrival?: { x: number; z: number }): void {
   // 맵을 옮기면 창에 걸린 구역 뱅크는 뜻이 없다. 맵 뱅크가 다시 기준이다
   endCommon()
@@ -778,6 +785,10 @@ export function enterMap(mapId: number, arrival?: { x: number; z: number }): voi
   // 워프(도착 칸이 있는 것)만이다. 이어하기가 저장한 자리를 세우는 것은 워프가 아니다
   if (arrival && !worldState.restoring) {
     clearLightFlagsOnWarp(fieldScripts.vars, mapById(mapId)?.mapType ?? 0)
+    // 자전거로드 표식도 워프마다 지운다 (`FieldSystem_InitFlagsWarp` → `SystemFlag_CheckOnCyclingRoad`가 `ClearFlag`,
+    // `field_map_change_flags.c:66` · `system_flags.c:432`). 206번도로로 돌아 들어오면 `OnResume`의 게이트 갈래가 다시 세운다.
+    // 몸의 「자전거로드 위」 비트도 같이 푼다 — 롬 스크립트에 `ForceBicycling FALSE`가 0건이라 끄는 길이 이것뿐이다
+    clearCyclingRoadOnWarp(fieldScripts.vars)
   }
   // 스크립트 · 자전거가 가로챈 곡을 놓는다 (`FieldBGM_ClearOverride` — 같은 함수의 **첫 줄**이다). 안 놓으면 그 방에서
   // 튼 곡이 신오 전역을 따라온다. ⚠️ **스크립트보다 먼저다** — 206번도로의 `OnResume`이 여기서 자전거로드 곡을
@@ -1542,6 +1553,11 @@ function descendWaterfall(): boolean {
 }
 fieldMoveBridge.waterfallDescent = descendWaterfall
 
+/** `TileBehavior_IsBridge`나 `_IsBridgeStart` — 내 칸이 다리인가 */
+function isOnBridgeTile(behavior: number): boolean {
+  return isBridge(behavior) || isBridgeStart(behavior)
+}
+
 /** 지금 앞에 무엇이 있는가. 격자가 없거나 뛰는 중이면 null */
 function spotAt(front: { x: number; z: number; y?: number }): FieldSpot | null {
   const p = worldState.player
@@ -1557,6 +1573,7 @@ function spotAt(front: { x: number; z: number; y?: number }): FieldSpot | null {
     frontSprite: obstacleAt(front.x, front.z)?.gfx ?? null,
     quarter: quarterOf(p.facing),
     surfing: p.surfing,
+    onBridge: onElevatedBridge() && isOnBridgeTile(grid.behaviorAtWorld(p.position.x, p.position.z)),
     /**
      * ⚠️ **앞 칸이 아니라 날씨가 정하는 둘** (`FieldMoves_CanUseMoves`의 끝
      * `switch`). 원작이 보는 것은 맵 헤더가 아니라 **지금 걸린 날씨**다
@@ -1650,6 +1667,14 @@ export function runFieldMove(id: FieldMoveId, front: { x: number; z: number }): 
       return true
     case 'surf':
       showFieldAction('surf', 0.7)
+      // 파도타기는 아바타 상태 하나를 덮어 쓴다 — 자전거를 탄 채 시작해도 내려서 파도에 탄다 (`ov5_021DFB54.c:332`의
+      // `PlayerAvatar_SetPlayerState(SURFING)`). 자전거 곡 가로채기도 놓는다 (`FieldTask_UseSurf` state 0의 `FieldBGM_SetOverride(SEQ_NONE)`).
+      // 우리는 상태가 불리언 둘이라 `cycling`을 따로 꺼야 한다
+      if (p.cycling) {
+        p.cycling = false
+        p.pedalling = 0
+        fieldBgm.override = null
+      }
       p.surfing = true
       hopTo(front.x + 0.5, front.z + 0.5)
       return true

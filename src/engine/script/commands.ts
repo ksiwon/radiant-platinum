@@ -3342,6 +3342,8 @@ export const SYSTEM_FLAG = {
    */
   flashActive: 2426,
   defogActive: 2427,
+  /** 자전거로드 위인가 (`FLAG_ON_CYCLING_ROAD`) — 206번도로 게이트가 세우고 워프마다 지운다 (`field_map_change_flags.c:66`) */
+  onCyclingRoad: 2452,
   /** 포켓치를 잠깐 치웠는가 (`FLAG_POKETCH_HIDDEN`) — 연출이 세우고 지운다 */
   poketchHidden: 2428,
   /** 갤럭시단아지트의 호수 삼신을 풀어 줬는가 (`FLAG_FREED_GALACTIC_HQ_POKEMON`) */
@@ -5028,9 +5030,16 @@ on('FinishDistortionWorldGiratinaShadowEvent', (ctx) => {
   return false
 })
 
-/** `ScrCmd_2B5` — 깨어진 세계의 이름 없는 연출 하나. 인자 셋을 읽고 지나간다 */
+/**
+ * `ScrCmd_2B5` — 출구 자리(`FieldOverworldState_GetExitLocation`)를 맵·칸으로 쓴다 (`scrcmd.c:6494`). 방향은 남쪽(`FACE_DOWN`).
+ * 롬이 쓰는 곳은 둘이다 — 송별의 샘(`scripts_sendoff_spring.s:22`, 맵 266)과 운하시티 항구 여관(`scripts_canalave_city_harbor_inn.s:102`).
+ * 읽는 쪽은 구멍파기·탈출로프 목적지와 지도의 「지금 있는 칸」이다
+ */
 on('ScrCmd_2B5', (ctx) => {
-  ctx.readHalfWord(); ctx.readHalfWord(); ctx.readHalfWord()
+  const map = ctx.readVar()
+  const x = ctx.readVar()
+  const z = ctx.readVar()
+  ctx.host.world.services.setExit?.(map, x, z)
   return false
 })
 
@@ -6374,6 +6383,18 @@ on('GetContestPartyMenuResult', (ctx) => {
  * 고맙습니다」로 간다. 대회가 안 도니 이어지는 길은 없지만, 어느 갈래로 새도 상품이 안 나가게 하는 안전망이다
  */
 on('GetFirstTimeVictoryAccessory', answers(0xffff))
+
+/**
+ * 콘테스트 로비 사진 액자의 「이 칸에 사진이 있는가」 (`ScrCmd_ContestPhotoHasData` · `scrcmd.c:3178`, 칸 → 답 변수).
+ * 사진 계통은 접어 둬서 사진이 있을 수 없다 — 0(`FALSE`)이다. 안 적으면 묵은 `VAR_RESULT`로 갈려 같은 액자가 때에 따라
+ * 「액자다」(롬 줄 `ContestHallLobby_Text_ItsAPhotoFrame`)가 되거나 말 없이 어두워졌다 밝아진다
+ * (`scripts_contest_hall_lobby.s:178-246`: 0이면 `ItsAPhotoFrame`으로 간다)
+ */
+on('ContestPhotoHasData', (ctx) => {
+  ctx.readHalfWord()
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  return false
+})
 
 // ── 전수 점검(`tools/e2e/scriptsSweep`)이 잡은 건너뛴 명령 — 판정표는 `tools/e2e/scriptsSweepTriage.mjs` ─────────
 //

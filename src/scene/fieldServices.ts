@@ -77,7 +77,7 @@ import { lakeOrbsDone, redChainDone, startLakeOrbs, startRedChain } from './spea
 import { timeOfDayForHour } from '../engine/map/timeOfDay'
 import { isSoothing } from '../engine/pokemon/friendship'
 import {
-  mapById, romOrigin, setWarpDestination, setWarpEventPos, world as mapWorld,
+  mapById, romOrigin, romToLocal, setWarpDestination, setWarpEventPos, world as mapWorld,
 } from '../engine/map/world'
 import { LocationEvent } from '../engine/world/journal'
 import { journalGiven, journalGotItem, journalPlain, journalUsedMove } from './journal'
@@ -1526,6 +1526,11 @@ const services: FieldServices = {
   healParty: () => { healParty() },
   setHealSpot: (index) => { useSaveStore.getState().setHealSpot(index) },
   blackOut: () => { blackOut() },
+  setExit: (map, x, z) => {
+    // 롬 칸 → 우리 칸 (깨어진 세계만 원점이 다르다). 칸 가운데에 세우고 방향은 남쪽이다 (`FACE_DOWN` = 0)
+    const at = romToLocal(map, x, z)
+    useSaveStore.setState({ exit: { map, matrix: mapById(map)?.matrix ?? 0, x: at.x + 0.5, z: at.z + 0.5, facing: 0 } })
+  },
 
   bag: {
     pocketOf,

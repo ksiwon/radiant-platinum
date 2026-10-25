@@ -447,6 +447,20 @@ export function isHmMove(move: number, tmMoves: readonly number[]): boolean {
   return false
 }
 
+/**
+ * 가르침 모드(요약 화면)에서 이 칸을 잊게 못 하는가.
+ *
+ * 원작은 **가르칠 기술이 있을 때만**(`data->move != MOVE_NONE`) 비전기술 칸에 「중요한 기술입니다」를 띄우고 되돌린다
+ * (`pokemon_summary_screen/main.c:814-820`). 기술 삭제사는 `move == NONE`이라 비전기술도 지울 수 있다. 새 기술 칸(`slot`이
+ * 아는 기술 수 이상)은 안 잠긴다 — 원작 `cursor != LEARNED_MOVES_MAX`. 조각 교사 셋 · 기술 떠올리기 · 기술가르침 노인이 쓴다
+ */
+export function forgetLocked(
+  moves: readonly { move: number }[], slot: number, teaching: boolean, tmMoves: readonly number[],
+): boolean {
+  const known = moves[slot]
+  return teaching && known !== undefined && isHmMove(known.move, tmMoves)
+}
+
 /** 기술머신·비전머신이 가르치는 기술 번호. 아니면 null */
 export function tmMove(item: Item, tmMoves: readonly number[]): number | null {
   const at = tmIndex(item)

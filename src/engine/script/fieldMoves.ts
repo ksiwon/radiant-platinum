@@ -92,6 +92,11 @@ export interface FieldSpot {
   quarter: number
   /** 이미 파도타기 중인가 (`FieldMoves_CheckSurf`가 상태를 본다) */
   surfing: boolean
+  /**
+   * 내 칸이 다리(어귀 포함)이고 다리 위 상태인가 — 그러면 파도타기가 안 뜬다
+   * (`PlayerAvatar_CanUseSurf`, `ov5_021DFB54.c:640`). 안 주면 아니다로 본다
+   */
+  onBridge?: boolean
   /** 안개가 꼈는가 (`OVERWORLD_WEATHER_FOG`) */
   fog?: boolean
   /** 캄캄한가 (`OVERWORLD_WEATHER_DARK_FLASH`) */
@@ -109,7 +114,8 @@ export function movesUsableHere(spot: FieldSpot): FieldMoveId[] {
   const obstacle = spot.frontSprite === null ? undefined : OBSTACLE_MOVE[spot.frontSprite]
   if (obstacle) out.push(obstacle)
   // 파도타기는 **탄 채로는 안 뜬다** (`FieldMoves_CheckSurf`의 STATE 갈래)
-  if (!spot.surfing && isSurfable(spot.frontBehavior)) out.push('surf')
+  // ⚠️ 앞이 물이어도 **내 칸이 다리 위면 거짓**이다 (`PlayerAvatar_CanUseSurf` — 다리 밑 물에는 못 뛰어든다)
+  if (!spot.surfing && !spot.onBridge && isSurfable(spot.frontBehavior)) out.push('surf')
   if (canRockClimb(spot.frontBehavior, spot.quarter)) out.push('rockClimb')
   if (spot.frontBehavior === TILE_BEHAVIOR_WATERFALL) out.push('waterfall')
   if (spot.fog) out.push('defog')

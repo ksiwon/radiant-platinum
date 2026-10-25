@@ -11,9 +11,10 @@
 // ⚠️ **뱅크가 아직 안 왔으면 글띠가 빈다.** 손 글로 떨어지지 않는다 — 설치본에서 이 뱅크를 싣는 굽는 쪽 둘이
 // 갖춰지기 전에는 물음이 비는 것이 맞는 모양이다. 그래도 Z · X는 돈다.
 import { useEffect, useState, type CSSProperties } from 'react'
-import { loadMoveNames, loadMoves, loadSpeciesNames, type DataLocale, type MoveTable } from '../../data/gameData'
+import { loadMoveNames, loadMoves, loadSpeciesNames, loadTmMoves, type DataLocale, type MoveTable } from '../../data/gameData'
 import { loadUiText, YES_NO } from '../../data/uiText'
 import { useAssetImage } from '../../data/providers/useAssetUrl'
+import { forgetLocked } from '../../engine/bag/fieldUse'
 import { typeColor } from '../../engine/battle/typeColor'
 import { spriteKey } from '../../engine/pokemon/form'
 import { useMenuStore } from '../../state/menuStore'
@@ -67,12 +68,17 @@ const REMINDER_FOOT: Record<DataLocale, readonly [string, string]> = {
 }
 
 /** 지금 어느 물음인가 (차례는 `moveReminderFlow` 머리글) */
+/** 「중요한 기술입니다. 잊게 할 수 없습니다!」 — 요약 뱅크(455)의 줄 (`SUMMARY_HM_CANT_FORGET`) */
+const SUMMARY_HM_CANT_FORGET = 156
+
 type Stage =
   | { at: 'pick' }
   | { at: 'giveUp' }
   | { at: 'ask' }
   | { at: 'four', page: number }
   | { at: 'forget' }
+  /** 잊을 기술로 비전기술을 골랐다 — 「중요한 기술입니다」를 보이고 `forget`으로 되돌아간다 */
+  | { at: 'hm' }
   | { at: 'confirm', slot: number }
   | { at: 'wellThen' }
   | { at: 'result', pages: string[], page: number }
@@ -88,6 +94,10 @@ export function MoveReminderScreen() {
   const [table, setTable] = useState<MoveTable | null>(null)
   const [bank, setBank] = useState<string[]>([])
   const [menuText, setMenuText] = useState<string[]>([])
+  /** 요약 뱅크(455) — 비전기술 잠금 줄(156)이다 */
+  const [summaryText, setSummaryText] = useState<string[]>([])
+  /** 기술머신 100칸의 기술. 못 받았으면 null (그러면 잠금은 못 판다) */
+  const [tmMoves, setTmMoves] = useState<readonly number[] | null>(null)
   const [cursor, setCursor] = useState(0)
   const [top, setTop] = useState(0)
   /** 잊기 단의 커서 — 아는 기술 넷 + 새 기술(다섯째) */
@@ -103,10 +113,13 @@ export function MoveReminderScreen() {
       // 뱅크가 없는 설치본이어도 화면은 선다 — 물음이 빌 뿐이다
       loadUiText('moveReminder', locale).catch(() => [] as string[]),
       loadUiText('menuEntries', locale).catch(() => [] as string[]),
+      loadUiText('summary', locale).catch(() => [] as string[]),
+      loadTmMoves(),
     ])
-      .then(([list, moves, species, lines, entries]) => {
+      .then(([list, moves, species, lines, entries, summary, tms]) => {
         if (!alive) return
         setNames(list); setTable(moves); setSpeciesNames(species); setBank(lines); setMenuText(entries)
+        setSummaryText(summary); setTmMoves(tms)
       })
       .catch(() => { /* 이름 없이도 자리는 선다 */ })
     return () => { alive = false }
@@ -172,6 +185,10 @@ export function MoveReminderScreen() {
         const line = romLine(battleLines, MSG.whichMoveShouldBeForgotten)
         return line === null ? [] : [line]
       }
+      case 'hm': {
+        const line = summaryText[SUMMARY_HM_CANT_FORGET]
+        return line === undefined ? [] : [line]
+      }
       case 'confirm': return say(lines.confirm, forgetId === undefined ? '' : nameOf(forgetId))
       case 'wellThen': return say(lines.wellThen, monName, freshName)
       case 'result': return stage.pages
@@ -212,6 +229,10 @@ export function MoveReminderScreen() {
       return { confirm: advance, cancel: advance }
     }
     if (asking) return {} // 예/아니오가 쥔다
+    if (stage.at === 'hm') {
+      const again = (): void => { setStage({ at: 'forget' }) }
+      return { confirm: again, cancel: again }
+    }
     if (stage.at === 'forget') {
       return {
         up: moveForget(-1),
@@ -219,6 +240,9 @@ export function MoveReminderScreen() {
         confirm: () => {
           // 다섯째 칸(새 기술)을 누르면 물러선다 — 원작도 다섯째 칸이 곧 취소다
           if (forget >= known.length) setStage({ at: 'wellThen' })
+          // 비전기술은 잊게 못 한다 — 원작은 요약 화면이 가르칠 기술이 있을 때 막는다 (`main.c:814-820` · `move_reminder.c:1687`의
+          // `summary.move`가 그 기술이다)
+          else if (tmMoves !== null && forgetLocked(known, forget, true, tmMoves)) setStage({ at: 'hm' })
           else setStage({ at: 'confirm', slot: forget })
         },
         cancel: () => { setStage({ at: 'wellThen' }) },
@@ -273,7 +297,7 @@ export function MoveReminderScreen() {
   }
 
   // ── 고른 기술 (왼쪽) ────────────────────────────────────────────────────
-  const forgetting = stage.at === 'forget' || stage.at === 'confirm'
+  const forgetting = stage.at === 'forget' || stage.at === 'hm' || stage.at === 'confirm'
   const shownId = forgetting
     ? forget >= known.length ? fresh : known[forget]?.move
     : onCancelRow ? undefined : fresh
@@ -291,7 +315,7 @@ export function MoveReminderScreen() {
         <MessageDock
           lines={shownText}
           when={shownText !== ''}
-          {...(waiting || lastResult ? { trailing: <WaitDial /> } : {})}
+          {...(waiting || lastResult || stage.at === 'hm' ? { trailing: <WaitDial /> } : {})}
         />
       )}
     >

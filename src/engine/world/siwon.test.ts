@@ -365,6 +365,31 @@ describe('세 나라 말', () => {
     expect(siwonLines('en').cameo).not.toContain('Jubilife City')
   })
 
+  it('⚠️ 건물 · 시설 이름은 롬 표기다 — 신령탑 · 항구 숙소 · 포켓몬저택 · 전당등록', () => {
+    // 롬 근거: 신령탑 `ko/480.json[3..8]` · `ja/480.json[4]` · `route_209.json` (Hallowed Tower) ·
+    // 항구 숙소 `ko|ja/54.json[41,42]` · `canalave_city.json` (Harbor Inn) · 포켓몬저택 `names/locations.ko.json` ·
+    // `location_names.json` (Pokémon Mansion) · ポケモンやしき `names/locations.ja.json` · 전당등록 `ko/190.json`
+    const all = (l: 'ko' | 'en' | 'ja') => Object.values(siwonLines(l)).flatMap(textsOf).map(String).join('\n')
+    expect(siwonLines('ko').gift[0]).toContain('209번도로의 신령탑')
+    expect(siwonLines('en').gift[0]).toContain('Hallowed Tower')
+    expect(siwonLines('ja').gift[0]).toContain('みたまのとう')
+    expect(siwonLines('ko').gift[2]).toContain('항구 숙소')
+    expect(siwonLines('en').gift[2]).toContain('Harbor Inn')
+    expect(siwonLines('ja').gift[2]).toContain('はとばのやど')
+    // 롬에 0건인 낱말은 안 쓴다
+    expect(all('ko')).not.toMatch(/무덤|여관|명예의 전당/)
+    expect(all('ja')).not.toContain('はかに')
+    expect(all('en')).not.toMatch(/the tower|Canalave inn/)
+    expect(siwonLines('ko').locked).toContain('전당등록')
+    // 마나피는 책(사무실)에서만 볼 수 있다 — 카드 · 편지가 그 길을 말한다
+    for (const [l, mansion, mon] of [['ko', '포켓몬저택', '마나피'], ['en', 'Pokémon Mansion', 'Manaphy'], ['ja', 'ポケモンやしき', 'マナフィ']] as const) {
+      for (const at of [2, 3]) {
+        expect(siwonLines(l).gift[at], `${l}/${at}`).toContain(mansion)
+        expect(siwonLines(l).gift[at], `${l}/${at}`).toContain(mon)
+      }
+    }
+  })
+
   it('한 쪽이 두 줄을 안 넘는다', () => {
     // 대사창이 두 줄이다. `\r`·`\f`가 쪽을 나누고 그 안에서는 `\n` 하나뿐이다
     for (const locale of ['ko', 'en', 'ja'] as const) {

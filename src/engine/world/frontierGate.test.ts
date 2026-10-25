@@ -110,3 +110,23 @@ describe('막아 둔 롬 스크립트 — 스크래치 카드 접수원', () => 
     expect(s.indexOf('RemoveBattlePoints 1')).toBeLessThan(s.indexOf('ScrCmd_2E2'))
   })
 })
+
+const RIBBON_SCRIPTS = 'raw/decomp/res/field/scripts/scripts_resort_area_ribbon_syndicate_1f.s'
+
+describe('막아 둔 롬 스크립트 — 리본신드롬 1F 계산원 (PARITY §9.2)', () => {
+  it('461의 2번 스크립트만 막고 세 언어 모두 롬 표기의 이름을 쓴다', () => {
+    expect(deferredScriptNotice(461, 2, 'ko')).toBe('리본 신디케이트의 리본 가게는\r지금은 이용할 수 없다.')
+    expect(deferredScriptNotice(461, 2, 'en')).toBe("The Ribbon Syndicate's shop\risn't available right now.")
+    expect(deferredScriptNotice(461, 2, 'ja')?.startsWith('リボンシンジケ－トの')).toBe(true)
+    // 입구 판정(7번)·안내원·나머지 사람은 그대로 돈다 — 입구 판정이 본 방어선이다
+    for (const script of [1, 3, 4, 5, 6, 7, 8]) expect(deferredScriptNotice(461, script, 'ko')).toBeNull()
+    expect(deferredScriptNotice(462, 2, 'ko')).toBeNull()
+  })
+
+  it.runIf(existsSync(RIBBON_SCRIPTS))('2번이 계산원이고 그 스크립트는 리본을 붙이기 전에 돈을 받는다', () => {
+    const s = readFileSync(RIBBON_SCRIPTS, 'utf8')
+    const entries = [...s.matchAll(/^\s*ScriptEntry (\w+)\s*$/gm)].map((m) => m[1])
+    expect(entries[1]).toBe('ResortAreaRibbonSyndicate1F_CashierF')
+    expect(s.indexOf('RemoveMoney 10000')).toBeLessThan(s.indexOf('SetPartyMonRibbon VAR_0x8000, RIBBON_GORGEOUS'))
+  })
+})

@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { itemFileSchema, speciesFileSchema, type Item } from '../../data/schema'
 import { withData } from '../../data/romData.testkit'
 import {
-  azureFluteReady, BLOCKED_LINE_AT, canLearnTm, fieldAction, FieldUse, isHmMove, MAP_TYPE_CAVE, repelStepsOf, teachMoveCheck,
+  azureFluteReady, BLOCKED_LINE_AT, canLearnTm, fieldAction, FieldUse, forgetLocked, isHmMove, MAP_TYPE_CAVE, repelStepsOf, teachMoveCheck,
   tmIndex, tmMove,
   type FieldContext,
 } from './fieldUse'
@@ -277,6 +277,16 @@ maybe('필드 도구', () => {
     // 기술머신 기술은 잊을 수 있다 — 지진(89)은 TM26이다
     expect(isHmMove(89, file.tmMoves)).toBe(false)
     expect(isHmMove(33, file.tmMoves)).toBe(false)
+  })
+
+  it('가르침 모드에서만 비전기술 칸이 잠긴다 — 삭제사는 안 잠근다 (`pokemon_summary_screen/main.c:814-820`)', () => {
+    const known = [{ move: 33 }, { move: 249 }, { move: 15 }, { move: 89 }]
+    // 가르칠 기술이 있을 때: 바위깨기(249) · 풀베기(15)만 잠긴다
+    expect(known.map((_, i) => forgetLocked(known, i, true, file.tmMoves))).toEqual([false, true, true, false])
+    // 삭제사 · 일반 요약(`teach === null`)은 전부 열려 있다
+    expect(known.map((_, i) => forgetLocked(known, i, false, file.tmMoves))).toEqual([false, false, false, false])
+    // 새 기술 칸(아는 기술 수 이상)은 잠기지 않는다
+    expect(forgetLocked(known, 4, true, file.tmMoves)).toBe(false)
   })
 
   /**

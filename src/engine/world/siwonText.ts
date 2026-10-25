@@ -48,7 +48,7 @@ const KO: SiwonLines = {
     '어, 손님이네.\n'
     + '나는 시원. 여기서 이 세계를 만들어.\r'
     + '보여 줄 게 있는데… 아직은 아니야.\n'
-    + '명예의 전당에 이름을 올리고 다시 와 줘.',
+    + '전당등록을 마치고 다시 와 줘.',
   cameo:
     '……잠깐!\r'
     + '나는 시원. 이 세계를 만든 사람이야.\n'
@@ -59,7 +59,7 @@ const KO: SiwonLines = {
     + '닫아 버린 것들이야. 기다릴게.',
   gift: [
     '먼저 이 아이부터.\n'
-    + '209번도로의 무덤에 갇혀 있던 아이야.\r'
+    + '209번도로의 신령탑에 갇혀 있던 아이야.\r'
     + '그 돌을 여는 건 땅 밑에서 나눈 인사\n'
     + '서른두 번인데, 그 길이 여기엔 없어.\r'
     + '그래서 내가 데리고 나왔어.',
@@ -67,15 +67,19 @@ const KO: SiwonLines = {
     + '로토무를 데려가서 가전에 넣어 봐.\n'
     + '아직 로토무가 없다면 숲의 양옥집이야. 밤에.',
     '신월섬으로 가는 배는 이게 있어야 타.\n'
-    + '운하시티 여관에서 물어봐.\r'
+    + '운하시티 항구 숙소에서 물어봐.\r'
     + '먼저 전국도감이 있어야 해.\n'
     + '신오도감을 다 본 뒤 마박사님께 가 봐.\r'
+    + '마나피는 포켓몬저택 사무실의\n'
+    + '책에서 볼 수 있어.\r'
     + '만월섬의 초승달날개도 먼저 받아 와.\n'
     + '신월섬에 있는 건… 직접 보는 게 낫겠어.',
     '오박사님이 남긴 편지야.\n'
     + '224번도로 끝에서 읽어 줘.\r'
     + '전국도감이 먼저야. 신오도감을 다 본 뒤\n'
     + '마박사님께 가면 받을 수 있어.\r'
+    + '마나피는 포켓몬저택 사무실의\n'
+    + '책에서 볼 수 있어.\r'
     + '길이 하나 더 생길 거야.',
     '이건 알이야.\n'
     + '많이 걸어야 깨어나.\r'
@@ -131,7 +135,7 @@ const EN: SiwonLines = {
     + 'I’ll be waiting.',
   gift: [
     'This one first.\n'
-    + 'It was sealed in the tower on\r'
+    + 'It was sealed in Hallowed Tower on\r'
     + 'Route 209. What opens that stone is\n'
     + 'thirty-two greetings traded\r'
     + 'underground — and that road isn’t\n'
@@ -142,9 +146,11 @@ const EN: SiwonLines = {
     + 'No Rotom yet? Old Chateau. At night.',
     'You need this to board the ship to\n'
     + 'Newmoon Island.\r'
-    + 'Ask at the Canalave inn.\r'
+    + 'Ask at the Harbor Inn in Canalave.\r'
     + 'You need the National Pokédex first.\n'
     + 'See every Sinnoh Pokémon, then Rowan.\r'
+    + 'Manaphy can be seen in the book in\n'
+    + 'the Pokémon Mansion office.\r'
     + 'Fetch the Lunar Wing on Fullmoon\n'
     + 'Island first.\r'
     + 'What waits on Newmoon Island…\n'
@@ -153,6 +159,8 @@ const EN: SiwonLines = {
     + 'Read it at the end of Route 224.\r'
     + 'The National Pokédex comes first.\n'
     + 'See every Sinnoh Pokémon, then Rowan.\r'
+    + 'Manaphy can be seen in the book in\n'
+    + 'the Pokémon Mansion office.\r'
     + 'A new path will open.',
     'This one’s an Egg.\r'
     + 'It needs a lot of walking to wake up.\n'
@@ -208,7 +216,7 @@ const JA: SiwonLines = {
     + 'まってるよ。',
   gift: [
     'まずは　この　こから。\n'
-    + '２０９ばんどうろの　はかに\r'
+    + '２０９ばんどうろの　みたまのとうに\r'
     + 'とじこめられて　いた　こだ。\n'
     + 'あの　いしを　ひらくのは　ちかで　かわす\r'
     + 'あいさつ　３２かい　だけど\n'
@@ -218,15 +226,19 @@ const JA: SiwonLines = {
     + 'ロトムを　つれて　かでんに　いれてみて。\n'
     + 'ロトムが　いないなら　もりの　ようかん。よるだ。',
     'しんげつじまへの　ふねは　これが　いる。\n'
-    + 'ミオシティの　やどで　きいてみて。\r'
+    + 'ミオシティの　はとばのやどで　きいてみて。\r'
     + 'ぜんこくずかんが　さきだ。\n'
     + 'シンオウずかんを　みおえて　ナナカマドはかせへ。\r'
+    + 'マナフィは　ポケモンやしきの\n'
+    + 'じむしょの　ほんで　みられる。\r'
     + 'まんげつじまの　みかづきのはねも　さきに。\n'
     + 'あそこに　いる　ものは⋯　じぶんの　めで。',
     'オ－キドはかせの　てがみだ。\n'
     + '２２４ばんどうろの　はてで　よんで。\r'
     + 'ぜんこくずかんが　さきだよ。\n'
     + 'シンオウずかんを　みおえて　ナナカマドはかせへ。\r'
+    + 'マナフィは　ポケモンやしきの\n'
+    + 'じむしょの　ほんで　みられる。\r'
     + 'みちが　ひとつ　ふえる。',
     'これは　タマゴだよ。\r'
     + 'たくさん　あるかないと　めを　さまさない。\n'

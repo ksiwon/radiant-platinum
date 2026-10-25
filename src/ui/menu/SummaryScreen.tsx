@@ -23,11 +23,12 @@ import { followPartyReturn, setPartyReturnSlot, summaryLast } from './partyChoic
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import {
   loadItemIcons, loadItemNames, loadLabels, loadMoveNames, loadMoves, loadPokeIcons, loadSpecies,
-  loadSpeciesNames, type MoveTable, type SpeciesTable,
+  loadSpeciesNames, loadTmMoves, type MoveTable, type SpeciesTable,
 } from '../../data/gameData'
 import { loadUiText, SUMMARY_PAGE_MOVES } from '../../data/uiText'
 import { assets, readJson } from '../../data/providers/assetProvider'
 import type { ItemIcons, Labels, PokeIcons } from '../../data/schema'
+import { forgetLocked } from '../../engine/bag/fieldUse'
 import { expToNextLevel, levelProgress, MAX_LEVEL } from '../../engine/pokemon/exp'
 import {
   abilityOf, genderOf, isShiny, maxHp, maxPpOf, natureOf, statsOf,
@@ -86,6 +87,9 @@ const T = {
   /** 위력 ≤ 1 · 명중 0 — 「---」 */ noValue: 154,
 } as const
 
+/** 「중요한 기술입니다. 잊게 할 수 없습니다!」 (`SUMMARY_HM_CANT_FORGET`, REPAIR §76과 같은 줄) */
+const SUMMARY_HM_CANT_FORGET = 156
+
 /** 기술 네 칸 (`LEARNED_MOVES_MAX`). 그 **다음** 자리가 「그만둔다」다 */
 const MOVES_MAX = 4
 
@@ -110,6 +114,8 @@ interface Tables {
   /** 파티 줄의 아이콘 시트 */
   pokeIcons: PokeIcons
   memo: MemoNames
+  /** 기술머신 100칸의 기술 — 비전기술 잠금(`forgetLocked`). 도구표를 못 받았으면 null */
+  tmMoves: readonly number[] | null
 }
 
 /**
@@ -162,6 +168,8 @@ export function SummaryScreen({ source }: { source?: SummarySource } = {}) {
    * 원작은 기술 쪽에서 A로 칸을 고르고, 다른 칸에서 A를 한 번 더 누르면 맞바꾼다
    */
   const [swapFrom, setSwapFrom] = useState<number | null>(null)
+  /** 비전기술 칸을 골라 「중요한 기술입니다」가 떠 있는가 (`PokemonSummaryScreen_PrintHMMovesCantBeForgotten`) */
+  const [hmNotice, setHmNotice] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -175,14 +183,15 @@ export function SummaryScreen({ source }: { source?: SummarySource } = {}) {
       // 쓴다. 빈 배열로 두면 `memo.ts`가 숫자만 넣는다
       loadUiText('monthNames', locale).catch(() => [] as string[]),
       loadPokeIcons(),
+      loadTmMoves(),
     ]).then(([
       species, moves, speciesNames, moveNames, moveTexts, summary,
-      labels, itemNames, icons, location, special, month, pokeIcons,
+      labels, itemNames, icons, location, special, month, pokeIcons, tmMoves,
     ]) => {
       if (!alive) return
       setT({
         species, moves, speciesNames, moveNames, moveTexts, summary, labels, itemNames, icons, pokeIcons,
-        memo: { location, special, month },
+        memo: { location, special, month }, tmMoves,
       })
     }).catch(() => { /* 글 없이는 쪽이 안 뜬다. 빈 창으로 남는다 */ })
     return () => { alive = false }
@@ -212,6 +221,8 @@ export function SummaryScreen({ source }: { source?: SummarySource } = {}) {
   const rows = picking === null ? moves.length
     : picking.teach === null ? moves.length : moves.length + 1
   const moveOn = Math.min(moveAt, Math.max(0, rows - 1))
+  // 칸을 옮기면 안내는 걷힌다
+  useEffect(() => { setHmNotice(false) }, [moveOn])
 
   /** 장이 들어오는 방향(1: 오른쪽에서, −1: 왼쪽에서). 쪽이 바뀔 때 8px 밀려 들어온다 */
   const [dir, setDir] = useState(1)
@@ -300,12 +311,24 @@ export function SummaryScreen({ source }: { source?: SummarySource } = {}) {
     finishPick(slot)
     back()
   }
+  /**
+   * 가르침 모드에서 Z. 비전기술 칸이면 잊게 안 하고 글만 띄운다 (`main.c:814-820` — `data->move != MOVE_NONE`일 때만이다).
+   * 삭제사(`teach === null`)는 그대로 답한다
+   */
+  const pickMove = (): void => {
+    if (picking !== null && t !== null && t.tmMoves !== null
+      && forgetLocked(moves, moveOn, picking.teach !== null, t.tmMoves)) {
+      setHmNotice(true)
+      return
+    }
+    answer(moveOn)
+  }
 
   useMenuKeys(picking !== null
     ? {
       up: stepMove(-1, Math.max(1, rows)),
       down: stepMove(1, Math.max(1, rows)),
-      confirm: () => { answer(moveOn) },
+      confirm: pickMove,
       // B는 「그만둔다」다. 원작도 네 칸 밖의 자리를 돌려준다
       cancel: () => { answer(MOVES_MAX) },
     }
@@ -330,7 +353,7 @@ export function SummaryScreen({ source }: { source?: SummarySource } = {}) {
   const order = list.slice(0, at + 1).filter((m) => m !== null).length
 
   const foot = picking !== null
-    ? '↑↓ 기술 · Z 고른다 · X 그만둔다'
+    ? hmNotice ? text(SUMMARY_HM_CANT_FORGET) : '↑↓ 기술 · Z 고른다 · X 그만둔다'
     : swapFrom !== null
       ? '↑↓ 자리 · Z 여기와 바꾼다 · X 그만둔다'
       : shown === 'moves' && moves.length > 0

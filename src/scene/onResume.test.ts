@@ -17,8 +17,8 @@ import { VarStore } from '../engine/script/vars'
 import { world as mapWorld, type EventFile, type MapHeader } from '../engine/map/world'
 import { installNodeAssets, withData } from '../data/romData.testkit'
 import { createNewSave, useSaveStore } from '../state/saveStore'
-import { installFieldServices } from './fieldServices'
-import { isOnCyclingRoad, setOnCyclingRoad } from '../engine/actor/bike'
+import { installFieldServices, rememberPreviousMap } from './fieldServices'
+import { bikeBlock, isOnCyclingRoad, setOnCyclingRoad } from '../engine/actor/bike'
 import { worldState } from '../state/worldState'
 
 const DATA = resolve(__dirname, '../../public/data')
@@ -56,6 +56,7 @@ maybe('OnResume', () => {
     abortScript()
     stop?.()
     setOnCyclingRoad(false)
+    rememberPreviousMap(0)
     mapWorld.mapId = -1
   })
 
@@ -76,6 +77,42 @@ maybe('OnResume', () => {
       setOnCyclingRoad(false)
       reloadFieldMap()
       expect(isOnCyclingRoad()).toBe(true)
+    })
+
+    // 원작은 워프마다 표식을 지운다 (`field_map_change_flags.c:66`) — 롬에 `ForceBicycling FALSE`가 없어 이것이 푸는 유일한 길이다
+    it('워프로 다른 맵(영원시티 65)에 가면 표식과 몸의 묶임이 풀린다', () => {
+      fieldScripts.vars.setFlag(FLAG_ON_CYCLING_ROAD)
+      enterMap(ROUTE_206)
+      expect(isOnCyclingRoad()).toBe(true)
+      mapWorld.mapId = 65
+      enterMap(65, { x: 10, z: 10 })
+      expect(fieldScripts.vars.checkFlag(FLAG_ON_CYCLING_ROAD)).toBe(false)
+      expect(isOnCyclingRoad()).toBe(false)
+      // 내릴 수 있다 — 안 풀리면 어느 맵에서도 `stuck`이었다
+      expect(bikeBlock(mapWorld.maps![65]!, 0, false, true, isOnCyclingRoad())).not.toBe('stuck')
+    })
+
+    it('이어하기로 206번도로에 서면 묶임이 유지된다 (워프가 아니다)', () => {
+      fieldScripts.vars.setFlag(FLAG_ON_CYCLING_ROAD)
+      worldState.restoring = true
+      try { enterMap(ROUTE_206, { x: 300, z: 600 }) } finally { worldState.restoring = false }
+      expect(fieldScripts.vars.checkFlag(FLAG_ON_CYCLING_ROAD)).toBe(true)
+      expect(isOnCyclingRoad()).toBe(true)
+    })
+
+    it('북쪽 게이트에서 자전거로드 입구(299~306, 576)로 들어서면 다시 묶인다', () => {
+      rememberPreviousMap(80) // MAP_HEADER_ROUTE_206_CYCLING_ROAD_NORTH_GATE
+      enterMap(ROUTE_206, { x: 300, z: 576 })
+      expect(fieldScripts.vars.checkFlag(FLAG_ON_CYCLING_ROAD)).toBe(true)
+      expect(isOnCyclingRoad()).toBe(true)
+    })
+
+    it('게이트에서 나와도 입구 칸이 아니면 안 묶인다 (표식이 남아 있던 것도 워프가 먼저 지운다)', () => {
+      fieldScripts.vars.setFlag(FLAG_ON_CYCLING_ROAD)
+      rememberPreviousMap(80)
+      enterMap(ROUTE_206, { x: 300, z: 500 })
+      expect(fieldScripts.vars.checkFlag(FLAG_ON_CYCLING_ROAD)).toBe(false)
+      expect(isOnCyclingRoad()).toBe(false)
     })
   })
 })

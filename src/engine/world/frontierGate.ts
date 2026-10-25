@@ -93,8 +93,33 @@ const SCRATCH_NAMES: Readonly<Record<DataLocale, string>> = {
   ja: 'スクラッチカ－ド',
 }
 
+/** `MAP_HEADER_RESORT_AREA_RIBBON_SYNDICATE_1F` */
+const RIBBON_SYNDICATE_1F = 461
+/**
+ * 그 맵의 2번 스크립트 `ResortAreaRibbonSyndicate1F_CashierF` (`scripts_resort_area_ribbon_syndicate_1f.s:66` — 진입점 둘째).
+ * 리본을 접어 `SetPartyMonRibbon`이 아무 일도 안 하는데 이 스크립트는 그 앞에서 `RemoveMoney 10000`~`999999`를 받는다 —
+ * 말을 건 자리에서 끊는다 (PARITY §9.2). 입구 판정(`OnFrame_CheckEntry`)이 본 방어선이고 이건 이중 안전망이다
+ */
+const RIBBON_CASHIER_SCRIPT = 2
+
+/** 리본 신디케이트 — 롬 대사의 표기다 (`리본 신디케이트` · `Ribbon Syndicate` · `リボンシンジケ－ト`) */
+const SYNDICATE_NAMES: Readonly<Record<DataLocale, string>> = {
+  ko: '리본 신디케이트',
+  en: 'Ribbon Syndicate',
+  ja: 'リボンシンジケ－ト',
+}
+
 /** 이 맵의 이 스크립트를 막았으면 그 자리에 띄울 안내. 아니면 null — `\r`이 쪽을 나눈다 */
 export function deferredScriptNotice(map: number, script: number, locale: DataLocale): string | null {
+  if (map === RIBBON_SYNDICATE_1F) {
+    if (script !== RIBBON_CASHIER_SCRIPT) return null
+    const name = SYNDICATE_NAMES[locale]
+    switch (locale) {
+      case 'en': return `The ${name}'s shop\risn't available right now.`
+      case 'ja': return `${name}の　おみせは\rいまは　りようできない。`
+      default: return `${name}의 리본 가게는\r지금은 이용할 수 없다.`
+    }
+  }
   if (map === BATTLE_FRONTIER) {
     const facility = FRONTIER_COORD_WARP[script]
     // 문 앞 안내와 같은 글이다
