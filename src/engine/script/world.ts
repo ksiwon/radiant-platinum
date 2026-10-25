@@ -1528,9 +1528,12 @@ export class FieldWorld {
   /**
    * `ScriptContext_WaitForFinishedPrinting` — **마지막 쪽이 다 보였는가.**
    *
-   * ⚠️ **원작 `Message`는 글 끝에서 누름을 안 받는다.** 누름은 글 안의 ``(쪽 넘김)이나 뒤따르는
-   * `WaitButton`이 받는다. 원작 대본이 그렇게 짜여 있다 — `CloseMessage` 앞 글 560 중 557이 ``로 끝나고,
-   * `WaitButton`(1,020) · 예/아니오(323) · 목록(71) 앞 글은 ``이 없다. 끝에서 한 번 더 기다리면 질문 뒤에
+   * ⚠️ **원작 `Message`는 글 끝에서 누름을 안 받는다.** 누름은 글 안의 `
+`(쪽 넘김)이나 뒤따르는
+   * `WaitButton`이 받는다. 원작 대본이 그렇게 짜여 있다 — `CloseMessage` 앞 글 560 중 557이 `
+`로 끝나고,
+   * `WaitButton`(1,020) · 예/아니오(323) · 목록(71) 앞 글은 `
+`이 없다. 끝에서 한 번 더 기다리면 질문 뒤에
    * 메뉴가 안 뜨고 ▼가 먼저 뜨며, `WaitTime` · `PlayFanfare`가 누를 때까지 밀리고, `WaitABPress`는 두 번 눌러야
    * 한다. 그래서 끝 기다림(`'end'`)에 닿으면 곧바로 참이다 — 그 누름은 인쇄기가 창을 닫을 때까지 들고 있다
    */
@@ -1558,11 +1561,18 @@ export class FieldWorld {
    */
   shardCost: readonly { name: string, need: number, have: number }[] | null = null
 
+  /**
+   * 예/아니오 두 줄의 글. 롬 공용 뱅크 7번의 82·83번째 줄이고 언어마다 다르다
+   * (ko 「예/아니오」· en 「Yes/No」· ja 「はい/いいえ」). 뱅크가 오기 전에는 한국어다 —
+   * 밖(`field.ts`)이 언어에 맞는 줄을 받아 갈아 끼운다
+   */
+  yesNoTexts: readonly [string, string] = ['예', '아니오']
+
   openYesNo(dest: number): void {
     this.menu = {
       kind: 'yesno',
       dest,
-      entries: [{ text: '예', value: MENU_YES, alt: null }, { text: '아니오', value: MENU_NO, alt: null }],
+      entries: [{ text: this.yesNoTexts[0], value: MENU_YES, alt: null }, { text: this.yesNoTexts[1], value: MENU_NO, alt: null }],
       canCancel: true,
       columns: 1,
       // `Menu_MakeYesNoChoice` — 한 열 두 줄 `Menu`이고 안 감긴다 (`menu.c`의 `loopAround = FALSE`)

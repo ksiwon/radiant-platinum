@@ -553,6 +553,32 @@ function trySiwonCameo(): boolean {
 
 let locale: DataLocale = 'ko'
 
+/** 공용 뱅크 7의 「예」「아니오」 줄 번호 (미국 번호 82·83) */
+export const YESNO_BANK = 7
+export const YESNO_AT = [82, 83] as const
+
+/**
+ * 뱅크가 오기 전에도 en/ja 롬에서 한국어 선택지가 뜨지 않게 하는 내림.
+ * 값은 뱅크 7의 82·83번 줄을 세 언어에서 직접 읽은 것과 같다
+ */
+export const YESNO_FALLBACK: Readonly<Record<DataLocale, readonly [string, string]>> = {
+  ko: ['예', '아니오'], en: ['Yes', 'No'], ja: ['はい', 'いいえ'],
+}
+
+/** 이 언어의 예/아니오 두 줄을 월드에 건다. 롬 줄이 오면 그것으로 덮는다 */
+function applyYesNo(which: DataLocale): void {
+  const world = fieldScripts.world
+  if (world) world.yesNoTexts = YESNO_FALLBACK[which]
+  loadDialogueBank(which, YESNO_BANK)
+    .then((bank) => {
+      if (which !== locale || !fieldScripts.world) return
+      const yes = bank[YESNO_AT[0]]
+      const no = bank[YESNO_AT[1]]
+      if (yes && no) fieldScripts.world.yesNoTexts = [yes, no]
+    })
+    .catch(() => { /* 내림 값이 남는다 */ })
+}
+
 /**
  * 바이트코드와 명령표를 받는다. 한 번만 하면 된다.
  *
@@ -574,6 +600,7 @@ export async function initFieldScripts(which: DataLocale = 'ko'): Promise<void> 
   loadDialogueBank(which, MENU_ENTRIES_BANK)
     .then((bank) => { if (fieldScripts.world) fieldScripts.world.menuEntryTexts = bank })
     .catch(() => { /* 전역 메뉴 글만 빈다 */ })
+  applyYesNo(which)
 }
 
 /** `TEXT_BANK_MENU_ENTRIES` — 전역 메뉴가 쓰는 항목 글 280개 (미국 번호) */
@@ -590,6 +617,7 @@ const MENU_ENTRIES_BANK = 361
 function setFieldLocale(which: DataLocale): void {
   if (which === locale) return
   locale = which
+  applyYesNo(which)
   loadDialogueBank(which, MENU_ENTRIES_BANK)
     .then((bank) => { if (fieldScripts.world) fieldScripts.world.menuEntryTexts = bank })
     .catch(() => { /* 전역 메뉴 글만 옛 언어로 남는다 */ })

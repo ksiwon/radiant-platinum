@@ -31,6 +31,7 @@ import {
 } from '../../engine/intro/beats'
 import { controlPages } from '../../engine/intro/controlText'
 import { introWelcome } from '../../engine/intro/welcomeText'
+import { introUiText } from '../../engine/intro/introUiText'
 import { music } from '../../engine/audio/music'
 import { OPENING_SONG } from '../../engine/audio/songIds'
 import { MessagePrinter, printedText } from '../../engine/script/printer'
@@ -42,6 +43,11 @@ import { startNewGame } from '../../state/saveStore'
 import { HIT_MARGIN, introBallButton } from '../../scene/introPlace'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import * as css from './intro.css'
+
+/** 사람 낱말 뱅크(440)의 「남자」「여자」 줄과 메일 뱅크(409)의 「결정」 줄 */
+const PEOPLE_BOY = 7
+const PEOPLE_GIRL = 16
+const MAIL_OK = 0
 
 /** 원작 이름 칸이 7글자다 (`TrainerInfo`의 이름 버퍼) */
 const NAME_MAX = 7
@@ -112,9 +118,12 @@ export function IntroScreen() {
   const [bank, setBank] = useState<string[]>([])
   const [naming, setNaming] = useState<string[]>([])
   const [generic, setGeneric] = useState<string[]>([])
+  const [genderWords, setGenderWords] = useState<string[]>(['', ''])
+  const [okWord, setOkWord] = useState('')
   // 설정의 언어. 인트로 도중에 바꾸는 일은 없지만, 타이틀에서 바꿔 두고
   // 새 모험을 시작하면 그 언어로 시작해야 한다
   const locale = useGameLocale()
+  const ui = introUiText(locale)
   const [stage, setStage] = useState<Stage>({ kind: 'say', at: 0 })
   const [player, setPlayer] = useState('')
   const [rival, setRival] = useState('')
@@ -231,9 +240,14 @@ export function IntroScreen() {
       loadDialogueBank(locale, UI_BANK.intro),
       loadDialogueBank(locale, UI_BANK.naming),
       loadGenericNames(locale),
+      loadDialogueBank(locale, UI_BANK.peopleWords),
+      loadDialogueBank(locale, UI_BANK.mail),
     ])
-      .then(([intro, name, names]) => {
+      .then(([intro, name, names, people, mail]) => {
         if (!alive) return
+        // 성별 칸과 「결정」은 롬 줄이다 — 사람 낱말 440의 7(남자)·16(여자), 메일 409의 0(결정)
+        setGenderWords([people[PEOPLE_BOY] ?? '', people[PEOPLE_GIRL] ?? ''])
+        setOkWord(mail[MAIL_OK] ?? '')
         setBank(intro)
         setNaming(name)
         setGeneric(names)
@@ -581,7 +595,7 @@ export function IntroScreen() {
   }
 
   const typing = stage.kind === 'nameEntry' && ready
-  const choices = ready ? choiceLabels(stage, bank) : null
+  const choices = ready ? choiceLabels(stage, bank, genderWords) : null
   /**
    * 지금 고르는 것이 예/아니오 물음인가 — 성별 확인과 이름 확인 둘(주인공·라이벌).
    *
@@ -647,7 +661,7 @@ export function IntroScreen() {
               if (!stage.opened) setStage({ ...stage, opened: true })
               else step(stage.at)
             }}
-            aria-label="몬스터볼"
+            aria-label={ui.ballLabel}
           />
         )}
       </div>
@@ -681,10 +695,10 @@ export function IntroScreen() {
               onChange={(e) => {
                 setDraft(e.target.value)
               }}
-              aria-label="이름"
+              aria-label={ui.nameLabel}
             />
             <button className={css.ok} type="submit">
-              결정
+              {okWord}
             </button>
           </form>
         )}
@@ -698,7 +712,7 @@ export function IntroScreen() {
           영영 안 빠져나왔다 (`.audit/probe/introProbe.mjs`로 잡았다)
         */}
         {choices && (
-          <div className={css.choices} role="radiogroup" aria-label="선택">
+          <div className={css.choices} role="radiogroup" aria-label={ui.choiceLabel}>
             {choices.map((label, i) => (
               <span
                 key={label + String(i)}
@@ -720,16 +734,16 @@ export function IntroScreen() {
       */}
       <div className={css.hint}>
         {typing
-          ? `${String(NAME_MAX)}글자까지 · Enter 결정`
+          ? ui.nameHint(NAME_MAX)
           : stage.kind === 'outro' || stage.kind === 'rowanReturn'
             ? ''
             : stage.kind === 'pokeBall' && !stage.opened
-              ? '볼 가운데의 버튼을 누른다 — 클릭 · Z·Enter'
+              ? ui.ballHint
               : yesNo
-                ? '←→ 고르기 · Z·Enter 결정 · X 아니오'
+                ? ui.yesNoHint
                 : choices
-                  ? '←→ 고르기 · Z·Enter 결정'
-                  : 'Z·Enter 넘기기'}
+                  ? ui.choiceHint
+                  : ui.nextHint}
       </div>
 
       {/*
@@ -774,14 +788,15 @@ function stageAt(stage: Stage): number {
 }
 
 /** 지금 고를 것이 있으면 그 글 목록. 없으면 null */
-function choiceLabels(stage: Stage, bank: string[]): string[] | null {
+function choiceLabels(stage: Stage, bank: string[], genderWords: readonly string[]): string[] | null {
   const at = (i: number): string => bank[i] ?? ''
   switch (stage.kind) {
     case 'infoMenu':
       return INFO_CHOICES.map((c) => at(c.line))
     // 원작은 성별을 그림으로 고르게 한다. 우리는 아직 초상이 없어서 글로 묻는다
+    // (낱말은 롬 사람 낱말 뱅크의 「남자」「여자」 — 뱅크가 오기 전엔 빈 칸이라 안 띄운다)
     case 'gender':
-      return ['남자', '여자']
+      return genderWords[0] && genderWords[1] ? [...genderWords] : null
     case 'genderConfirm':
     case 'nameConfirm':
       return [at(INTRO_TEXT.yes), at(INTRO_TEXT.no)]

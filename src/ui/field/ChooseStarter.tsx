@@ -22,7 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { loadDialogueBank } from '../../data/gameData'
 import { MessagePrinter, printedText, type Line } from '../../engine/script/printer'
 import { MessageSlots } from '../../engine/script/text'
-import { fieldScripts } from '../../engine/script/field'
+import { fieldScripts, YESNO_FALLBACK, YESNO_AT, YESNO_BANK } from '../../engine/script/field'
 import { resetFade, screenFade } from '../../engine/script/fade'
 import { SFX } from '../../engine/audio/sfx'
 import { setStarterChoice } from '../../scene/fieldServices'
@@ -140,6 +140,23 @@ export function ChooseStarter() {
       .catch(() => {
         /* 글이 비어도 고를 수는 있다 */
       })
+    return () => {
+      alive = false
+    }
+  }, [locale])
+
+  // 확인 창의 예/아니오 — 필드 대화와 같은 롬 줄(공용 뱅크 7의 82·83번)
+  const [yesNo, setYesNo] = useState<readonly string[]>(YESNO_FALLBACK[locale])
+  useEffect(() => {
+    let alive = true
+    setYesNo(YESNO_FALLBACK[locale])
+    void loadDialogueBank(locale, YESNO_BANK)
+      .then((lines) => {
+        const yes = lines[YESNO_AT[0]]
+        const no = lines[YESNO_AT[1]]
+        if (alive && yes && no) setYesNo([yes, no])
+      })
+      .catch(() => { /* 내림 값이 남는다 */ })
     return () => {
       alive = false
     }
@@ -352,7 +369,7 @@ export function ChooseStarter() {
           ))}
           {step === 'confirm' && ready && (
             <div className={css.menu} role="radiogroup" aria-label="예 아니오">
-              {['예', '아니오'].map((label, at) => (
+              {yesNo.map((label, at) => (
                 <div
                   key={label}
                   role="radio"
