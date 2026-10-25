@@ -17,7 +17,7 @@
 //   오버월드           54칸    야외다
 //
 // 그래서 **여기서 원작과 갈라선다** — 「바닥이 그려져 있지 않으면 못 간다」.
-// 무엇이 그려져 있는지는 굽는 쪽이 비트로 적어 준다 (`chunks/cover.bin` ·
+// 무엇이 그려져 있는지는 굽는 쪽이 비트로 적어 준다 (`chunks/cover.bin` — 제 청크 비트 + 이웃으로 번진 칸 ·
 // `props/index.json`의 `boxes`).
 //
 // ⚠️ **장치가 통행을 따로 쥐는 방은 손대지 않는다.** 운하시티 체육관은 아예
@@ -61,6 +61,12 @@ const COVER_BYTES = CHUNK * CHUNK / 8
 export interface FloorCover {
   /** land 번호마다 128B. 비트 `z*32+x`가 서면 그 칸 밑에 그린 것이 있다 */
   bits: Uint8Array
+  /**
+   * 이웃 청크로 번진 칸과, 제 청크에서 반 칸이 안 되는 칸의 표본 — 없으면 번짐을 안 센다.
+   * `starts[land]..starts[land+1]`이 `entries`의 몫이고 항목은 `r | 표본마스크 << 14`,
+   * r은 그 청크 기준 96×96의 칸 `(z+32)*96 + (x+32)`다 (`parseCoverBin`)
+   */
+  spill?: { starts: Uint32Array, entries: Uint32Array }
   /** 소품 모델마다 XZ 상자 `[x0, z0, x1, z1]`. 그린 것이 없으면 null */
   boxes: readonly (readonly [number, number, number, number] | null)[]
   /** 상자의 단위. `chunks/index.json`의 `posScale`이다 */
@@ -104,6 +110,63 @@ function plateFloor(height: HeightData, land: number): Uint8Array | null {
   return n >= CHUNK * CHUNK ? null : hit
 }
 
+/** 번진 칸이 닿는 한도 — 청크 한 변. 96 = 32 + 2×32 */
+const SPILL_REACH = 32
+const SPILL_SPAN = CHUNK + 2 * SPILL_REACH
+/** 칸 하나에 반 칸 이상 모여야 바닥이다 — 굽는 쪽의 `COVER_MIN` */
+const SPILL_MIN = 8
+
+/**
+ * `chunks/cover.bin`을 읽는다 — 청크 수 × 128B 비트, 이어서 청크마다 번진 칸 항목의
+ * 누적 개수(u32 × (청크 수+1)), 항목(u32). 굽는 쪽의 `packCover`와 같은 모양이다.
+ *
+ * @param count `chunks/index.json`의 `count`
+ */
+export function parseCoverBin(buf: ArrayBuffer, count: number): Pick<FloorCover, 'bits' | 'spill'> {
+  const bitsLen = count * COVER_BYTES
+  const bits = new Uint8Array(buf, 0, bitsLen)
+  const startsLen = 4 * (count + 1)
+  if (buf.byteLength < bitsLen + startsLen) return { bits }
+  // 비트 길이가 4의 배수라(128B) 정렬은 맞지만, 안전하게 복사해 읽는다
+  const tail = buf.slice(bitsLen)
+  const starts = new Uint32Array(tail, 0, count + 1)
+  const entries = new Uint32Array(tail, startsLen, (tail.byteLength - startsLen) >> 2)
+  return { bits, spill: { starts, entries } }
+}
+
+/**
+ * 번진 표본을 행렬 칸마다 합쳐 반 칸 이상인 칸을 `drawn`에 세운다.
+ *
+ * 청크 메시는 **제 32×32 밖으로 번진다**(land 375는 로컬 x가 0~40). 제 청크 비트만
+ * 보면 이웃 칸에 그려진 바닥을 「안 그려짐」으로 막아 큰길 한복판에 보이지 않는 벽이
+ * 선다. 표본을 합치는 것은 바닥이 두 청크에 걸친 칸이 반씩 덮일 때를 위해서다
+ */
+function addSpill(meta: MatrixMeta, cover: FloorCover, drawn: Uint8Array): void {
+  const sp = cover.spill
+  if (!sp) return
+  const W = meta.tileWidth, H = meta.tileHeight
+  const mask = new Uint16Array(W * H)
+  for (const c of meta.chunks) {
+    const a = sp.starts[c.land], b = sp.starts[c.land + 1]
+    if (a === undefined || b === undefined) continue
+    const ox = c.mx * CHUNK - SPILL_REACH, oz = c.my * CHUNK - SPILL_REACH
+    for (let k = a; k < b; k++) {
+      const e = sp.entries[k]!
+      const r = e & 0x3fff
+      const tx = ox + (r % SPILL_SPAN), tz = oz + Math.floor(r / SPILL_SPAN)
+      if (tx < 0 || tz < 0 || tx >= W || tz >= H) continue
+      mask[tz * W + tx]! |= e >>> 14
+    }
+  }
+  for (let i = 0; i < mask.length; i++) {
+    let v = mask[i]!
+    if (v === 0 || drawn[i] === 1) continue
+    let n = 0
+    for (; v !== 0; v >>= 1) n += v & 1
+    if (n >= SPILL_MIN) drawn[i] = 1
+  }
+}
+
 /** 그 칸 밑에 청크 메시가 있는가 */
 function meshAt(cover: FloorCover, land: number, lx: number, lz: number): boolean {
   const at = land * COVER_BYTES * 8 + lz * CHUNK + lx
@@ -134,6 +197,7 @@ export function drawnFloor(meta: MatrixMeta, cover: FloorCover, height?: HeightD
       }
     }
   }
+  addSpill(meta, cover, drawn)
   const s = cover.posScale
   for (const list of Object.values(meta.buildings)) {
     for (const b of list) {

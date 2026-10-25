@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { drawnFloor, sealFloor, type FloorCover } from './floorSeal'
+import { drawnFloor, parseCoverBin, sealFloor, type FloorCover } from './floorSeal'
 import { IMPASSABLE } from './zone'
 import type { MatrixMeta } from './grid'
 
@@ -147,5 +147,78 @@ describe('그린 것이 없는 칸을 막는다', () => {
     // 두 방은 그대로 남는다 — 잇지 못했다고 막지는 않는다
     expect(open(tiles, 3, 3)).toBe(true)
     expect(open(tiles, 9, 3)).toBe(true)
+  })
+})
+
+describe('이웃 청크로 번진 바닥 (cover.bin의 번진 칸)', () => {
+  /** 가로로 이웃한 두 청크 행렬. land 0이 왼쪽, land 1이 오른쪽 */
+  const twoChunks = (): MatrixMeta => ({
+    id: 1, name: 'test', width: 2, height: 1, tileWidth: 64, tileHeight: 32,
+    chunks: [
+      { i: 0, mx: 0, my: 0, land: 0, zone: -1 },
+      { i: 1, mx: 1, my: 0, land: 1, zone: -1 },
+    ],
+    buildings: {},
+  })
+  /** 번진 칸 항목 — r은 청크 기준 (lx+32, lz+32) */
+  const entry = (lx: number, lz: number, mask: number): number =>
+    (((lz + 32) * 96 + (lx + 32)) | (mask << 14)) >>> 0
+  const withSpill = (lists: number[][]): FloorCover => {
+    const starts = new Uint32Array(lists.length + 1)
+    lists.forEach((l, i) => { starts[i + 1] = starts[i]! + l.length })
+    return {
+      bits: new Uint8Array(lists.length * 128), boxes: [], posScale: 256,
+      spill: { starts, entries: Uint32Array.from(lists.flat()) },
+    }
+  }
+
+  it('왼쪽 청크의 메시가 오른쪽 청크 칸으로 번진 것도 바닥이다', () => {
+    // land 0의 로컬 x=33 → 행렬 x=33 (오른쪽 청크 안 로컬 1)
+    const cover = withSpill([[entry(33, 5, 0xffff)], []])
+    const drawn = drawnFloor(twoChunks(), cover)
+    expect(drawn[5 * 64 + 33]).toBe(1)
+    expect(drawn[5 * 64 + 34]).toBe(0)
+  })
+
+  it('왼쪽으로 번진 것은 청크 위치에 따라 이웃의 왼쪽 칸이다', () => {
+    // land 1의 로컬 x=-2 → 행렬 x=30 (왼쪽 청크 안)
+    const cover = withSpill([[], [entry(-2, 3, 0xffff)]])
+    const drawn = drawnFloor(twoChunks(), cover)
+    expect(drawn[3 * 64 + 30]).toBe(1)
+  })
+
+  it('반 칸이 안 되는 표본은 이웃의 표본과 합쳐서 센다', () => {
+    // 같은 칸 (행렬 x=33)을 두 청크가 표본 4개씩 나눠 덮는다
+    const cover = withSpill([[entry(33, 5, 0x000f)], [entry(1, 5, 0x00f0)]])
+    const drawn = drawnFloor(twoChunks(), cover)
+    // 4 + 4 = 8 → 바닥
+    expect(drawn[5 * 64 + 33]).toBe(1)
+    const half = withSpill([[entry(33, 5, 0x000f)], [entry(1, 5, 0x000f)]])
+    // 같은 표본 4개가 겹쳐 4 → 바닥 아님
+    expect(drawnFloor(twoChunks(), half)[5 * 64 + 33]).toBe(0)
+  })
+
+  it('행렬 밖으로 번진 칸은 버린다', () => {
+    const cover = withSpill([[entry(-5, 5, 0xffff), entry(5, -3, 0xffff)], []])
+    const drawn = drawnFloor(twoChunks(), cover)
+    expect(drawn.reduce<number>((s, v) => s + v, 0)).toBe(0)
+  })
+
+  it('번진 칸을 칸 비트와 맞춰 `cover.bin` 모양에서 읽는다', () => {
+    // 청크 둘: 비트 256B · 누적 개수 3×u32 · 항목 둘
+    const buf = new ArrayBuffer(256 + 12 + 8)
+    const v = new DataView(buf)
+    new Uint8Array(buf)[3] = 0x10
+    v.setUint32(256 + 4, 1, true)
+    v.setUint32(256 + 8, 2, true)
+    v.setUint32(256 + 12, entry(33, 5, 0xffff), true)
+    v.setUint32(256 + 16, entry(-2, 3, 0x1234), true)
+    const parsed = parseCoverBin(buf, 2)
+    expect(parsed.bits.length).toBe(256)
+    expect(parsed.bits[3]).toBe(0x10)
+    expect([...parsed.spill!.starts]).toEqual([0, 1, 2])
+    expect(parsed.spill!.entries[1]! >>> 14).toBe(0x1234)
+    // 옛 모양(비트만)은 번짐 없이 읽는다
+    expect(parseCoverBin(new ArrayBuffer(256), 2).spill).toBeUndefined()
   })
 })

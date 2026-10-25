@@ -66,7 +66,7 @@
 | 개체·진화·번식·능력치 | `engine/pokemon/` |
 | 가방·도구 쓰기 | `engine/bag/` (무엇을 할지) · `ui/menu/itemAction.ts` (실제로 밟기) |
 | 맵·격자·워프 | `engine/map/` · `scene/` |
-| **그린 것이 없는 자리 막기** | `engine/map/floorSeal.ts`가 규칙, 「그 칸 밑에 삼각형이 있는가」는 굽는 쪽이 비트로 적는다(`tools/extract/chunks.js`·`props.js` ↔ `src/import/platinum/chunks.ts` — **둘이 같아야 한다**). 거는 자리는 `scene/worldData.ts`의 `seal()`이고, 장치가 통행을 따로 쥐는 방은 거기 `SEAL_SKIP_MAPS`가 뺀다. 워프가 못 설 칸에 떨구면 `engine/map/world.ts`의 `standableSpot`이 비켜 세운다 ([REPAIR.md](REPAIR.md) §22·§23) |
+| **그린 것이 없는 자리 막기** | `engine/map/floorSeal.ts`가 규칙, 「그 칸 밑에 삼각형이 있는가」는 굽는 쪽이 비트로 적고 **이웃 청크로 번진 칸은 표본째 `cover.bin` 뒤에 싣는다**(`tools/extract/chunks.js`·`props.js` ↔ `src/import/platinum/chunks.ts` — **둘이 같아야 한다**). 거는 자리는 `scene/worldData.ts`의 `seal()`이고, 장치가 통행을 따로 쥐는 방은 거기 `SEAL_SKIP_MAPS`가 뺀다. 워프가 못 설 칸에 떨구면 `engine/map/world.ts`의 `standableSpot`이 비켜 세운다 ([REPAIR.md](REPAIR.md) §22·§23) |
 | 깨어진 세계 | 규칙은 `engine/world/distortion*.ts`, 연출은 `scene/distortion*.ts` — **이름이 짝을 이룬다**(`…Cascade`·`…Elevator`·`…Boulder`·`…Camera`). ⚠️ **`scene/distortion.ts`는 차례를 잡는 문이지 살림집이 아니다** — 들고 나기와 한 걸음의 순서만 들고, 층 자료·판 번호는 `distortionCore.ts`가 함수로만 내준다 (밖에서 대입하는 자리를 안 만들려고 그렇게 뒀다) |
 | 사람 모델을 세우는 비율 | `engine/model/` — `normalize.ts`가 키를 맞추고, `chibi.ts`가 배틀 몸이 없어 필드 번들로 서는 스물일곱을 등신 비율로 고친다: 머리·손을 줄이고, **머리를 줄인 뒤의 키**에 상수를 곱해 세우고, 굵기를 되돌리고, 그 되돌림이 팔에서 가져간 길이를 마디로 늘인다 (DATA §2.16) |
 | 주인공의 자세 | 걷기·서기는 `engine/actor/locomotion`이 뼈를 직접 돌린다. 낚시·폭포·물주기 같은 필드 동작은 **구운 클립**이고 어느 것을 언제 돌릴지는 `engine/actor/heroClips`가 정한다 — **오르는 데 걸리는 시간도 거기 하나에** 있다(`WATERFALL_SECONDS` 96프레임 · `rockClimbSeconds` 8+4D프레임). ⚠️ **둘이 같은 뼈에 쓴다** — 클립이 돌면 `sceneRefs.playerClip`이 서고 `scene/EngineDriver`가 절차형을 건너뛴다 |

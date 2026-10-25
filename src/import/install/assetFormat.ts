@@ -358,6 +358,14 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    */
   distortion: 2,
   /**
+   * 9 — **`cover.bin`이 이웃 청크로 번진 바닥을 싣는다** (`import/platinum/chunks.ts`의 `coverBits` · `packCover` ↔ 노드 쪽 `tools/extract/chunks.js`).
+   * 청크 메시는 제 32×32 밖으로 번진다(land 375는 로컬 x가 0~40.2). 6부터 비트를 제 청크 안으로만 잘라 적어서, 이웃 칸에 번진 바닥이
+   * 「안 그려짐」이 되고 `engine/map/floorSeal`이 막았다 — **그려진 바닥인데 보이지 않는 벽**이 222칸이다(장막시티 큰길 한가운데 x=703 세로줄 등
+   * 오버월드 54칸 · 창기둥 넷 · 시작의 방 20칸 · 챔피언로드 1F 14칸 외. 번진 바닥으로 막힌 256칸 중 관문 34칸은 BDSP 홈 막기가 일부러 막는 것이라 그대로 막힌다).
+   * 바뀌는 것은 `cover.bin` 하나뿐이다 — 앞 청크 수 × 128B 비트는 바이트가 그대로(85,248B)고, 뒤에 청크마다 누적 개수와 번진 칸 항목(13,541개)이
+   * 붙어 142,080B가 된다(청크 666 · 소품 파일의 바이트는 그대로다). ⚠️ **8은 안 쓴다**(`GROUP_ACCEPTS`에 없다) — 안 올리면 이미 깐 사람의
+   * 옛 `cover.bin`(번짐 없는 모양 — 읽는 쪽이 그대로 읽는다)에서 그 256칸이 여전히 막혀 보이지 않는 벽으로 선다. 이미 깐 사람은 이 그룹을 다시 굽는다
+   *
    * 5 — **굴의 새까만 천장을 안 굽는다.** 불투명·그림 없음·확산 검정짜리 납작한
    * 판이 바닥에서 2칸 넘게 떠 있으면 원작이 위를 가리려고 깔아 둔 뚜껑이다 —
    * 우리 3인칭은 그 위에서 보므로 강철섬에서 화면의 92%가 검었다. 청크 51개 ·
@@ -418,7 +426,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 바이트가 달라지는 것은 그 140벌뿐이지만 그룹을 통째로 다시 굽는다
    * (`.audit/probe/whiteMaterials.mjs`)
    */
-  chunks: 8,
+  chunks: 9,
   /**
    * 2 — **재질 색을 입힌다.** 줄기 · 잎 · 꽃 그림은 회색 마스크라 `_Color` · `_LayerColor`를 안 곱하면 **하얗다**. 줄기 · 열매는
    * `_Color`를 `baseColorFactor`로, 잎(`_CASCADE_BLENDUV0`)은 `_Color` ↔ `_LayerColor`를 정점 알파로 섞은 정점 색 `COLOR_0`으로,

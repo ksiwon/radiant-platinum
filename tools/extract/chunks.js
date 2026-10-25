@@ -476,6 +476,9 @@ function placeByNode(verts, node) {
 const COVER_SUB = 4
 /** 그중 몇 개가 걸려야 바닥인가 — 반 칸 */
 const COVER_MIN = 8
+/** 청크 메시가 이웃으로 번지는 한도 — 한 청크(32칸). 666개 정점의 실측 범위가 −12~63.5칸(제 청크 기준)이라 안에 든다 */
+const COVER_REACH = 32
+const COVER_SPAN = 32 + 2 * COVER_REACH
 
 /**
  * **발밑에 그려진 것이 있는가** — 청크 32×32 칸마다 한 비트.
@@ -498,6 +501,14 @@ const COVER_MIN = 8
  * 사천왕 방(land 260)에서 방 동쪽 벽의 바깥 면이 x=17에 **한 칸짜리 바닥**으로
  * 찍혔고, 이어 붙이는 규칙이 거기까지 열 칸을 뚫었다. 그래서 면의 법선이
  * **수평에서 60° 안**일 때만 바닥으로 친다 (`3·ny² ≥ nx² + nz²`).
+ *
+ * ⚠️ **제 청크 32×32 안으로 자르지 않는다.** 메시는 이웃 청크 칸으로 번진다 —
+ * land 375는 로컬 x가 0~40.2다. 자르면 이웃에 그려진 바닥이 「안 그려짐」이 되어
+ * 장막시티 큰길 한가운데·창기둥·시작의 방에 **보이지 않는 벽**이 256칸 섰다
+ * (`.audit/overnight-20261025/r2-floorseal-story-tiles.md`). 그래서 제 청크 기준
+ * 96×96(−32~63칸)에 표본을 쌓고, 제 칸에서 반 칸이 넘은 것은 비트로, 나머지(번진 칸 ·
+ * 반 칸이 안 되는 칸)는 표본 마스크째 `spill`로 낸다. 행렬 위에서 이웃의 표본과
+ * 합쳐 세는 쪽이 `engine/map/floorSeal`의 `addSpill`이다
  */
 function coverBits(verts, indices) {
   const bits = Buffer.alloc(32 * 32 / 8)
@@ -512,25 +523,23 @@ function coverBits(verts, indices) {
     pz[i] = Math.round(verts[i].pos[2] * POS_SCALE) + mid
   }
   const step = POS_SCALE / (COVER_SUB * 2)
-  // 칸마다 표본을 **몇 개** 덮었는지 센다. 삼각형이 여럿이면 합쳐서 센다
-  const hits = Buffer.alloc(32 * 32 * COVER_SUB * COVER_SUB / 8)
-  const mark = (tile, s) => {
-    const at = tile * COVER_SUB * COVER_SUB + s
-    hits[at >> 3] |= 1 << (at & 7)
-  }
+  // 칸마다 덮은 표본을 16비트 마스크로 쌓는다. 삼각형이 여럿이면 합쳐서 센다.
+  // 칸은 제 청크(0~31)만이 아니라 **이웃으로 한 청크씩 번진 96×96**이다
+  const hits = new Uint16Array(COVER_SPAN * COVER_SPAN)
   for (let t = 0; t + 2 < indices.length; t += 3) {
     const a = indices[t], b = indices[t + 1], c = indices[t + 2]
     const ax = px[a], az = pz[a], bx = px[b], bz = pz[b], cx = px[c], cz = pz[c]
     const area = (bx - ax) * (cz - az) - (bz - az) * (cx - ax)
     if (area === 0) continue
     if (!flatEnough(px, py, pz, a, b, c)) continue
-    const x0 = Math.max(0, Math.floor(Math.min(ax, bx, cx) / POS_SCALE))
-    const x1 = Math.min(31, Math.floor(Math.max(ax, bx, cx) / POS_SCALE))
-    const z0 = Math.max(0, Math.floor(Math.min(az, bz, cz) / POS_SCALE))
-    const z1 = Math.min(31, Math.floor(Math.max(az, bz, cz) / POS_SCALE))
+    const x0 = Math.max(-COVER_REACH, Math.floor(Math.min(ax, bx, cx) / POS_SCALE))
+    const x1 = Math.min(31 + COVER_REACH, Math.floor(Math.max(ax, bx, cx) / POS_SCALE))
+    const z0 = Math.max(-COVER_REACH, Math.floor(Math.min(az, bz, cz) / POS_SCALE))
+    const z1 = Math.min(31 + COVER_REACH, Math.floor(Math.max(az, bz, cz) / POS_SCALE))
     for (let tz = z0; tz <= z1; tz++) {
       for (let tx = x0; tx <= x1; tx++) {
-        const at = tz * 32 + tx
+        const at = (tz + COVER_REACH) * COVER_SPAN + tx + COVER_REACH
+        let mask = hits[at]
         for (let sz = 0; sz < COVER_SUB; sz++) {
           for (let sx = 0; sx < COVER_SUB; sx++) {
             const qx = tx * POS_SCALE + step + sx * 2 * step
@@ -539,22 +548,51 @@ function coverBits(verts, indices) {
             const w1 = (cx - bx) * (qz - bz) - (cz - bz) * (qx - bx)
             const w2 = (ax - cx) * (qz - cz) - (az - cz) * (qx - cx)
             if ((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0)) {
-              mark(at, sz * COVER_SUB + sx)
+              mask |= 1 << (sz * COVER_SUB + sx)
             }
           }
         }
+        hits[at] = mask
       }
     }
   }
-  for (let tile = 0; tile < 32 * 32; tile++) {
+  const spill = []
+  for (let r = 0; r < COVER_SPAN * COVER_SPAN; r++) {
+    const mask = hits[r]
+    if (mask === 0) continue
+    const tx = (r % COVER_SPAN) - COVER_REACH, tz = Math.floor(r / COVER_SPAN) - COVER_REACH
+    const own = tx >= 0 && tx < 32 && tz >= 0 && tz < 32
     let n = 0
-    for (let s = 0; s < COVER_SUB * COVER_SUB; s++) {
-      const at = tile * COVER_SUB * COVER_SUB + s
-      if ((hits[at >> 3] & (1 << (at & 7))) !== 0) n++
+    for (let v = mask; v !== 0; v >>= 1) n += v & 1
+    if (own && n >= COVER_MIN) {
+      const tile = tz * 32 + tx
+      bits[tile >> 3] |= 1 << (tile & 7)
+    } else {
+      // 제 청크 밖이거나 반 칸이 안 되는 칸 — 이웃의 표본과 합쳐야 답이 나온다
+      spill.push((r | (mask << 14)) >>> 0)
     }
-    if (n >= COVER_MIN) bits[tile >> 3] |= 1 << (tile & 7)
   }
-  return bits
+  return { bits, spill }
+}
+
+/**
+ * `cover.bin` — 청크마다 128B 비트 · 이어서 번진 칸 목록.
+ *
+ *   [청크 수 × 128B]   제 청크 칸의 「그려짐」 비트 (표본 8개 이상)
+ *   [u32 × (청크 수+1)] 청크마다 번진 칸 항목의 누적 개수
+ *   [u32 × 항목 수]     항목 = `r | 표본마스크 << 14` — r은 제 청크 기준 96×96의
+ *                       칸 번호 `(z+32)*96 + (x+32)`, 마스크는 4×4 표본 16비트
+ *
+ * ⚠️ `src/import/platinum/chunks.ts`의 `packCover`와 한 글자도 다르면 안 된다
+ */
+function packCover(covers) {
+  const head = Buffer.alloc(4 * (covers.length + 1))
+  let total = 0
+  covers.forEach((c, i) => { total += c.spill.length; head.writeUInt32LE(total, 4 * (i + 1)) })
+  const tail = Buffer.alloc(4 * total)
+  let at = 0
+  for (const c of covers) for (const e of c.spill) { tail.writeUInt32LE(e, 4 * at++) }
+  return Buffer.concat([...covers.map((c) => c.bits), head, tail])
 }
 
 /** 딛을 만큼 누운 면인가 — 법선이 수평에서 60° 안인가 */
@@ -622,7 +660,7 @@ function main() {
   fs.mkdirSync(outDir, { recursive: true })
 
   const index = []
-  /** 청크마다 32×32 비트 — 발밑에 그려진 것이 있는가 */
+  /** 청크마다 {32×32 비트, 번진 칸 목록} — 발밑에 그려진 것이 있는가 */
   const covers = []
   let totalVerts = 0, totalTris = 0, totalBytes = 0
   let mismatched = 0
@@ -693,8 +731,8 @@ function main() {
     totalBytes += buf.length
   }
 
-  // 청크마다 128B. 충돌은 스트리밍을 기다리면 안 되므로 한 파일로 둔다
-  fs.writeFileSync(path.join(outDir, 'cover.bin'), Buffer.concat(covers))
+  // 충돌은 스트리밍을 기다리면 안 되므로 한 파일로 둔다
+  fs.writeFileSync(path.join(outDir, 'cover.bin'), packCover(covers))
   const out = writeJson('chunks/index.json', {
     posScale: POS_SCALE, uvScale: UV_SCALE, vertexBytes: VERTEX_BYTES,
     unitsPerTile: UNITS_PER_TILE, count: narc.length,

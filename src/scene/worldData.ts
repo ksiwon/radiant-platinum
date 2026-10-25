@@ -6,7 +6,7 @@
 import { MapGrid, type MatrixMeta } from '../engine/map/grid'
 import { IMPASSABLE } from '../engine/map/zone'
 import { paintClosed } from './roomClosed'
-import { sealFloor, type FloorCover } from '../engine/map/floorSeal'
+import { sealFloor, parseCoverBin, type FloorCover } from '../engine/map/floorSeal'
 import { CANALAVE_GYM_MAP } from '../engine/world/canalaveGym'
 import { ETERNA_GYM_MAP } from '../engine/world/eternaGym'
 import { HEARTHOME_ENTRANCE_ROOM, HEARTHOME_TRAINER_ROOMS } from '../engine/world/hearthomeGym'
@@ -77,7 +77,7 @@ export function closeRoomCells(matrixId: number, on: boolean): void {
  * ⚠️ **격자를 만들기 전에 있어야 한다.** 충돌은 스트리밍을 기다리면 안 된다
  * (`engine/map/grid` 머리말) — 청크 하나가 늦게 오면 그 자리가 잠깐 뚫린다.
  * 그래서 청크 메시가 아니라 **한 파일로 구운 비트**를 처음에 통째로 받는다
- * (85KB · brotli로 훨씬 준다)
+ * (142KB · brotli로 훨씬 준다)
  */
 let floorCover: FloorCover | null = null
 
@@ -176,9 +176,9 @@ export async function bootWorld(): Promise<WorldBoot> {
       json<Record<string, NpcSprite>>('npcSprites.json'),
       // 부활 지점·공중날기 자리 20개. 1KB도 안 되고 전멸은 첫 배틀부터 날 수 있다
       json<{ spawns: SpawnPoint[] }>('spawns.json'),
-      // 발밑에 그려진 것이 있는가 — 85KB. 격자를 만들기 **전에** 있어야 한다
+      // 발밑에 그려진 것이 있는가 — 142KB. 격자를 만들기 **전에** 있어야 한다
       bytes('chunks/cover.bin'),
-      json<{ posScale: number }>('chunks/index.json'),
+      json<{ posScale: number, count: number }>('chunks/index.json'),
       json<{ boxes: ([number, number, number, number] | null)[] }>('props/index.json'),
     ])
   world.maps = mapsFile.maps
@@ -192,7 +192,7 @@ export async function bootWorld(): Promise<WorldBoot> {
   loadNpcSprites(sprites)
   spawnTable.list = spawnFile.spawns
   floorCover = {
-    bits: new Uint8Array(coverBin), boxes: propIndex.boxes, posScale: chunkIndex.posScale,
+    ...parseCoverBin(coverBin, chunkIndex.count), boxes: propIndex.boxes, posScale: chunkIndex.posScale,
   }
   const owTiles = new Uint16Array(bin)
   seal(meta, owTiles)

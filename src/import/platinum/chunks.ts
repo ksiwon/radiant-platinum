@@ -492,14 +492,23 @@ interface BuiltChunk {
   verts: number
   headerVerts: number
   materials: Material[]
-  /** 32×32 비트 — 그 칸 밑에 그려진 삼각형이 있는가 (`coverBits`) */
-  cover: Uint8Array
+  /** 그 칸 밑에 그려진 삼각형이 있는가 (`coverBits`) */
+  cover: ChunkCover
+}
+
+/** 청크 하나의 「그려짐」 — 제 32×32 비트와, 이웃으로 번진·반 칸이 안 되는 칸의 표본 */
+interface ChunkCover {
+  bits: Uint8Array
+  spill: number[]
 }
 
 /** 칸 하나를 4×4로 찍어 본다. 반 칸짜리 바닥도 바닥이다 */
 const COVER_SUB = 4
 /** 그중 몇 개가 걸려야 바닥인가 — 반 칸 */
 const COVER_MIN = 8
+/** 청크 메시가 이웃으로 번지는 한도 — 한 청크(32칸). 666개 정점의 실측 범위가 −12~63.5칸(제 청크 기준)이라 안에 든다 */
+const COVER_REACH = 32
+const COVER_SPAN = 32 + 2 * COVER_REACH
 
 /**
  * **발밑에 그려진 것이 있는가** — 청크 32×32 칸마다 한 비트.
@@ -528,8 +537,16 @@ const COVER_MIN = 8
  * 사천왕 방(land 260)에서 방 동쪽 벽의 바깥 면이 x=17에 **한 칸짜리 바닥**으로
  * 찍혔고, 이어 붙이는 규칙이 거기까지 열 칸을 뚫었다. 그래서 면의 법선이
  * **수평에서 60° 안**일 때만 바닥으로 친다 (`3·ny² ≥ nx² + nz²`).
+ *
+ * ⚠️ **제 청크 32×32 안으로 자르지 않는다.** 메시는 이웃 청크 칸으로 번진다 —
+ * land 375는 로컬 x가 0~40.2다. 자르면 이웃에 그려진 바닥이 「안 그려짐」이 되어
+ * 장막시티 큰길 한가운데·창기둥·시작의 방에 **보이지 않는 벽**이 256칸 섰다
+ * (`.audit/overnight-20261025/r2-floorseal-story-tiles.md`). 그래서 제 청크 기준
+ * 96×96(−32~63칸)에 표본을 쌓고, 제 칸에서 반 칸이 넘은 것은 비트로, 나머지(번진 칸 ·
+ * 반 칸이 안 되는 칸)는 표본 마스크째 `spill`로 낸다. 행렬 위에서 이웃의 표본과
+ * 합쳐 세는 쪽이 `engine/map/floorSeal`의 `addSpill`이다
  */
-export function coverBits(verts: Vertex[], indices: readonly number[]): Uint8Array {
+export function coverBits(verts: Vertex[], indices: readonly number[]): ChunkCover {
   const bits = new Uint8Array(32 * 32 / 8)
   const n = verts.length
   const px = new Int32Array(n)
@@ -543,25 +560,23 @@ export function coverBits(verts: Vertex[], indices: readonly number[]): Uint8Arr
     pz[i] = Math.round(verts[i]!.pos[2] * POS_SCALE) + mid
   }
   const step = POS_SCALE / (COVER_SUB * 2)
-  // 칸마다 표본을 **몇 개** 덮었는지 센다. 삼각형이 여럿이면 합쳐서 센다
-  const hits = new Uint8Array(32 * 32 * COVER_SUB * COVER_SUB / 8)
-  const mark = (tile: number, s: number): void => {
-    const at = tile * COVER_SUB * COVER_SUB + s
-    hits[at >> 3]! |= 1 << (at & 7)
-  }
+  // 칸마다 덮은 표본을 16비트 마스크로 쌓는다. 삼각형이 여럿이면 합쳐서 센다.
+  // 칸은 제 청크(0~31)만이 아니라 **이웃으로 한 청크씩 번진 96×96**이다
+  const hits = new Uint16Array(COVER_SPAN * COVER_SPAN)
   for (let t = 0; t + 2 < indices.length; t += 3) {
     const a = indices[t]!, b = indices[t + 1]!, c = indices[t + 2]!
     const ax = px[a]!, az = pz[a]!, bx = px[b]!, bz = pz[b]!, cx = px[c]!, cz = pz[c]!
     const area = (bx - ax) * (cz - az) - (bz - az) * (cx - ax)
     if (area === 0) continue
     if (!flatEnough(px, py, pz, a, b, c)) continue
-    const x0 = Math.max(0, Math.floor(Math.min(ax, bx, cx) / POS_SCALE))
-    const x1 = Math.min(31, Math.floor(Math.max(ax, bx, cx) / POS_SCALE))
-    const z0 = Math.max(0, Math.floor(Math.min(az, bz, cz) / POS_SCALE))
-    const z1 = Math.min(31, Math.floor(Math.max(az, bz, cz) / POS_SCALE))
+    const x0 = Math.max(-COVER_REACH, Math.floor(Math.min(ax, bx, cx) / POS_SCALE))
+    const x1 = Math.min(31 + COVER_REACH, Math.floor(Math.max(ax, bx, cx) / POS_SCALE))
+    const z0 = Math.max(-COVER_REACH, Math.floor(Math.min(az, bz, cz) / POS_SCALE))
+    const z1 = Math.min(31 + COVER_REACH, Math.floor(Math.max(az, bz, cz) / POS_SCALE))
     for (let tz = z0; tz <= z1; tz++) {
       for (let tx = x0; tx <= x1; tx++) {
-        const at = tz * 32 + tx
+        const at = (tz + COVER_REACH) * COVER_SPAN + tx + COVER_REACH
+        let mask = hits[at]!
         for (let sz = 0; sz < COVER_SUB; sz++) {
           for (let sx = 0; sx < COVER_SUB; sx++) {
             const qx = tx * POS_SCALE + step + sx * 2 * step
@@ -570,22 +585,55 @@ export function coverBits(verts: Vertex[], indices: readonly number[]): Uint8Arr
             const w1 = (cx - bx) * (qz - bz) - (cz - bz) * (qx - bx)
             const w2 = (ax - cx) * (qz - cz) - (az - cz) * (qx - cx)
             if ((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0)) {
-              mark(at, sz * COVER_SUB + sx)
+              mask |= 1 << (sz * COVER_SUB + sx)
             }
           }
         }
+        hits[at] = mask
       }
     }
   }
-  for (let tile = 0; tile < 32 * 32; tile++) {
-    let n = 0
-    for (let s = 0; s < COVER_SUB * COVER_SUB; s++) {
-      const at = tile * COVER_SUB * COVER_SUB + s
-      if ((hits[at >> 3]! & (1 << (at & 7))) !== 0) n++
+  const spill: number[] = []
+  for (let r = 0; r < COVER_SPAN * COVER_SPAN; r++) {
+    const mask = hits[r]!
+    if (mask === 0) continue
+    const tx = (r % COVER_SPAN) - COVER_REACH, tz = Math.floor(r / COVER_SPAN) - COVER_REACH
+    const own = tx >= 0 && tx < 32 && tz >= 0 && tz < 32
+    let count = 0
+    for (let v = mask; v !== 0; v >>= 1) count += v & 1
+    if (own && count >= COVER_MIN) {
+      const tile = tz * 32 + tx
+      bits[tile >> 3]! |= 1 << (tile & 7)
+    } else {
+      // 제 청크 밖이거나 반 칸이 안 되는 칸 — 이웃의 표본과 합쳐야 답이 나온다
+      spill.push((r | (mask << 14)) >>> 0)
     }
-    if (n >= COVER_MIN) bits[tile >> 3]! |= 1 << (tile & 7)
   }
-  return bits
+  return { bits, spill }
+}
+
+/**
+ * `cover.bin` — 청크마다 128B 비트 · 이어서 번진 칸 목록.
+ *
+ *   [청크 수 × 128B]    제 청크 칸의 「그려짐」 비트 (표본 8개 이상)
+ *   [u32 × (청크 수+1)] 청크마다 번진 칸 항목의 누적 개수
+ *   [u32 × 항목 수]     항목 = `r | 표본마스크 << 14` — r은 제 청크 기준 96×96의
+ *                       칸 번호 `(z+32)*96 + (x+32)`, 마스크는 4×4 표본 16비트
+ *
+ * ⚠️ `tools/extract/chunks.js`의 `packCover`와 한 글자도 다르면 안 된다
+ */
+export function packCover(covers: readonly ChunkCover[]): Uint8Array {
+  const bitsLen = covers.length * 128
+  let total = 0
+  for (const c of covers) total += c.spill.length
+  const out = new Uint8Array(bitsLen + 4 * (covers.length + 1) + 4 * total)
+  const view = new DataView(out.buffer)
+  covers.forEach((c, i) => { out.set(c.bits, i * 128) })
+  let sum = 0
+  covers.forEach((c, i) => { sum += c.spill.length; view.setUint32(bitsLen + 4 * (i + 1), sum, true) })
+  let at = bitsLen + 4 * (covers.length + 1)
+  for (const c of covers) for (const e of c.spill) { view.setUint32(at, e, true); at += 4 }
+  return out
 }
 
 /**
@@ -1037,7 +1085,7 @@ export async function convertChunks(ctx: ConvertContext): Promise<Produced> {
   const out: Produced = new Map()
   // 청크 재질이 쓰는 (그림, 팔레트) 쌍. 텍스처 묶음은 이 목록만 굽는다
   const wanted = new Set<string>()
-  const covers: Uint8Array[] = []
+  const covers: ChunkCover[] = []
   let count = 0
   for (let i = 0; ; i++) {
     const entry = narcEntry(narc, i)
@@ -1049,11 +1097,9 @@ export async function convertChunks(ctx: ConvertContext): Promise<Produced> {
     count = i + 1
     if (i % 16 === 0) { check(ctx); ctx.onProgress?.(i, TOTAL); await breathe(ctx) }
   }
-  // 청크마다 128B — 666개라 85KB다. 한 파일로 두는 이유는 **충돌이 스트리밍을
-  // 기다리면 안 되기 때문**이다 (`engine/map/grid` 머리말). 처음에 통째로 받는다
-  const coverBin = new Uint8Array(covers.length * 128)
-  covers.forEach((c, i) => { coverBin.set(c, i * 128) })
-  out.set('data/chunks/cover.bin', coverBin)
+  // 한 파일로 두는 이유는 **충돌이 스트리밍을 기다리면 안 되기 때문**이다
+  // (`engine/map/grid` 머리말). 처음에 통째로 받는다
+  out.set('data/chunks/cover.bin', packCover(covers))
   out.set('data/chunks/index.json', json({
     posScale: POS_SCALE, uvScale: UV_SCALE, vertexBytes: VERTEX_BYTES,
     unitsPerTile: UNITS_PER_TILE, count,
