@@ -29,7 +29,9 @@ const FPS = 30
 /** 겹침이 없는 자리도 두 프레임은 섞는다 — 한 프레임짜리 xfade는 다음 조각을 통째로 버린다(첫 판이 16.8초에서 끊겼다) */
 const MIN_FADE = 2 / FPS
 /** `trans: 'cut'`은 하드컷이다 — 겹침 없이 `concat`으로 잇는다 */
-const overlap = (e) => (e.trans === 'cut' ? 0 : Math.max(e.fade ?? 0, MIN_FADE))
+/** v1.3.9 쇼츠는 하드컷을 짧은 디졸브(3프레임)로 잇는다 — 한 프레임에 화면이 바뀌는 곳이 없게(사용자 · 2026-10-26) */
+const SOFT_CUT = EDIT_NAME === 'v139' ? 3 / FPS : 0
+const overlap = (e) => (e.trans === 'cut' ? SOFT_CUT : Math.max(e.fade ?? 0, MIN_FADE))
 
 /**
  * 본편 — 큐 시트 그대로. `take`는 찍은 장면, `card`는 글 카드. `cut`은 [장면 안 시작, 큐 길이](초).
@@ -188,7 +190,48 @@ const SHORTS_V133 = [
   ...pick('F1', 'F2'),
 ]
 
-const EDIT = EDIT_NAME === 'v133' ? SHORTS_V133 : SHORT ? SHORTS : MAIN
+/**
+ * v1.3.9 쇼츠 — v1.3.3 순서에 ① 콜드 오픈 + 감기 터널 + 문구 세 줄(곡 두 마디 + 한 박 반으로 16초 → 7.8초) ② 시원(배포 이벤트) 컷을 더했다.
+ * 곡은 오프닝 큰 박(21.5초)에 방 컷이 서도록 7.766초 앞(13.734초 · 박 경계)에서 시작한다 — `SCORE['9:16-v139']`.
+ * V 전환(`D5`)은 게임이 한 프레임에 시점을 바꾸므로 짧은 디졸브로 잇고, 깨어진 세계(`E3a`)는 시점이 바뀐 뒤(2.25초)부터 쓴다
+ */
+const SHORTS_V139 = [
+  { cue: 'O1', take: 'N1-origin-up', cut: [0.5, 1.55], fade: 0.25, caption: '본 게임은 팬 게임이며, 수익을 창출하지 않습니다.' },
+  { cue: 'O2', card: 'rewind', seconds: 3.107, trans: 'cut', caption: '본 게임은 팬 게임이며, 수익을 창출하지 않습니다.' },
+  { cue: 'O3', card: 'tagline3', seconds: 3.109, fade: 0.4 },
+  { cue: 'B1', take: 'B1-room', cut: [0.3, 1.7], trans: 'cut' },
+  { ...pick('B2')[0], caption: '1. 입체적인 신오지방 맵을 실제 크기로', big: true },
+  { cue: 'D5a', take: 'D5-first', cut: [0.4, 0.4], fade: 0.1333, noSpread: true },
+  { cue: 'D5', take: 'D5-first', cut: [0.9, 1.6], trans: 'cut', caption: '2. 1인칭과 3인칭을 자유롭게 전환 (V)', big: true },
+  // 조우 컷인(촬영 3.73초~)은 가로 줄무늬로 화면이 찢어졌다 까매진다 — 영상에서는 화면이 찢어져 보이므로 그 앞(3.6초)에서 끊고 곧장 배틀로 넘긴다.
+  // 조우 소리는 끊은 자리 끝(3.45초)에 둔다
+  { ...pick('B5-B6')[0], cut: [0.7, 2.9], sfx: [[3.45, 'UI_COMMON_PM_ENCOUNT_GRASS', -4]] },
+  pick('C1')[0],
+  { ...pick('C3')[0], cut: [1.0, 1.3] },
+  // 잡힘 뒤는 화면이 멈추므로(7.75초~) 마지막 컷을 곡 마디에 맞추려고 늘이지 않고, 앞의 흔들림 컷에 길이를 준다
+  ...pick('C6'),
+  { ...pick('C7a')[0], cut: [4.3, 0.9] },
+  { ...pick('C7')[0], cut: [5.5, 0.9] },
+  ...pick('C8'),
+  { cue: 'N5', take: 'N5-hqdoor', cut: [0.6, 1.4], trans: 'cut' },
+  pick('E2')[0],
+  { cue: 'E3a', take: 'E3-distortion', cut: [2.25, 1.8], warp: 'in', trans: 'cut' },
+  // 기라티나 컷은 원본에 울음 번쩍임(촬영 2.97~3.10초 · 밝기 44→255→44가 4프레임)이 한 번 있다 — 그 장을 도려내고 디졸브로 잇는다.
+  // 끝은 흰 화면(4.27초)에서 닫는다: 그 뒤 프레임은 「배틀 무대가 서는 동안」의 검은 화면이라 디졸브가 흰 카드와 만나면 한 프레임 깜빡인다
+  { cue: 'E3b', take: 'E3-giratina', cut: [2.1, 0.7], trans: 'cut', snap: false },
+  // 울음(촬영 3.0초)은 도려낸 번쩍임 대신 이음매에 얹는다 — 뒤는 소용돌이가 차올라 하얗게 되는 구간이다
+  { cue: 'E3c', take: 'E3-giratina', cut: [3.2, 1.0], trans: 'cut', snap: false, sfx: [[3.2, 'PV_487_01_00', 3]] },
+  { cue: 'E4', card: 'white', seconds: 0.4, fade: 0.3 },
+  ...pick('D11', 'D13'),
+  // 엔딩 뒤 — 시원이 복도에서 나타나 축복맨션으로 부른다. 배포 이벤트가 열어 주는 곳들이 이어진다(신월섬 · 프런티어 · 시원의 공간)
+  { cue: 'S1', take: 'S1-siwon', cut: [1.8, 3.4], trans: 'cut', caption: '3. 추억의 배포 이벤트 부활', big: true },
+  { cue: 'N4', take: 'N4-newmoon-fp', cut: [1.5, 1.3], trans: 'cut' },
+  { cue: 'N2', take: 'N2-frontier', cut: [0.5, 1.4], trans: 'cut' },
+  { cue: 'N1', take: 'N1-origin-up', cut: [2.0, 2.0], fade: 0.3, snap: false },
+  ...pick('F1', 'F2'),
+]
+
+const EDIT = EDIT_NAME === 'v139' ? SHORTS_V139 : EDIT_NAME === 'v133' ? SHORTS_V133 : SHORT ? SHORTS : MAIN
 
 /**
  * 장면마다 잰 소리 자리 — [장면 안 초, 효과음, `rel`(`sfxChains`), 소리 안 시작(초 · 없으면 0), 길이(초 · 끝 0.4초에 걸쳐 뺀다)]. 시각은 찍은 프레임에서 잰 것이다
@@ -281,6 +324,15 @@ const SCORE = {
     { src: 'BA008', cue: 'D11', at: 0.16, from: 0, until: 'N4', fit: 1, tail: 0.8 },
     { src: 'B_OTH002', cue: 'N4', at: -0.15, from: 0.45, until: 'end', fadeIn: 0.3, fadeOut: 1.5 },
   ],
+  // v1.3.9 쇼츠 — 오프닝 곡은 큰 박(21.5초)에서 방 컷(B1)이 서도록 7.766초 앞(13.734초 · 박 경계)에서 연다. 시원 컷부터는 타이틀 곡이
+  // 엔딩 뒤 장면들을 지나 로고까지 간다
+  '9:16-v139': [
+    { src: 'B_OTH001', cue: 'O1', at: 0, from: 13.734, until: 'B5-B6', untilAt: 2.8, fit: 1, fadeIn: 0.05, fadeOut: 0.25 },
+    { src: 'BA001', cue: 'B5-B6', at: 2.8, from: 0, until: 'N5', fit: 1, tail: 0.7 },
+    { src: 'BA015', cue: 'N5', from: 0, until: 'D11', untilAt: 0.16, fadeIn: 0.5, fadeOut: 0.4 },
+    { src: 'BA008', cue: 'D11', at: 0.16, from: 0, until: 'S1', fit: 1, tail: 0.8 },
+    { src: 'B_OTH002', cue: 'S1', at: -0.15, from: 0.45, until: 'end', fadeIn: 0.3, fadeOut: 1.5 },
+  ],
 }[EDIT_NAME && SHORT ? `${ASPECT}-${EDIT_NAME}` : ASPECT] ?? []
 const MUSIC = resolve(ROOT, '.audit/reels/music')
 /** 효과음은 BDSP 원본이다(Wwise 이벤트 → wem, `.audit/reels/sfx/` · `index.json`, 깃에 없다) */
@@ -317,6 +369,10 @@ function captionFilter(e, len) {
   const file = resolve(WORK, `${e.cue}.caption.txt`)
   writeFileSync(file, e.caption)
   const esc = (p) => p.replace(/\\/g, '/').replace(/:/g, '\\:')
+  // `big`은 세 줄 기능 자막(1·2·3) — 굵고 크게, 어두운 판을 깔아 어떤 배경에서도 읽히게. 쇼츠 상단 UI(검색 줄)를 피해 12% 아래에 둔다
+  if (e.big) {
+    return `drawtext=fontfile='${esc('C:/Windows/Fonts/malgunbd.ttf')}':textfile='${esc(file)}':fontsize=${String(Math.round(Math.min(W, H) * 0.042))}:fontcolor=white:alpha='min(1\,t/0.3)*min(1\,(${len.toFixed(3)}-t)/0.4)':box=1:boxcolor=black@0.5:boxborderw=22:shadowcolor=black@0.7:shadowx=2:shadowy=2:x=(w-tw)/2:y=h*0.12`
+  }
   return `drawtext=fontfile='${esc('C:/Windows/Fonts/malgun.ttf')}':textfile='${esc(file)}':fontsize=${String(Math.round(Math.min(W, H) * 0.03))}:fontcolor=white:alpha='min(1\\,t/0.3)*min(1\\,(${len.toFixed(3)}-t)/0.4)*0.8':shadowcolor=black@0.6:shadowx=2:shadowy=2:x=(w-tw)/2:y=h*0.07`
 }
 
@@ -511,7 +567,7 @@ function fitEdit(edit, spread = false) {
       let short = want - got
       for (let j = k - 1; spread && short > 0.01 && j > out.findIndex((x) => x.cue === p.cue) - 1; j--) {
         const f = out[j]
-        if (!f.take) continue
+        if (!f.take || f.noSpread) continue
         const fr = takeSeconds(f)
         const add = Math.max(0, Math.min(short, SHOT_MOST - f.cut[1], fr === null ? short : fr - f.cut[0] - overlap(f) - f.cut[1]))
         f.cut[1] += add
@@ -632,8 +688,8 @@ async function main() {
   for (let i = 1; i < clips.length; i++) {
     const f = clips[i - 1].fade
     const out = i === clips.length - 1 ? '[v]' : `[x${String(i)}]`
-    if (clips[i - 1].trans === 'cut') parts.push(`${last}[n${String(i)}]concat=n=2:v=1:a=0${out}`)
-    else parts.push(`${last}[n${String(i)}]xfade=transition=${clips[i - 1].trans}:duration=${f.toFixed(4)}:offset=${(at - f).toFixed(4)}${out}`)
+    if (clips[i - 1].trans === 'cut' && f === 0) parts.push(`${last}[n${String(i)}]concat=n=2:v=1:a=0${out}`)
+    else parts.push(`${last}[n${String(i)}]xfade=transition=${clips[i - 1].trans === 'cut' ? 'fade' : clips[i - 1].trans}:duration=${f.toFixed(4)}:offset=${(at - f).toFixed(4)}${out}`)
     stamps.push(`${clips[i].cue} ${(at - f).toFixed(2)}`)
     at += clips[i].seconds - f
     last = out

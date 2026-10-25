@@ -303,4 +303,15 @@ export const TAKES = [
     move: { type: 'dolly', rel: true, from: { eye: [2.5, 2.2, 3.5], gaze: [0.5, 1.2, -3] }, to: { eye: [1.2, 1.9, 1.5], gaze: [0.5, 1.2, -3] } },
     recEval: [{ at: 1.3, js: "void (async()=>{const {npcActors}=await import('/src/engine/actor/npcs.ts');const d=npcActors.list.filter((a)=>a.gfx===202);const s=d.map((a)=>a.x);const mid=s.reduce((p,c)=>p+c,0)/s.length;const t0=performance.now();const f=()=>{const k=Math.min(1,(performance.now()-t0)/450);d.forEach((a,i)=>{a.x=s[i]+(s[i]<mid?-1:1)*k});if(k<1)requestAnimationFrame(f)};requestAnimationFrame(f)})()" }],
   },
+  // ── S. 배포 이벤트 — 축복맨션 2층의 시원 (원작에 없는 사람 · 우리가 되살린 배포 사슬) ──
+  {
+    id: 'S1-siwon', what: '시원 — 말을 걸면 선물을 건넨다 (배포 이벤트)', cp: 'siwon',
+    // 확인 지점의 파티는 여섯 마리라 시원이 「꽉 찼네」로 돌려보낸다 — 한 칸을 비워 선물이 건네지게 한다
+    steps: [{ do: 'hour', hour: 12 },
+      { do: 'eval', js: "(async()=>{const {useSaveStore}=await import('/src/state/saveStore.ts');useSaveStore.setState((s)=>({party:s.party.slice(0,5)}));return useSaveStore.getState().party.length})()" }],
+    // 확인 지점은 시원 한 칸 남쪽에서 북쪽을 본다. 서쪽(열린 방 쪽) 옆에서 낮게 두 사람을 잡고 천천히 밀고 들어가며 Z로 말을 걸어 대사창이 서게 한다
+    keepUI: true, settle: 6000, seconds: 9,
+    move: { type: 'dolly', rel: true, from: { eye: [-3.4, 1.5, 1.0], gaze: [0.2, 1.3, -0.6] }, to: { eye: [-2.4, 1.45, 0.4], gaze: [0.2, 1.35, -0.7] } },
+    recKeys: [{ at: 2.0, key: 'z' }, { at: 3.8, key: 'z' }, { at: 5.6, key: 'z' }],
+  },
 ]

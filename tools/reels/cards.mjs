@@ -23,6 +23,8 @@ export const PLATINUM = LINEUP.findIndex(([n]) => n === '플래티넘')
 export const CARD_SECONDS = {
   disclaimer: 3.0,
   tunnel: 13.8, // A2 11초 + A3 감기 2초 + A4 섬광 0.8초
+  tagline3: 3.109, // 문구 세 줄을 한 화면에 — 곡 한 마디(박마다 한 줄)
+  rewind: 3.107, // 오프닝 곡 한 마디(B_OTH001 80.27BPM · 4/4). Z-A 한 박(0.777) + 감기 1.9 + 섬광 0.43
   sink: 0.7,
   tagline: 6.5,
   white: 0.3,
@@ -66,18 +68,21 @@ g.clearRect(0,0,W,H);const k=ease((t-2.6)/0.4);if(k>0){const r=(6+40*k)*U;const 
 gr.addColorStop(0,'rgba(220,235,255,'+k+')');gr.addColorStop(1,'rgba(120,170,255,0)');g.fillStyle=gr;g.fillRect(0,0,W,H)}}</script>`
   }
 
-  if (kind === 'tunnel') {
+  if (kind === 'tunnel' || kind === 'rewind') {
     // 칸 길이 — 앞 넷 0.8 · 가운데 0.45 · 뒤 여섯 0.3 · 플래티넘 0.9, 합을 A2 길이로 맞춘다
     const raw = LINEUP.map((_, i) => (i === PLATINUM ? 0.9 : i < 4 ? 0.8 : i >= LINEUP.length - 6 ? 0.3 : 0.45))
     // 쇼츠는 끝 섬광을 0.3초로 줄인다 — 0.8초면 흰 화면이 1초 넘게 섰다
-    const A2 = short ? 6.843 : 11.0
+    // `rewind`는 앞으로 도는 연표를 통째로 덜어 낸다 — 가장 새 작품(Z-A)이 한 박 서고, 곧장 플래티넘으로 감긴다.
+    // 곡 한 마디(3.109초)를 박 단위로 쓴다: 1박 Z-A · 2~3박 감기 · 4박 플래티넘이 빛을 먹고 섬광 → 큰 박
+    const rw = kind === 'rewind'
+    const A2 = rw ? 0.777 : short ? 6.843 : 11.0
     const sum = raw.reduce((a, b) => a + b, 0)
-    let slots = raw.map((d) => (d * A2) / sum)
+    let slots = rw ? raw.map((_, i) => (i === raw.length - 1 ? A2 : 0)) : raw.map((d) => (d * A2) / sum)
     // 본편은 플래티넘이 오프닝 곡의 피리(B_OTH001 5.857초 · 영상 8.67초)와 같이 뜬다 — 터널은 영상 3.0초에 서므로 칸 머리를
     // 터널 5.64초에 두고, 앞 칸들은 늘이고 뒤 칸들은 줄여 A2를 지킨다
     // 쇼츠는 곡이 터널 머리에서 피리로 열린다 — 플래티넘은 피리 다음 마디의 첫 박(9.066초 · 터널 3.209초)에 둔다
     const P_AT = short ? 3.209 : 5.64
-    if (P_AT !== null) {
+    if (!rw && P_AT !== null) {
       const before = slots.slice(0, PLATINUM).reduce((a, b) => a + b, 0)
       const after = A2 - before
       slots = slots.map((d, i) => (i < PLATINUM ? (d * P_AT) / before : (d * (A2 - P_AT)) / after))
@@ -87,7 +92,7 @@ gr.addColorStop(0,'rgba(220,235,255,'+k+')');gr.addColorStop(1,'rgba(120,170,255
 <div id="yy" class="silver" style="font-weight:600;margin-top:${18 * u}px;letter-spacing:${8 * u}px"></div></div>
 <div id="wash" style="position:absolute;inset:0;background:#fff;opacity:0"></div>
 <script>${common}
-const L=${JSON.stringify(LINEUP)},P=${PLATINUM},SL=${JSON.stringify(slots)},A2=${A2},REW=${short ? 1.0 : 2.0},FL=${short ? 0.3 : 0.8};
+const L=${JSON.stringify(LINEUP)},P=${PLATINUM},SL=${JSON.stringify(slots)},A2=${A2},REW=${rw ? 1.9 : short ? 1.0 : 2.0},FL=${rw ? 0.43 : short ? 0.3 : 0.8};
 const starts=[];{let a=0;for(const d of SL){starts.push(a);a+=d}}
 const g=document.getElementById('cv').getContext('2d'),tt=document.getElementById('tt'),yy=document.getElementById('yy'),box=document.getElementById('box'),wash=document.getElementById('wash');
 // 빛줄기 — 각도 · 깊이를 씨앗으로 정해 두고, 나아간 거리 s만큼 깊이를 줄인다
@@ -129,6 +134,28 @@ const w=document.getElementById('w');window.draw=(t)=>{w.style.opacity=(1-ease(t
   }
 
   if (kind === 'white') return `${head}<div style="position:absolute;inset:0;background:#fff"></div><script>window.draw=()=>{}</script>`
+
+  if (kind === 'tagline3') {
+    // 세 줄을 **한 화면에 쌓는다** — 「그때 그 찬란함을」(1박) · 「실제 크기로, 빛나의 눈에서」(2박) · 「다시 한번」(3박)이 박마다 떠오르고
+    // 앞 줄은 지우지 않고 남긴다. 4박에 빛줄기가 터지며 흰 화면으로 — 큰 박에 방 컷이 선다. 곡 한 마디 = 3.109초(80.27BPM · 4/4)
+    const BEAT = 0.777
+    const spec = [['그때 그 찬란함을', 64, 600], ['실제 크기로, 빛나의 눈에서', 50, 600], ['다시 한 번', 132, 800]]
+    return `${head}<canvas id="cv" width="${W}" height="${H}"></canvas>
+<div class="c" id="st" style="gap:${(portrait ? 70 : 34) * u}px">${spec.map(([l, f, w], i) => `<div id="l${String(i)}" style="opacity:0;white-space:nowrap;font-size:${f * u}px;font-weight:${String(w)};letter-spacing:${4 * u}px;color:#d6e8ff;text-shadow:0 0 ${18 * u}px rgba(150,200,255,0.9),0 0 ${60 * u}px rgba(90,150,255,0.6)">${l}</div>`).join('')}</div>
+<div id="wash" style="position:absolute;inset:0;background:#fff;opacity:0"></div>
+<script>${common}
+const BEAT=${String(BEAT)},g=document.getElementById('cv').getContext('2d'),wash=document.getElementById('wash');
+const ls=[0,1,2].map((i)=>document.getElementById('l'+i));
+for(const e of ls){const room=W*0.9;if(e.scrollWidth>room)e.style.fontSize=(parseFloat(e.style.fontSize)*room/e.scrollWidth)+'px'}
+window.draw=(t)=>{const z=ease((t-3*BEAT)/BEAT),D=BEAT*4;
+for(let i=0;i<3;i++){const u=(t-i*BEAT)/(BEAT*0.7),a=ease(u),blur=(1-a)*14;
+ls[i].style.opacity=a.toFixed(3);ls[i].style.filter='blur('+(blur*U).toFixed(2)+'px)';
+ls[i].style.transform='scale('+(0.94+0.06*a+(i===2?0.18*z*z:0)).toFixed(4)+')'}
+g.clearRect(0,0,W,H);if(z>0){g.globalCompositeOperation='lighter';for(let i=0;i<40;i++){const an=i/40*Math.PI*2+0.3,r=Math.hypot(W,H)*z;
+const gr=g.createLinearGradient(W/2,H/2,W/2+Math.cos(an)*r,H/2+Math.sin(an)*r);gr.addColorStop(0,'rgba(200,225,255,'+(0.5*z)+')');gr.addColorStop(1,'rgba(120,170,255,0)');
+g.strokeStyle=gr;g.lineWidth=(2+(i%3)*2)*U;g.beginPath();g.moveTo(W/2,H/2);g.lineTo(W/2+Math.cos(an)*r,H/2+Math.sin(an)*r);g.stroke()}g.globalCompositeOperation='source-over'}
+wash.style.opacity=Math.max(1-ease(t/0.45),ease((t-(D-0.4))/0.4)).toFixed(3);document.getElementById('st').style.transform='scale('+(1+0.02*t/D).toFixed(4)+')'}</script>`
+  }
 
   if (kind === 'tagline') {
     // 세 박자 — 「그때 그 찬란함을」 → 「실제 크기로, 빛나의 눈에서」 → 「다시 한번」 (사용자 · 2026-10-04).
