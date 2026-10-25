@@ -57,6 +57,30 @@ export const COMM_CLUB_RET = {
 export const SCRIPT_UNION_ROOM_ATTENDANT = 9003
 
 /**
+ * Wi-Fi 클럽 접수원의 scriptID (`SCRIPT_ID(POKEMON_CENTER_B1F_COMMON, 2)` · `script_manager.h`의 오프셋 9200).
+ *
+ * 「친구가 없고 로그인도 없다」 갈래(`NoFriendsAskGetAFriendCode` → 「예」)가 `TryEnterWiFiClub`으로 가서
+ * `HealParty` → `Common_SaveGame` → 저장이 되면 문을 열고 들어가는 연출을 한 뒤 아무 일 없이 나온다
+ * (`scripts_pokemon_center_b1f_common.s:105-157`). 유니온룸과 같은 모양이라 같은 답을 한다 — 저장은 진짜로 쓰고
+ * 「안 됐다」로 답하면 원작이 제 대사(「또 오세요」)로 닫는다
+ */
+export const SCRIPT_WIFI_CLUB_ATTENDANT = 9202
+
+/** 저장을 「안 됐다」로 답하는 접수원인가 (`TrySaveGame`) */
+export function refusesSave(scriptID: number): boolean {
+  return scriptID === SCRIPT_UNION_ROOM_ATTENDANT || scriptID === SCRIPT_WIFI_CLUB_ATTENDANT
+}
+
+/**
+ * 유니온룸 접수원이 저장 **직전에** 세우는 두 값 (`scripts_pokemon_center_2f_common.s:411-413`).
+ * 저장이 끝난 뒤에야 원작이 도로 내리므로 리포트에 서 있는 채로 쓰인다 — 이어하기하면 없는 방에서 나오는 문
+ * 연출이 돈다(`OnFrame_ExitUnionRoom`). 쓰기 전에 우리가 내려 둔다. 번호는 `generated/vars_flags.txt`
+ * (`comm.test.ts`가 맞댄다)
+ */
+export const VAR_COMMUNICATION_LOAD_ACTION = 0x40d5
+export const FLAG_COMMUNICATION_CLUB_ACCESSIBLE = 2406
+
+/**
  * 통신 전용 맵 — 우리가 절대 안 들어가는 곳.
  *
  * 걸어서 닿을 수 없다는 것을 `script/comm.test.ts`가 잰다. 목록을 두는 이유는

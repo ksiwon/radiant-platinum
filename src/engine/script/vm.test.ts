@@ -484,9 +484,9 @@ const FLAG_HAS_POKEDEX = 144
  * 중요한 것은 해독 오류가 0이라는 쪽이고, 이 숫자는 **얼마나 멀리 가는가**의
  * 눈금이라 값이 바뀌면 왜 바뀌었는지 설명이 되어야 한다
  */
-const LOOPING_ENTRIES = 29
+const LOOPING_ENTRIES = 30
 /** 예/아니오에 "예"로 답했을 때. 갈라지는 가지가 달라서 수도 다르다 */
-const LOOPING_ENTRIES_YES = 30
+const LOOPING_ENTRIES_YES = 26
 
 /**
  * 진입점에서 제어 흐름을 따라가 **닿는** 명령 자리와, 그중 **도는** 자리.
@@ -496,9 +496,9 @@ const LOOPING_ENTRIES_YES = 30
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_778
-const RUNNING_SITES = 55_265
+const RUNNING_SITES = 55_271
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 628
+const IMPLEMENTED_COMMANDS = 632
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -809,6 +809,9 @@ const IDLE_COMMANDS = [
   // 앞 갈래가 막혀 있다 (`script/sweepGaps.test`가 폭과 답을 따로 잠근다)
   'CheckHasRoomForGoodsInPC', 'ScrCmd_0A6', 'ShowDressUpPhoto', 'SetDressUpPhotoTitle',
   'ScrCmd_27C', 'ScrCmd_2B8', 'Dummy316',
+  // 콘테스트 접수원은 파티 메뉴를 「아무도 안 골랐다」로 닫는 원작의 취소 갈래에서 끝난다 (PARITY §9.1) — 대회 본체와 그 뒤
+  // (상품 · 리본 이름 · 통신 아이콘 · 동기 대사)가 훑기에도 안 밟힌다
+  'GetFirstTimeVictoryAccessory', 'CheckPlayerMonHasRibbon', 'SetRibbonName', 'DestroyNetworkIcon', 'MessageSynchronized',
 ]
 
 /**

@@ -13,7 +13,7 @@ import {
 } from './commands'
 import { ScriptContext } from './context'
 import { parseScriptMeta } from './data'
-import { askOurs, fieldScripts, makeWorld, scriptBusy, scriptSystem, signAt, start } from './field'
+import { askOurs, fieldScripts, makeWorld, scriptBusy, scriptSystem, signAt, start, triggerAt } from './field'
 import { printedText } from './printer'
 import { VarStore } from './vars'
 import {
@@ -558,5 +558,87 @@ maybeField('대습초원 전망대 망원경 — 돈을 받기 전에 우리 안
     expect(fieldScripts.ctx).not.toBeNull()
     fieldScripts.ctx = null
     fieldScripts.world!.reset()
+  })
+})
+
+maybeField('배틀프런티어(559) — 좌표 사건 셋과 스크래치 카드 접수원은 서기 전에 막고 팩토리는 연다', () => {
+  const read = (p: string): unknown => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
+  const meta = parseScriptMeta(read('scripts.json'))
+  const raw = readFileSync(resolve(DATA, 'scripts.bin'))
+  /** `MAP_HEADER_BATTLE_FRONTIER` */
+  const FRONTIER = 559
+  let bp = 0
+
+  beforeEach(() => {
+    mapWorld.maps = (read('maps.json') as { maps: MapHeader[] }).maps
+    mapWorld.events = (read('events.json') as { events: Record<string, EventFile> }).events
+    mapWorld.mapId = FRONTIER
+    mapWorld.pending = null
+    fieldScripts.data = { meta, bytes: new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength) }
+    fieldScripts.commands = buildCommands(meta.commands)
+    fieldScripts.vars = new VarStore()
+    bp = 30
+    fieldScripts.services = {
+      battlePoints: { get: () => bp, add: (n) => { bp += n }, subtract: (n) => { bp = Math.max(0, bp - n) } },
+    }
+    fieldScripts.world = makeWorld(fieldScripts.vars, [])
+    fieldScripts.varsReady = true
+    fieldScripts.ctx = null
+    fieldScripts.lastError = null
+    worldState.input.interact = false
+    worldState.input.cancel = false
+    worldState.input.move.set(0, 0)
+  })
+
+  const frames = (n: number, a = false): void => {
+    for (let i = 0; i < n; i++) {
+      worldState.input.interact = a
+      scriptSystem.fixedUpdate()
+    }
+  }
+  const dismiss = (): void => {
+    for (let i = 0; i < 6 && scriptBusy(); i++) { frames(1, true); frames(2) }
+  }
+
+  it('좌표 사건 34 · 35 · 36은 (22,34) · (35,62) · (61,62)에서 걸리고 37(74,34)도 걸린다', () => {
+    const vars = fieldScripts.vars
+    expect(triggerAt(FRONTIER, 22, 34, vars)).toBe(34)
+    expect(triggerAt(FRONTIER, 35, 62, vars)).toBe(35)
+    expect(triggerAt(FRONTIER, 61, 62, vars)).toBe(36)
+    expect(triggerAt(FRONTIER, 74, 34, vars)).toBe(37)
+  })
+
+  for (const [script, text] of [[34, '배틀스테이지는'], [35, '배틀캐슬은'], [36, '배틀룰렛은']] as const) {
+    it(`script ${String(script)}은 워프하지 않고 안내만 띄우며, 같은 칸을 다시 밟아도 한 번씩만 묻고 갇히지 않는다`, () => {
+      const header = mapById(FRONTIER)!
+      for (let again = 0; again < 3; again++) {
+        expect(start(script, header.scripts)).toBe(true)
+        // 롬 스크립트(`LockAll` · `WalkFastWest` · `Warp`)는 한 줄도 안 돈다
+        expect(fieldScripts.ctx).toBeNull()
+        expect(mapWorld.pending).toBeNull()
+        frames(2)
+        expect(printedText(fieldScripts.world!.printer!)).toContain(`${text} 아직 준비 중이다.`)
+        dismiss()
+        expect(scriptBusy()).toBe(false)
+        expect(fieldScripts.lastError).toBeNull()
+      }
+    })
+  }
+
+  it('팩토리(37)는 롬 스크립트가 그대로 돌아 562로 간다', () => {
+    const header = mapById(FRONTIER)!
+    expect(start(37, header.scripts)).toBe(true)
+    expect(fieldScripts.ctx).not.toBeNull()
+  })
+
+  it('스크래치 카드 접수원(10490)은 BP를 안 깎고 안내만 띄운다', () => {
+    const header = mapById(FRONTIER)!
+    expect(start(10490, header.scripts, 12)).toBe(true)
+    expect(fieldScripts.ctx).toBeNull()
+    frames(2)
+    expect(printedText(fieldScripts.world!.printer!)).toContain('스크래치 카드는 아직 준비 중이다.')
+    dismiss()
+    expect(scriptBusy()).toBe(false)
+    expect(bp).toBe(30)
   })
 })

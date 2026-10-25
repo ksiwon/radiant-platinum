@@ -20,7 +20,11 @@ import { FieldWorld } from './world'
 import { DIR } from './movement'
 import { DATA, withData, withDecomp } from '../../data/romData.testkit'
 import { stubFieldMoves, stubLabels, stubParty, stubTrainerInfo } from './services.testkit'
-import { COMM_CLUB_RET, COMM_MAPS, SCRIPT_UNION_ROOM_ATTENDANT } from '../world/comm'
+import {
+  COMM_CLUB_RET, COMM_MAPS, FLAG_COMMUNICATION_CLUB_ACCESSIBLE, SCRIPT_UNION_ROOM_ATTENDANT, SCRIPT_WIFI_CLUB_ATTENDANT,
+  VAR_COMMUNICATION_LOAD_ACTION,
+} from '../world/comm'
+import { fadeAlpha, screenFade } from './fade'
 import { TILE_BEHAVIOR_SCRIPT_ONLY_WARP } from '../map/world'
 
 const maybe = withData('scripts.json', 'scripts.bin')
@@ -72,13 +76,17 @@ maybe('통신', () => {
    * (`SCRIPT_ID_OFFSET_POKEMON_CENTER_2F_COMMON`) — 저장 갈래가 이걸 본다
    */
   const POKECENTER_2F_BASE = 9000
+  const POKECENTER_B1F_BASE = 9200
 
-  function talk(file: number, entry: number, pick: number) {
+  /** `pick`이 배열이면 메뉴를 차례로 그 값으로 고른다 */
+  function talk(file: number, entry: number, pick: number | readonly number[]) {
     const vars = new VarStore()
     // ⚠️ 통신이 「성공」으로 읽힐 값을 미리 부어 둔다. 명령이 답을 안 적으면
     // 이 값이 그대로 남아 문이 열린다 — 리본 시험과 같은 장치다
     for (let id = 0x8000; id < 0x8010; id++) vars.set(id, 1)
     let saved = false
+    /** 저장을 **쓰는 순간**의 통신 상태 — 리포트에 박히는 값이다 */
+    let atSave: { load: number; flag: boolean } | null = null
     const world = new FieldWorld({
       vars, input: () => ({ pressed: true, held: true }),
       movements: meta.movements,
@@ -88,7 +96,11 @@ maybe('통신', () => {
         saveGame: {
           type: () => 2, showInfo: () => undefined, hideInfo: () => undefined,
           showIcon: () => undefined, hideIcon: () => undefined,
-          begin: () => { saved = true }, result: () => true,
+          begin: () => {
+            saved = true
+            atSave = { load: vars.get(VAR_COMMUNICATION_LOAD_ACTION), flag: vars.checkFlag(FLAG_COMMUNICATION_CLUB_ACCESSIBLE) }
+          },
+          result: () => true,
         },
       },
     })
@@ -97,6 +109,9 @@ maybe('통신', () => {
     // 「누가 부른 저장인가」로 갈리므로, 이게 없으면 시험이 헛돈다
     if (meta.files[file]?.name === 'scripts_pokemon_center_2f_common') {
       world.scriptID = POKECENTER_2F_BASE + entry
+    }
+    if (meta.files[file]?.name === 'scripts_pokemon_center_b1f_common') {
+      world.scriptID = POKECENTER_B1F_BASE + entry
     }
     const ran: string[] = []
     const traced = new Map(map)
@@ -139,11 +154,12 @@ maybe('통신', () => {
       // 그 뒤로는 손을 뗀다. 답을 기다리며 멈춘 것과 얼어붙은 것을 가른다
       if (world.menu !== null && menus < 4) {
         const list = world.menu.entries
+        const want = typeof pick === 'number' ? pick : (pick[menus] ?? 0)
         menus++
-        world.choose(list[Math.min(pick, list.length - 1)]?.value ?? 0)
+        world.choose(list[Math.min(want, list.length - 1)]?.value ?? 0)
       }
     }
-    return { ran, ended, saved, vars, waiting: world.menu !== null }
+    return { ran, ended, saved, atSave: atSave as { load: number; flag: boolean } | null, vars, waiting: world.menu !== null }
   }
 
   it('통신에 넘겨주는 명령이 하나도 안 빠졌다', () => {
@@ -171,9 +187,13 @@ maybe('통신', () => {
   it('⚠️ 유니온룸은 저장을 마쳐도 안 열린다 — 원작이 제 대사로 닫는다', () => {
     expect(SCRIPT_UNION_ROOM_ATTENDANT).toBe(POKECENTER_2F_BASE + 3)
     const UNION = 3
-    const { ran, saved, vars } = talk(fileOf('scripts_pokemon_center_2f_common'), UNION, 0)
+    const { ran, saved, vars, atSave } = talk(fileOf('scripts_pokemon_center_2f_common'), UNION, 0)
     // 리포트는 **진짜로 쓴다**. 거짓말하는 것은 저장이 아니라 넘겨주기다
     expect(saved).toBe(true)
+    // ⚠️ 다만 **쓰는 순간에는** 통신 상태(`LOAD_ACTION=2` · 깃발 2406)가 서 있지 않다 — 서 있으면 이어하기가 없는 방에서
+    // 나오는 연출을 돈다 (`OnFrame_ExitUnionRoom`)
+    expect(atSave).toEqual({ load: 0, flag: false })
+    expect(vars.get(VAR_COMMUNICATION_LOAD_ACTION)).toBe(0)
     // 문을 여는 갈래(`EnterUnionRoom`)만 문을 그린다. 거기 안 갔다는 뜻이다
     expect(ran).not.toContain('LoadDoorAnimation')
     // 원작이 스스로 치운 자국: 깃발이 도로 내려가 있다 (2406)
@@ -223,6 +243,115 @@ maybe('통신', () => {
     expect(saveAs(SCRIPT_UNION_ROOM_ATTENDANT)).toEqual({ saved: true, answer: 0 })
   })
 
+  it('⚠️ Wi-Fi 클럽 접수원 「친구 코드 → 예」는 저장을 해도 문을 안 연다 — 원작이 「또 오세요」로 닫는다', () => {
+    expect(SCRIPT_WIFI_CLUB_ATTENDANT).toBe(POKECENTER_B1F_BASE + 2)
+    const file = fileOf('scripts_pokemon_center_b1f_common')
+    // 메뉴: 클럽에 간다(0) → 친구 코드를 받겠습니까? 예(0)
+    const { ran, ended, saved, vars } = talk(file, 2, [0, 0])
+    expect(ended).toBe(true)
+    // 저장은 진짜로 쓴다. 문을 열고 들어가는 연출(`EnterWiFiClub`)은 안 돈다
+    expect(saved).toBe(true)
+    expect(ran).not.toContain('LoadDoorAnimation')
+    expect(ran).not.toContain('ApplyMovement')
+    expect(vars.checkFlag(FLAG_COMMUNICATION_CLUB_ACCESSIBLE)).toBe(false)
+  })
+
+  it('⚠️ 접수원 둘은 어느 갈래로도 안 얼고 문을 안 연다 (Wi-Fi 클럽 · 광장)', () => {
+    const file = fileOf('scripts_pokemon_center_b1f_common')
+    for (const entry of [2, 4]) {
+      for (const pick of [0, 1, 2]) {
+        const r = talk(file, entry, pick)
+        expect(r.ended || r.waiting, `entry ${String(entry)} pick ${String(pick)}`).toBe(true)
+        expect(r.ran, `entry ${String(entry)} pick ${String(pick)}`).not.toContain('LoadDoorAnimation')
+      }
+    }
+  })
+
+  describe('콘테스트 접수원 — 대회도 상품도 안 나간다 (PARITY §9.1)', () => {
+    const CONTEST_FILE = 'scripts_contests'
+    /** 공식전 · 링크전 · 연습전 넷 (`ScriptEntry` 차례) */
+    const RECEPTIONISTS = [
+      { entry: 6, what: '공식전' }, { entry: 7, what: '링크전' }, { entry: 8, what: '연습전 8' },
+      { entry: 9, what: '연습전 9' }, { entry: 10, what: '연습전 10' }, { entry: 11, what: '연습전 11' },
+    ] as const
+
+    it('파티 메뉴 · 상품 세 명령이 만들어져 있다', () => {
+      for (const name of ['OpenPartyMenuForContest', 'GetContestPartyMenuResult', 'GetFirstTimeVictoryAccessory']) {
+        const op = meta.commands.findIndex((c) => c?.name === name)
+        expect(op, name).toBeGreaterThanOrEqual(0)
+        expect(unhandled.has(op), `${name}이 안 만들어져 있다`).toBe(false)
+      }
+    })
+
+    describe.each(RECEPTIONISTS)('$what 접수원 (진입점 $entry)', ({ entry }) => {
+      // 앞 네 메뉴를 갈래마다 몬다 — 참가/안내/그만(0~2) · 등급(0~3) · 종류(0~5) · 예/아니오
+      const picks: number[][] = []
+      for (const a of [0, 1, 2]) for (const b of [0, 1, 2, 3]) for (const c of [0, 1, 2, 3, 4, 5]) for (const d of [0, 1]) {
+        picks.push([a, b, c, d])
+      }
+      it.each(picks)('고름 %i · %i · %i · %i — 얼지 않고 대회 · 장식 · 워프가 없다', (a, b, c, d) => {
+        const r = talk(fileOf(CONTEST_FILE), entry, [a, b, c, d])
+        expect(r.ended || r.waiting, `얼어붙었다: ${r.ran.slice(-8).join(' → ')}`).toBe(true)
+        // 대회 본체와 상품 줄은 한 번도 안 돈다
+        for (const name of ['NewContest', 'AddAccessory', 'EndContest', 'Warp', 'ChangeIntoContestAttire']) {
+          expect(r.ran, name).not.toContain(name)
+        }
+      })
+    })
+
+    it('⚠️ 한 마리도 안 골랐다 — 원작의 「참가를 취소합니까?」에서 「예」면 「또 오세요」로 끝난다', () => {
+      // 메뉴: 참가(0) → 등급(0) → 종류(0) → 취소하겠습니까 예(0)
+      const r = talk(fileOf(CONTEST_FILE), 6, [0, 0, 0, 0])
+      expect(r.ended).toBe(true)
+      expect(r.ran).toContain('GetContestPartyMenuResult')
+      expect(r.ran).not.toContain('NewContest')
+    })
+
+    it('⚠️ 처음 이긴 상품은 「없음」(0xFFFF)이다 — 묵은 등급 번호가 장식이 되지 않는다', () => {
+      const op = meta.commands.findIndex((c) => c?.name === 'GetFirstTimeVictoryAccessory')
+      const DEST = 0x8004
+      for (const stale of [0, 1, 2, 3]) {
+        const vars = new VarStore()
+        vars.set(DEST, stale)
+        const bytes = new Uint8Array(6)
+        const view = new DataView(bytes.buffer)
+        view.setUint16(0, op, true)
+        view.setUint16(2, DEST, true)
+        view.setUint16(4, 0x0002, true) // End
+        const world = new FieldWorld({ vars, input: () => ({ pressed: true, held: true }), movements: meta.movements, services: {} })
+        const ctx = new ScriptContext({ vars, world, commands: map }, bytes, 0)
+        ctx.start(0)
+        ctx.step(100)
+        expect(vars.get(DEST), `묵은 값 ${String(stale)}`).toBe(0xffff)
+      }
+    })
+  })
+
+  describe('글로벌터미널 1층 브리더 남 — 화면을 어둡게 해 두고 끝내지 않는다 (진입점 18)', () => {
+    it('「예」를 골라도 화면이 되살아나고 「할 말이 없다」로 끝난다', () => {
+      screenFade.now = null
+      const r = talk(fileOf('scripts_global_terminal_1f'), 18, [0])
+      expect(r.ended).toBe(true)
+      expect(r.ran).toContain('ScrCmd_30E')
+      expect(fadeAlpha()).toBe(0)
+      // 묵은 값이 아니라 우리가 적은 0으로 갈린다
+      expect(r.vars.get(0x8004)).toBe(0)
+    })
+
+    it('「아니오」도 어둡지 않다', () => {
+      screenFade.now = null
+      const r = talk(fileOf('scripts_global_terminal_1f'), 18, [1])
+      expect(r.ended).toBe(true)
+      expect(fadeAlpha()).toBe(0)
+    })
+
+    it('`ScrCmd_30E`가 만들어져 있다', () => {
+      const op = meta.commands.findIndex((c) => c?.name === 'ScrCmd_30E')
+      expect(op).toBeGreaterThanOrEqual(0)
+      expect(unhandled.has(op)).toBe(false)
+    })
+  })
+
   it('⚠️ 통신 대전은 원작의 「통신 오류」로 닫힌다', () => {
     const op = meta.commands.findIndex((c) => c?.name === 'StartBattleClient')
     const vars = new VarStore()
@@ -266,7 +395,9 @@ decomp('통신 깃발 번호', () => {
       } else out.set(line, value)
       value += 1
     }
-    expect(out.get('FLAG_COMMUNICATION_CLUB_ACCESSIBLE')).toBe(2406)
+    expect(out.get('FLAG_COMMUNICATION_CLUB_ACCESSIBLE')).toBe(FLAG_COMMUNICATION_CLUB_ACCESSIBLE)
+    expect(out.get('VAR_COMMUNICATION_LOAD_ACTION')).toBe(VAR_COMMUNICATION_LOAD_ACTION)
+    expect(FLAG_COMMUNICATION_CLUB_ACCESSIBLE).toBe(2406)
   })
 })
 

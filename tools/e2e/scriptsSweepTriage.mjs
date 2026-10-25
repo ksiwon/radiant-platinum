@@ -15,7 +15,6 @@ export const TRIAGE = {
   GetBattleFrontierReporterPosition: ['noop', '앞의 `CheckTVInterviewEligible`이 늘 0이라 이 갈래에 못 닿는다'],
   MessageFromBank: ['out', 'TV 방송 · 미스터리기프트 배달원 갈래에서만 부른다'],
   ScrCmd_205: ['out', 'Geonet(통신 지구본) 화면'],
-  ScrCmd_30E: ['out', '유니온룸 소개 편집기 — 부르는 라벨이 진입점 표에 없다'],
   DoGroupConnectionAction: ['out', '레코드믹싱 그룹(통신)'],
   SetClearInCatchingShowFlag: ['out', '파르크 포획쇼 — 선행인 GBA 이송이 통신이라 접수원이 늘 「모자란다」로 간다'],
   MoveCatchingShowMonsToPCBoxes: ['out', '파르크 포획쇼 — 위와 같다'],

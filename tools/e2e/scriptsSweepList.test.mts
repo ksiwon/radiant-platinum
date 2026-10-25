@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 // @ts-expect-error — tools/는 타입 검사 밖의 순수 JS다
 import { buildList, parseInit, scopeOf } from './scriptsSweepList.mjs'
 import { parseInitScripts } from '../../src/engine/script/initScripts'
-import { isDeferredFacility } from '../../src/engine/world/frontierGate'
+import { deferredFacilityNotice } from '../../src/engine/world/frontierGate'
 
 const DATA = resolve(import.meta.dirname, '../../public/data')
 const have = existsSync(resolve(DATA, 'scripts.bin'))
@@ -38,7 +38,7 @@ describe.skipIf(!have)('스크립트 전수 점검 목록', () => {
     const out = new Map<number, string>(list.excluded.map((e: { map: number, why: string }) => [e.map, e.why]))
     // 막은 시설 네 문(326 타워 · 563 · 564 · 565)이 전부 범위 밖이다
     for (const map of [326, 563, 564, 565]) {
-      expect(isDeferredFacility(map)).toBe(true)
+      expect(deferredFacilityNotice(map, 'ko')).not.toBeNull()
       expect(out.has(map), `맵 ${String(map)}`).toBe(true)
     }
     // 팩토리(562) · 프런티어 지상(559) · 관문(560) · 깨어진 세계 1F(573)는 안에 있다

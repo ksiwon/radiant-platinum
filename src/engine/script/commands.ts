@@ -70,7 +70,7 @@ import { SHARDS } from '../bag/shards'
 import { learnableTutorMoves, shardCostOf, tutorMovesAt } from '../world/tutorMoves'
 import { scriptSpy } from './spy'
 import {
-  COMM_CLUB_RET, GBA_CARTRIDGE_NONE, SCRIPT_UNION_ROOM_ATTENDANT,
+  COMM_CLUB_RET, FLAG_COMMUNICATION_CLUB_ACCESSIBLE, GBA_CARTRIDGE_NONE, refusesSave, VAR_COMMUNICATION_LOAD_ACTION,
 } from '../world/comm'
 // ⚠️ **두 벌로 두지 않는다.** 여기가 읽고 시원이 쓰는 같은 칸이라, 한쪽만
 // 고치면 「배포를 받았는데 안 열린다」가 된다 (`world/siwon.ts`가 정본)
@@ -849,12 +849,18 @@ on('HideSavingIcon', (ctx) => { ctx.host.world.services.saveGame?.hideIcon(); re
  */
 on('TrySaveGame', (ctx) => {
   const dest = ctx.readHalfWord()
-  // ⚠️ **유니온룸 접수원이 부른 저장은 「안 됐다」로 답한다** (PARITY §9.4).
+  // ⚠️ **통신 접수원이 부른 저장은 「안 됐다」로 답한다** (PARITY §9.4) — 유니온룸 · Wi-Fi 클럽.
   // 리포트는 진짜로 쓴다 — 거짓말하는 것은 저장이 아니라 **넘겨주기**다.
-  // 이 답으로 유니온룸이 원작의 「또 오세요」 갈래로 닫힌다 (`world/comm.ts`)
-  const toComm = ctx.host.world.scriptID === SCRIPT_UNION_ROOM_ATTENDANT
+  // 이 답으로 원작의 「또 오세요」 갈래로 닫힌다 (`world/comm.ts`)
+  const toComm = refusesSave(ctx.host.world.scriptID)
   const save = ctx.host.world.services.saveGame
   if (!save) { ctx.host.vars.set(dest, 0); return false }
+  // 유니온룸은 저장 직전에 통신 상태를 세워 둔다 — 리포트에 서 있지 않게 내리고 쓴다. 안 된 쪽 갈래가 곧바로 같은 값을
+  // 스스로 내리므로(`SetVar … 0` · `ClearFlag`) 되돌릴 것이 없다
+  if (toComm) {
+    ctx.host.vars.set(VAR_COMMUNICATION_LOAD_ACTION, 0)
+    ctx.host.vars.clearFlag(FLAG_COMMUNICATION_CLUB_ACCESSIBLE)
+  }
   save.begin()
   ctx.pause((c) => {
     const got = c.host.world.services.saveGame?.result() ?? false
@@ -2758,6 +2764,20 @@ on('PlayBoatCutscene', (ctx) => {
  * 것이 없다 — 다만 **자리는 지나가야 한다**
  */
 on('ReturnToField', () => false)
+
+/**
+ * 글로벌터미널 1층 브리더 남의 앱 (`ScrCmd_30E` · `scrcmd.c:3100` → `sub_0209B344`). 앱을 안 만들었다.
+ *
+ * 스크립트는 앞에서 `FadeScreenOut`으로 화면을 어둡게 해 두고(`scripts_global_terminal_1f.s:443-455`) 앱이 끝나며 필드로
+ * 돌아오는 연출이 그것을 걷는다. 건너뛰면 밝히는 줄이 한 줄도 없어 화면이 어두운 채 끝났고, 답 칸도 묵은 값이었다. 그래서
+ * 「못 했다」(0)를 적어 원작의 `NothingToSay` 갈래로 가게 하고 `FadeScreenIn`(6 · 1 · 인 · 검정)과 같은 페이드를 걸어 기다린다
+ */
+on('ScrCmd_30E', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  startFade(6, 1, 1, 0)
+  ctx.pause(() => fadeDone())
+  return true
+})
 
 /**
  * 벽에 걸린 지도 (`ScrCmd_OpenRegionMap` · `scrcmd.c:3227`) — 타운맵을 보기 전용으로 연다. 닫힐 때까지 선다.
@@ -6326,6 +6346,34 @@ on('GetGBACartridgeVersion', answers(GBA_CARTRIDGE_NONE))
  * (`map/world`의 밟는 워프에서 0x60을 뺀 자리)
  */
 on('CheckHasEnoughMonForCatchingShow', answers(0))
+
+/**
+ * 콘테스트 접수원 (`scripts_contests.s` 6 · 7 · 8번) — 대회 본체는 범위 밖이다 (PARITY §9.1).
+ *
+ * ⚠️ **파티 메뉴가 「아무도 안 골랐다」로 닫히게 한다.** 건너뛰면 선택 칸이 묵은 값(0)으로 남아 한 마리도 안 골랐는데
+ * 대회가 시작하고, 대회가 끝나면 상품 번호 칸의 묵은 값(등급 0~3)이 장식 번호가 돼 솜털을 횟수 제한 없이 줬다.
+ * 원작의 취소 갈래는 `GoToIfEq slot, PARTY_SLOT_NONE`이 받아 「참가를 취소합니까?」(`ContestCommon_Text_CancelEntry`)를
+ * 묻고 — 「예」면 「또 오세요」로 · 「아니오」면 다시 고르는 자리로 — 닫힌다 (`scripts_contests.s:446-466`,
+ * 연습전은 `:1200-1214`). 지어낸 글이 없다
+ */
+on('OpenPartyMenuForContest', (ctx) => {
+  for (let i = 0; i < 4; i++) ctx.readHalfWord()
+  return false
+})
+
+/** 고른 칸과 「요약 보기」 (`ScrCmd_GetContestPartyMenuResult` · `scrcmd.c:2739`). 칸은 `PARTY_SLOT_NONE`(0xFF), 요약은 FALSE */
+on('GetContestPartyMenuResult', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), 0xff)
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  return false
+})
+
+/**
+ * 처음 이긴 상품 (`ScrCmd_GetFirstTimeVictoryAccessory` · `scrcmd_contests.c:314`). 상품이 없으면 0xFFFF
+ * (`Contest_CalcFirstTimeVictoryAccessoryReward` · `contest.c:1326`)이고 스크립트가 그 값(`-1`)을 걸러 「참가해 주셔서
+ * 고맙습니다」로 간다. 대회가 안 도니 이어지는 길은 없지만, 어느 갈래로 새도 상품이 안 나가게 하는 안전망이다
+ */
+on('GetFirstTimeVictoryAccessory', answers(0xffff))
 
 // ── 전수 점검(`tools/e2e/scriptsSweep`)이 잡은 건너뛴 명령 — 판정표는 `tools/e2e/scriptsSweepTriage.mjs` ─────────
 //
