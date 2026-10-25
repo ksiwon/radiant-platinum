@@ -19,8 +19,10 @@
 // 무엇이든 받아서 창을 띄운다.
 //
 // ⚠️ **3D를 한 조각도 안 잡는다.** `RendererTrouble`과 같은 몸으로 그리고, 그
-// 모듈은 이미 첫 화면 청크에 있다 — 청크를 못 받는 상황에서 이 창이 또 다른
-// 청크를 받아야 뜬다면 안 뜬다.
+// 몸이 쓰는 스타일(`rendererTrouble.css`)은 이미 첫 화면 청크에 있다 — 청크를 못
+// 받는 상황에서 이 창이 또 다른 청크를 받아야 뜬다면 안 뜬다. (`RendererTrouble`
+// 컴포넌트 자체는 첫 화면 예산 때문에 지연 로드다 — 그 청크를 못 받으면 이 창이
+// 대신 뜬다)
 import { Component, useEffect, useId, useState, type ErrorInfo, type ReactNode } from 'react'
 import { useSessionStore } from '../../state/sessionStore'
 import { dayTheme } from '../theme/day.css'

@@ -100,7 +100,7 @@ u8  bdhc[bdhcSize]      // 높이 지오메트리 ("BDHC")
 갈 일이 없어서 문제가 안 됐지만 3인칭에서는 **바닥이 안 그려진 자리에 선다** —
 걸어서 닿는 칸 110,809개 중 4,170개가 그랬다. 그래서 굽는 쪽이 청크마다
 「그 칸 밑에 삼각형이 있는가」를 32×32 비트로 적고(`data/chunks/cover.bin`,
-청크당 128B · 666개 85KB) 소품은 XZ 상자를 싣는다(`data/props/index.json`의
+청크당 128B · 666개 85KB에 번진 칸 표본을 뒤에 붙여 142KB) 소품은 XZ 상자를 싣는다(`data/props/index.json`의
 `boxes`, `posScale` 단위 정수 넷). 막는 것은 `engine/map/floorSeal`이고 자세한
 것은 [REPAIR.md](REPAIR.md) §22에 있다.
 

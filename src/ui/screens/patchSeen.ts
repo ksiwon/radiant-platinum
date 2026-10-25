@@ -5,7 +5,7 @@
 // `NOTES[0]`과 같은지는 `patchLog.test`가 지킨다
 
 /** 지금 판 — `NOTES[0]`의 판 이름과 날짜 */
-export const LATEST = { v: 'v1.3.8', date: '2026-10-23' } as const
+export const LATEST = { v: 'v1.3.9', date: '2026-10-25' } as const
 
 export const VERSION: string = LATEST.v
 

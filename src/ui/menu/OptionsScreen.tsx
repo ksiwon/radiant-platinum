@@ -394,7 +394,11 @@ export function OptionsScreen() {
   if (confirming) return <ResetConfirm text={text} language={options.language} onNo={() => { setConfirming(false) }} onYes={() => {
     // 리포트를 지우고 타이틀로 나간다. 처음부터면 인트로부터 다시 봐야 한다
     // 에셋이 아니라 **앱 셸**로 돌아가는 것이다. CDN 주소를 쓰면 안 된다
-    void resetSave().then(() => { closeAll(); location.assign(APP_ROOT) })
+    // 다른 탭이 저장소를 쥐고 있으면 `resetSave`는 아무것도 안 지우고 false를 돌려준다 — 지운 것처럼 타이틀로 나가지 않는다
+    void resetSave().then((ok) => {
+      if (!ok) { setConfirming(false); return }
+      closeAll(); location.assign(APP_ROOT)
+    })
   }} />
 
   const warnNow = !asking && row.key === 'verify' && verifying?.warn === true

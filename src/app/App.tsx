@@ -12,7 +12,6 @@ import { installAudioUnlock } from '../engine/audio/unlock'
 import { useMenuStore } from '../state/menuStore'
 import { useSessionStore } from '../state/sessionStore'
 import { RECOVERY_TIMEOUT_MS, useRendererStore } from '../state/rendererStore'
-import { RendererTrouble } from '../ui/screens/RendererTrouble'
 import { SceneBoundary } from '../ui/screens/SceneBoundary'
 import { ChunkBoundary } from '../ui/screens/ChunkBoundary'
 import { markMap, markMenu, markScene } from './sceneMark'
@@ -29,6 +28,10 @@ const PlayRoute = lazy(() => import('./PlayRoute').then((m) => ({ default: m.Pla
 const PlayNotice = lazy(() => import('../ui/hud/PlayNotice'))
 /** 다른 탭이 저장소를 쥐고 있을 때의 한 줄 (`state/writerLock`) — 그때만 받는다 */
 const WriterTabNotice = lazy(() => import('../ui/hud/WriterTabNotice'))
+// 그래픽 오류 창은 안내 문장이 길고 정상일 때는 null이다 — 첫 화면 예산(PLAN §10.4)에 얹지 않고 오류 상태가 될 때만 받는다
+const RendererTrouble = lazy(() =>
+  import('../ui/screens/RendererTrouble').then((m) => ({ default: m.RendererTrouble })),
+)
 // 인트로는 three를 안 쓴다. 그래도 타이틀 청크에 안 넣는 이유는 대사 인쇄기와
 // 뱅크 로더를 끌고 오기 때문이다 — "이어하기"로 들어오면 한 번도 안 쓴다
 const IntroRoute = lazy(() =>
@@ -159,7 +162,12 @@ export function App() {
         **3D가 못 서는 상황에서도 뜬다** — 여기가 뜨는 상황이 곧 그것이다.
         정상일 때는 스스로 null을 낸다
       */}
-      <RendererTrouble />
+      {/* 정상일 때(`RendererTrouble`이 null을 내는 세 단계)는 청크를 부르지 않는다 */}
+      {rendererPhase !== 'live' && rendererPhase !== 'ready' && rendererPhase !== 'initializing' && (
+        <ChunkBoundary where="그래픽 오류 창">
+          <Suspense fallback={null}><RendererTrouble /></Suspense>
+        </ChunkBoundary>
+      )}
       {battleUp && (
         <ChunkBoundary where="배틀 화면">
           <Suspense fallback={null}>
