@@ -724,7 +724,9 @@ export async function starkHeatran(api, ctx, page) {
       if ((v.room1 ?? 0) < 1) return done()
     }
     let r2 = await api.goTo(STARK.room2, Math.min(600_000, api.left()))
-    if (r2 !== 'arrived' && (await api.now()).map === STARK.room1) r2 = JSON.stringify(await pushThrough(api, ctx, STARK.room1, { x: 17, z: 2 }, note, page))
+    // ⚠️ 방 1이 아니어도 푼다 — `pushThrough`가 방 1로 돌아가서 푼다. 실측(2026-10-27 맥 최종 연쇄 칸 20): 길잡이의 마지막 「한 발 물러나기」가
+    // 입구 계단 (20,29)를 밟아 바깥(262)에 선 채로 끝나, 「방 1일 때만」 조건에 걸려 바위 풀이를 한 번도 안 하고 칸을 잃었다
+    if (r2 !== 'arrived' && (await api.now()).map !== STARK.room2) r2 = JSON.stringify(await pushThrough(api, ctx, STARK.room1, { x: 17, z: 2 }, note, page))
     note('방 2', r2)
     if (!await trip(STARK.room2, { x: 42, z: 69 }, 'room2', 1, '방 2 벅 동행 (42,69)')) return done()
     // 벅을 데리고 (47,3)을 지나 셋째 방으로 — 플루토 장면이 끝나면 바깥으로 옮겨진다
