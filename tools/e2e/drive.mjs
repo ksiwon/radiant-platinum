@@ -680,7 +680,9 @@ export async function driveStory(page, {
       // 영영 멈춘다 — 실측으로 240초를 그 화면 앞에서 스페이스만 눌렀다
       if (s.menu === 'naming') {
         const skip = page.getByRole('button', { name: '그대로 두기' })
-        if (await skip.count() > 0) await skip.click()
+        // ⚠️ **누르기가 안 되면 Esc로 닫는다** (화면이 적은 단축키다). 클릭은 상자가 두 프레임 그대로이기를 기다리는데,
+        // Metal 셰이더 굽기에 프레임이 묶이면 30초를 넘겨 판이 죽었다 — 단추는 떠 있었다 (2026-10-26 맥 최종 연쇄 칸 3 · 토게피 부화)
+        if (await skip.count() > 0) await skip.click({ timeout: 5_000 }).catch(async () => { await page.keyboard.press('Escape') })
         else {
           await page.getByLabel('별명').fill('NICK')
           await page.getByRole('button', { name: '결정' }).click()
