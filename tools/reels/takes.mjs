@@ -106,6 +106,16 @@ export const TAKES = [
     id: 'D2-windworks', what: '바닷가 도시 — 해변시티 부감 · 바다 쪽 팬', cp: 'sunyshore', steps: [{ do: 'hour', hour: 13 }], seconds: 2.5,
     move: { type: 'dolly', rel: true, from: { eye: [-6, 18, 18], gaze: [4, 0, -4] }, to: { eye: [8, 18, 14], gaze: [14, 0, -6] } },
   },
+  // 세로판 — 세로 화면은 위아래가 넓어 가로판 시선으로는 바다 위에 맵 밖 흰 사각형이 걸리고(D2) 호수 위 하늘이 화면의 40%였다(D1).
+  // 시선을 더 아래로 눕혀 맵 안만 담는다
+  {
+    id: 'D1-lake-p', what: '호수 부감 · 세로판(시선을 아래로)', cp: 'valor', steps: [{ do: 'hour', hour: 10 }, { do: 'hideText' }], seconds: 2.5,
+    move: { type: 'dolly', rel: true, from: { eye: [-6, 7, 10], gaze: [0, -3, -22] }, to: { eye: [4, 6.5, 6], gaze: [2, -3, -26] } },
+  },
+  {
+    id: 'D2-windworks-p', what: '해변시티 부감 · 세로판(시선을 아래로)', cp: 'sunyshore', steps: [{ do: 'hour', hour: 13 }], seconds: 2.5,
+    move: { type: 'dolly', rel: true, from: { eye: [-6, 18, 18], gaze: [4, 0, 4] }, to: { eye: [8, 18, 14], gaze: [14, 0, 2] } },
+  },
   {
     id: 'D3-flowers', what: '꽃향기마을 꽃밭 — 1인칭', cp: 'floaroma',
     // 확인 지점 앞에서 걸어 내려가던 길은 간판에 박혔다 — 서쪽 꽃밭 한가운데(167,668)에 세우고 북쪽으로 꽃밭을 가로질러 걷는다.

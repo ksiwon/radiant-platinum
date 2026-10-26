@@ -25,6 +25,7 @@ export const CARD_SECONDS = {
   tunnel: 13.8, // A2 11초 + A3 감기 2초 + A4 섬광 0.8초
   tagline3: 3.109, // 문구 세 줄을 한 화면에 — 곡 한 마디(박마다 한 줄)
   rewind: 3.107, // 오프닝 곡 한 마디(B_OTH001 80.27BPM · 4/4). Z-A 한 박(0.777) + 감기 1.9 + 섬광 0.43
+  announce: 4.661, // 윈드·웨이브(2027 공식 발표) 세 박(2.331) + 감기 1.9 + 섬광 0.43 — 곡 한 마디 반
   sink: 0.7,
   tagline: 6.5,
   white: 0.3,
@@ -68,14 +69,17 @@ g.clearRect(0,0,W,H);const k=ease((t-2.6)/0.4);if(k>0){const r=(6+40*k)*U;const 
 gr.addColorStop(0,'rgba(220,235,255,'+k+')');gr.addColorStop(1,'rgba(120,170,255,0)');g.fillStyle=gr;g.fillRect(0,0,W,H)}}</script>`
   }
 
-  if (kind === 'tunnel' || kind === 'rewind') {
+  if (kind === 'tunnel' || kind === 'rewind' || kind === 'announce') {
+    // `announce`는 연표의 맨 끝에 공식 발표된 신작(포켓몬스터 윈드·웨이브 · 2027 · 2026-02-27 포켓몬 프레젠트)을 한 칸 더 얹고 거기서 시작한다
+    const ww = kind === 'announce'
+    const LU = ww ? [...LINEUP, ['포켓몬스터\n윈드・웨이브', '2027 · 공식 발표']] : LINEUP
     // 칸 길이 — 앞 넷 0.8 · 가운데 0.45 · 뒤 여섯 0.3 · 플래티넘 0.9, 합을 A2 길이로 맞춘다
-    const raw = LINEUP.map((_, i) => (i === PLATINUM ? 0.9 : i < 4 ? 0.8 : i >= LINEUP.length - 6 ? 0.3 : 0.45))
+    const raw = LU.map((_, i) => (i === PLATINUM ? 0.9 : i < 4 ? 0.8 : i >= LU.length - 6 ? 0.3 : 0.45))
     // 쇼츠는 끝 섬광을 0.3초로 줄인다 — 0.8초면 흰 화면이 1초 넘게 섰다
     // `rewind`는 앞으로 도는 연표를 통째로 덜어 낸다 — 가장 새 작품(Z-A)이 한 박 서고, 곧장 플래티넘으로 감긴다.
     // 곡 한 마디(3.109초)를 박 단위로 쓴다: 1박 Z-A · 2~3박 감기 · 4박 플래티넘이 빛을 먹고 섬광 → 큰 박
-    const rw = kind === 'rewind'
-    const A2 = rw ? 0.777 : short ? 6.843 : 11.0
+    const rw = kind !== 'tunnel'
+    const A2 = ww ? 2.331 : rw ? 0.777 : short ? 6.843 : 11.0
     const sum = raw.reduce((a, b) => a + b, 0)
     let slots = rw ? raw.map((_, i) => (i === raw.length - 1 ? A2 : 0)) : raw.map((d) => (d * A2) / sum)
     // 본편은 플래티넘이 오프닝 곡의 피리(B_OTH001 5.857초 · 영상 8.67초)와 같이 뜬다 — 터널은 영상 3.0초에 서므로 칸 머리를
@@ -92,7 +96,7 @@ gr.addColorStop(0,'rgba(220,235,255,'+k+')');gr.addColorStop(1,'rgba(120,170,255
 <div id="yy" class="silver" style="font-weight:600;margin-top:${18 * u}px;letter-spacing:${8 * u}px"></div></div>
 <div id="wash" style="position:absolute;inset:0;background:#fff;opacity:0"></div>
 <script>${common}
-const L=${JSON.stringify(LINEUP)},P=${PLATINUM},SL=${JSON.stringify(slots)},A2=${A2},REW=${rw ? 1.9 : short ? 1.0 : 2.0},FL=${rw ? 0.43 : short ? 0.3 : 0.8};
+const L=${JSON.stringify(LU)},P=${PLATINUM},WW=${String(ww)},SL=${JSON.stringify(slots)},A2=${A2},REW=${rw ? 1.9 : short ? 1.0 : 2.0},FL=${rw ? 0.43 : short ? 0.3 : 0.8};
 const starts=[];{let a=0;for(const d of SL){starts.push(a);a+=d}}
 const g=document.getElementById('cv').getContext('2d'),tt=document.getElementById('tt'),yy=document.getElementById('yy'),box=document.getElementById('box'),wash=document.getElementById('wash');
 // 빛줄기 — 각도 · 깊이를 씨앗으로 정해 두고, 나아간 거리 s만큼 깊이를 줄인다
@@ -111,16 +115,17 @@ g.beginPath();g.moveTo(W/2+Math.cos(p.a)*r1,H/2+Math.sin(p.a)*r1);g.lineTo(W/2+M
 g.globalCompositeOperation='source-over'}
 function show(i,k,dir,extra){// k: 칸 안의 진행 0~1, dir: 1 앞으로 · -1 감기
 const [n,y]=L[i];const fs=(PORTRAIT?124:136)*U;
-tt.textContent=n;yy.textContent=String(y);tt.style.fontSize=fs+'px';
+tt.innerHTML=String(n).split('\\n').join('<br>');tt.style.lineHeight='1.18';yy.textContent=String(y);tt.style.fontSize=fs+'px';
 // 긴 제목은 화면 폭에 맞춰 줄인다 — 글자 수로 단계를 나누면 세로 화면에서 「브릴리언트 다이아몬드·샤이닝 펄」이 손톱만 해졌다
 const ww=tt.scrollWidth,room=W*(PORTRAIT?0.9:0.8);if(ww>room)tt.style.fontSize=(fs*room/ww)+'px';yy.style.fontSize=(PORTRAIT?44:52)*U+'px';
-let sc,al;if(dir>0){const a=easeOut(k/0.35),b=ease((k-0.8)/0.2);sc=0.25+0.75*a+2.2*b;al=a*(1-b)}else{sc=1.6-0.6*easeOut(k);al=1-Math.abs(k-0.5)*1.6}
+let sc,al;if(dir>0&&WW){// 발표 칸 — 첫 프레임부터 제목이 보이고(0.3) 곧장 또렷해진 뒤 천천히 다가온다. 검은 터널만 먼저 서면 첫 순간이 비어 보인다
+const a=easeOut(k/0.1);sc=0.78+0.22*a+0.1*k;al=0.3+0.7*a}else if(dir>0){const a=easeOut(k/0.35),b=ease((k-0.8)/0.2);sc=0.25+0.75*a+2.2*b;al=a*(1-b)}else{sc=1.6-0.6*easeOut(k);al=1-Math.abs(k-0.5)*1.6}
 sc*=1+(extra||0)*0.06;box.style.transform='scale('+sc.toFixed(4)+')';box.style.opacity=clamp(al).toFixed(3);
 const gl=(i===P?1:0.35)+(extra||0)*2;box.style.filter='drop-shadow(0 0 '+(10*gl*U)+'px rgba(140,190,255,0.9)) drop-shadow(0 0 '+(36*gl*U)+'px rgba(90,140,255,'+(0.4+0.3*(extra||0))+'))'}
 window.draw=(t)=>{wash.style.opacity=0;
 if(t<A2){streaks(t,0);let i=starts.findIndex((a,j)=>t>=a&&t<a+SL[j]);if(i<0)i=L.length-1;
 // 플래티넘은 처음 지날 때도 한 박자 머문다 — 칸 안에서 사라지는 끝을 늦춘다
-let k=(t-starts[i])/SL[i];if(i===L.length-1)k=Math.min(k,0.6);show(i,k,1,i===P?0.3:0);return}
+let k=(t-starts[i])/SL[i];if(i===L.length-1)k=Math.min(k,WW?1:0.6);show(i,k,1,i===P?0.3:0);return}
 if(t<A2+REW){streaks(t,0.2);const x=(t-A2)/REW;const span=L.length-1-P;const f=(L.length-1)-span*easeOut(x*1.08);
 const i=Math.max(P,Math.round(f));
 // 플래티넘에 닿으면 그 자리에 선 채로 빛만 차오른다 — 칸 안 진행으로 밝기를 매기니 닿고 · 어두워지고 · 다시 밝아져 두 번 번쩍였다
@@ -139,22 +144,34 @@ const w=document.getElementById('w');window.draw=(t)=>{w.style.opacity=(1-ease(t
     // 세 줄을 **한 화면에 쌓는다** — 「그때 그 찬란함을」(1박) · 「실제 크기로, 빛나의 눈에서」(2박) · 「다시 한번」(3박)이 박마다 떠오르고
     // 앞 줄은 지우지 않고 남긴다. 4박에 빛줄기가 터지며 흰 화면으로 — 큰 박에 방 컷이 선다. 곡 한 마디 = 3.109초(80.27BPM · 4/4)
     const BEAT = 0.777
-    const spec = [['그때 그 찬란함을', 64, 600], ['실제 크기로, 빛나의 눈에서', 50, 600], ['다시 한 번', 132, 800]]
+    // 세 줄은 **같은 크기 · 가운데 정렬**이고(사용자 · 2026-10-26), 박마다 화면 한가운데에서 작은 점으로 터져 제 자리까지 화악 퍼진다 —
+    // 퍼지는 동안 가운데에서 빛 고리가 번진다. 크기는 가장 긴 줄(「실제 크기로, 빛나의 눈에서」)이 폭에 들어가는 만큼으로 셋을 같이 줄인다
+    const lines = ['그때 그 찬란함을', '실제 크기로, 빛나의 눈에서', '다시 한 번']
     return `${head}<canvas id="cv" width="${W}" height="${H}"></canvas>
-<div class="c" id="st" style="gap:${(portrait ? 70 : 34) * u}px">${spec.map(([l, f, w], i) => `<div id="l${String(i)}" style="opacity:0;white-space:nowrap;font-size:${f * u}px;font-weight:${String(w)};letter-spacing:${4 * u}px;color:#d6e8ff;text-shadow:0 0 ${18 * u}px rgba(150,200,255,0.9),0 0 ${60 * u}px rgba(90,150,255,0.6)">${l}</div>`).join('')}</div>
+<div class="c" id="st" style="gap:${58 * u}px">${lines.map((l, i) => `<div id="l${String(i)}" style="opacity:0;white-space:nowrap;text-align:center;font-size:${84 * u}px;font-weight:700;letter-spacing:${3 * u}px;color:#e4f0ff;text-shadow:0 0 ${18 * u}px rgba(150,200,255,0.9),0 0 ${60 * u}px rgba(90,150,255,0.6)">${l}</div>`).join('')}</div>
 <div id="wash" style="position:absolute;inset:0;background:#fff;opacity:0"></div>
 <script>${common}
-const BEAT=${String(BEAT)},g=document.getElementById('cv').getContext('2d'),wash=document.getElementById('wash');
+const BEAT=${String(BEAT)},g=document.getElementById('cv').getContext('2d'),wash=document.getElementById('wash'),st=document.getElementById('st');
 const ls=[0,1,2].map((i)=>document.getElementById('l'+i));
-for(const e of ls){const room=W*0.9;if(e.scrollWidth>room)e.style.fontSize=(parseFloat(e.style.fontSize)*room/e.scrollWidth)+'px'}
-window.draw=(t)=>{const z=ease((t-3*BEAT)/BEAT),D=BEAT*4;
-for(let i=0;i<3;i++){const u=(t-i*BEAT)/(BEAT*0.7),a=ease(u),blur=(1-a)*14;
-ls[i].style.opacity=a.toFixed(3);ls[i].style.filter='blur('+(blur*U).toFixed(2)+'px)';
-ls[i].style.transform='scale('+(0.94+0.06*a+(i===2?0.18*z*z:0)).toFixed(4)+')'}
-g.clearRect(0,0,W,H);if(z>0){g.globalCompositeOperation='lighter';for(let i=0;i<40;i++){const an=i/40*Math.PI*2+0.3,r=Math.hypot(W,H)*z;
+const burst=(x)=>1-Math.pow(1-clamp(x),4);
+let ready=false,oy=[0,0,0];
+// 글꼴이 선 뒤 첫 프레임에서 한 번 — 셋을 같은 크기로 맞추고, 화면 가운데에서 각 줄까지의 거리를 잰다
+function fit(){let k=1;for(const e of ls)k=Math.min(k,W*0.9/e.scrollWidth);
+for(const e of ls)e.style.fontSize=(parseFloat(e.style.fontSize)*k)+'px';
+oy=ls.map((e)=>{const r=e.getBoundingClientRect();return r.top+r.height/2-H/2});ready=true}
+window.draw=(t)=>{if(!ready)fit();const z=ease((t-3*BEAT)/BEAT),D=BEAT*4;
+for(let i=0;i<3;i++){const x=(t-i*BEAT)/0.55,a=burst(x);
+ls[i].style.opacity=clamp(x*3.5).toFixed(3);ls[i].style.filter='blur('+((1-a)*16*U).toFixed(2)+'px)';
+ls[i].style.transform='translateY('+(-oy[i]*(1-a)).toFixed(2)+'px) scale('+(0.12+0.88*a).toFixed(4)+')'}
+g.clearRect(0,0,W,H);g.globalCompositeOperation='lighter';
+for(let i=0;i<3;i++){const x=(t-i*BEAT)/0.55;if(x>0&&x<1){const r=Math.hypot(W,H)*0.5*burst(x),al=(1-x)*(1-x);
+let gr=g.createRadialGradient(W/2,H/2,r*0.6,W/2,H/2,r);gr.addColorStop(0,'rgba(150,200,255,0)');gr.addColorStop(0.88,'rgba(190,225,255,'+(0.55*al).toFixed(3)+')');gr.addColorStop(1,'rgba(120,170,255,0)');g.fillStyle=gr;g.fillRect(0,0,W,H);
+gr=g.createRadialGradient(W/2,H/2,0,W/2,H/2,260*U);gr.addColorStop(0,'rgba(235,245,255,'+(0.9*al).toFixed(3)+')');gr.addColorStop(1,'rgba(150,200,255,0)');g.fillStyle=gr;g.fillRect(0,0,W,H)}}
+if(z>0){for(let i=0;i<40;i++){const an=i/40*Math.PI*2+0.3,r=Math.hypot(W,H)*z;
 const gr=g.createLinearGradient(W/2,H/2,W/2+Math.cos(an)*r,H/2+Math.sin(an)*r);gr.addColorStop(0,'rgba(200,225,255,'+(0.5*z)+')');gr.addColorStop(1,'rgba(120,170,255,0)');
-g.strokeStyle=gr;g.lineWidth=(2+(i%3)*2)*U;g.beginPath();g.moveTo(W/2,H/2);g.lineTo(W/2+Math.cos(an)*r,H/2+Math.sin(an)*r);g.stroke()}g.globalCompositeOperation='source-over'}
-wash.style.opacity=Math.max(1-ease(t/0.45),ease((t-(D-0.4))/0.4)).toFixed(3);document.getElementById('st').style.transform='scale('+(1+0.02*t/D).toFixed(4)+')'}</script>`
+g.strokeStyle=gr;g.lineWidth=(2+(i%3)*2)*U;g.beginPath();g.moveTo(W/2,H/2);g.lineTo(W/2+Math.cos(an)*r,H/2+Math.sin(an)*r);g.stroke()}}
+g.globalCompositeOperation='source-over';
+wash.style.opacity=Math.max(1-ease(t/0.45),ease((t-(D-0.4))/0.4)).toFixed(3);st.style.transform='scale('+(1+0.02*t/D+0.1*z*z).toFixed(4)+')'}</script>`
   }
 
   if (kind === 'tagline') {

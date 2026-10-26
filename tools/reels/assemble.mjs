@@ -30,7 +30,7 @@ const FPS = 30
 const MIN_FADE = 2 / FPS
 /** `trans: 'cut'`은 하드컷이다 — 겹침 없이 `concat`으로 잇는다 */
 /** v1.3.9 쇼츠는 하드컷을 짧은 디졸브(3프레임)로 잇는다 — 한 프레임에 화면이 바뀌는 곳이 없게(사용자 · 2026-10-26) */
-const SOFT_CUT = EDIT_NAME === 'v139' ? 3 / FPS : 0
+const SOFT_CUT = EDIT_NAME === 'v139' || EDIT_NAME === 'v140' ? 3 / FPS : 0
 const overlap = (e) => (e.trans === 'cut' ? SOFT_CUT : Math.max(e.fade ?? 0, MIN_FADE))
 
 /**
@@ -231,7 +231,46 @@ const SHORTS_V139 = [
   ...pick('F1', 'F2'),
 ]
 
-const EDIT = EDIT_NAME === 'v139' ? SHORTS_V139 : EDIT_NAME === 'v133' ? SHORTS_V133 : SHORT ? SHORTS : MAIN
+/**
+ * v1.4.0 쇼츠 — v1.3.9에서 ① 아르세우스 콜드 오픈을 빼고 **포켓몬스터 윈드·웨이브(2027 · 2026-02-27 공식 발표)에서 연다**(`announce` 카드: 신작 세 박 →
+ * 플래티넘으로 감기 → 섬광) ② 지역 컷 셋(엄격호수 · 해변시티 · 선단시티)과 1인칭 도시 둘러보기(축복시티) · 루카리오를 더했다 ③ 문구 세 줄은 같은 크기로
+ * 가운데에서 퍼진다 ④ 기능 자막은 컷에 붙이지 않고 영상 위에 한 번에 얹는다(`CAPTIONS` — 여러 컷에 걸치게).
+ * 곡은 `announce`가 13.734초(박 경계)에서 열어 연표 감기 → 문구 → 큰 박(21.5초)에 방 컷이 선다 — v1.3.9와 같은 자리다(콜드 오픈 두 박이 신작 발표로 바뀌었을 뿐)
+ */
+const keep = (...cues) => cues.map((c) => {
+  const { caption: _c, big: _b, ...e } = SHORTS_V139.find((x) => x.cue === c)
+  return e
+})
+const SHORTS_V140 = [
+  { cue: 'R1', card: 'announce', seconds: 4.661, trans: 'cut' },
+  { cue: 'O3', card: 'tagline3', seconds: 3.109, fade: 0.4 },
+  { cue: 'B1', take: 'B1-room', cut: [0.3, 1.7], trans: 'cut' },
+  { ...pick('B2')[0], cut: [0.8, 1.4] },
+  { cue: 'D1', take: 'D1-lake-p', cut: [0.4, 1.1], trans: 'cut' },
+  { cue: 'D2', take: 'D2-windworks-p', cut: [0.5, 1.0], trans: 'cut' },
+  { cue: 'D4', take: 'D4-snow', cut: [0.5, 1.0], trans: 'cut' },
+  // V 전환은 촬영 0.9초 한 프레임이다 — 앞 컷이 디졸브 꼬리까지 0.833초에서 끝나야 그 프레임이 꼬리에 안 섞인다(0.4+0.4이면 0.933초까지 읽어 한 프레임에 튀었다)
+  { cue: 'D5a', take: 'D5-first', cut: [0.4, 0.3], fade: 0.1333, noSpread: true },
+  { cue: 'D5', take: 'D5-first', cut: [0.9, 1.5], trans: 'cut' },
+  // 1인칭으로 바뀐 뒤 도시를 둘러본다 — 곡 마디에 맞추려고 이 컷이 늘고 준다(`fit`)
+  { cue: 'D8', take: 'D8-city', cut: [0.35, 1.6], trans: 'cut' },
+  ...keep('B5-B6', 'C1', 'C3', 'C6', 'C7a', 'C7', 'C8', 'N5', 'E2', 'E3a', 'E3b', 'E3c', 'E4', 'D11'),
+  // 난천의 루카리오 — 파동탄. 세로판은 가로로 찍은 장면의 가운데(가로 50%)를 잘라 쓴다
+  { cue: 'D12', take: 'D12-lucario', cut: [2.0, 1.6], crop: 0.5, trans: 'cut' },
+  ...keep('D13', 'S1', 'N4', 'N2', 'N1', 'F1', 'F2'),
+]
+
+/** 영상 위에 한 번에 얹는 자막 — 큐 `from`이 서는 때부터 큐 `until`이 서는 때까지(여러 컷에 걸친다). `big`은 기능 자막(번호 배지) */
+const CAPTIONS = {
+  v140: [
+    { text: '본 게임은 팬 게임이며, 수익을 창출하지 않습니다.', from: 'R1', until: 'O3' },
+    { text: '1. 입체적인 신오지방 맵을 실제 크기로', from: 'B2', until: 'D5a', big: true },
+    { text: '2. 1인칭과 3인칭을 자유롭게 전환 (V)', from: 'D5', until: 'B5-B6', big: true },
+    { text: '3. 추억의 배포 이벤트 부활', from: 'S1', until: 'N4', big: true },
+  ],
+}[EDIT_NAME] ?? []
+
+const EDIT = EDIT_NAME === 'v140' ? SHORTS_V140 : EDIT_NAME === 'v139' ? SHORTS_V139 : EDIT_NAME === 'v133' ? SHORTS_V133 : SHORT ? SHORTS : MAIN
 
 /**
  * 장면마다 잰 소리 자리 — [장면 안 초, 효과음, `rel`(`sfxChains`), 소리 안 시작(초 · 없으면 0), 길이(초 · 끝 0.4초에 걸쳐 뺀다)]. 시각은 찍은 프레임에서 잰 것이다
@@ -326,6 +365,14 @@ const SCORE = {
   ],
   // v1.3.9 쇼츠 — 오프닝 곡은 큰 박(21.5초)에서 방 컷(B1)이 서도록 7.766초 앞(13.734초 · 박 경계)에서 연다. 시원 컷부터는 타이틀 곡이
   // 엔딩 뒤 장면들을 지나 로고까지 간다
+  // v1.4.0 — v1.3.9와 같은 곡 배치. 첫 카드(`announce`)가 콜드 오픈 자리에서 열어 13.734초부터 깐다
+  '9:16-v140': [
+    { src: 'B_OTH001', cue: 'R1', at: 0, from: 13.734, until: 'B5-B6', untilAt: 2.8, fit: 1, fadeIn: 0.05, fadeOut: 0.25 },
+    { src: 'BA001', cue: 'B5-B6', at: 2.8, from: 0, until: 'N5', fit: 1, tail: 0.7 },
+    { src: 'BA015', cue: 'N5', from: 0, until: 'D11', untilAt: 0.16, fadeIn: 0.5, fadeOut: 0.4 },
+    { src: 'BA008', cue: 'D11', at: 0.16, from: 0, until: 'S1', fit: 1, tail: 0.8 },
+    { src: 'B_OTH002', cue: 'S1', at: -0.15, from: 0.45, until: 'end', fadeIn: 0.3, fadeOut: 1.5 },
+  ],
   '9:16-v139': [
     { src: 'B_OTH001', cue: 'O1', at: 0, from: 13.734, until: 'B5-B6', untilAt: 2.8, fit: 1, fadeIn: 0.05, fadeOut: 0.25 },
     { src: 'BA001', cue: 'B5-B6', at: 2.8, from: 0, until: 'N5', fit: 1, tail: 0.7 },
@@ -374,6 +421,34 @@ function captionFilter(e, len) {
     return `drawtext=fontfile='${esc('C:/Windows/Fonts/malgunbd.ttf')}':textfile='${esc(file)}':fontsize=${String(Math.round(Math.min(W, H) * 0.042))}:fontcolor=white:alpha='min(1\,t/0.3)*min(1\,(${len.toFixed(3)}-t)/0.4)':box=1:boxcolor=black@0.5:boxborderw=22:shadowcolor=black@0.7:shadowx=2:shadowy=2:x=(w-tw)/2:y=h*0.12`
   }
   return `drawtext=fontfile='${esc('C:/Windows/Fonts/malgun.ttf')}':textfile='${esc(file)}':fontsize=${String(Math.round(Math.min(W, H) * 0.03))}:fontcolor=white:alpha='min(1\\,t/0.3)*min(1\\,(${len.toFixed(3)}-t)/0.4)*0.8':shadowcolor=black@0.6:shadowx=2:shadowy=2:x=(w-tw)/2:y=h*0.07`
+}
+
+/**
+ * 자막 한 장 → 투명 PNG(화면 크기) — 크로미움으로 Pretendard를 그린다. `drawtext`로 그린 Malgun 굵은체 + 검은 판은 투박했다(사용자 · 2026-10-26).
+ * `big`(기능 자막)은 번호 배지 + 글 + 알약 모양 유리판, `V` 같은 키는 키캡으로. 아니면 고지처럼 작은 글 한 줄
+ */
+async function captionPng(page, c, file) {
+  const m = /^(\d)\.\s*(.*)$/.exec(c.text)
+  const body = (m ? m[2] : c.text).replace(/\s*\(([A-Z])\)$/, '<span class="key">$1</span>')
+  const u = Math.min(W, H) / 1080
+  const big = `#p{display:flex;align-items:center;gap:${20 * u}px;padding:${16 * u}px ${38 * u}px ${16 * u}px ${16 * u}px;border-radius:999px;
+background:linear-gradient(180deg,rgba(18,28,56,0.78),rgba(8,12,30,0.78));border:${2 * u}px solid rgba(170,205,255,0.5);
+box-shadow:0 ${10 * u}px ${44 * u}px rgba(0,0,0,0.5),0 0 ${44 * u}px rgba(110,160,255,0.28)}
+.b{flex:none;width:${66 * u}px;height:${66 * u}px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:${40 * u}px;font-weight:800;color:#07142f;
+background:linear-gradient(135deg,#a8dcff,#5b8cff);box-shadow:0 0 ${18 * u}px rgba(120,170,255,0.8)}
+.t{font-size:${44 * u}px;font-weight:700;color:#fff;letter-spacing:-0.01em;white-space:nowrap;text-shadow:0 ${2 * u}px ${10 * u}px rgba(0,0,0,0.55)}
+.key{display:inline-block;margin-left:${14 * u}px;padding:0 ${14 * u}px;border-radius:${12 * u}px;border:${2 * u}px solid rgba(255,255,255,0.75);background:rgba(255,255,255,0.14);font-weight:800;line-height:1.25;vertical-align:1px}`
+  const small = `#p{font-size:${30 * u}px;font-weight:500;color:rgba(225,233,250,0.9);letter-spacing:${0.5 * u}px;white-space:nowrap;text-shadow:0 ${2 * u}px ${12 * u}px rgba(0,0,0,0.85),0 0 ${3 * u}px rgba(0,0,0,0.6)}`
+  const html = `<!doctype html><meta charset="utf-8">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>html,body{margin:0;width:${W}px;height:${H}px;background:transparent;overflow:hidden;font-family:Pretendard,'Malgun Gothic',sans-serif}
+#w{position:absolute;left:0;right:0;top:${Math.round(H * (c.big ? 0.115 : 0.07))}px;display:flex;justify-content:center}${c.big ? big : small}</style>
+<div id="w"><div id="p">${c.big ? `<div class="b">${m ? m[1] : ''}</div><div class="t">${body}</div>` : body}</div></div>`
+  await page.setContent(html, { waitUntil: 'networkidle' })
+  await page.evaluate(() => document.fonts.ready)
+  // 폭이 모자라면 통째로 줄인다
+  await page.evaluate((w) => { const p = document.getElementById('p'); const r = p.getBoundingClientRect(); if (r.width > w) p.style.zoom = String(w / r.width) }, W - 90)
+  writeFileSync(file, await page.screenshot({ omitBackground: true }))
 }
 
 /** 장면 하나 → 30fps mp4 (길이 = 큐 길이 + 겹침) */
@@ -674,6 +749,7 @@ async function main() {
       clips.push({ file, cue: e.cue, fade: overlap(e), trans: e.trans ?? 'fade', seconds: duration(file), sfx: sfxOf(e) })
       console.log(`  ${e.cue.padEnd(6)} ${(e.take ?? e.card).padEnd(16)} ${clips.at(-1).seconds.toFixed(2)}초`)
     }
+    for (const [i, c] of CAPTIONS.entries()) { c.file = resolve(WORK, `caption-${String(i)}.png`); await captionPng(page, c, c.file) }
   } finally {
     await browser.close()
   }
@@ -687,18 +763,30 @@ async function main() {
   const stamps = [`${clips[0].cue} 0.00`]
   for (let i = 1; i < clips.length; i++) {
     const f = clips[i - 1].fade
-    const out = i === clips.length - 1 ? '[v]' : `[x${String(i)}]`
+    const out = i === clips.length - 1 ? (CAPTIONS.length ? '[vc]' : '[v]') : `[x${String(i)}]`
     if (clips[i - 1].trans === 'cut' && f === 0) parts.push(`${last}[n${String(i)}]concat=n=2:v=1:a=0${out}`)
     else parts.push(`${last}[n${String(i)}]xfade=transition=${clips[i - 1].trans === 'cut' ? 'fade' : clips[i - 1].trans}:duration=${f.toFixed(4)}:offset=${(at - f).toFixed(4)}${out}`)
     stamps.push(`${clips[i].cue} ${(at - f).toFixed(2)}`)
     at += clips[i].seconds - f
     last = out
   }
+  const cueAt = Object.fromEntries(stamps.map((l) => { const [c, t] = l.split(' '); return [c, Number(t)] }))
+  // 자막 — 큐 `from`이 서는 때부터 `until`이 서는 때까지. 0.3초에 걸쳐 떠오르고 0.35초에 걸쳐 진다
+  let cur = '[vc]'
+  CAPTIONS.forEach((c, k) => {
+    for (const q of [c.from, c.until]) if (!(q in cueAt)) throw new Error(`자막 「${c.text}」: 큐 ${q}가 편집에 없다`)
+    const t0 = cueAt[c.from]
+    const t1 = cueAt[c.until]
+    parts.push(`[${String(clips.length + k)}:v]format=rgba,fade=t=in:st=${t0.toFixed(3)}:d=0.3:alpha=1,fade=t=out:st=${(t1 - 0.35).toFixed(3)}:d=0.35:alpha=1[cp${String(k)}]`)
+    const next = k === CAPTIONS.length - 1 ? '[v]' : `[o${String(k)}]`
+    parts.push(`${cur}[cp${String(k)}]overlay=0:0:format=auto,format=yuv420p${next}`)
+    cur = next
+  })
+  const capInputs = CAPTIONS.flatMap((c) => ['-loop', '1', '-framerate', String(FPS), '-t', (at + 1).toFixed(2), '-i', c.file])
   const final = resolve(OUT, `${SHORT ? 'radiant-reveal-short' : 'radiant-reveal'}${EDIT_NAME ? `-${EDIT_NAME}` : ''}.mp4`)
   const silent = SCORE.length ? resolve(WORK, 'video.mp4') : final
-  run('ffmpeg', ['-y', '-v', 'error', ...inputs, '-filter_complex', parts.join(';'), '-map', '[v]', ...enc,
+  run('ffmpeg', ['-y', '-v', 'error', ...inputs, ...capInputs, '-filter_complex', parts.join(';'), '-map', '[v]', '-t', at.toFixed(3), ...enc,
     '-movflags', '+faststart', silent])
-  const cueAt = Object.fromEntries(stamps.map((l) => { const [c, t] = l.split(' '); return [c, Number(t)] }))
   const hits = clips.flatMap((c) => c.sfx.map((h) => ({ ...h, t: cueAt[c.cue] + h.at }))).filter((h) => h.t >= 0)
   if (SCORE.length) mixScore(silent, final, cueAt, hits)
   writeFileSync(resolve(WORK, 'stamps.txt'), stamps.join('\n'))
