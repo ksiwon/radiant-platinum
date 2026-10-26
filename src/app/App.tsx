@@ -84,6 +84,13 @@ export function App() {
   }, [phase])
 
   const rendererPhase = useRendererStore((s) => s.phase)
+  // 그래픽 오류 창을 **첫 live 뒤로는 계속 달아 둔다** (정상일 때는 스스로 null). 오류가 난 뒤에야 지연 청크를 달면
+  // Suspense가 내용을 300ms 묶어 두는데(React 19 `FALLBACK_THROTTLE_MS`) 짧은 손실 복구는 0.3초 안에 끝나 창이 한 번도
+  // 안 떴다 (2026-10-26 맥 gpu:loss 04 · lost→recovering→live 0.28초). 첫 화면 예산은 그대로다 — 청크는 첫 프레임 뒤에 온다
+  const [troubleArmed, setTroubleArmed] = useState(false)
+  useEffect(() => {
+    if (rendererPhase === 'live') setTroubleArmed(true)
+  }, [rendererPhase])
   useEffect(() => {
     if (rendererPhase !== 'lost') return
     useRendererStore.getState().retry(true)
@@ -162,8 +169,8 @@ export function App() {
         **3D가 못 서는 상황에서도 뜬다** — 여기가 뜨는 상황이 곧 그것이다.
         정상일 때는 스스로 null을 낸다
       */}
-      {/* 정상일 때(`RendererTrouble`이 null을 내는 세 단계)는 청크를 부르지 않는다 */}
-      {rendererPhase !== 'live' && rendererPhase !== 'ready' && rendererPhase !== 'initializing' && (
+      {/* 첫 live 전에는 오류 단계에서만 청크를 부른다 — 첫 화면에 안 얹는다 */}
+      {(troubleArmed || (rendererPhase !== 'live' && rendererPhase !== 'ready' && rendererPhase !== 'initializing')) && (
         <ChunkBoundary where="그래픽 오류 창">
           <Suspense fallback={null}><RendererTrouble /></Suspense>
         </ChunkBoundary>
