@@ -36,9 +36,12 @@ export type Language = 0 | 1 | 2
  */
 export const LANGUAGES: readonly DataLocale[] = ['ko', 'en', 'ja']
 
-/** 언어 이름은 그 언어로 적는다. 어느 화면에서나 같다 */
+/**
+ * 언어 이름은 그 언어로 적는다. 어느 화면에서나 같다. 영어 · 일본어는 **Beta**다(사용자 · 2026-10-26) — 롬에 찍힌 글은 그 언어로 나오지만
+ * 우리 쪽 글(배틀 문장 조립 · 크레딧 · 옵션 · 요약 · 메일 · 도감 낱말 표 일부)은 아직 한국어가 남아 있다
+ */
 export const LANGUAGE_NAMES: Readonly<Record<DataLocale, string>> = {
-  ko: '한국어', en: 'English', ja: '日本語',
+  ko: '한국어', en: 'English (Beta)', ja: '日本語 (Beta)',
 }
 
 /**

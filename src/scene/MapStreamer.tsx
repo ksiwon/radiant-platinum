@@ -13,11 +13,11 @@ import { BackSide, Color, DirectionalLight, Fog, Mesh, PointLight, Vector3 } fro
 import { activeZone } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
 import {
-  disarmWarp, isOutdoors, mapById, scriptBridge, standableSpot, walkOutOfDoor, world,
+  disarmWarp, isOutdoors, mapById, scriptBridge, standableSpot, walkOutOfDoor, warpsOf, world,
 } from '../engine/map/world'
 import { coverScreen, fadeDone, resetFade, startFade } from '../engine/script/fade'
 import { restoreRetry } from '../state/restoreStore'
-import { restoreGroundY, startRestore } from './restoreWorld'
+import { legacyGymSpot, restoreGroundY, startRestore } from './restoreWorld'
 import { beginAsyncPipelines, settleAsyncPipelines } from './asyncPipelines'
 import { bdspDegraded, bdspShowing, bdspWanted, terrainLanded } from './terrainMark'
 import { bdspVersion, expectBdsp, subscribeBdsp } from './bdspReady'
@@ -695,7 +695,10 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       load: gridFor,
       settle: (next) => {
         if (facing !== null) worldState.player.facing = facing
-        enter(next, at.map, at.x, at.z, at.matrix, restoreGroundY(next, at, distortion))
+        // 장치 값 없이 체육관 안에서 쓴 옛 리포트(판 35 이하)는 갇힐 수 있다 — 진짜 이어하기일 때만 입구로 세운다 (`legacyGymSpot` · REPAIR §78)
+        const rescue = back === null ? legacyGymSpot(next, at.map, useSaveStore.getState().mapFeatures, warpsOf(at.map)) : null
+        if (rescue !== null) enter(next, at.map, rescue.x, rescue.z, at.matrix)
+        else enter(next, at.map, at.x, at.z, at.matrix, restoreGroundY(next, at, distortion))
         // 물 위에서 쓴 리포트는 물 위에서 · 자전거면 자전거 곡까지 (`bike.ride`가 곡을 갈아 끼운다)
         if (avatar === 2) worldState.player.surfing = true
         else if (avatar === 1) fieldScripts.services.bike?.ride(true)

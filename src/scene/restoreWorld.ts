@@ -9,6 +9,11 @@
 // (격자·플레이어·존 이름·NPC를 한 번에 맞춘다), 이 파일이 쥐는 것은 **누가
 // 그것을 부를 자격이 있는가**뿐이다.
 import type { MapGrid } from '../engine/map/grid'
+import { walkOutOfDoor } from '../engine/map/world'
+import { CANALAVE_GYM_MAP } from '../engine/world/canalaveGym'
+import { PASTORIA_GYM_MAP } from '../engine/world/pastoriaGym'
+import { SUNYSHORE_GYM_MAPS } from '../engine/world/sunyshoreGym'
+import { VEILSTONE_GYM_MAP } from '../engine/world/veilstoneGym'
 import { useRestoreStore } from '../state/restoreStore'
 
 /** 저장이 가리키는 자리. `state/save/schema`의 `position`과 같은 모양이다 */
@@ -133,4 +138,30 @@ export function restoreGroundY(
   if (at.y === null) return undefined
   if (distortion) return at.y
   return grid.heightAtWorld(at.x, at.z, at.y) ?? undefined
+}
+
+/** 장치가 있는 체육관 방 — 들판(물높이) · 운하(판) · 장막(샌드백) · 물가(톱니 · 방 셋) */
+const DEVICE_GYM_MAPS: ReadonlySet<number> = new Set([PASTORIA_GYM_MAP, CANALAVE_GYM_MAP, VEILSTONE_GYM_MAP, ...SUNYSHORE_GYM_MAPS])
+
+/**
+ * 장치 값 없이 체육관 안에서 쓴 **옛 리포트**(판 35 이하 · REPAIR §78)의 구제 — 서야 할 자리. 해당이 없으면 `null`.
+ *
+ * 그때는 장치 상태를 세이브에 적지 않아서, 이어하면 장치가 처음 값으로 돌아가는데 사람은 쓴 자리에 선다. 들판 체육관에서
+ * 맥실러 옆(13,5)에 쓴 리포트가 그랬다 — 물이 초록으로 돌아가 그 칸이 닿는 길에 단추가 없고, 체육관 안이라 탈출로프도 안
+ * 된다(사람도 똑같이 갇힌다). 판 36부터는 체육관에 들어서는 순간 장치 값을 적으므로(`keepFeatures`) 이 리포트들은
+ * 「장치 체육관인데 그 맵의 장치 값이 없다」로 가려진다.
+ *
+ * ⚠️ **좌표를 지어내지 않는다.** 그 방의 **첫 워프(입구 문)**에 세운다 — 확인 지점이 체육관 입구로 쓰는 자리와 같고
+ * (`warp` 0), 문 타일은 통행 불가라 워프 도착처럼 한 칸 남쪽으로 걸어 나온다(`walkOutOfDoor`). 입구는 장치가 처음 값일 때
+ * 늘 닿는 자리다. 체육관 안 진행(쓰러뜨린 트레이너)은 깃발에 있어서 잃지 않는다
+ */
+export function legacyGymSpot(
+  grid: Parameters<typeof walkOutOfDoor>[0], map: number, saved: { map: number } | null,
+  warps: readonly { x: number; z: number }[],
+): { x: number; z: number } | null {
+  if (!DEVICE_GYM_MAPS.has(map)) return null
+  if (saved !== null && saved.map === map) return null
+  const door = warps[0]
+  if (!door) return null
+  return walkOutOfDoor(grid, door.x + 0.5, door.z + 0.5)
 }

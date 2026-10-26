@@ -9,7 +9,7 @@
 // 전역으로 껐다 — 앞 요청의 늦은 응답이 뒤 요청의 잠금을 푸는 자리였다.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MapGrid } from '../engine/map/grid'
-import { restoreGroundY, startRestore, type RestoreTarget } from './restoreWorld'
+import { legacyGymSpot, restoreGroundY, startRestore, type RestoreTarget } from './restoreWorld'
 import { useRestoreStore } from '../state/restoreStore'
 import { worldState } from '../state/worldState'
 
@@ -308,5 +308,38 @@ describe('설 높이 (REPAIR §79)', () => {
 
   it('옛 리포트(높이 없음)는 들어서는 쪽에 맡긴다', () => {
     expect(restoreGroundY(LAYERED, at(null), false)).toBeUndefined()
+  })
+})
+
+describe('옛 리포트의 체육관 구제 (REPAIR §78)', () => {
+  /** (13,5) 문 — 문 타일은 막혀 있고 남쪽은 열려 있다 */
+  const GRID = { behavior: (x: number, z: number) => (x === 7 && z === 12 ? 0x69 : 0), isBlocked: (x: number, z: number) => x === 7 && z === 12 }
+  const WARPS = [{ x: 7, z: 12 }]
+
+  it('장치 체육관이고 그 방의 장치 값이 없으면 입구 문 앞에 세운다', () => {
+    const spot = legacyGymSpot(GRID, 122, null, WARPS)
+    expect(spot).not.toBeNull()
+    expect(Math.floor(spot!.x)).toBe(7)
+    expect(spot!.z).toBeGreaterThanOrEqual(12.5)
+  })
+
+  it('다른 방의 장치 값만 있어도 구제한다', () => {
+    expect(legacyGymSpot(GRID, 122, { map: 35 }, WARPS)).not.toBeNull()
+  })
+
+  it('이 방의 장치 값이 있으면(판 36 이후) 건드리지 않는다', () => {
+    expect(legacyGymSpot(GRID, 122, { map: 122 }, WARPS)).toBeNull()
+  })
+
+  it('장치가 없는 맵이면 건드리지 않는다', () => {
+    expect(legacyGymSpot(GRID, 411, null, WARPS)).toBeNull()
+  })
+
+  it('워프가 없으면 건드리지 않는다 — 좌표를 지어내지 않는다', () => {
+    expect(legacyGymSpot(GRID, 122, null, [])).toBeNull()
+  })
+
+  it('장치 체육관 맵 다섯(들판 · 운하 · 장막 · 물가 셋)이 다 걸린다', () => {
+    for (const map of [122, 35, 133, 154, 155, 156]) expect(legacyGymSpot(GRID, map, null, WARPS)).not.toBeNull()
   })
 })

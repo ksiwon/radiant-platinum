@@ -86,7 +86,7 @@ const FAILURES_SHOWN = 6
 const DIAG_KEPT = 200
 
 /** 설치될 언어의 이름. `optionsStore`를 안 끌어온다 — 첫 화면 청크에 얹힌다 */
-const LOCALE_NAME: Readonly<Record<string, string>> = { ko: '한국어', en: '영어', ja: '일본어' }
+const LOCALE_NAME: Readonly<Record<string, string>> = { ko: '한국어', en: '영어(Beta)', ja: '일본어(Beta)' }
 
 interface Capability {
   ok: boolean
