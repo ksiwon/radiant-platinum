@@ -1258,8 +1258,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
             coverScreen(COLOR_BLACK)
             /**
              * ⚠️ **새 맵의 파이프라인을 덮개 밑에서 굽고 나서 밝힌다** (REPAIR §8). 곧바로 밝히면 지형이 서는 첫 프레임에 재질
-             * 서른 몇의 파이프라인이 동기로 서면서 GPU 프로세스가 수 초를 멎는다. 그동안은 전이(`world.pending`)를 쥐고 있어
-             * 발도 안 떨어진다 — 원작의 검은 6프레임이 굽는 동안만큼 길어진다
+             * 서른 몇의 파이프라인이 동기로 서면서 GPU 프로세스가 수 초를 멎는다. 그동안은 전이(`world.pending`)를 쥐고 있고,
+             * 쥔 동안 발을 묶는 것은 `script/field`의 `scriptSystem`이다 — 원작의 검은 6프레임이 굽는 동안만큼 길어진다
              */
             beginAsyncPipelines()
             return settleAsyncPipelines(terrainLanded).then(() => {

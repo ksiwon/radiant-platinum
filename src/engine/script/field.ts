@@ -1124,7 +1124,11 @@ export const scriptSystem = {
     // ⚠️ **장면을 걸어 본 뒤에** 본다. 이번 스텝에 걸렸으면 아래 이동 시스템이 이 스텝에 한 걸음 내딛지 않게 같이 지운다
     const held = taskHeld()
     tryStartScripts()
-    if (held || fieldScripts.ctx !== null || holdForFrameScene()) {
+    // ⚠️ **맵을 갈아 끼우는 중(`mapWorld.pending`)에도 묶는다.** 원작은 맵 교체가 필드 태스크라 그동안 필드 입력을 안 받는다. 우리는 워프 뒤
+    // 새 맵의 파이프라인을 굽고 밝힐 때까지 전이를 쥐는데(`scene/MapStreamer`), 그동안 발이 풀려 있었다 — 굽기가 1~2초면 안 드러나다가 기계가 몹시
+    // 붐빈 판(최종 연쇄 ad38c15f 칸 1)에서 전이가 60초를 쥐는 동안 주인공이 떡잎마을을 걸어 라이벌 집 문에 닿았고, 전이 중이라 문이 안 열려
+    // 라이벌을 못 만났다. 같은 틈에 `OnFrame` 장면도 미뤄진다(`tryStartScripts`의 `warp`) — 모래시티 연구소를 나온 뒤 7 · 15칸을 먼저 걸은 판이 그것이다
+    if (held || mapWorld.pending !== null || fieldScripts.ctx !== null || holdForFrameScene()) {
       worldState.input.move.set(0, 0)
       worldState.player.velocity.set(0, 0, 0)
     }

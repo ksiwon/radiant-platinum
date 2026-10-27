@@ -108,6 +108,22 @@ maybe('맵 글을 기다리는 장면', () => {
     warn.mockRestore()
   })
 
+  it('맵을 갈아 끼우는 중(전이)에는 발이 묶인다 — 전이가 끝나면 그 프레임에 장면이 걸린다', async () => {
+    mapWorld.mapId = PLAYER_HOUSE_1F
+    enterMap(PLAYER_HOUSE_1F)
+    for (let i = 0; i < 5; i++) await new Promise((done) => { setImmediate(done) })
+    mapWorld.pending = { to: PLAYER_HOUSE_1F, x: 0, z: 0 } as unknown as typeof mapWorld.pending
+    for (let i = 0; i < 30; i++) {
+      worldState.input.move.set(1, 0)
+      scriptSystem.fixedUpdate()
+      expect(worldState.input.move.length(), '전이 중에 발이 풀렸다').toBe(0)
+      expect(scriptBusy(), '전이 중에 장면이 걸렸다').toBe(false)
+    }
+    mapWorld.pending = null
+    scriptSystem.fixedUpdate()
+    expect(scriptBusy()).toBe(true)
+  })
+
   it('걸릴 장면이 없으면 글을 기다리는 동안에도 걷는다', () => {
     // 표의 변수를 이미 지난 값으로 — 집 1층 `OnFrame` 표가 아무것도 안 고른다
     for (const row of initScriptsOf(PLAYER_HOUSE_1F)!.frame) fieldScripts.vars.set(row.left, 99)
