@@ -63,6 +63,7 @@ import { ALWAYS_ASYNC } from './asyncPipelines'
 import { clothGeometry } from './cloth'
 import { clothMaterial } from './clothMaterial'
 import type { PlannedCloth } from './visual/chunkPlan'
+import { clipToBoxes, dsTerrainBoxes, landTouches, type DsBox } from './dsOverBdsp'
 
 /** 한 청크가 몇 타일인가. 모델이 그 절반씩 양쪽으로 뻗는다 */
 const CHUNK_TILES = 32
@@ -157,6 +158,19 @@ function TerrainMesh({ geometry, materials, name = '지형' }: {
       )}
     </>
   )
+}
+
+/**
+ * BDSP가 그 자리를 안 지은 상자에서만 세우는 원작 지형 (`dsOverBdsp`). 상자 안 · BDSP 땅보다 높은 삼각형만 남긴 사본이라 배치와 같이 버린다
+ */
+function KeptTerrain({ land, boxes }: { land: Land, boxes: readonly DsBox[] }) {
+  const clipped = useMemo(
+    () => clipToBoxes(land.merged ?? land.geometry, land.x, land.z, boxes),
+    [land, boxes],
+  )
+  useEffect(() => () => { clipped?.dispose() }, [clipped])
+  if (clipped === null) return null
+  return <TerrainMesh geometry={clipped} materials={land.materials} name="원작 지형 (BDSP 위)" />
 }
 
 const lookDir = new Vector3()
@@ -1712,6 +1726,8 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet, ds
 
   /** BDSP가 쥔 자리에서도 원작에서 세울 것 (`keptOverBdsp`). 이 배치의 맵으로 고른다 — 땅과 같은 커밋이다 */
   const kept = dsHidden ? keptOverBdsp(mapById(batch.mapId)?.matrix ?? -1) : null
+  /** BDSP가 안 지은 상자 — 그 안만 원작 지형을 세운다 (`dsOverBdsp`). 이 배치의 행렬로 고른다 */
+  const dsBoxes = dsHidden ? dsTerrainBoxes(batch.matrix) : null
   const shownProps = dsHidden ? props.filter((p) => kept?.models.has(p.index) === true) : props
 
   return (
@@ -1742,6 +1758,7 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet, ds
             ⚠️ 합치면 **메운 바닥도 그림자를 던진다.** 원래는 받기만 했다
           */}
           {!dsHidden && <TerrainMesh geometry={p.merged ?? p.geometry} materials={p.materials} />}
+          {dsBoxes !== null && landTouches(p.x, p.z, dsBoxes) && <KeptTerrain land={p} boxes={dsBoxes} />}
           {/*
             원작이 안 만든 실내 앞벽. 카메라가 도는 화면에서는 그 자리가
             통째로 검게 뚫려 보인다 (`roomWalls.ts`)

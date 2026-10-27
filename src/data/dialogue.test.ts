@@ -46,8 +46,9 @@ maybe('대사', () => {
     // 스크립트가 이 뱅크를 안 가리킨다) · 기술을 쓰는 줄 1,404개(0) ·
     // 랭크 이름 아홉(551) · 상태 이름 일곱(219 — 멘탈허브 줄의 빈칸) · 배틀 안 가방 49줄(2)과 파티 96줄(3) —
     // 그 둘도 배틀이 제 뱅크를 직접 여는 자리다 (PARITY §2.26) · 슬롯머신의 말 셋(544 — PARITY §7.6) · 기술 되살리기(645 — 응용 프로그램이 직접 연다) ·
-    // 볼 씰 이름 둘(12 단수 · 13 복수)과 8 · 콘테스트 배경 이름(388) — `BufferBallSealName(Plural)` · `BufferContestBackdropName`이 읽는다
-    expect(index.banks.length).toBe(512)
+    // 볼 씰 이름 둘(12 단수 · 13 복수)과 8 · 콘테스트 배경 이름(388) — `BufferBallSealName(Plural)` · `BufferContestBackdropName`이 읽는다 ·
+    // 리본 이름(535) — `BufferRibbonName`이 읽는다
+    expect(index.banks.length).toBe(513)
     expect(index.locales).toEqual(['en', 'ko', 'ja'])
     // 번호가 오름차순이고 겹치지 않는다
     const nums = index.banks.map((b) => b.index)
