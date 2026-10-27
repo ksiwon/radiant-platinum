@@ -635,6 +635,11 @@ export interface FieldServices {
     type: (type: number) => string
     /** 성격 25 (`TEXT_BANK_NATURE_NAMES`) */
     nature: (nature: number) => string
+    /**
+     * 리본 이름 80 (`TEXT_BANK_RIBBON_NAMES`). 리본 번호가 곧 줄 번호다 — `ribbon.c`의 `sRibbonDataTable` 80개가 전부
+     * `nameID` = 리본 번호다 (디컴프로 맞대 봤다)
+     */
+    ribbon?: (ribbon: number) => string
     /** 트레이너 이름 928 (`TEXT_BANK_NPC_TRAINER_NAMES`) */
     trainer: (id: number) => string
     /** 트레이너 분류 105 (`TEXT_BANK_TRAINER_CLASS_NAMES`) */

@@ -98,6 +98,8 @@ export const UI_BANK = {
   pcHallOfFame: 352,
   /** `TEXT_BANK_NATURE_NAMES` — 성격 25 (`StringTemplate_SetNatureName`) */
   natureNames: 202,
+  /** `TEXT_BANK_RIBBON_NAMES` — 리본 80 (`StringTemplate_SetRibbonName`). 물가시티 북동 집 줄리아가 요일 리본 이름을 넣는다 */
+  ribbonNames: 535,
   /**
    * `TEXT_BANK_CONTEST_ACCESSORY_NAMES` — 장식 100가지 (PARITY §7.16).
    *

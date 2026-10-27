@@ -355,10 +355,12 @@ on('OpenMessage', (ctx) => {
 })
 
 /**
- * ⚠️ **읽기 전에 닫지 않는다.** 원작 `Message`는 끝에서 안 기다리므로(`world.printed`) `` 없이 끝난 글 바로 뒤의
+ * ⚠️ **읽기 전에 닫지 않는다.** 원작 `Message`는 끝에서 안 기다리므로(`world.printed`) `
+` 없이 끝난 글 바로 뒤의
  * `CloseMessage`는 원작에서도 곧바로 닫는다 — 다만 원작은 글이 한 자씩 찍히는 동안 보이고, 우리는 쪽을 한 번에
  * 올려서 한 프레임도 안 보인다. 그래서 끝 기다림이 아직 걸려 있으면 그 누름을 받고 닫는다. 원작 대본에서
- * 그런 자리는 몇 곳뿐이다 — `CloseMessage` 앞 글 560 중 557이 ``로 끝나 이미 누름을 받았다
+ * 그런 자리는 몇 곳뿐이다 — `CloseMessage` 앞 글 560 중 557이 `
+`로 끝나 이미 누름을 받았다
  */
 on('CloseMessage', (ctx) => {
   if (ctx.host.world.printer?.waiting === 'end') {
@@ -6122,15 +6124,16 @@ on('SetRibbonName', (ctx) => {
 })
 
 /**
- * 리본 이름을 칸에 채운다 (`ScrCmd_BufferRibbonName`).
+ * 리본 이름을 칸에 채운다 (`ScrCmd_BufferRibbonName` → `StringTemplate_SetRibbonName`).
  *
- * ⚠️ **빈 글을 적는다.** 이름표가 없으니 지어내지 않고, 대신 앞의 명령이 그
- * 칸에 넣어 둔 **남의 이름**이 그대로 뜨는 것을 막는다
+ * 리본은 저장하지 않지만 **이름은 롬에 있다** (`TEXT_BANK_RIBBON_NAMES`). 물가시티 북동 집 줄리아가 요일 리본을 줄 때
+ * 이 칸을 대사 두 쪽에 넣는다 — 빈 글을 적던 동안 「…을(를) 받았다」로 이름 없이 떴다 (2026-10-27 점검).
+ * 이름표가 아직 안 섰으면 빈 글이다 — 앞의 명령이 그 칸에 넣어 둔 **남의 이름**이 뜨는 것은 막는다
  */
 on('BufferRibbonName', (ctx) => {
   const slot = ctx.readByte()
-  ctx.readVar()
-  ctx.host.world.slots.set(slot, '')
+  const ribbon = ctx.readVar()
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.ribbon?.(ribbon) ?? '')
   return false
 })
 

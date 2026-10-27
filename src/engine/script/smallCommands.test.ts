@@ -64,6 +64,23 @@ maybe('명령 하나씩', () => {
     return vars
   }
 
+  it('BufferRibbonName — 롬의 리본 이름을 칸에 넣는다 (줄리아의 요일 리본) · 이름표가 없으면 빈 글', () => {
+    const slotOf = (labels: FieldServices['labels']): string | undefined => {
+      const world = new FieldWorld({
+        vars: new VarStore(), input: () => ({ pressed: true, held: true }), movements: meta.movements,
+        services: { party: stubParty, labels, fieldMoves: stubFieldMoves, trainerInfo: stubTrainerInfo },
+      })
+      world.slots.set(3, '남의 이름')
+      const ctx = new ScriptContext({ vars: new VarStore(), world, commands: map }, bytes('BufferRibbonName', [[1, 3], [2, 65]]), 0)
+      ctx.start(0)
+      for (let f = 0; f < 10 && ctx.step(1000); f++) { /* 한 프레임씩 */ }
+      return world.slots.get(3)
+    }
+    // 65 = RIBBON_SMILE — 리본 번호가 곧 이름 뱅크의 줄 번호다
+    expect(slotOf({ ...stubLabels, ribbon: (r) => (r === 65 ? '방글방글리본' : '?') })).toBe('방글방글리본')
+    expect(slotOf(stubLabels)).toBe('')
+  })
+
   it('IsItemTMHM — 기술머신01(328)~비전머신08(427)만 참', () => {
     expect(run('IsItemTMHM', [[2, 327], [2, DEST]]).get(DEST)).toBe(0)
     expect(run('IsItemTMHM', [[2, 328], [2, DEST]]).get(DEST)).toBe(1)

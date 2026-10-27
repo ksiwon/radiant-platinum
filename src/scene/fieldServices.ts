@@ -298,6 +298,8 @@ let marts: MartTable | null = null
 let typeNames: readonly string[] = []
 /** 성격 25 (`TEXT_BANK_NATURE_NAMES`) */
 let natureNames: readonly string[] = []
+/** 리본 80 (`TEXT_BANK_RIBBON_NAMES`). 리본 번호가 곧 줄 번호다 */
+let ribbonNames: readonly string[] = []
 /** 나무열매 64 (`TEXT_BANK_BERRY_NAMES`). 차례가 도구 번호 − `FIRST_BERRY_ITEM`이다 */
 let berryNames: readonly string[] = []
 let accessoryNames: readonly string[] = []
@@ -717,6 +719,9 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   void loadDialogueBank(locale, UI_BANK.natureNames)
     .then((bank) => { natureNames = bank })
     .catch(() => { /* 성격 이름만 빈다 */ })
+  void loadDialogueBank(locale, UI_BANK.ribbonNames)
+    .then((bank) => { ribbonNames = bank })
+    .catch(() => { /* 리본 이름만 빈다 */ })
   void loadDialogueBank(locale, UI_BANK.berryNames)
     .then((bank) => { berryNames = bank })
     .catch(() => { /* 열매 이름만 빈다 */ })
@@ -1257,6 +1262,7 @@ const services: FieldServices = {
     species: (species) => speciesNames[species] ?? '',
     type: (type) => typeNames[type] ?? '',
     nature: (nature) => natureNames[nature] ?? '',
+    ribbon: (ribbon) => ribbonNames[ribbon] ?? '',
     trainer: (id) => trainerNames[id] ?? '',
     trainerClass: (c) => trainerClassNames[c] ?? '',
     map: (mapHeaderId) => locationNames[mapById(mapHeaderId)?.label ?? 0] ?? '',

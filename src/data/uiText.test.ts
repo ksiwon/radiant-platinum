@@ -62,6 +62,7 @@ const NAMED: Record<keyof typeof UI_BANK, string> = {
   hallOfFame: 'hall_of_fame',
   pcHallOfFame: 'pc_hall_of_fame',
   natureNames: 'nature_names',
+  ribbonNames: 'ribbon_names',
   accessoryNames: 'contest_accessory_names',
   itemNamesWithArticles: 'item_names_with_articles',
   accessoryNamesWithArticles: 'contest_accessory_names_with_articles',

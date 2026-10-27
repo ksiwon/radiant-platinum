@@ -324,6 +324,9 @@ const EXTRA_BANKS = [
   // ⚠️ **브라우저 변환기는 이 뱅크를 이미 싣고 있었다** (`import/platinum/text.ts`가 뱅크를 통째로 굽는다).
   // 개발 서버에서만 빈 뱅크였다
   'TEXT_BANK_MOVE_REMINDER',
+  // 리본 이름 80 (`StringTemplate_SetRibbonName`) — 물가시티 북동 집 줄리아의 `BufferRibbonName`이 읽는다. 스크립트가 뱅크를
+  // 안 가리키고 글 틀이 직접 연다. 브라우저 변환기는 이미 싣고 있었다
+  'TEXT_BANK_RIBBON_NAMES',
 ]
 
 function main() {
