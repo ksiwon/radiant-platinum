@@ -894,8 +894,10 @@ function devObserver(page) {
     sunyshoreState: () => read('물가 체육관 상태를 못 읽었다', async () => {
       const sc = await import('/src/scene/sunyshoreGym.ts')
       const st = await import('/src/state/worldState.ts')
+      const W = await import('/src/engine/map/world.ts')
       const p = st.worldState.player.position
-      return { state: sc.sunyshoreState(), busy: sc.sunyshoreBusy(), x: Math.floor(p.x), z: Math.floor(p.z) }
+      // `warping` — 방 문을 밟고 맵을 갈아 끼우는 중이다. 그동안의 맵 · 칸 · 회전 상태는 아직 떠나는 방의 것이다
+      return { state: sc.sunyshoreState(), busy: sc.sunyshoreBusy(), warping: W.world.pending !== null, map: W.world.mapId, x: Math.floor(p.x), z: Math.floor(p.z) }
     }),
     /**
      * **선단 체육관 — 얼음 풀이** (`gymSolve67.solveSnowpoint`). 얼음 칸·높이·벽·눈덩이·

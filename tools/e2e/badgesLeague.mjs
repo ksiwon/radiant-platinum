@@ -168,10 +168,28 @@ export async function gearClimb(api, ctx, { rounds = 40, goals = GEAR_GOAL, unti
    */
   const refused = new Map()
   const ban = []
-  for (let i = 0; i < rounds && api.left() > 0; i++) {
+  /**
+   * ⚠️ **바퀴는 방마다 센다.** 셋이 40바퀴 하나를 나눠 쓰면 배틀 하나(되풀이 하나)가 늘어난 판에서 마지막 방 문턱에서 끝나, 거꾸로는 못 건너는
+   * 톱니를 입구로 되돌아 나가려다 엉켰다 — 실측(2026-10-28 최종 연쇄 칸 13 · 7f7c8441): 둘째 방에서 고개를 돌리는 트레이너에게 한 번 더 걸려
+   * 셋째 방(156)에 든 바퀴에 예산이 끝났다
+   */
+  // 방 사이를 오가며 바퀴를 되살리지 않게 전체는 방 수만큼으로 묶는다
+  let roomNow = -1
+  for (let i = 0, all = 0; i < rounds && all < rounds * GEAR_MAPS.length && api.left() > 0; i++, all++) {
+    /**
+     * ⚠️ **문을 밟은 채 맵이 바뀌는 중이면 끝날 때까지 기다린다.** 제품이 전이 중에 발을 묶은 뒤(7f7c8441) 걸음이 문 칸에서 바로 멎어,
+     * 떠나는 방의 문 칸 · 다음 방의 회전 상태 0을 읽고 「길이 없다」로 끝냈다 — 실측(2026-10-28 연쇄 칸 13 재실행): 첫 방 문 (8,2)에서
+     * 그렇게 끝나 155에 든 주인공을 입구로 되돌려 걸었다
+     */
+    for (const cap = Date.now() + 90_000; Date.now() < cap;) {
+      const w = await api.sunyshoreState()
+      if (w === null || w.warping !== true) break
+      await new Promise((r) => { setTimeout(r, 100) })
+    }
     const here = await api.now()
     const room = GEAR_MAPS.indexOf(here.map)
     if (room < 0) { out.why = `체육관 밖이다 (맵 ${String(here.map)})`; break }
+    if (room !== roomNow) { roomNow = room; i = 0 }
     const goal = goals[room]
     if (room === until && goal.some(([x, z]) => x === here.x && z === here.z)) {
       out.ok = true
