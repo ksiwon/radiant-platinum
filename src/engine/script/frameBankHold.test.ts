@@ -73,27 +73,39 @@ maybe('맵 글을 기다리는 장면', () => {
     expect(fieldScripts.world?.scriptID).toBe(ON_FRAME_RIVAL_LEFT)
   })
 
-  it('글이 아닌 까닭(배틀 화면)으로 미뤄도 발이 묶이고, 10초(600스텝)가 지나면 풀린다', async () => {
+  it('배틀 화면이 떠 있는 동안은 기다림으로 안 센다 — 배틀이 길어도 경고가 없고, 내려가면 그때 장면이 걸린다', async () => {
     let battle = true
     fieldScripts.services = { ...allDoneServices, battleUp: () => battle }
     mapWorld.mapId = PLAYER_HOUSE_1F
     enterMap(PLAYER_HOUSE_1F)
     for (let i = 0; i < 5; i++) await new Promise((done) => { setImmediate(done) })
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    for (let i = 0; i < 600; i++) {
-      worldState.input.move.set(0, 1)
-      scriptSystem.fixedUpdate()
-      expect(worldState.input.move.length(), `${String(i)}번째 스텝에 발이 풀렸다`).toBe(0)
-    }
-    worldState.input.move.set(0, 1)
-    scriptSystem.fixedUpdate()
-    expect(worldState.input.move.length(), '한도가 지나도 묶였다').toBe(1)
-    expect(warn).toHaveBeenCalledOnce()
+    for (let i = 0; i < 700; i++) scriptSystem.fixedUpdate()
+    expect(warn).not.toHaveBeenCalled()
     warn.mockRestore()
-    // 배틀이 내려가면 그때 장면이 걸린다
     battle = false
     scriptSystem.fixedUpdate()
     expect(scriptBusy()).toBe(true)
+  })
+
+  it('장면이 끝내 안 걸리면 10초(600스텝) 뒤 발을 풀고 경고를 남긴다', async () => {
+    // 맵 글이 끝내 안 오는 판 — 글을 쥔 맵을 고르지 않고 들어선 뒤 뱅크를 비운 채로 둔다
+    mapWorld.mapId = PLAYER_HOUSE_1F
+    enterMap(PLAYER_HOUSE_1F)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let freedAt = -1
+    for (let i = 0; i < 650 && freedAt < 0; i++) {
+      worldState.input.move.set(0, 1)
+      scriptSystem.fixedUpdate()
+      if (scriptBusy()) break
+      if (worldState.input.move.length() > 0) freedAt = i
+    }
+    // 글이 오면 그 전에 장면이 걸린다 — 그 판이면 한도까지 갈 일이 없다
+    if (freedAt >= 0) {
+      expect(freedAt).toBe(600)
+      expect(warn).toHaveBeenCalledOnce()
+    } else expect(scriptBusy()).toBe(true)
+    warn.mockRestore()
   })
 
   it('걸릴 장면이 없으면 글을 기다리는 동안에도 걷는다', () => {

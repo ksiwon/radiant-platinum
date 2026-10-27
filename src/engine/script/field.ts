@@ -1058,6 +1058,9 @@ const taskHeld = (): boolean => fieldScripts.services.taskUp?.() === true
 function frameSceneWanted(): boolean {
   if (mapWorld.pending !== null || !fieldScripts.varsReady) return false
   if (fieldScripts.ctx !== null || native !== null) return false
+  // 배틀 화면 · 필드 태스크가 쥔 동안은 원작도 장면을 안 건다 — 그 시간은 기다림으로 안 센다. 확인 지점이 방에 서자마자 배틀을 여는
+  // 판(gym3 · elite · champion)에서 사천왕 방의 문 닫는 장면이 배틀 내내 「안 걸렸다」로 세어져 10초 한도를 다 쓰고 경고를 냈다
+  if (fieldScripts.services.battleUp?.() === true || taskHeld()) return false
   const init = initScriptsOf(mapWorld.mapId)
   if (init === null || init.frame.length === 0) return false
   return frameTableScript(init, (id) => fieldScripts.vars.get(id)) !== null
