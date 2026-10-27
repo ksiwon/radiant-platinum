@@ -41,6 +41,8 @@ import { applyVariants, variantNodes, type VariantNode } from './fieldVariants'
 import { fieldScripts } from '../engine/script/field'
 import { DAY } from './fx/sky'
 import { applyLayoutFixes } from './bdspLayoutFixes'
+import { hideTreesOnPath } from './treesOnPath'
+import { loadedGrid } from './worldData'
 
 const loader = new GLTFLoader()
 
@@ -403,6 +405,9 @@ function dropBuilt(b: Built): void { b.motion.dispose(); disposeTree(b.scene) }
 function build(scene: Group, animations: readonly AnimationClip[] = [], name = ''): Built {
   // 원작 칸과 어긋나게 지은 자리를 먼저 맞춘다 — 그림자 · 물 · 흐림 · 간판 자리(`holdBdspSigns`)가 맞춘 씬을 본다
   applyLayoutFixes(name, scene)
+  // 원작 걷는 칸에 선 나무 · 바위를 걷는다 (`treesOnPath`) — 지역 glb는 월드 좌표라 오버월드 격자로 고른다
+  const overworld = loadedGrid(0)
+  if (overworld) hideTreesOnPath(scene, overworld)
   scene.traverse((o) => {
     if (!(o instanceof Mesh)) return
     o.receiveShadow = true

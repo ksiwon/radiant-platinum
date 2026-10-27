@@ -218,6 +218,11 @@ function loadInteriors(): Promise<void> {
   return interiorLoad
 }
 
+/** 이미 만든 행렬 격자 — 없으면 null. 받아 오지 않는다 (오버월드는 시작 때 만든다) */
+export function loadedGrid(matrixId: number): MapGrid | null {
+  return grids.get(matrixId) ?? null
+}
+
 /** 행렬 격자. 실내는 처음 요청될 때 통째로 받아 온다 */
 export async function gridFor(matrixId: number): Promise<MapGrid> {
   const hit = grids.get(matrixId)

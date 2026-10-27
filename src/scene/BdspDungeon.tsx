@@ -26,6 +26,7 @@ import { assets } from '../data/providers/assetProvider'
 import { firstPersonView } from '../engine/actor/camera'
 import type { MatrixMeta } from '../engine/map/grid'
 import { mapById, world } from '../engine/map/world'
+import { hideTreesOnPath } from './treesOnPath'
 import { worldState } from '../state/worldState'
 import { hideDevices, roomFor } from './BdspRoom'
 import { liftDecal } from './roomShell'
@@ -793,6 +794,8 @@ export function BdspDungeon({ name }: { name: string }) {
         const cover = kind ? dungeonCover(root, kind) : []
         const origin = dungeonOrigin(name, world.grid?.meta ?? null)
         root.position.set(origin.x, DUNGEON_LIFT[name] ?? 0, origin.z)
+        // 원작 걷는 칸에 선 나무 · 바위를 걷는다 (`treesOnPath`) — 놓인 뒤라야 월드 좌표가 격자 칸이다
+        if (world.grid) hideTreesOnPath(root, world.grid)
         devices.current = { map: world.mapId, hidden: hideDevices(root, world.mapId) }
         liveWater(root)
         // 흐르는 그림 · 바람 흔들림 (`bdspMotion`) — 물 뒤 · 흐림 앞
