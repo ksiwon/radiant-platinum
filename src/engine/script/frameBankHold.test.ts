@@ -1,4 +1,4 @@
-// 맵이 스스로 거는 장면(`OnFrame`)이 글을 기다리는 동안 발이 묶인다 (`field.ts`의 `frameSceneWaiting`)
+// 맵이 스스로 거는 장면(`OnFrame`)이 아직 안 걸린 동안 발이 묶인다 (`field.ts`의 `holdForFrameScene`)
 //
 // 원작은 들어선 첫 프레임에 `OnFrame` 표를 입력보다 먼저 본다(`FieldInput_Process`). 우리는 맵 글이 fetch로 오기 전에는
 // 장면을 안 건다 — 그 틈에 발이 풀려 있으면 주인공이 먼저 걸어가고 장면의 걸음이 엉뚱한 자리에서 시작한다
@@ -7,7 +7,7 @@
 // ⚠️ **롬 글은 안 적는다.** 번호와 변수만 다룬다 (COPYRIGHT.md §6).
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import type { EventFile, MapHeader } from '../map/world'
 import { world as mapWorld } from '../map/world'
 import { worldState } from '../../state/worldState'
@@ -71,6 +71,29 @@ maybe('맵 글을 기다리는 장면', () => {
     scriptSystem.fixedUpdate()
     expect(scriptBusy()).toBe(true)
     expect(fieldScripts.world?.scriptID).toBe(ON_FRAME_RIVAL_LEFT)
+  })
+
+  it('글이 아닌 까닭(배틀 화면)으로 미뤄도 발이 묶이고, 10초(600스텝)가 지나면 풀린다', async () => {
+    let battle = true
+    fieldScripts.services = { ...allDoneServices, battleUp: () => battle }
+    mapWorld.mapId = PLAYER_HOUSE_1F
+    enterMap(PLAYER_HOUSE_1F)
+    for (let i = 0; i < 5; i++) await new Promise((done) => { setImmediate(done) })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    for (let i = 0; i < 600; i++) {
+      worldState.input.move.set(0, 1)
+      scriptSystem.fixedUpdate()
+      expect(worldState.input.move.length(), `${String(i)}번째 스텝에 발이 풀렸다`).toBe(0)
+    }
+    worldState.input.move.set(0, 1)
+    scriptSystem.fixedUpdate()
+    expect(worldState.input.move.length(), '한도가 지나도 묶였다').toBe(1)
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
+    // 배틀이 내려가면 그때 장면이 걸린다
+    battle = false
+    scriptSystem.fixedUpdate()
+    expect(scriptBusy()).toBe(true)
   })
 
   it('걸릴 장면이 없으면 글을 기다리는 동안에도 걷는다', () => {

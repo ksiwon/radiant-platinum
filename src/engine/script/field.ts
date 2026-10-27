@@ -827,6 +827,7 @@ export function enterMap(mapId: number, arrival?: { x: number; z: number }): voi
   // 맵에 들어선 그 칸에서 곧바로 눈이 마주치면 안 된다 — 문에서 나오자마자
   // 배틀이 시작되면 어디서 걸린 것인지 화면에서 안 보인다
   resetSightTile()
+  frameHeld = 0
   const header = mapById(mapId)
   if (!header || header.msg === fieldScripts.bank) return
   fieldScripts.bank = header.msg
@@ -1041,19 +1042,44 @@ function readInput(): void {
 const taskHeld = (): boolean => fieldScripts.services.taskUp?.() === true
 
 /**
- * 맵이 스스로 거는 장면(`OnFrame` 표)이 **이 맵의 글을 기다리는 중인가.**
+ * 맵이 스스로 거는 장면(`OnFrame` 표)이 **걸려야 하는데 아직 안 걸렸는가.**
  *
- * 원작은 들어선 첫 프레임에 그 장면이 입력보다 먼저 걸린다(`FieldInput_Process`의 첫 줄). 우리는 글이 fetch로 오는 동안
- * 장면을 안 건다(`start`의 `mapBankPending`) — 그 틈에 발이 풀려 있으면 주인공이 먼저 걸어가고, 장면의 걸음이 엉뚱한 자리에서
- * 시작한다. 실측(최종 연쇄 8936cf39 칸 1 · 2026-10-27): 연구소를 나온 뒤 글이 늦게 와서 주인공이 동쪽으로 15칸을 먼저 걸었고,
- * 그 뒤에 걸린 `OnFrame_ExitLab`의 「동쪽 9칸 · 10칸」이 마을 끝을 넘어 막힌 칸 (202, 844)에 주인공을 세웠다.
- * 그래서 그 틈도 스크립트가 도는 것처럼 발을 묶는다
+ * 원작은 들어선 첫 프레임에 그 장면이 입력보다 먼저 걸린다(`FieldInput_Process`의 첫 줄) — 장면보다 주인공이 먼저 걷는 일이 없다.
+ * 우리는 여러 까닭으로 그 장면을 몇 프레임 미룬다: 맵 글이 fetch로 오는 중(`start`의 `mapBankPending`), 배틀 화면이 아직 안 내려감 등.
+ * 그 틈에 발이 풀려 있으면 주인공이 먼저 걸어가고, 장면의 걸음이 엉뚱한 자리에서 시작한다.
+ *
+ * 실측(최종 연쇄 8936cf39 · 135f093b 칸 1 · 2026-10-27, 기계가 몹시 붐빈 판 둘): 모래시티 연구소를 나온 뒤 `OnFrame_ExitLab`이
+ * 15칸 · 7칸 늦게 걸려, 그 장면의 「동쪽 9칸 · 10칸」이 주인공을 마을 끝 너머 막힌 칸 (202, 844) · (194, 845)에 세웠다. 0.1초 추적을 건
+ * 판 셋(같은 부하 포함)은 전이가 끝나는 프레임에 바로 걸려 재현되지 않았다 — 미룬 까닭을 하나로 못 박지 못해, **까닭을 가리지 않고**
+ * 걸릴 장면이 남아 있는 동안 발을 묶는다.
+ *
+ * ⚠️ **끝없이 묶지 않는다.** 장면이 어떤 까닭으로 영영 안 걸리면 주인공이 갇힌다 — 맵에 들어선 뒤 `FRAME_HOLD_STEPS`만큼만 묶고 경고를 남긴다
  */
-function frameSceneWaiting(): boolean {
-  if (!mapBankPending || mapWorld.pending !== null || !fieldScripts.varsReady) return false
+function frameSceneWanted(): boolean {
+  if (mapWorld.pending !== null || !fieldScripts.varsReady) return false
+  if (fieldScripts.ctx !== null || native !== null) return false
   const init = initScriptsOf(mapWorld.mapId)
   if (init === null || init.frame.length === 0) return false
   return frameTableScript(init, (id) => fieldScripts.vars.get(id)) !== null
+}
+
+/** 걸릴 장면을 기다리며 발을 묶는 한도 — 고정 스텝(60Hz) 600번 = 10초 */
+const FRAME_HOLD_STEPS = 600
+/** 이 맵에 들어선 뒤 장면을 기다리며 묶은 스텝 수 (`enterMap`이 0으로) */
+let frameHeld = 0
+
+/** 이번 스텝에 발을 묶어야 하나 — 묶으면 한도를 하나 쓴다 */
+function holdForFrameScene(): boolean {
+  if (!frameSceneWanted()) return false
+  if (frameHeld >= FRAME_HOLD_STEPS) {
+    if (frameHeld === FRAME_HOLD_STEPS) {
+      frameHeld++
+      console.warn(`맵 ${String(mapWorld.mapId)}의 OnFrame 장면이 10초 동안 안 걸려 발을 풀었다`)
+    }
+    return false
+  }
+  frameHeld++
+  return true
 }
 
 export const scriptSystem = {
@@ -1066,7 +1092,7 @@ export const scriptSystem = {
     // 것이 밖에서 똑같이 보인다** — 둘 다 대사도 없고 걸음도 없다
     // ⚠️ 필드 태스크(전멸)가 쥔 동안도 「묶였다」로 적는다 — 옛 스크립트가 끝나고 검은 줄이 뜨기까지의
     // 틈에 표식이 비면, 밖에서는 「다 끝났다」로 읽고 손을 놓는다
-    markScript(ctx !== null || native !== null || taskHeld() || frameSceneWaiting())
+    markScript(ctx !== null || native !== null || taskHeld() || frameSceneWanted())
     // 우리 글이 도는 중이면 그것이 먼저다. 원작 스크립트와 **같이 돌지 않는다**
     if (native !== null && world !== null) { stepOurText(world); return }
     if (ctx !== null && world !== null) {
@@ -1091,12 +1117,14 @@ export const scriptSystem = {
      */
     tickFade()
     // 필드 태스크가 쥔 동안은 발도 묶인다 — 검은 화면 밑에서 걸어 나가지 않는다 (`HandleFieldInput`)
-    // 맵이 스스로 거는 장면이 글을 기다리는 동안도 묶인다 (`frameSceneWaiting`)
-    if (taskHeld() || frameSceneWaiting()) {
+    // 필드 태스크가 쥔 동안은 묶는다. 맵이 스스로 거는 장면이 아직 안 걸렸어도 묶는다 (`holdForFrameScene`) —
+    // ⚠️ **장면을 걸어 본 뒤에** 본다. 이번 스텝에 걸렸으면 아래 이동 시스템이 이 스텝에 한 걸음 내딛지 않게 같이 지운다
+    const held = taskHeld()
+    tryStartScripts()
+    if (held || fieldScripts.ctx !== null || holdForFrameScene()) {
       worldState.input.move.set(0, 0)
       worldState.player.velocity.set(0, 0, 0)
     }
-    tryStartScripts()
   },
 }
 

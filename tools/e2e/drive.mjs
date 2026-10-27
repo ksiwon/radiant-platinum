@@ -142,6 +142,35 @@ export async function driveStory(page, {
    * 이제 갈래를 먼저 정하고, 못 읽는 것은 **관측 불가**로 남긴다
    */
   const obs = await makeObserver(page, observe)
+  /**
+   * **진단 추적** — `PT_TRACE=<파일>`이면 0.1초마다 맵 · 칸 · 전이 · 스크립트 · 글 뱅크 · 트리거를 못 본 까닭을 그 파일에 적는다.
+   * 개발 서버에서만 된다(`/src/...`를 연다). 기본은 꺼짐이다
+   */
+  if (process.env.PT_TRACE) {
+    const { appendFileSync } = await import('node:fs')
+    const file = process.env.PT_TRACE
+    void (async () => {
+      let last = ''
+      for (;;) {
+        const s = await page.evaluate(async () => {
+          const f = await import('/src/engine/script/field.ts')
+          const m = await import('/src/engine/map/world.ts')
+          const w = await import('/src/state/worldState.ts')
+          const p = w.worldState.player.position
+          return {
+            map: m.world.mapId, x: Math.floor(p.x), z: Math.floor(p.z), pending: m.world.pending !== null,
+            ctx: f.fieldScripts.ctx !== null, bank: f.fieldScripts.bank, want: m.mapById(m.world.mapId)?.msg ?? null,
+            skip: f.triggerWatch.skipped, move: +w.worldState.input.move.length().toFixed(2),
+          }
+        }).catch(() => null)
+        if (s === null) break
+        const k = JSON.stringify(s)
+        if (k !== last) appendFileSync(file, `${String(Date.now())} ${k}\n`)
+        last = k
+        await new Promise((r) => { setTimeout(r, 100) })
+      }
+    })()
+  }
   /** 기술을 무엇으로 골랐나 — 읽어서 골랐나, 화면 글로 물러났나 */
   const movePicks = { read: 0, text: 0 }
   /** 발버둥만 남아 바꾼 횟수 · 마지막으로 바꿔 본 턴 (`pickMove`) */
