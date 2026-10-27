@@ -63,7 +63,7 @@ import { ALWAYS_ASYNC } from './asyncPipelines'
 import { clothGeometry } from './cloth'
 import { clothMaterial } from './clothMaterial'
 import type { PlannedCloth } from './visual/chunkPlan'
-import { clipToBoxes, dsTerrainBoxes, landTouches, type DsBox } from './dsOverBdsp'
+import { clipToBoxes, dsPropsOverBdsp, dsTerrainBoxes, landTouches, spotsInBoxes, type DsBox } from './dsOverBdsp'
 
 /** 한 청크가 몇 타일인가. 모델이 그 절반씩 양쪽으로 뻗는다 */
 const CHUNK_TILES = 32
@@ -1728,7 +1728,12 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet, ds
   const kept = dsHidden ? keptOverBdsp(mapById(batch.mapId)?.matrix ?? -1) : null
   /** BDSP가 안 지은 상자 — 그 안만 원작 지형을 세운다 (`dsOverBdsp`). 이 배치의 행렬로 고른다 */
   const dsBoxes = dsHidden ? dsTerrainBoxes(batch.matrix) : null
-  const shownProps = dsHidden ? props.filter((p) => kept?.models.has(p.index) === true) : props
+  const dsProps = dsHidden ? dsPropsOverBdsp(batch.matrix) : null
+  const shownProps = dsHidden
+    ? props.filter((p) => kept?.models.has(p.index) === true || dsProps?.has(p.index) === true)
+    : props
+  /** 상자를 통째로 원작이 쥐면 풀숲 포기도 그 안만 세운다 */
+  const boxGrass = useMemo(() => (dsBoxes === null ? null : spotsInBoxes(grass, dsBoxes)), [grass, dsBoxes])
 
   return (
     <group>
@@ -1794,6 +1799,7 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet, ds
         `0x0002`인 칸에만 포기를 세운다 (`Grass.tsx`)
       */}
       {!dsHidden && <Grass field={grass} />}
+      {boxGrass !== null && <Grass field={boxGrass} />}
       {/*
         화단. 원작은 바닥 그림이라 3인칭에서 잔디 위에 뿌린 색종이가 된다 —
         그 칸에 실제로 서는 꽃송이를 얹는다 (`Flowers.tsx`)
