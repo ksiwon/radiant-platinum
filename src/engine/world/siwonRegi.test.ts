@@ -26,7 +26,7 @@ const vars = (over: Record<number, number> = {}) => (id: number) => over[id] ?? 
 const lockedOf = (m: PokemonInstance, given: number, v: (id: number) => number) =>
   regigigasLockedForRuins(m, given, v)
 
-describe('시원의 레지기가스 — 레지를 잡기 전까지 못 놓는다', () => {
+describe('시원의 레지기가스 — 세 유적의 레지를 다 잡기 전까지 못 놓는다', () => {
   it('(a) 290 전: 운명적 레지기가스는 막힌다 · 눈설신전 레지기가스와 다른 운명적 개체는 안 막힌다', () => {
     expect(lockedOf(mon(REGI, true), 6, vars())).toBe(true)
     // 유적 상태 270·280도 아직 잡은 것이 아니다 (유적을 나서면 0으로 돌아간다)
@@ -35,10 +35,17 @@ describe('시원의 레지기가스 — 레지를 잡기 전까지 못 놓는다
     expect(lockedOf(mon(492, true), 6, vars())).toBe(false)
   })
 
-  it('(b) 290 뒤: 셋 중 어느 유적이든 풀린다', () => {
+  it('(b) 하나 · 둘만 잡았으면 아직 막힌다 — 석상은 유적마다 파티를 따로 본다', () => {
     for (const id of VAR_RUINS_STATE) {
-      expect(lockedOf(mon(REGI, true), 6, vars({ [id]: 290 }))).toBe(false)
+      expect(lockedOf(mon(REGI, true), 6, vars({ [id]: 290 }))).toBe(true)
     }
+    expect(lockedOf(mon(REGI, true), 6, vars({ [VAR_RUINS_STATE[0]]: 290, [VAR_RUINS_STATE[2]]: 290 }))).toBe(true)
+  })
+
+  it('(b2) 셋 다 290이면 풀린다', () => {
+    const all = Object.fromEntries(VAR_RUINS_STATE.map((v) => [v, 290]))
+    expect(lockedOf(mon(REGI, true), 6, vars(all))).toBe(false)
+    expect(lockedOf(mon(REGI, true), 7, vars(all))).toBe(false)
   })
 
   it('(c) 선물 6(6번째)을 받기 전이면 해당 없다', () => {
@@ -80,11 +87,19 @@ describe('놓아 버린 옛 리포트 — 시원이 한 번 더 준다', () => {
     expect(siwonTurn(7, probe(true))).toEqual({ kind: 'done' })
   })
 
-  it('이미 레지를 잡았으면(290) 마리가 없어도 다시 안 준다', () => {
-    expect(siwonTurn(6, probe(false, { [VAR_RUINS_STATE[1]]: 290 })).kind).toBe('gift')
-    const t6 = siwonTurn(6, probe(false, { [VAR_RUINS_STATE[1]]: 290 }))
+  it('하나만 잡고 놓아 버렸으면 남은 유적을 위해 다시 준다', () => {
+    for (const given of [6, 7]) {
+      const t = siwonTurn(given, probe(false, { [VAR_RUINS_STATE[1]]: 290 }))
+      expect(t.kind === 'gift' && t.regift).toBe(true)
+    }
+  })
+
+  it('셋 다 잡았으면(290) 마리가 없어도 다시 안 준다', () => {
+    const all = Object.fromEntries(VAR_RUINS_STATE.map((v) => [v, 290]))
+    const t6 = siwonTurn(6, probe(false, all))
+    expect(t6.kind).toBe('gift')
     expect(t6.kind === 'gift' && t6.regift).toBeFalsy()
-    expect(siwonTurn(7, probe(false, { [VAR_RUINS_STATE[1]]: 290 }))).toEqual({ kind: 'done' })
+    expect(siwonTurn(7, probe(false, all))).toEqual({ kind: 'done' })
   })
 
   it('받기 전(given ≤ 5)에는 재지급이 아니다 · 신호를 안 채운 probe는 옛 동작 그대로', () => {

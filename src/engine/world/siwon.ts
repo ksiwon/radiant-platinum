@@ -192,6 +192,16 @@ function ruinsRegiCaught(variable: (id: number) => number): boolean {
 }
 
 /**
+ * 유적 **셋 다**에서 레지를 잡았는가. 그 마리를 놓아도 되는 때다.
+ *
+ * ⚠️ 석상은 유적마다 따로 파티를 본다(`CheckPartyHasFatefulEncounterRegigigas` — 무쇠섬 B3F · 228번도로 · 천관산). 하나만 잡고
+ * 놓아주면 남은 둘이 영영 닫히는데, 「하나라도 잡았다」로 풀던 동안은 그때 다시 주지도 않았다 (2026-10-27 점검)
+ */
+function ruinsAllRegiCaught(variable: (id: number) => number): boolean {
+  return VAR_RUINS_STATE.every((v) => variable(v) >= RUINS_STATE_CAUGHT_REGI)
+}
+
+/**
  * 이 마리가 **시원이 준 운명적 만남 레지기가스**인가. 눈설신전에서 잡은 마리(`fateful`이 거짓)는 아니다.
  */
 export function isSiwonRegigigas(mon: { species: number; origin: { fateful: boolean } }): boolean {
@@ -202,7 +212,7 @@ export function isSiwonRegigigas(mon: { species: number; origin: { fateful: bool
  * 그 마리를 **놓아줄 수 없는가** — 레지 유적 셋과 시원의 마지막 선물이 아직 그 마리에 걸려 있다.
  *
  * 유적 석상은 파티의 운명적 만남 레지기가스만 보고(`CheckPartyHasFatefulEncounterRegigigas`),
- * 선물 6의 「썼다」는 레지를 잡았는가(290)다. 놓아주면 둘 다 영영 막히므로 **레지를 잡기 전까지** 막는다.
+ * 선물 6의 「썼다」는 레지를 잡았는가(290)다. 놓아주면 남은 유적이 영영 막히므로 **세 유적의 레지를 다 잡기 전까지** 막는다.
  * 판정 입력은 전부 리포트에 남는 것이다 — 선물 개수(`siwonGiven`) · 유적 변수 · 개체의 `origin.fateful`.
  *
  * @param given 여태 준 개수. 레지기가스 선물(6번째)을 받기 전이면 해당 개체가 없으니 해당 없다
@@ -214,7 +224,7 @@ export function regigigasLockedForRuins(
 ): boolean {
   if (!isSiwonRegigigas(mon)) return false
   if (given <= REGI_GIFT_AT) return false
-  return !ruinsRegiCaught(variable)
+  return !ruinsAllRegiCaught(variable)
 }
 
 /** 말을 걸었을 때 시원이 할 일 */
@@ -238,10 +248,10 @@ type SiwonTurn =
  */
 export function siwonTurn(given: number, probe: SiwonProbe): SiwonTurn {
   if (!probe.flag(FLAG_GAME_COMPLETED)) return { kind: 'locked' }
-  // 이미 놓아 버린 레지기가스: 선물을 받았는데(6번째 이후) 그 마리가 어디에도 없고 레지를 잡지도 못했으면 다시 준다.
+  // 이미 놓아 버린 레지기가스: 선물을 받았는데(6번째 이후) 그 마리가 어디에도 없고 아직 못 잡은 레지가 남았으면 다시 준다.
   // ⚠️ 마리가 어딘가 있으면(파티·박스·육성가) 안 준다 — 중복 지급 방지. 신호가 없으면 안 준다
   if (given > REGI_GIFT_AT && probe.hasFatefulRegigigas !== undefined
-    && !ruinsRegiCaught(probe.variable) && !probe.hasFatefulRegigigas()) {
+    && !ruinsAllRegiCaught(probe.variable) && !probe.hasFatefulRegigigas()) {
     return { kind: 'gift', entry: SIWON_GIFTS[REGI_GIFT_AT]!, regift: true }
   }
   if (given >= SIWON_GIFTS.length) return { kind: 'done' }
