@@ -98,7 +98,8 @@ const DEFAULT_AT = [
 ]
 const AT = (flag('at', '') || DEFAULT_AT.join(',')).split(',').filter(Boolean)
 
-const port = Number(process.env.PROBE_PORT ?? 0) || (await freePort()) + 40000
+// ⚠️ 빈 포트에 무엇을 더하지 않는다 — 맥에서 빈 포트가 6만 대로 나와 +40000이 65535를 넘어 시작도 못 했다 (2026-10-27)
+const port = Number(process.env.PROBE_PORT ?? 0) || (await freePort())
 const vite = await startVite(port, 'node_modules/.vite-harness')
 const browser = await chromium.launch({
   args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'],
