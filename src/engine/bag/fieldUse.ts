@@ -176,7 +176,7 @@ export type FieldItemAction =
    */
   | { kind: 'blocked'; why: string; line: BlockedLine }
   /** 그 계통이 이 게임에 없다. `message`가 화면에 그대로 뜨는 완성 문장이다 */
-  | { kind: 'missing'; message: string }
+  | { kind: 'missing'; message: string; messages: Readonly<Record<'ko' | 'en' | 'ja', string>> }
 
 /** 지금 어디에 서 있는가. 쓸 수 있는지가 여기서 갈린다 */
 export interface FieldContext {
@@ -250,12 +250,34 @@ export interface FieldContext {
  * 「지하통로이(가) 아직 없다.」가 떴다. 문장을 통째로 들면 조사가 글 안에서
  * 이미 맞는다
  */
-const MISSING: Partial<Record<number, string>> = {
-  [FieldUse.EXPLORER_KIT]: '이 게임에서는 지하통로에 갈 수 없다.',
-  [FieldUse.POFFIN_CASE]: '포핀은 이 게임에서 만들 수 없다.',
-  [FieldUse.PAL_PAD]: '친구수첩은 통신 없이는 쓸 수 없다.',
-  [FieldUse.VS_RECORDER]: '배틀레코더는 통신 없이는 쓸 수 없다.',
+const MISSING: Partial<Record<number, MissingText>> = {
+  [FieldUse.EXPLORER_KIT]: {
+    ko: '이 게임에서는 지하통로에 갈 수 없다.',
+    en: 'The Underground can\'t be visited\nin this game.',
+    ja: 'この\u3000ゲームでは\nちかつうろに\u3000いけない。',
+  },
+  [FieldUse.POFFIN_CASE]: {
+    ko: '포핀은 이 게임에서 만들 수 없다.',
+    en: 'Poffins can\'t be made\nin this game.',
+    ja: 'ポフィンは\u3000この\u3000ゲームでは\nつくれない。',
+  },
+  [FieldUse.PAL_PAD]: {
+    ko: '친구수첩은 통신 없이는 쓸 수 없다.',
+    en: 'The Pal Pad can\'t be used\nwithout a connection.',
+    ja: 'ともだちてちょうは\u3000つうしん\nなしでは\u3000つかえない。',
+  },
+  [FieldUse.VS_RECORDER]: {
+    ko: '배틀레코더는 통신 없이는 쓸 수 없다.',
+    en: 'The Vs. Recorder can\'t be used\nwithout a connection.',
+    ja: 'バトルレコ－ダ－は\u3000つうしん\nなしでは\u3000つかえない。',
+  },
 }
+
+/**
+ * 롬 언어별 문장. 이 넷은 우리가 지은 글이라 롬 줄이 없다 — 영어 · 일본어 롬에서 한국어가 뜨던 자리다 (2026-10-27 점검).
+ * 일본어는 롬처럼 낱말 사이를 전각 빈칸(U+3000)으로 띄운다
+ */
+type MissingText = Readonly<Record<'ko' | 'en' | 'ja', string>>
 
 /** 가방 안에서 한 줄로 답하는 넷 (`BagContext_FormatUsageMessage`). 이름으로 가르는 것이 원작이다 */
 const BAG_MESSAGES: Readonly<Record<string, 'coins' | 'seals' | 'fashion' | 'points'>> = {
@@ -399,7 +421,7 @@ export function fieldAction(item: Item, ctx: FieldContext): FieldItemAction {
 
     default: {
       const message = MISSING[item.fieldUseFunc ?? FieldUse.NONE]
-      if (message !== undefined) return { kind: 'missing', message }
+      if (message !== undefined) return { kind: 'missing', message: message.ko, messages: message }
       return blocked('generic')
     }
   }

@@ -199,7 +199,7 @@ maybe('필드 도구', () => {
     // ⚠️ **탐험세트는 지하통로로 가는 유일한 입구다** — 지하통로가 범위 밖이라
     // 「없음」으로 답한다. 들어오는 워프가 0개인 것은 `script/comm.test.ts`가 잰다
     expect(fieldAction(named('ITEM_EXPLORER_KIT'), town()))
-      .toEqual({ kind: 'missing', message: '이 게임에서는 지하통로에 갈 수 없다.' })
+      .toMatchObject({ kind: 'missing', message: '이 게임에서는 지하통로에 갈 수 없다.', messages: { en: expect.stringContaining('Underground') as unknown, ja: expect.stringContaining('ちかつうろ') as unknown } })
   })
 
   it('범위 밖 도구 넷은 완성 문장으로 답한다 — 병기형 조사도 「아직」도 없다', () => {

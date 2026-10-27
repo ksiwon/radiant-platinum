@@ -21,6 +21,7 @@ import { turnOnRadar } from '../../scene/pokeRadar'
 import { SCRIPT_VS_SEEKER } from '../../scene/vsSeeker'
 import type { MenuScreen as MenuScreenName } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
+import { gameLocale } from '../../state/optionsStore'
 import { worldState } from '../../state/worldState'
 import { useMenuStore } from '../../state/menuStore'
 import { fillMenuText, loadUiText } from '../../data/uiText'
@@ -215,7 +216,7 @@ export function performItemAction(action: FieldItemAction, deps: ItemActionDeps)
       return true
     case 'missing':
       // 이 게임에 없는 계통 (지하통로·포핀·통신). 문장은 `engine/bag/fieldUse`가 통째로 든다
-      deps.say(action.message)
+      deps.say(action.messages[gameLocale()])
       return false
     case 'radar':
       // 켜는 순간 가방을 닫는다. 원작도 필드 과제(`RefreshRadarChain`)가
