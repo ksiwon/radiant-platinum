@@ -1040,6 +1040,22 @@ function readInput(): void {
 /** 필드 태스크가 필드를 쥐고 있는가 (`FieldServices.taskUp` — 전멸 과제) */
 const taskHeld = (): boolean => fieldScripts.services.taskUp?.() === true
 
+/**
+ * 맵이 스스로 거는 장면(`OnFrame` 표)이 **이 맵의 글을 기다리는 중인가.**
+ *
+ * 원작은 들어선 첫 프레임에 그 장면이 입력보다 먼저 걸린다(`FieldInput_Process`의 첫 줄). 우리는 글이 fetch로 오는 동안
+ * 장면을 안 건다(`start`의 `mapBankPending`) — 그 틈에 발이 풀려 있으면 주인공이 먼저 걸어가고, 장면의 걸음이 엉뚱한 자리에서
+ * 시작한다. 실측(최종 연쇄 8936cf39 칸 1 · 2026-10-27): 연구소를 나온 뒤 글이 늦게 와서 주인공이 동쪽으로 15칸을 먼저 걸었고,
+ * 그 뒤에 걸린 `OnFrame_ExitLab`의 「동쪽 9칸 · 10칸」이 마을 끝을 넘어 막힌 칸 (202, 844)에 주인공을 세웠다.
+ * 그래서 그 틈도 스크립트가 도는 것처럼 발을 묶는다
+ */
+function frameSceneWaiting(): boolean {
+  if (!mapBankPending || mapWorld.pending !== null || !fieldScripts.varsReady) return false
+  const init = initScriptsOf(mapWorld.mapId)
+  if (init === null || init.frame.length === 0) return false
+  return frameTableScript(init, (id) => fieldScripts.vars.get(id)) !== null
+}
+
 export const scriptSystem = {
   fixedUpdate(): void {
     readInput()
@@ -1050,7 +1066,7 @@ export const scriptSystem = {
     // 것이 밖에서 똑같이 보인다** — 둘 다 대사도 없고 걸음도 없다
     // ⚠️ 필드 태스크(전멸)가 쥔 동안도 「묶였다」로 적는다 — 옛 스크립트가 끝나고 검은 줄이 뜨기까지의
     // 틈에 표식이 비면, 밖에서는 「다 끝났다」로 읽고 손을 놓는다
-    markScript(ctx !== null || native !== null || taskHeld())
+    markScript(ctx !== null || native !== null || taskHeld() || frameSceneWaiting())
     // 우리 글이 도는 중이면 그것이 먼저다. 원작 스크립트와 **같이 돌지 않는다**
     if (native !== null && world !== null) { stepOurText(world); return }
     if (ctx !== null && world !== null) {
@@ -1075,7 +1091,8 @@ export const scriptSystem = {
      */
     tickFade()
     // 필드 태스크가 쥔 동안은 발도 묶인다 — 검은 화면 밑에서 걸어 나가지 않는다 (`HandleFieldInput`)
-    if (taskHeld()) {
+    // 맵이 스스로 거는 장면이 글을 기다리는 동안도 묶인다 (`frameSceneWaiting`)
+    if (taskHeld() || frameSceneWaiting()) {
       worldState.input.move.set(0, 0)
       worldState.player.velocity.set(0, 0, 0)
     }
