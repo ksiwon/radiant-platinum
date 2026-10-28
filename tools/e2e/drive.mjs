@@ -1273,7 +1273,21 @@ export async function driveStory(page, {
         from: cursorAt, pocket: seen.pocket, total: seen.total,
       })
       await tap('Space', 250)   // 그 약
-      await tap('Space', 250)   // 「누구에게?」 첫 칸 — 선두
+      /**
+       * ⚠️ **「누구에게?」 커서는 첫 칸에서 시작하지 않는다.** 지금 명령을 고르는 마리에
+       * 선다 (`BattleBag`의 `setTarget(asking())`). 더블에서 둘째 마리 차례면 둘째 칸이다 —
+       * 실측(2026-10-28 연쇄 7f7c8441 칸 14 · 승리의 길 더블): 선두 토대부기가 75/248인데
+       * 만피 찌르호크에게 결정을 눌러 「사용해도 효과가 없다!」가 되풀이됐고 1턴에서 12분 섰다.
+       * 커서는 끝에서 멈추므로(`clampCursor`) 파티 수만큼 ↑를 누르면 첫 칸이다
+       */
+      // 대상 화면이 서야 ↑가 대상 커서를 옮긴다 — 도구 목록이 남아 있으면 ↑가 다른 줄을 고른다.
+      // 대상 화면에는 도구 목록(`data-battle-bag="items"`)이 없다 (`BattleBag`의 target 갈래)
+      if (!(await until(async () => (await bagRows()) === null, 3000, 50)).ok) {
+        potion.why = `${String(potion.name)}을(를) 골랐는데 대상 화면이 안 섰다`
+        return backOff()
+      }
+      for (let k = 0; k < 6; k++) await tap('ArrowUp', 70)
+      await tap('Space', 250)   // 첫 칸 — 선두
       potion.left--
       potion.used++
       /**
