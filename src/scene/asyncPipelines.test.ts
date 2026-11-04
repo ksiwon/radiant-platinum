@@ -43,6 +43,26 @@ describe('맵을 갈아 끼우는 동안만 파이프라인을 비동기로 굽�
     expect(asyncPipelinesState().on).toBe(false)
   })
 
+  it('굽는 중에도 시한이 흐른다 — 한 묶음이 시한보다 오래 걸려도 덮개를 쥐고 있지 않는다', async () => {
+    let finish = (): void => {}
+    const slow = new Promise<void>((resolve) => { finish = resolve })
+    const pipelines = {
+      getForRender(_ro: unknown, promises?: Promise<unknown>[] | null) { if (promises) promises.push(slow) },
+      updateForRender(_ro: unknown) { throw new Error('감싸지 않았다') },
+    }
+    installAsyncPipelines({ _pipelines: pipelines } as unknown as WebGPURenderer)
+    beginAsyncPipelines()
+    pipelines.updateForRender({})
+    const done = await settleAsyncPipelines(() => true, 150)
+    expect(done.waitedMs, '시한을 크게 넘기지 않는다').toBeLessThan(1_000)
+    expect(asyncPipelinesState().on).toBe(false)
+    // 놔둔 것은 다 구워지면 셈에서 빠진다
+    expect(asyncPipelinesState().inflight).toBe(1)
+    finish()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(asyncPipelinesState().inflight).toBe(0)
+  })
+
   it('둘이 겹쳐 켜면 먼저 끝난 쪽이 끄지 않는다 — 덮개와 늦게 서는 지역', async () => {
     const { renderer, pipelines, calls } = fakeRenderer()
     installAsyncPipelines(renderer)

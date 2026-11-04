@@ -29,7 +29,7 @@ export interface DsBox {
 }
 
 /** 행렬 번호 → 원작 지형을 세울 상자 */
-export const DS_TERRAIN_OVER_BDSP: ReadonlyMap<number, readonly DsBox[]> = new Map([
+const DS_TERRAIN_OVER_BDSP: ReadonlyMap<number, readonly DsBox[]> = new Map([
   [0, [
     // 오버월드 — 예지호수근처 고원 (위 머리말)
     { x0: 300, z0: 218, x1: 327, z1: 243, above: 2.3 },
@@ -42,7 +42,7 @@ export const DS_TERRAIN_OVER_BDSP: ReadonlyMap<number, readonly DsBox[]> = new M
  * 원작 소품 가운데 BDSP 위에도 세울 것 — 행렬 번호 → 모델 번호.
  * 하드마운틴 바깥의 584 · 585는 오버월드에서 그 청크(233)에만 놓인다
  */
-export const DS_PROPS_OVER_BDSP: ReadonlyMap<number, ReadonlySet<number>> = new Map([
+const DS_PROPS_OVER_BDSP: ReadonlyMap<number, ReadonlySet<number>> = new Map([
   [0, new Set([584, 585])],
 ])
 

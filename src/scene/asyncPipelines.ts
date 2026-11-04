@@ -104,8 +104,17 @@ export async function settleAsyncPipelines(landed: () => boolean, capMs = 12_000
       compiled += batch.length
       quiet = 0
       state.inflight += batch.length
-      await Promise.allSettled(batch)
-      state.inflight -= batch.length
+      const baked = Promise.allSettled(batch).then(() => { state.inflight -= batch.length })
+      // ⚠️ **굽는 것을 기다리는 동안에도 시한이 흐른다.** 시한을 루프 머리에서만 보면 약한 GPU에서 한 묶음이 수십 초 걸릴 때
+      // 그 묶음이 끝날 때까지 덮개가 안 걷히고 발이 묶인다(워프는 이 동안 `world.pending`을 쥔다). 시한이 되면 구워지는 것은
+      // 놔두고(`inflight`는 다 구워지면 줄어든다) 이 기다림만 끝낸다
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const capped = new Promise<'cap'>((resolve) => {
+        timer = setTimeout(() => { resolve('cap') }, Math.max(0, capMs - (performance.now() - t0)))
+      })
+      const won = await Promise.race([baked.then(() => 'baked' as const), capped])
+      clearTimeout(timer)
+      if (won === 'cap') break
       continue
     }
     if (state.inflight > 0) { quiet = 0; continue }
