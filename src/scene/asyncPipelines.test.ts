@@ -55,12 +55,14 @@ describe('맵을 갈아 끼우는 동안만 파이프라인을 비동기로 굽�
     pipelines.updateForRender({})
     const done = await settleAsyncPipelines(() => true, 150)
     expect(done.waitedMs, '시한을 크게 넘기지 않는다').toBeLessThan(1_000)
-    expect(asyncPipelinesState().on).toBe(false)
-    // 놔둔 것은 다 구워지면 셈에서 빠진다
-    expect(asyncPipelinesState().inflight).toBe(1)
+    // 놔둔 것이 굽는 동안은 비동기 갈래를 쥔다 — 그 사이 처음 서는 것이 동기로 구워져 그 뒤에 줄을 서지 않게
+    expect(asyncPipelinesState()).toMatchObject({ on: true, inflight: 1 })
+    pipelines.updateForRender({})
+    expect(asyncPipelinesState().pending, '새로 서는 것도 비동기로').toBe(1)
+    // 놔둔 것은 다 구워지면 셈에서 빠지고, 그때 끈다
     finish()
     await new Promise((r) => setTimeout(r, 20))
-    expect(asyncPipelinesState().inflight).toBe(0)
+    expect(asyncPipelinesState()).toMatchObject({ on: false, pending: 0, inflight: 0 })
   })
 
   it('둘이 겹쳐 켜면 먼저 끝난 쪽이 끄지 않는다 — 덮개와 늦게 서는 지역', async () => {

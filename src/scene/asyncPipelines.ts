@@ -97,6 +97,8 @@ export async function settleAsyncPipelines(landed: () => boolean, capMs = 12_000
   const t0 = performance.now()
   let compiled = 0
   let quiet = 0
+  /** 시한에 걸려 놔두고 나온 묶음 — 이것이 다 구워질 때까지 비동기 갈래를 안 끈다 */
+  let leftBaking: Promise<unknown> | null = null
   while (performance.now() - t0 < capMs) {
     await nextFrame()
     if (state.pending.length > 0) {
@@ -114,16 +116,24 @@ export async function settleAsyncPipelines(landed: () => boolean, capMs = 12_000
       })
       const won = await Promise.race([baked.then(() => 'baked' as const), capped])
       clearTimeout(timer)
-      if (won === 'cap') break
+      if (won === 'cap') { leftBaking = baked; break }
       continue
     }
     if (state.inflight > 0) { quiet = 0; continue }
     if (landed()) quiet++
     if (quiet >= 2) break
   }
-  if (state.holds > 0) state.holds--
-  state.on = state.holds > 0
-  if (!state.on) state.pending.length = 0
+  // ⚠️ **놔둔 묶음이 다 구워질 때까지 비동기 갈래를 쥔다.** 시한에 바로 끄면 그 사이 처음 그려지는 재질이 동기로 구워지는데, GPU
+  // 프로세스는 놔둔 묶음을 굽느라 바빠서 그 동기 하나가 그 뒤에 줄을 선다 — 페이지가 통째로 굳는다. 실측(2026-11-05 맥 journey
+  // 70f5eabb 넷째 판): 운하시티 센터를 나선 뒤 덮개는 3초에 걷혔는데 0.1초 추적이 110 · 64 · 73 · 50초씩 끊겼다. 기다림만 끝내고
+  // (덮개는 걷힌다) 끄는 것은 그 묶음이 끝난 뒤로 미룬다 — 그동안 새로 서는 것은 구워질 때까지 몇 프레임 안 보일 뿐이다
+  const release = (): void => {
+    if (state.holds > 0) state.holds--
+    state.on = state.holds > 0
+    if (!state.on) state.pending.length = 0
+  }
+  if (leftBaking === null) release()
+  else void leftBaking.then(release)
   return { waitedMs: Math.round(performance.now() - t0), compiled }
 }
 
