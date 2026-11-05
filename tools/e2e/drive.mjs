@@ -3146,7 +3146,18 @@ export async function driveStory(page, {
       // 마주 본다. 짧게 누르면 그 자리에서 방향만 돈다
       await tap(key, 40)
       await tap('Space')
-      const after = await now()
+      /**
+       * ⚠️ **누른 직후 한 번만 보면 늦게 열린 대사를 놓친다.** 실측(2026-11-06 맥 journey 89487cf8 두 판 다): 장막시티 창고 앞
+       * 동행 상대에게 A를 누르고 0.2~0.7초 뒤에야 장면이 열렸다. 그 전에 본 표식이 조용해서 「못 걸었다」로 셌고, 다음 바퀴의
+       * `settle`이 태그 배틀과 창고 `Warp`까지 다 치운 뒤 「다른 맵」으로 끝나 — 부르는 쪽이 시내로 되돌아 나가 비전머신02를 못 주웠다.
+       * 열릴 때까지 1.5초 더 본다 — 아무도 없는 칸에 누른 바퀴만 그만큼 늘어난다
+       */
+      const opened = (a) => a.scene === 'battle' || a.talk || a.scene === 'menu' || a.script
+      let after = await now()
+      if (!opened(after)) {
+        const seen = await until(async () => { const a = await now(); return opened(a) ? a : null }, 1_500, 80)
+        if (seen.ok) after = seen.value
+      }
       if (verbose) {
         log(`      ${key}로 마주 보고 A → ${JSON.stringify({
           x: after.x, z: after.z, talk: after.talk, menu: after.menu, scene: after.scene,
@@ -3156,7 +3167,7 @@ export async function driveStory(page, {
       // 마주 보기까지는 됐는데 A에 아무 일도 안 나는 것과, 애초에 못 간 것은
       // 다른 실패다 — 앞은 대사 개시의 문제고 뒤는 이동의 문제다
       ep.reached = true
-      if (after.scene === 'battle' || after.talk || after.scene === 'menu' || after.script) {
+      if (opened(after)) {
         await settle()
         return done('talked')
       }
