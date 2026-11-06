@@ -4723,9 +4723,16 @@ export async function driveStory(page, {
    * 한 번에 못 걸면 자리를 다시 읽고 다시 간다. 걸어 다니는 사람은 우리가
    * 옆칸에 서는 사이에 한 칸 옮겨 가 있다
    */
-  const talkToNpc = async (mapId, script, budgetMs, tries = 4) => {
+  /**
+   * @param reached 부르는 쪽의 「장면이 이미 다 됐다」 — 참이면 그 자리에서 됐다로 끝낸다. ⚠️ 말 걸러 옆칸에 들어서는 도중에 그 사람의
+   * 장면이 먼저 열리면 `talkTo`는 「끼어들었다」로 보고 `settle`로 치운다. 그 장면이 다른 맵으로 데려가 끝나면 예전에는 원래 맵으로
+   * **되돌아 걸어 나갔다** — 실측(2026-11-06 맥 journey 89487cf8 세 판): 장막시티 동행 상대 옆 (695,596)에 들어서다 태그 배틀이 열려 이기고
+   * 창고로 옮겨졌는데, 시내로 다시 나가 비전머신02를 못 주웠다
+   */
+  const talkToNpc = async (mapId, script, budgetMs, tries = 4, reached = null) => {
     const till = Math.min(Date.now() + budgetMs, started + totalMs)
     for (let i = 0; i < tries && Date.now() < till; i++) {
+      if (reached !== null && await reached()) return true
       /**
        * ⚠️ **명부가 비었다고 그 사람이 없는 것이 아니다.**
        *
@@ -4761,7 +4768,7 @@ export async function driveStory(page, {
       const room = Math.min(left, Math.max(20_000, left / (tries - i)))
       if (await talkTo(mapId, at, room, spotAgain)) return true
     }
-    return false
+    return reached !== null && await reached()
   }
 
   /**

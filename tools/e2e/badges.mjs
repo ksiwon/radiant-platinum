@@ -1698,7 +1698,9 @@ export async function veilstoneWarehouse(api, ctx) {
   if (city !== 'arrived') { out.why = `시내로 못 나왔다 (${city})`; out.ms = Date.now() - t0; return out }
 
   // 동행 상대 — 말을 걸면 예/아니오가 뜨고, `clearTalk`이 둘짜리에서 **예**를 못 박는다
-  let said = await api.talkToNpc(MAP.veilstone, VEILSTONE_COUNTERPART, Math.min(600_000, api.left()))
+  // 다가가는 도중에 장면이 먼저 열려 배틀 · 창고 `Warp`까지 끝나면 그것으로 됐다 — 시내로 되돌아 나가지 않는다 (`talkToNpc`의 `reached`)
+  const inWarehouse = async () => (await api.now()).map === MAP.warehouse
+  let said = await api.talkToNpc(MAP.veilstone, VEILSTONE_COUNTERPART, Math.min(600_000, api.left()), 4, inWarehouse)
   await api.clearTalk(); await api.settle()
   /**
    * ⚠️ **못 걸었으면 두 번 더 건다.** 실측(2026-10-21 진단 `0535aefe` 칸 5): 기계가 붐벼 8FPS로 떨어진 판에서 두 칸 걷기가 100초씩 걸려
@@ -1708,7 +1710,7 @@ export async function veilstoneWarehouse(api, ctx) {
     const here = await api.now()
     const vv = await api.storyVars()
     if (here.map !== MAP.veilstone || (vv?.help ?? 0) !== 2) break
-    said = await api.talkToNpc(MAP.veilstone, VEILSTONE_COUNTERPART, Math.min(600_000, api.left()))
+    said = await api.talkToNpc(MAP.veilstone, VEILSTONE_COUNTERPART, Math.min(600_000, api.left()), 4, inWarehouse)
     await api.clearTalk(); await api.settle()
   }
   const at = await api.now()
