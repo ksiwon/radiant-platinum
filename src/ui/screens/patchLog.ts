@@ -55,6 +55,13 @@ interface PatchNote {
 
 export const NOTES: PatchNote[] = [
   {
+    v: 'v1.3.12',
+    date: '2026-11-07',
+    items: [
+      { kind: 'change', text: '풀숲 · 꽃 · 나무가 바람에 흔들리는 폭을 줄였습니다. 풀숲이 통째로 크게 미끄러져 정신없어 보였는데, 이제 밑동은 땅에 붙어 있고 잎끝만 잔잔하게 흔들립니다.' },
+    ],
+  },
+  {
     v: 'v1.3.11',
     date: '2026-11-06',
     items: [

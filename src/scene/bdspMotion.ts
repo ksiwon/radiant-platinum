@@ -13,14 +13,15 @@
 // ⚠️ **바람 흔들림의 식은 우리 식이다.** 원작 `Delphis/Map/Standard`는 Switch 바이너리 셰이더라 식을 못 읽는다. 값의 뜻은 이름대로 둔다
 // (`_SwingPower` 세기 · `_SwingSpeed` 빠르기 · `_SwingDistribution` 퍼짐 · `_SwingScale` 축마다 크기 · `_WindDirection` 바람 방향) —
 // 위치마다 위상이 다른 물결(월드 xz를 바람 방향으로 눕힌 값 ÷ 퍼짐)에 세기 × 크기 × 정점 가중치(`_SWING` — 정점 색 R × A)를 곱해 로컬 좌표를
-// 민다. 진폭 곱수 `WIND_GAIN`은 원작 값에서 못 구했다(추측) — 풀 한 포기가 눈에 띄게 한두 뼘 흔들리도록 잡은 값이다
+// 민다. 진폭 곱수 `WIND_GAIN`은 원작 값에서 못 구했다(추측) — 아래 `WIND_GAIN`의 실측대로 잔바람으로 잡은 값이다. 밑동은 높이로 붙든다
+// (`ROOT_PIN_HEIGHT`)
 import {
   AnimationMixer, Euler, LoopRepeat, Mesh, Quaternion, Vector2, Vector3,
   type AnimationClip, type BufferGeometry, type Material, type Object3D, type Texture,
 } from 'three'
 import { MeshStandardNodeMaterial, type Node } from 'three/webgpu'
 import {
-  attribute, floor, materialReference, modelWorldMatrix, positionLocal, sin, texture, time, uniform, uv, vec2, vec4,
+  attribute, floor, materialReference, modelWorldMatrix, positionGeometry, positionLocal, saturate, sin, texture, time, uniform, uv, vec2, vec4,
 } from 'three/tsl'
 import { ALWAYS_ASYNC } from './asyncPipelines'
 
@@ -42,8 +43,24 @@ const NO_MOTION = ((): boolean => {
 })()
 export function motionDisabled(): boolean { return NO_MOTION }
 
-/** 바람 진폭 곱수 (추측 — 머리말) */
-const WIND_GAIN = 2
+/**
+ * 바람 진폭 곱수 (추측 — 머리말).
+ *
+ * ⚠️ **2였을 때 풀숲이 정신없었다** (사용자 지적 2026-11-07). 야외 수풀 `M_C_001_GimGrass_03`(지역 11벌)은 세기 6.33 × 크기 x 0.05라
+ * 2배면 키 0.74칸 포기 끝이 ±0.63칸을 오갔다 — 40° 넘게 눕는 폭이다. 퍼짐(`_SwingDistribution`)이 2라 물결이 25칸에 한 번이어서
+ * 한 판이 통째로 같이 밀렸고, 201번도로에서 0.25초 간격 8장 중 화면의 19.7%가 바뀌었다(`.audit/probe/windSway.mjs`). 0.5면 같은 포기
+ * 끝이 ±0.16칸(12° 안팎)이다. 꽃(`T_005_Flower_*` ±0.07칸) · 나무(±0.005칸)도 같은 비로 준다
+ */
+const WIND_GAIN = 0.5
+
+/**
+ * 이 높이(메시 자리 단위 — 인스턴스 행렬 전)까지는 밑동이라 덜 흔든다 — 0에서 붙어 있고 이 높이부터 가중치를 다 받는다.
+ *
+ * ⚠️ **가중치만으로는 밑동이 안 붙는다.** `GimGrass_03`의 밑동 정점 가중치(정점 색 R × A)가 0.41~0.76이라 포기가 통째로 땅 위를
+ * 미끄러졌다. 인스턴스로 선 풀은 `positionLocal`에 인스턴스 행렬이 먼저 걸려 땅 높이가 섞이므로 날 정점 자리(`positionGeometry`)로 잰다.
+ * 이미 월드 자리로 합쳐 구운 메시(던전 꽃 일부)는 높이가 이보다 커서 그대로 다 흔들린다
+ */
+const ROOT_PIN_HEIGHT = 0.5
 
 /** 이 재질이 움직이는가 */
 export function motionOf(m: Material): MotionValues | null {
@@ -83,7 +100,7 @@ function swingOffset(s: NonNullable<MotionValues['swing']>): Node<'vec3'> {
   const phase = time.mul(uniform(s.speed * 2)).add(along)
   // 큰 물결에 작은 물결을 섞는다 — 한 가락으로만 흔들리면 기계처럼 읽힌다
   const gust = sin(phase).mul(0.7).add(sin(phase.mul(2.3).add(1.7)).mul(0.3))
-  const weight = attribute('_swing', 'float') as unknown as Node<'float'>
+  const weight = (attribute('_swing', 'float') as unknown as Node<'float'>).mul(saturate(positionGeometry.y.div(ROOT_PIN_HEIGHT)))
   const amplitude = uniform(new Vector3(s.scale[0] ?? 0, s.scale[1] ?? 0, s.scale[2] ?? 0)).mul(uniform(s.power * WIND_GAIN))
   return amplitude.mul(gust).mul(weight)
 }
