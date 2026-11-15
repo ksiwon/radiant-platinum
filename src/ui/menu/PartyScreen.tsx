@@ -34,7 +34,7 @@ import { EASY_CHAT_WORD_NONE } from '../../engine/world/easyChat'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import type { PokemonInstance } from '../../engine/pokemon/instance'
-import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
+import { OWN_SOUND, clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
 import { menuUiText } from './menuUiText'
 import { loadDialogueBank, loadItems, loadMoves, type ItemTable, type MoveTable } from '../../data/gameData'
 import { planItemUse } from '../../engine/battle/meta/bagItem'
@@ -843,15 +843,16 @@ export function PartyScreen() {
    * (`planItemUse`), 기술머신은 배울 수 있는지를 종족표의 비트로 보고,
    * 진화의돌은 진화 판정을 도구 갈래로 돌린다
    */
-  const applyItem = (): void => {
-    if (usingItem === null || !tables || !species || !selected) return
+  const applyItem = (): typeof OWN_SOUND | undefined => {
+    if (usingItem === null || !tables || !species || !selected) return undefined
     const item = tables.items.get(usingItem.item)
     const info = species.of(selected)
-    if (!info) return
+    if (!info) return undefined
     // ⚠️ **알에게는 어떤 도구도 안 먹는다.** 원작은 아이템 모드에서 알에 A를 누르면
     // 확인음 대신 `SEQ_SE_DP_CUSTOM06` 버저만 내고 아무것도 안 시작한다
     // (`party_menu/main.c:2643-2650` `HandleSpecialInput`). 도구는 가방에 그대로 남는다
-    if (selected.isEgg) { void music.playEffect(HP_TRANSFER_SE.buzz); return }
+    // 버저만 나므로 일반 확인음을 얹지 않는다 (`OWN_SOUND`)
+    if (selected.isEgg) { void music.playEffect(HP_TRANSFER_SE.buzz); return OWN_SOUND }
     const ppOf = (slot: { move: number; ppUps: number; pp: number }): number =>
       maxPpOf(slot, tables.moves.get(slot.move).pp)
 
@@ -945,6 +946,9 @@ export function PartyScreen() {
       useSaveStore.setState({ party: next })
       removeItem(item.pocket ?? 0, usingItem.item, 1)
       const line = evUseLine(item, got.evChanged, after.friendship !== selected.friendship)
+      // 올리는 비타민은 `PartyMenuCB_UseItem_Basic`이라 회복음이 난다(`callbacks.c:425`).
+      // 깎는 열매는 `_SubtractEVs`라 소리가 없다
+      if (!evChanges(item).some((c) => c.change < 0)) void music.playEffect(SFX.HEAL)
       const stat = statNames[evChanges(item)[0]?.name ?? 0] ?? ''
       const text = line === 'rose' ? P.baseRose : line === 'fell' ? P.friendFell : line === 'adores' ? P.friendMax : P.friendFloor
       say(fillMenuText(partyText[text] ?? '', [nameOf(selected), stat]), () => { clearUsingItem(); back() })
@@ -958,6 +962,9 @@ export function PartyScreen() {
       next[at] = befriend(applyFieldPlan(selected, plan, maxHp(selected, info), ppOf))
       useSaveStore.setState({ party: next })
       removeItem(item.pocket ?? 0, usingItem.item, 1)
+      // 상태 회복 · 체력 회복 · PP 회복(전부)은 쓰는 순간 `SEQ_SE_DP_KAIFUKU`
+      // (`PartyMenuCB_UseItem_Basic` 425 · `_RestoreHP` 516, `party_menu/callbacks.c`)
+      void music.playEffect(SFX.HEAL)
       clearUsingItem()
       back()
       return
@@ -1015,6 +1022,7 @@ export function PartyScreen() {
     clearUsingItem()
     closeAll()
     open('evolution')
+    return undefined
   }
 
   /**
@@ -1047,6 +1055,8 @@ export function PartyScreen() {
     next[at] = friendlyAfter(item, after)
     useSaveStore.setState({ party: next })
     removeItem(item.pocket ?? 0, usingItem.item, 1)
+    // `PartyMenu_MoveSelection_HandleInput` (`callbacks.c:1204`)
+    void music.playEffect(SFX.HEAL)
     say(fillMenuText(partyText[line] ?? '', [moveNames[picked.move] ?? '']), () => { clearUsingItem(); back() })
   }
 
@@ -1075,6 +1085,8 @@ export function PartyScreen() {
       next[slot] = reviveFull(mon, maxHp(mon, species.of(mon)))
       useSaveStore.setState({ party: next })
       setCursor(slot)
+      // 마리마다 되살리는 순간 (`PartyMenuCB_HandleSacredAsh`, `callbacks.c:615`)
+      void music.playEffect(SFX.HEAL)
       say(fillMenuText(partyText[P.regained] ?? '', [nameOf(mon)]), () => {
         if (k + 1 < sick.length) { step(k + 1); return }
         removeItem(item.pocket ?? 0, id, 1)
@@ -1160,7 +1172,9 @@ export function PartyScreen() {
     confirm: () => {
       if (turnPage()) return
       setNotice(null)
-      if (transfer !== null) { if (transfer.phase === 'pick') pickTransferTarget(); return }
+      // 받는 마리 고르기는 확인음이 없다 — 알이면 `CUSTOM06`, 맞으면 `KAIFUKU`, 안 맞으면 무음이다
+      // (`PartyMenu_UseHPTransferFieldMove`, `party_menu/main.c:2489`). 나누는 동안은 입력을 안 본다
+      if (transfer !== null) { if (transfer.phase === 'pick') pickTransferTarget(); return OWN_SOUND }
       if (inMenu) { choices[Math.min(menuAt, choices.length - 1)]?.run(); return }
       // 스크립트가 부른 고르기. 빈 파티에서는 고를 것이 없다
       if (choosingMon) {
@@ -1175,7 +1189,7 @@ export function PartyScreen() {
       // 가방의 「건네준다」면 갈래 메뉴가 아니라 **건네기**다
       if (givingItem !== null) { giveItem(at); return }
       // 도구를 들고 왔으면 갈래 메뉴가 아니라 **먹이기**다
-      if (usingItem !== null) { applyItem(); return }
+      if (usingItem !== null) return applyItem()
       // 집은 것을 놓는다. 놓는 자리가 곧 새 자리다 — 옮기는 동안 이미 바뀌어 있다
       if (held !== null) { setHeld(null); return }
       setMenu('root')

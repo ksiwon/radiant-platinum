@@ -25,14 +25,14 @@ import {
 } from 'three/tsl'
 import { assets } from '../data/providers/assetProvider'
 import { worldState } from '../state/worldState'
-import { firstPersonView } from '../engine/actor/camera'
+import { cameraSubject, firstPersonView } from '../engine/actor/camera'
 import { fieldFade, isGround, type FieldFade } from './fieldFade'
 import { bdspLights, type BdspLights } from './bdspLights'
 import { disposeTree } from './disposeTree'
 import { useBdspMark } from './bdspReady'
 import { ALWAYS_ASYNC, beginAsyncPipelines, settleAsyncPipelines } from './asyncPipelines'
 import { SEA_LEVEL, seaRects } from './seaApron'
-import { trackWater } from './waterLevel'
+import { trackWater, untrackWater } from './waterLevel'
 import { holdBdspDoors } from './DoorAnimations'
 import { holdBdspSigns } from './ObjectProps'
 import { liveMotion, liveMotionMaterials, type BdspMotion } from './bdspMotion'
@@ -400,7 +400,7 @@ export function heldFields(): string[] {
   return [...held.keys()]
 }
 
-function dropBuilt(b: Built): void { b.motion.dispose(); disposeTree(b.scene) }
+function dropBuilt(b: Built): void { b.motion.dispose(); untrackWater(b.scene); disposeTree(b.scene) }
 
 function build(scene: Group, animations: readonly AnimationClip[] = [], name = ''): Built {
   // 원작 칸과 어긋나게 지은 자리를 먼저 맞춘다 — 그림자 · 물 · 흐림 · 간판 자리(`holdBdspSigns`)가 맞춘 씬을 본다
@@ -446,6 +446,7 @@ function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
   const tick = useRef(0)
   const cam = useRef(new Vector3())
   const aim = useRef(new Vector3())
+  const subject = useRef(new Vector3())
   const eye = useRef(new Vector3())
   useBdspMark(name, built !== null && warm, failed)
   useFrame(({ camera }, dt) => {
@@ -456,7 +457,7 @@ function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
       b.lights.update(worldState.time.gameHour)
       // 이야기 깃발이 바뀌면 판을 갈아 끼운다 — 지역을 다시 받지 않는다
       applyVariants(b.variants, storyFlag)
-      const p = worldState.player.position
+      const p = cameraSubject(subject.current)
       camera.getWorldPosition(cam.current)
       aim.current.set(p.x, p.y + AIM, p.z)
       // 설정이 아니라 지금 렌즈다 (`firstPersonView`) — 컷신이 카메라를 쥔 동안은 1인칭이어도 3인칭 렌즈라 비켜 줘야 한다
@@ -485,7 +486,7 @@ function FieldArea({ name, hidden }: { name: string, hidden: boolean }) {
       void (async () => {
         const url = await provider.objectUrl(path)
         const gltf = await loader.loadAsync(url).finally(() => { provider.releaseObjectUrl(path) })
-        if (!alive) { disposeTree(gltf.scene); return }
+        if (!alive) { untrackWater(gltf.scene); disposeTree(gltf.scene); return }
         const b = build(gltf.scene, gltf.animations, name)
         mine = b
         // ⚠️ **제 파이프라인은 비동기로 굽는다** (`asyncPipelines`). 덮개가 걷힌 뒤에 서는 지역이 첫 프레임에 동기로 구우면 GPU

@@ -319,6 +319,8 @@ export const MSG = {
   // 잡는 법 강습 둘째 턴 — 동료의 성별로 갈린다 (`+ BattleSystem_GetTrainerGender(…, 0)`: 남자 0 · 여자 1)
   /** 「좋아! 체력을 줄였다…」 (빛나) */ allRightIGotItsHPDownTimeToThrowAPokeBall: 1226,
   /** 「OK! 체력이 줄었어…」 */ okTheGotIsHPDownTimeItsReadyForAPokeBall: 1227,
+  /** 박스로 갔다 — 베베를 만났으면 `+ 1`. 빈칸: 이름 · 박스 */ pokemonWasTransferredToBoxInSomeonesPC: 1174,
+  /** 박스가 차서 다른 박스로 갔다 — 베베를 만났으면 `+ 1`. 빈칸: 이름 · 찬 박스 · 간 박스 */ boxInSomeonesPCIsFullPokemonWasTransferredToOtherBoxInstead: 1176,
   /** 0번 흔들렸다 */ ohNoThePokemonBrokeFree: 863,
   /** 무사히 도망쳤다 */ gotAwaySafely: 781,
   /** 못 도망친다 */ cantEscape: 42,

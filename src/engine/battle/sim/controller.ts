@@ -36,6 +36,9 @@ import {
 } from './session'
 
 /** 배틀이 어떻게 끝났는가. 승패 말고도 포획·도망이 있다 */
+/** 파티가 찬 채 잡은 마리가 박스로 가는 말 (`BattleEvent`의 `boxed`) */
+export interface BoxTransfer { from: string; to: string | null; bebe: boolean }
+
 export type BattleFinish = 'win' | 'loss' | 'caught' | 'fled' | 'foeFled' | null
 
 /** 한 걸음의 결과 */
@@ -630,6 +633,11 @@ export class BattleController {
     return this.caught
   }
 
+  /** 지금 마주 선 야생의 종 번호. 리피트볼이 도감을 찾아볼 때 쓴다 */
+  get foeSpeciesNow(): number | null {
+    return this.activeFoe()?.mon.species ?? null
+  }
+
   /** 잡을 때 던진 볼의 도구 번호 */
   get capturedBall(): BallId | null {
     return this.caughtBall
@@ -641,8 +649,10 @@ export class BattleController {
    * 잡히면 배틀은 그 자리에서 끝난다. sim에는 아무것도 안 보낸다 — 포획은
    * 대전 규칙 밖의 일이라 심판이 알 필요가 없다
    */
-  async throwBall(ball: BallId, context: Omit<CatchContext, 'turn' | 'level' | 'types'>)
-    : Promise<BattleStep> {
+  async throwBall(
+    ball: BallId,
+    context: Omit<CatchContext, 'turn' | 'level' | 'types'> & { transfer?: BoxTransfer },
+  ): Promise<BattleStep> {
     const foe = this.activeFoe()
     // ⚠️ **더블에서는 볼이 거의 없다.** 트레이너 더블은 원작도 막고, 편과 함께
     // 만난 야생 둘(`BATTLE_TYPE_AI_PARTNER`)은 **둘 다 서 있으면** 「안돼! 2마리
@@ -657,7 +667,7 @@ export class BattleController {
     const result = throwBall(
       { hp: seen.hp, maxHp: seen.maxHp, catchRate: foe.species.catchRate, status: seen.status },
       ball,
-      { ...context, turn: this.view.turn, level: seen.level, types: foe.species.types },
+      { ...context, turn: Math.max(0, this.view.turn - 1), level: seen.level, types: foe.species.types },
       this.random,
     )
     const events: BattleEvent[] = [{
@@ -666,6 +676,12 @@ export class BattleController {
     }]
 
     if (result.caught) {
+      if (context.transfer) {
+        events.push({
+          kind: 'boxed', actor: { ...seen, name: seen.key },
+          from: context.transfer.from, to: context.transfer.to, bebe: context.transfer.bebe,
+        })
+      }
       this.caught = foe
       this.caughtBall = ball
       this.view = { ...this.view, ended: true }

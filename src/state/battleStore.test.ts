@@ -7,7 +7,7 @@
 // 지연 로딩 경계도 여기서 지나간다 — `startWild`가 `@pkmn/sim`을 처음 끌어온다.
 import 'fake-indexeddb/auto'
 import { afterAll, beforeAll, beforeEach, describe, it, expect } from 'vitest'
-import { hasTrainer, moneyPenalty, useBattleStore } from './battleStore'
+import { hasTrainer, moneyPenalty, sendToBox, useBattleStore } from './battleStore'
 import { useSaveStore, createNewSave, dexHas } from './saveStore'
 import { Ball } from '../engine/battle/meta/capture'
 import { createWild, fillPp, statsOf, wildMoves } from '../engine/pokemon/instance'
@@ -415,6 +415,55 @@ describe('포획', () => {
     // 아니다 — 원작의 `PCBoxes_TryStoreBoxMon`이 현재 박스부터 훑는다
     expect(useSaveStore.getState().boxes[0]![0]?.species).toBe(RATTATA)
   }, 30_000)
+})
+
+describe('포획 — 박스와 스코어', () => {
+  const fullBox = (one: ReturnType<typeof useSaveStore.getState>['party'][number]) =>
+    Array.from({ length: 30 }, () => ({ ...one }))
+
+  it('현재 박스가 차면 빈 박스로 가고 그 박스가 현재 박스가 된다 (`PCBoxes_SetCurrentBox`)', async () => {
+    await useBattleStore.getState().startWild({ species: STARLY, level: 5 })
+    useBattleStore.getState().close()
+    const one = useSaveStore.getState().party[0]!
+    const boxes = useSaveStore.getState().boxes.map((b) => [...b])
+    boxes[0] = fullBox(one)
+    useSaveStore.setState({ party: Array.from({ length: 6 }, () => ({ ...one })), boxes, currentBox: 0 })
+
+    await useBattleStore.getState().startWild({ species: RATTATA, level: 5 })
+    await useBattleStore.getState().throwBall(Ball.MASTER)
+    // 글은 잡힌 판 안에서 나온다 — 박스 이름이 아직 안 올라온 시험 환경이면 없을 수 있다
+    useBattleStore.getState().close()
+
+    expect(useSaveStore.getState().boxes[1]![0]?.species).toBe(RATTATA)
+    expect(useSaveStore.getState().currentBox).toBe(1)
+  }, 30_000)
+
+  it('박스로 가는 마리는 PP가 가득 찬다 (`BoxPokemon_RestorePP`)', async () => {
+    const sp = (await loadSpecies()).get(STARLY)
+    const one = createWild({ species: sp, level: 5, rng: () => 0.5, otId: 1, otSecretId: 1 })
+    expect(one.moves.length).toBeGreaterThan(0)
+    const dry = { ...one, moves: one.moves.map((m) => ({ ...m, pp: 0, ppUps: 0 })) }
+    const sent = sendToBox(useSaveStore.getState().boxes, 0, dry)!
+    const stored = sent.boxes[sent.at.box]![sent.at.slot]!
+    expect(stored.moves.length).toBeGreaterThan(0)
+    for (const m of stored.moves) expect(m.pp).toBeGreaterThan(0)
+    expect(sent.currentBox).toBe(sent.at.box)
+  })
+
+  it('새 종을 잡으면 스코어가 20 더 오른다. 이미 잡은 종이면 안 오른다 (`TryIncrementTrainerScoreCaughtSpecies`)', async () => {
+    const score = () => useSaveStore.getState().records[1] ?? 0
+    const catchOne = async (): Promise<number> => {
+      const before = score()
+      await useBattleStore.getState().startWild({ species: RATTATA, level: 5 })
+      await useBattleStore.getState().throwBall(Ball.MASTER)
+      useBattleStore.getState().close()
+      return score() - before
+    }
+    const first = await catchOne()
+    const second = await catchOne()
+    expect(first - second).toBe(20)
+    expect(second).toBeGreaterThan(0)
+  }, 60_000)
 })
 
 describe('도망', () => {

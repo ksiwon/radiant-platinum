@@ -45,7 +45,7 @@ export function ControlHint() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (typingInto(e.target) || !LEGEND_TOGGLE.includes(e.code)) return
+      if (typingInto(e.target) || e.ctrlKey || e.metaKey || e.altKey || !LEGEND_TOGGLE.includes(e.code)) return
       e.preventDefault()
       setOpen((v) => !v)
     }

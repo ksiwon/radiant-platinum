@@ -10,7 +10,7 @@ import { resolve } from 'node:path'
 import { describe, it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from './grid'
 import {
-  world, warpsOf, npcsOf, resolveWarp, mapById, NO_SCRIPT, talkTile, TILE_BEHAVIOR_DOOR, TILE_BEHAVIOR_PC,
+  world, warpsOf, npcsOf, resolveWarp, mapById, NO_SCRIPT, talkTile, TILE_BEHAVIOR_DOOR, TILE_BEHAVIOR_PC, sideTalkTile,
   clearWarpOverrides,
   doorEntry,
   setWarpEventPos,
@@ -709,5 +709,37 @@ describe('승강기 방 — 특별한 자리', () => {
     world.mapId = 1
     const out = resolveWarp(LIFT_EXIT)
     expect(out).toMatchObject({ to: 0, x: CITY_DOOR.x + 0.5, z: CITY_DOOR.z + 0.5 })
+  })
+})
+
+describe('옆 칸 사람에게 말 걸기 — 자유 이동은 몸이 두 칸에 걸친다', () => {
+  const TABLE = 0x80
+  const open = { behavior: () => 0, isBlocked: () => false }
+  const north = { x: 0, z: -1 }
+  const east = { x: 1, z: 0 }
+
+  it('가운데에 서면 앞 칸만 본다', () => {
+    expect(sideTalkTile(open, { x: 5.5, z: 6.5 }, { x: 5, z: 5 }, north)).toBeNull()
+    expect(sideTalkTile(open, { x: 5.7, z: 6.5 }, { x: 5, z: 5 }, north)).toBeNull()
+  })
+
+  it('동쪽으로 치우쳐 북쪽을 보면 앞 칸의 동쪽 칸도 본다', () => {
+    expect(sideTalkTile(open, { x: 5.99, z: 6.5 }, { x: 5, z: 5 }, north)).toEqual({ x: 6, z: 5 })
+    expect(sideTalkTile(open, { x: 5.01, z: 6.5 }, { x: 5, z: 5 }, north)).toEqual({ x: 4, z: 5 })
+  })
+
+  it('동쪽을 볼 때는 남북 쪽이 옆이다', () => {
+    expect(sideTalkTile(open, { x: 5.5, z: 6.9 }, { x: 6, z: 6 }, east)).toEqual({ x: 6, z: 7 })
+    expect(sideTalkTile(open, { x: 5.5, z: 6.1 }, { x: 6, z: 6 }, east)).toEqual({ x: 6, z: 5 })
+  })
+
+  it('앞 칸이 막혔으면 벽 너머라 닿지 않는다', () => {
+    const wall = { behavior: () => 0, isBlocked: (x: number, z: number) => x === 5 && z === 5 }
+    expect(sideTalkTile(wall, { x: 5.99, z: 6.5 }, { x: 5, z: 5 }, north)).toBeNull()
+  })
+
+  it('옆 칸이 계산대면 대각선으로는 닿지 않는다', () => {
+    const counter = { behavior: (x: number, z: number) => (x === 6 && z === 5 ? TABLE : 0), isBlocked: () => false }
+    expect(sideTalkTile(counter, { x: 5.99, z: 6.5 }, { x: 5, z: 5 }, north)).toBeNull()
   })
 })

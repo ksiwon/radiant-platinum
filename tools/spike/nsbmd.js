@@ -128,11 +128,13 @@ function vertexFrom(op, params, prev) {
     case 0x25: return [fx16(signed(v & 0xffff, 16)), fx16(signed(v >>> 16, 16)), prev[2]]
     case 0x26: return [fx16(signed(v & 0xffff, 16)), prev[1], fx16(signed(v >>> 16, 16))]
     case 0x27: return [prev[0], fx16(signed(v & 0xffff, 16)), fx16(signed(v >>> 16, 16))]
-    case 0x28: // VTX_DIFF — 직전 정점에서의 차이. 10비트, 소수 12자리의 1/8
+    // VTX_DIFF — 직전 정점에서의 차이. 10비트 부호 정수를 1.3.12 원시값 그대로(÷4096).
+    // src/import/platinum/nsbmd.ts와 같은 값이어야 한다 (근거는 그쪽 주석)
+    case 0x28:
       return [
-        prev[0] + signed(v & 0x3ff, 10) / 4096 / 8,
-        prev[1] + signed((v >>> 10) & 0x3ff, 10) / 4096 / 8,
-        prev[2] + signed((v >>> 20) & 0x3ff, 10) / 4096 / 8,
+        prev[0] + signed(v & 0x3ff, 10) / 4096,
+        prev[1] + signed((v >>> 10) & 0x3ff, 10) / 4096,
+        prev[2] + signed((v >>> 20) & 0x3ff, 10) / 4096,
       ]
     default: return prev
   }

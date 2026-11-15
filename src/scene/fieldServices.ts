@@ -65,7 +65,9 @@ const randMod = (bound: number): number => (bound <= 1 ? 0 : Math.floor(Math.ran
 import { setOnCyclingRoad } from '../engine/actor/bike'
 import { BOX_MODE, countAll, freeSlots } from '../engine/pokemon/boxes'
 import { music } from '../engine/audio/music'
+import { doorCloseSe, doorOpenSe } from '../engine/audio/doorSound'
 import { SFX } from '../engine/audio/sfx'
+import { DOOR_KIND } from '../import/platinum/propAnims'
 import { fieldBgm } from '../engine/audio/songs'
 import { MAP_FEATURE, setMapFeature } from '../engine/world/mapFeatures'
 import { useDwWarpStore } from '../state/dwWarpStore'
@@ -778,6 +780,7 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   sunyshoreSound.play = (seq) => { void music.playEffect(seq) }
   sunyshoreSound.stop = (seq) => { music.stopEffect(seq) }
   eternaSound.play = (seq) => { void music.playEffect(seq) }
+  eternaSound.stop = (seq) => { music.stopEffect(seq) }
   canalaveSound.play = (seq) => { void music.playEffect(seq) }
   canalaveSound.stop = (seq) => { music.stopEffect(seq) }
   veilstoneSound.play = (seq) => { void music.playEffect(seq) }
@@ -1301,7 +1304,12 @@ const services: FieldServices = {
    * 명령 쪽이 서비스가 없을 때만 스스로 1을 채운다 (`commands.ts`)
    */
   breakObstacle: {
-    start: (kind) => { showFieldAction(kind === 0 ? 'cut' : 'rockSmash', BREAK_SECONDS) },
+    start: (kind) => {
+      // 시작하는 순간 한 번 — 나무(0)는 `FW015`, 바위(1·2)는 `FW088`
+      // (`ov6_02248050.c:211·290·309` · `ScrCmd_StartDestroyObstacleAnimation`의 갈래)
+      void music.playEffect(kind === 0 ? SFX.FIELD_CUT : SFX.FIELD_ROCK_SMASH)
+      showFieldAction(kind === 0 ? 'cut' : 'rockSmash', BREAK_SECONDS)
+    },
     done: () => fieldActionDone(),
   },
 
@@ -1518,11 +1526,13 @@ const services: FieldServices = {
 
   bike: {
     riding: () => worldState.player.cycling,
-    ride: (on) => {
+    ride: (on, quiet = false) => {
       const p = worldState.player
       if (p.cycling === on) return
       p.cycling = on
       p.pedalling = 0
+      // 올라타는 순간 `SEQ_SE_DP_JITENSYA` (`PlayerAvatar_RequestStateCycle`). 이어하기가 다시 태울 때는 안 낸다
+      if (on && !quiet) void music.playEffect(SFX.BIKE_RIDE)
       // 원작도 여기서 자전거 곡으로 갈아 끼우고, 내리면 **가로채기를 비워**
       // 맵 곡으로 되돌린다 (`FieldBGM_SetOverride(fieldSystem, SEQ_NONE)`)
       fieldBgm.override = on ? SEQ_BICYCLE : null
@@ -2288,14 +2298,14 @@ export function setStarterChoice(species: number): void {
  * (여닫이 문짝 하나가 같은 200ms 동안 돈다). 원작이 문마다 다른 그림을 쓰는
  * 것과 달리 우리는 한 벌뿐이라, 미닫이 문에도 여닫이가 돈다.
  *
- * 소리는 문 종류가 정한다 (`DoorAnimation_GetSoundEffectType`):
- * 미닫이는 열 때 `SEQ_SE_DP_DOOR10`·닫을 때 소리 없음, 나머지는
- * `SEQ_SE_DP_DOOR_OPEN`과 `SEQ_SE_DP_DOOR_CLOSE2`다. 어느 쪽인지는 **문 모델
- * 번호**로 갈리는데 그 표를 아직 안 옮겼으므로 여닫이 소리를 쓴다
+ * 소리는 문 종류가 정한다 (`DoorAnimation_GetSoundEffectType`, `engine/audio/doorSound`):
+ * 미닫이는 열 때 `SEQ_SE_DP_DOOR10`·닫을 때 소리 없음, 상점 문은 열 때
+ * `SEQ_SE_PL_DOOR_OPEN5`·닫을 때 소리 없음, 나머지는 `SEQ_SE_DP_DOOR_OPEN`과
+ * `SEQ_SE_DP_DOOR_CLOSE2`다. 종류는 그 칸에 놓인 **문 모델 번호**로 갈린다
  */
-/** `generated/sdat.txt`. 디컴프가 닫는 소리를 생값 1543으로 적어 둔 것과 맞는다 */
-const DOOR_OPEN_SE = SFX.DOOR
-const DOOR_CLOSE_SE = 1543
+
+/** 태그 → 그 문의 모델 번호. `load`가 그 칸의 소품에서 읽는다 */
+const doorModel = new Map<number, number>()
 
 /**
  * 표를 아직 못 받았을 때 문이 한 바퀴 도는 시간(ms).
@@ -2325,6 +2335,7 @@ const door = {
     doorSpan.delete(tag)
     // 그 칸에 놓인 소품의 클립 길이를 재 둔다 — 스크립트가 기다리는 시간이다
     const model = mapWorld.grid?.propModelAt(x, z) ?? -1
+    doorModel.set(tag, model)
     void loadPropAnimSet().then((set) => {
       const ids = set?.table.props[String(model)]
       const span = (at: number | undefined): number =>
@@ -2336,17 +2347,19 @@ const door = {
   open: (tag: number): void => {
     doorUntil.set(tag, performance.now() + doorMs(tag, false))
     useDoorVisualStore.getState().open(tag)
-    void music.playEffect(DOOR_OPEN_SE)
+    void music.playEffect(doorOpenSe(DOOR_KIND[doorModel.get(tag) ?? -1]))
   },
   close: (tag: number): void => {
     doorUntil.set(tag, performance.now() + doorMs(tag, true))
     useDoorVisualStore.getState().close(tag)
-    void music.playEffect(DOOR_CLOSE_SE)
+    const shut = doorCloseSe(DOOR_KIND[doorModel.get(tag) ?? -1])
+    if (shut !== null) void music.playEffect(shut)
   },
   busy: (tag: number): boolean => performance.now() < (doorUntil.get(tag) ?? 0),
   unload: (tag: number): void => {
     doorUntil.delete(tag)
     doorSpan.delete(tag)
+    doorModel.delete(tag)
     useDoorVisualStore.getState().unload(tag)
   },
 }

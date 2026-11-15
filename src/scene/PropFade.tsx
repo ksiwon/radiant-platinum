@@ -18,7 +18,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Box3, Vector3, type BufferGeometry, type Group, type Material, type Object3D } from 'three'
 import { worldState } from '../state/worldState'
-import { firstPersonView } from '../engine/actor/camera'
+import { cameraSubject, firstPersonView } from '../engine/actor/camera'
 import { markSeeThrough } from './fx/seeThrough'
 
 /** 이보다 선에 가까이 서 있으면 다 지운다 (타일) */
@@ -117,6 +117,7 @@ interface Base {
 
 const probe = new Vector3()
 const aim = new Vector3()
+const subject = new Vector3()
 
 /**
  * 지금 프레임에 **가린 것을 비켜 줄 차례인가.**
@@ -200,7 +201,7 @@ export function PropFade({ geometry, materials, children }: Props) {
     let want = 1
     if (clearsBlockers()) {
       const world = box.current.copy(local).applyMatrix4(node.matrixWorld)
-      const p = worldState.player.position
+      const p = cameraSubject(subject)
       aim.set(p.x, p.y + AIM_HEIGHT, p.z)
       want = blockedBy(world, camera.position, aim)
     }

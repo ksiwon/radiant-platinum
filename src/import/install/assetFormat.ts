@@ -140,8 +140,13 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 2 — **가방이 열리고 고른 볼이 흔들린다** (`import/platinum/starterScene.ts`). 관절 애니 넷(`psel_all` 41프레임 · `psel_mb_a~c`
    * 73프레임)을 원작 바이트 그대로 `data/starter/anims.bin`에 잇고, 되돌리는 데 드는 모델 속살 · 노드 사슬과 글창 팔레트 첫 줄
    * (분류 · 이름을 칠하는 `{COLOR n}`)을 `index.json`에 싣는다. 옛 판은 덮인 가방과 열린 가방을 갈아 끼우기만 했다
+   *
+   * 3 — **`VTX_DIFF`(GPU 명령 0x28)의 변화량을 ÷4096으로 읽는다** (`import/platinum/nsbmd.ts` ↔ 노드 쪽 `tools/spike/nsbmd.js`). 전엔 ÷32768로 읽어
+   * 이 명령으로 이어 그린 조각이 8배 작게 쌓였다 — 땅 청크 666개 중 114개(정점 5,297개)가 그 명령을 쓰고, 그 조각의 삼각형 27.6%가 가늘게
+   * 찌그러졌다(÷4096에서 0.9%, 근거는 DATA.md §2.2). ⚠️ **2도 그대로 쓴다**(`GROUP_ACCEPTS`) — 찌그러진 조각은 보기에 거슬릴 뿐 게임은 멀쩡해서,
+   * 이미 깐 사람에게 롬을 다시 고르게 하지 않는다. 새로 깔거나 어떤 까닭으로든 이 그룹을 다시 굽는 사람은 바로잡힌 값을 받는다
    */
-  starterScene: 2,
+  starterScene: 3,
   /**
    * 크레딧 — 2에서 **배치표를 사용자 롬에서** 읽는다 (PARITY §8.12).
    *
@@ -350,8 +355,13 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * (`import/platinum/chunks.ts`의 `packChunk`)
    *
    * 3 — **노드 변환을 먹인다** (청크·소품과 같은 고침)
+   *
+   * 4 — **`VTX_DIFF`(GPU 명령 0x28)의 변화량을 ÷4096으로 읽는다** (`import/platinum/nsbmd.ts` ↔ 노드 쪽 `tools/spike/nsbmd.js`). 전엔 ÷32768로 읽어
+   * 이 명령으로 이어 그린 조각이 8배 작게 쌓였다 — 땅 청크 666개 중 114개(정점 5,297개)가 그 명령을 쓰고, 그 조각의 삼각형 27.6%가 가늘게
+   * 찌그러졌다(÷4096에서 0.9%, 근거는 DATA.md §2.2). ⚠️ **3도 그대로 쓴다**(`GROUP_ACCEPTS`) — 찌그러진 조각은 보기에 거슬릴 뿐 게임은 멀쩡해서,
+   * 이미 깐 사람에게 롬을 다시 고르게 하지 않는다. 새로 깔거나 어떤 까닭으로든 이 그룹을 다시 굽는 사람은 바로잡힌 값을 받는다
    */
-  distortionProps: 3,
+  distortionProps: 4,
   /**
    * 2 — **하늘이 선다** (`data/distortionSky.png` · `.json`). 원작 배경 한 장과 도는 구름 일곱이다 —
    * 그전에는 깨어진 세계 뒤가 검은 빈 공간이었다. ⚠️ **1도 그대로 쓴다**(`GROUP_ACCEPTS`) — 없으면 하늘만 검다
@@ -425,8 +435,13 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 알파 10/31)가 어두운 그림자가 아니라 **흰 안개**였다.
    * 바이트가 달라지는 것은 그 140벌뿐이지만 그룹을 통째로 다시 굽는다
    * (`.audit/probe/whiteMaterials.mjs`)
+   *
+   * 10 — **`VTX_DIFF`(GPU 명령 0x28)의 변화량을 ÷4096으로 읽는다** (`import/platinum/nsbmd.ts` ↔ 노드 쪽 `tools/spike/nsbmd.js`). 전엔 ÷32768로 읽어
+   * 이 명령으로 이어 그린 조각이 8배 작게 쌓였다 — 땅 청크 666개 중 114개(정점 5,297개)가 그 명령을 쓰고, 그 조각의 삼각형 27.6%가 가늘게
+   * 찌그러졌다(÷4096에서 0.9%, 근거는 DATA.md §2.2). ⚠️ **9도 그대로 쓴다**(`GROUP_ACCEPTS`) — 찌그러진 조각은 보기에 거슬릴 뿐 게임은 멀쩡해서,
+   * 이미 깐 사람에게 롬을 다시 고르게 하지 않는다. 새로 깔거나 어떤 까닭으로든 이 그룹을 다시 굽는 사람은 바로잡힌 값을 받는다
    */
-  chunks: 9,
+  chunks: 10,
   /**
    * 2 — **재질 색을 입힌다.** 줄기 · 잎 · 꽃 그림은 회색 마스크라 `_Color` · `_LayerColor`를 안 곱하면 **하얗다**. 줄기 · 열매는
    * `_Color`를 `baseColorFactor`로, 잎(`_CASCADE_BLENDUV0`)은 `_Color` ↔ `_LayerColor`를 정점 알파로 섞은 정점 색 `COLOR_0`으로,
@@ -495,8 +510,13 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 2 — **창기둥 붉은 사슬(`redChain`)이 BMA0(`demo_tengan_gra` 5번 · 재질 알파 201프레임)를 싣는다** (`import/platinum/demoModels`의
    * `DEMO_MODELS`). 옛 판은 BCA0만 있어 사슬 세 겹이 늘 같은 빛으로 선다. ⚠️ **옛 판(1)을 안 받는다**(`GROUP_ACCEPTS`에 없다) —
    * 이미 깐 사람도 이 그룹을 다시 굽는다(사용자 결정 10-11)
+   *
+   * 4 — **`VTX_DIFF`(GPU 명령 0x28)의 변화량을 ÷4096으로 읽는다** (`import/platinum/nsbmd.ts` ↔ 노드 쪽 `tools/spike/nsbmd.js`). 전엔 ÷32768로 읽어
+   * 이 명령으로 이어 그린 조각이 8배 작게 쌓였다 — 땅 청크 666개 중 114개(정점 5,297개)가 그 명령을 쓰고, 그 조각의 삼각형 27.6%가 가늘게
+   * 찌그러졌다(÷4096에서 0.9%, 근거는 DATA.md §2.2). ⚠️ **3도 그대로 쓴다**(`GROUP_ACCEPTS`) — 찌그러진 조각은 보기에 거슬릴 뿐 게임은 멀쩡해서,
+   * 이미 깐 사람에게 롬을 다시 고르게 하지 않는다. 새로 깔거나 어떤 까닭으로든 이 그룹을 다시 굽는 사람은 바로잡힌 값을 받는다
    */
-  demoModels: 3,
+  demoModels: 4,
 }
 
 export function groupFormat(name: string): number {
@@ -530,6 +550,11 @@ const GROUP_ACCEPTS: Readonly<Record<string, readonly number[]>> = {
   gimmicks: [1],
   // 제 팔레트 (`GROUP_FORMAT.npcSprites` 2) — 없으면 벽화의 벽 · 싹 둘째 장 열세 장이 옛 색이다
   npcSprites: [1],
+  // `VTX_DIFF` 단위 (`GROUP_FORMAT.chunks` 10 · 같은 고침의 세 그룹) — 가늘게 찌그러진 조각이 남을 뿐이다
+  chunks: [9],
+  starterScene: [2],
+  distortionProps: [3],
+  demoModels: [3],
 }
 
 /** 이 판의 그 그룹을 그대로 써도 되는가 */

@@ -25,9 +25,11 @@ import {
 import type { ItemIcons } from '../../data/schema'
 import type { PartySlot } from '../../engine/battle/choice'
 import {
-  BATTLE_POCKET, embargoBlocks, isEscapeItem, needsMoveSlot, needsTarget, type ItemPlan,
+  BATTLE_POCKET, embargoBlocks, isEscapeItem, needsMoveSlot, needsTarget, restoresMember, type ItemPlan,
 } from '../../engine/battle/meta/bagItem'
 import { Ball, type BallId } from '../../engine/battle/meta/capture'
+import { music } from '../../engine/audio/music'
+import { SFX } from '../../engine/audio/sfx'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { useBattleStore, type RosterEntry } from '../../state/battleStore'
@@ -314,6 +316,9 @@ export function BattleBag({
     const key = party[i]?.key
     if (chosen === undefined || key === undefined) return
     remember(chosen.item)
+    // 먹이는 순간 회복음 (`battle_party.c:948·1004`). 확인음은 따로 난다
+    const made = planAt(i, moveSlot)
+    if (made !== null && restoresMember(made)) void music.playEffect(SFX.HEAL)
     onUse(chosen.item, key, moveSlot)
   }
 

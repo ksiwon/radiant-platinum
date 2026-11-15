@@ -4,7 +4,8 @@
 // **눌려 있는가**를 보고, 메뉴는 **눌린 순간**과 길게 누를 때의 반복이 필요하다.
 // 그래서 여기는 DOM 이벤트를 그대로 쓴다.
 import { useEffect, useRef } from 'react'
-import { menuBeep } from '../../engine/audio/lazy'
+import { menuBeep, playMenuSfx } from '../../engine/audio/lazy'
+import type { SfxName } from '../../engine/audio/sfx'
 import { BINDINGS, typingInto } from '../../engine/input/keys'
 
 /**
@@ -15,7 +16,16 @@ import { BINDINGS, typingInto } from '../../engine/input/keys'
  * 밀 때 `clampCursor`가 같은 값을 돌려주면 그 자리에서 `false`를 낸다.
  * 아무것도 안 돌려주면 일어난 것으로 친다
  */
-type Handler = () => void | boolean
+type Handler = () => void | boolean | typeof OWN_SOUND
+
+/**
+ * 핸들러가 **이 키의 소리를 직접 냈다**는 신호. 일반 메뉴 소리를 얹지 않는다.
+ *
+ * 원작은 알에 A를 누르면 확인음 없이 `SEQ_SE_DP_CUSTOM06`만 내고
+ * (`party_menu/main.c:2643-2650`), 체력 나눔의 받는 마리 고르기도 `KAIFUKU`·`CUSTOM06`만 낸다
+ * (`main.c:2489·2523`). 그런 자리에서 돌려준다
+ */
+export const OWN_SOUND = 'own-sound' as const
 
 interface MenuKeys {
   up?: Handler
@@ -82,6 +92,8 @@ for (const code of BINDINGS.menu) if (!(code in CODES)) CODES[code] = 'menu'
  */
 const ONCE: ReadonlySet<keyof MenuKeys> = new Set<keyof MenuKeys>(['confirm', 'cancel', 'tab', 'register', 'menu', 'select'])
 
+const MOVES: ReadonlySet<keyof MenuKeys> = new Set<keyof MenuKeys>(['up', 'down', 'left', 'right'])
+
 /**
  * 사람 키를 잠근다 — 잡는 법 강습 동안 화면은 손이 보내는 **만든 키**(`isTrusted` 거짓)만 받는다
  * (`ui/battle/TutorialPilot`). 원작도 그동안 입력을 안 본다(`GetCatchTutorialInput`)
@@ -94,12 +106,16 @@ export function lockMenuKeysToPilot(on: boolean): void {
 /**
  * 화면이 떠 있는 동안만 듣는다.
  *
+ * `moveSfx` — 방향키가 낼 소리. 안 주면 `MENU`다 (시작 메뉴만 준다)
+ *
  * 핸들러를 ref에 담아 두는 이유: 커서 자리가 바뀔 때마다 새 함수가 오는데,
  * 그때마다 리스너를 떼고 다시 붙이면 길게 누르기가 끊긴다
  */
-export function useMenuKeys(handlers: MenuKeys, enabled = true): void {
+export function useMenuKeys(handlers: MenuKeys, enabled = true, moveSfx?: SfxName): void {
   const ref = useRef(handlers)
   ref.current = handlers
+  const sfxRef = useRef(moveSfx)
+  sfxRef.current = moveSfx
 
   useEffect(() => {
     if (!enabled) return
@@ -109,6 +125,8 @@ export function useMenuKeys(handlers: MenuKeys, enabled = true): void {
       // 못한다. 화면마다 `enabled`로 끄고 있었지만 하나라도 빠뜨리면 그 칸이
       // 죽는다 — 칸이 임자인 키는 여기서 통째로 비켜 준다
       if (typingInto(e.target)) return
+      // Ctrl · Alt · ⌘ 조합은 브라우저의 것이다 — Ctrl+D(북마크) · Alt+←(뒤로 가기)를 메뉴가 가로채면 안 된다
+      if (e.ctrlKey || e.metaKey || e.altKey) return
       if (pilotOnly && e.isTrusted) { e.preventDefault(); e.stopPropagation(); return }
       const action = CODES[e.code]
       if (action === undefined) return
@@ -121,7 +139,13 @@ export function useMenuKeys(handlers: MenuKeys, enabled = true): void {
       // 원작은 A·B·상하좌우에 **같은 소리 하나**를 쓴다 (`menu.c`의
       // `Menu_ProcessInput`). 화면이 그 키를 안 받으면 위에서 이미 빠져나갔고,
       // 받았어도 아무것도 안 바뀌었다고 하면(`false`) 조용하다
-      if (fn() !== false) menuBeep()
+      const done = fn()
+      if (done === false || done === OWN_SOUND) return
+      // 커서 이동만 소리를 바꿀 수 있다 — 결정·취소는 어디서나 `SEQ_SE_CONFIRM`이다
+      // (`Menu_ProcessInputWithSound`: A·취소 키는 `SEQ_SE_CONFIRM`, 방향만 `sdatID`)
+      const own = sfxRef.current
+      if (own !== undefined && MOVES.has(action)) playMenuSfx(own)
+      else menuBeep()
     }
     // 캡처 단계에서 받는다 — 필드의 Escape 처리보다 먼저 가로채야 한다
     window.addEventListener('keydown', onKey, true)

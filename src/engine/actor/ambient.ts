@@ -31,7 +31,7 @@ import { NO_SCRIPT } from '../map/world'
 import { DIR_STEP, MovementRunner, type MovementTable } from '../script/movement'
 import { obstacleAt } from './obstacles'
 import { measureNpcSpeeds, npcActors, type NpcActor } from './npcs'
-import { playerSpeed } from './player'
+import { playerSpeed, RADIUS as PLAYER_RADIUS } from './player'
 
 type MovementTypeTable = ScriptFile['movementTypes']
 type MovementType = MovementTypeTable[number]
@@ -186,13 +186,24 @@ function terrainBlocks(x: number, z: number): boolean {
     || obstacleAt(x, z) !== null
 }
 
-/** 그 칸에 사람이 서 있는가. 이쪽이면 제자리에서 기다린다 */
+/**
+ * 그 칸에 사람이 서 있는가. 이쪽이면 제자리에서 기다린다.
+ *
+ * ⚠️ **한 칸이 아니라 몸이 걸친 칸이다.** 주인공 가운데가 5.9에 서면 몸(반지름 0.3)은 칸 5와 6에 걸치는데 가운데가 속한 칸만 보면
+ * 6으로 걸어 들어와 몸을 겹친다(그러면 주인공이 막힘 구제 길로 빠진다). 걷는 중인 사람도 5→6 사이에서는 두 칸이 다 그의 것이다 —
+ * 반올림으로 한 칸만 보면 떠나는 칸이나 도착할 칸으로 다른 사람이 걸어 들어온다
+ */
+/** 걷는 사람의 좌표가 칸 번호에서 이만큼 안 벗어났으면 아직 그 칸 한 곳이다(부동소수 찌꺼기) */
+const SPAN_EPS = 1e-3
+
 function someoneAt(self: NpcActor, x: number, z: number): boolean {
   const p = worldState.player.position
-  if (Math.floor(p.x) === x && Math.floor(p.z) === z) return true
+  if (x >= Math.floor(p.x - PLAYER_RADIUS) && x <= Math.floor(p.x + PLAYER_RADIUS)
+    && z >= Math.floor(p.z - PLAYER_RADIUS) && z <= Math.floor(p.z + PLAYER_RADIUS)) return true
   for (const other of npcActors.list) {
     if (other === self || !other.visible) continue
-    if (Math.round(other.x) === x && Math.round(other.z) === z) return true
+    if (x >= Math.floor(other.x + SPAN_EPS) && x <= Math.ceil(other.x - SPAN_EPS)
+      && z >= Math.floor(other.z + SPAN_EPS) && z <= Math.ceil(other.z - SPAN_EPS)) return true
   }
   return false
 }

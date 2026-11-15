@@ -27,6 +27,8 @@ import { fieldTaskRunning } from './fieldTask'
 
 /** 자동 저장 사이 최소 간격. 맵을 몇 번 오가도 이 안에서는 한 번이다 */
 const AUTOSAVE_GAP_MS = 5 * 60_000
+/** 탭을 떠나는 순간의 저장끼리 최소 간격 — 탭을 빠르게 오가는 것으로 저장이 연달아 도는 것을 막는다 */
+const HIDDEN_GAP_MS = 15_000
 /** 맵이 바뀌거나 배틀이 끝난 뒤 저장할 수 있는 순간을 기다리는 상한 — 넘으면 다음 계기에 맡긴다 */
 const WAIT_MS = 30_000
 const POLL_MS = 1_000
@@ -103,8 +105,12 @@ const SLOW_POLL_MS = 20_000
 /**
  * 자동 저장과 경고를 건다. 끄는 함수를 돌려준다.
  *
- * 계기는 둘이다 — 맵이 바뀌었을 때, 배틀이 끝나 필드로 돌아왔을 때(진 판은 빼고: 센터로 끌려가는 중이다).
- * 그때부터 저장할 수 있는 순간을 기다렸다가(`WAIT_MS`까지) 쓰고, 간격은 `AUTOSAVE_GAP_MS`를 지킨다
+ * 계기는 셋이다 — 맵이 바뀌었을 때, 배틀이 끝나 필드로 돌아왔을 때(진 판은 빼고: 센터로 끌려가는 중이다), 탭을 떠날 때.
+ * 앞의 둘은 저장할 수 있는 순간을 기다렸다가(`WAIT_MS`까지) 쓰고, 간격은 `AUTOSAVE_GAP_MS`를 지킨다.
+ *
+ * ⚠️ **탭을 떠날 때는 기다리지 않고 지금이 저장할 수 있는 순간일 때만 쓴다.** 같은 맵에서 오래 있다 탭을 닫으면 마지막 저장 뒤의
+ * 진행이 통째로 날아갔다. 걷는 중이면 쓰지 않는다 — 도착 칸이 아닌 자리를 적으면 안 된다(`whyNotSaveNow`). 쓰기는 비동기라 닫히는
+ * 탭에서 끝까지 쓰인다는 보장은 없지만, 탭을 숨기는 쪽(전환 · 최소화 · 닫기 직전)에서는 시작이 먼저다
  */
 export function installAutosave(): () => void {
   let lastSaved = 0
@@ -145,6 +151,16 @@ export function installAutosave(): () => void {
     if (prev.outcome === 'loss' || s.outcome === 'loss') return
     trySoon()
   })
+  const onHidden = (): void => {
+    if (typeof document === 'undefined' || !document.hidden) return
+    if (Date.now() - lastSaved < HIDDEN_GAP_MS) return
+    if (whyNotSaveNow() !== null) return
+    lastSaved = Date.now()
+    void autosaveNow().then((got) => {
+      if (got.saved) usePlayNotice.setState({ savedAt: Date.now() })
+    })
+  }
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onHidden)
   const offRenderer = useRendererStore.subscribe((s, prev) => {
     // 장치를 잃었다가 스스로 다시 섰다 — 곧 또 잃을 수 있으니 리포트를 권한다
     if (s.phase === 'live' && (prev.phase === 'recovering' || prev.phase === 'ready') && s.autoRetries > 0) {
@@ -164,6 +180,7 @@ export function installAutosave(): () => void {
     offMap()
     offBattle()
     offRenderer()
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onHidden)
     clearInterval(slowTimer)
     if (waiting !== null) clearInterval(waiting)
   }

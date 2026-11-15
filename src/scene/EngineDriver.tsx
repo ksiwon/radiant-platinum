@@ -9,6 +9,7 @@ import { inputSystem } from '../engine/input/keyboard'
 import { playerSystem, RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { bikeGearSystem } from '../engine/actor/bikeGear'
 import { isSliding } from '../engine/actor/ice'
+import { isPanelSliding } from '../engine/actor/slidePanel'
 import { npcSystem } from '../engine/actor/ambient'
 import { hmCutInTick } from './hmCutInScene'
 import { fieldMoveTaskTick } from './fieldMoveTask'
@@ -318,8 +319,10 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       const hop = worldState.player.hop
       // ⚠️ **얼음 위에서는 발을 멈춘다.** 원작이 미끄러지는 동안 그림을 세운다
       // (`MAP_OBJ_STATUS_PAUSE_ANIMATION`). 안 세우면 달리기 자세로 미끄러져서
-      // 발이 땅 위를 헛돈다 — `gait`가 보폭에서 위상을 유도하는 이유와 같다
-      const going = isSliding() ? 0 : speed
+      // 발이 땅 위를 헛돈다 — `gait`가 보폭에서 위상을 유도하는 이유와 같다.
+      // 도는 판(`slidePanel`)도 같다 — 원작이 시작에 `MAP_OBJ_STATUS_PAUSE_ANIMATION`을 켜고 끝에 끈다
+      // (`ov5_021E1154.c` 93 · 141줄). 판 위에서 몸이 90°씩 돌며 앞으로 가는 속도가 생겨 걷기 클립이 돌았다
+      const going = isSliding() || isPanelSliding() ? 0 : speed
       // 두 발로 걷는 동안은 원작 동작이 몰고(`clipGait`), 자전거와 턱 넘기는
       // 절차형이 맡는다 — 그 둘은 클립이 아예 없다. 넘어가는 프레임에 한 번
       // 쉬는 자세로 되돌린다: 절차형은 제가 아는 관절 열둘만 쓰므로 안 되돌리면

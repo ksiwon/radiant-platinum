@@ -3,6 +3,7 @@
 // X 키가 시작 메뉴를 연다. 대사창이 떠 있거나 배틀 중이면 안 열린다 —
 // 원작도 스크립트가 도는 동안에는 메뉴를 막는다.
 import { useEffect } from 'react'
+import { playMenuSfx } from '../../engine/audio/lazy'
 import { BINDINGS } from '../../engine/input/keys'
 import { worldState } from '../../state/worldState'
 import { fieldScripts, sayOurs, scriptBusy } from '../../engine/script/field'
@@ -87,6 +88,8 @@ export function MenuLayer() {
         if (!scriptBusy()) runRegisteredItem((line) => { void sayOurs(line) })
         return
       }
+      // 여는 순간 `SEQ_SE_DP_WIN_OPEN` (`overlay005/field_control.c:332`)
+      playMenuSfx('WIN_OPEN')
       open('start')
     }
     window.addEventListener('keydown', onKey, true)

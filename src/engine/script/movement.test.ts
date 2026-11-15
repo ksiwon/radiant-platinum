@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseScriptMeta } from './data'
+import { EMOTE_FRAMES } from '../actor/emote'
 import {
   DIR, DIR_STEP, MOVEMENT_END, MovementRunner, parseMovements,
   type Movable, type MovementTable,
@@ -92,6 +93,32 @@ maybe('실제 표로 걷기', () => {
     expect(target.x).toBeCloseTo(10.125)
     runner.tick()
     expect(target.x).toBeCloseTo(10.25)
+  })
+
+  it('⚠️ 느낌표 동작은 표시를 띄우고 그것이 끝날 때까지 다음 걸음이 안 간다', () => {
+    const target = actor()
+    const shown: string[] = []
+    const runner = new MovementRunner(target, [
+      { action: code('EMOTE_EXCLAMATION_MARK'), count: 1 },
+      { action: code('WALK_NORMAL_NORTH'), count: 1 },
+    ], table, (kind) => { shown.push(kind) })
+    runner.tick()
+    expect(shown).toEqual(['exclaim'])
+    // 표시가 사는 동안(`EMOTE_FRAMES`) 걷지 않는다
+    for (let i = 1; i < EMOTE_FRAMES; i++) runner.tick()
+    expect(target.z).toBe(20)
+    // 그다음에야 걸음이 시작된다
+    runner.tick()
+    expect(target.z).toBeLessThan(20)
+    expect(shown).toEqual(['exclaim'])
+  })
+
+  it('느낌표 둘은 다른 표시다', () => {
+    const shown: string[] = []
+    const runner = new MovementRunner(actor(), [{ action: code('EMOTE_DOUBLE_EXCLAMATION_MARK'), count: 1 }], table,
+      (kind) => { shown.push(kind) })
+    runner.tick()
+    expect(shown).toEqual(['rematch'])
   })
 
   it('바라보기는 한 프레임이고 자리를 안 옮긴다', () => {

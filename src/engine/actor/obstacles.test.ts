@@ -11,6 +11,8 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from '../map/grid'
 import { isSurfable } from '../map/zone'
 import { world, type EventFile, type MapHeader } from '../map/world'
+import { SFX } from '../audio/sfx'
+import { drainBikeCues } from './bikeTerrain'
 import { OBSTACLE_MOVE, STRENGTH_BOULDER, isObstacle, obstacleAt, pushBoulder, solidNpcAt } from './obstacles'
 import { worldState } from '../../state/worldState'
 import { MOVEMENT_FOLLOW_PLAYER, npcActors, type NpcActor } from './npcs'
@@ -60,9 +62,12 @@ describe('무엇이 장애물인가', () => {
     expect(rock.x).toBe(5)
     // 다른 바위가 있어도 안 밀린다 — 7,5에 하나 서 있다
     expect(pushBoulder(open, rock, { x: 2, z: 0 })).toBe(false)
-    // 빈 칸으로는 한 칸 밀린다
+    // 안 밀린 걸음은 소리가 없다
+    expect(drainBikeCues()).toEqual([])
+    // 빈 칸으로는 한 칸 밀리고 `SEQ_SE_DP_UG_023`이 한 번 난다 (`ov5_021DFFBC` 578줄)
     expect(pushBoulder(open, rock, { x: 0, z: 1 })).toBe(true)
     expect([rock.x, rock.z]).toEqual([5, 6])
+    expect(drainBikeCues()).toEqual([SFX.ROCK_MOVE])
     npcActors.list = []
   })
 

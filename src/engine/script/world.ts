@@ -937,7 +937,8 @@ export interface FieldServices {
   /** 자전거 (`PlayerAvatar_SetTransitionState`·`_SetOnCyclingRoad`) */
   bike?: {
     riding: () => boolean
-    ride: (on: boolean) => void
+    /** `quiet`는 이어하기가 태울 때 — 올라타는 소리를 안 낸다 */
+    ride: (on: boolean, quiet?: boolean) => void
     /** 자전거로드 위인가. 서 있으면 다리 위에서 못 내린다 */
     setRoad: (on: boolean) => void
   }
@@ -1459,7 +1460,7 @@ export class FieldWorld {
   applyMovement(localID: number, steps: readonly MovementStep[]): boolean {
     const target = this.objects(localID)
     if (target === null) return false
-    this.runners.push(new MovementRunner(target, steps, this.movements))
+    this.runners.push(new MovementRunner(target, steps, this.movements, (kind) => { this.services.emote?.(localID, kind) }))
     return true
   }
 

@@ -20,6 +20,9 @@ import type { Mail } from '../../engine/world/mail'
 import { loadUiText } from '../../data/uiText'
 import { EASY_CHAT_WORD_NONE } from '../../engine/world/easyChat'
 import {
+  addRecord, addTrainerScore, RECORD_TIMES_MAIL_WRITTEN, SCORE_MAIL_WRITTEN,
+} from '../../engine/world/gameRecords'
+import {
   MAIL_LINES, MAIL_WORDS_PER_LINE, mailItemOfType, writeMail,
 } from '../../engine/world/mail'
 import { useMenuStore } from '../../state/menuStore'
@@ -119,7 +122,12 @@ export function MailScreen() {
     }, mail.lines)
     const next = [...party]
     next[mail.slot] = { ...target, mail: written, heldItem: mailItemOfType(mail.type) }
-    useSaveStore.setState({ party: next })
+    // 쓰기를 확정하면 스코어 +1과 쓴 횟수 +1 (`applications/mail.c` 328-329)
+    const records = useSaveStore.getState().records
+    useSaveStore.setState({
+      party: next,
+      records: addRecord(addTrainerScore(records, SCORE_MAIL_WRITTEN), RECORD_TIMES_MAIL_WRITTEN, 1),
+    })
     if (mail.from === 'mailbox') {
       // 메일박스의 편지지는 가방을 안 거쳤다 — 뺄 것이 없다 (`MailboxScreen`의 `writeFor`)
       setMailboxNotice({ kind: 'given', slot: mail.slot, item: mailItemOfType(mail.type) })

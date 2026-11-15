@@ -9,7 +9,7 @@ import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
   BATTLE_POCKET, embargoBlocks, friendshipGain, isEscapeItem, needsMoveSlot, needsTarget,
-  planItemUse, type ItemTarget,
+  planItemUse, restoresMember, type ItemTarget,
 } from './bagItem'
 import { LUXURY_BALL, NO_EGG_LOCATION } from '../../pokemon/friendship'
 import type { Item } from '../../../data/schema'
@@ -267,5 +267,19 @@ describe('되살리기', () => {
   it('기력의덩어리는 전부 채운다', () => {
     const plan = planItemUse(MAX_REVIVE, out({ hp: 0, fainted: true, active: false }))
     expect(plan).toMatchObject({ revive: true, heal: 100 })
+  })
+})
+
+describe('회복음이 나는 쓰임 (`battle_party.c:948·1004`)', () => {
+  it('체력·되살림·상태·PP는 난다', () => {
+    expect(restoresMember(planItemUse(POTION, out({ hp: 10 }))!)).toBe(true)
+    expect(restoresMember(planItemUse(REVIVE, out({ hp: 0, fainted: true, active: false }))!)).toBe(true)
+    expect(restoresMember(planItemUse(ANTIDOTE, out({ status: 'psn' }))!)).toBe(true)
+    expect(restoresMember(planItemUse(ETHER, out({ moves: [{ pp: 1, maxPp: 10 }] }), 0)!)).toBe(true)
+  })
+
+  it('능력치를 올리는 배틀용 도구는 안 난다', () => {
+    expect(restoresMember(planItemUse(X_ATTACK, out())!)).toBe(false)
+    expect(restoresMember(planItemUse(GUARD_SPEC, out())!)).toBe(false)
   })
 })

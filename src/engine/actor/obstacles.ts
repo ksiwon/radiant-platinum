@@ -18,6 +18,8 @@ import { worldState } from '../../state/worldState'
 import { isBridgeOverWater, onElevatedBridge } from './bridge'
 import { MOVEMENT_FOLLOW_PLAYER, npcActors, type NpcActor } from './npcs'
 import { edgeBlocks } from './edgeBlock'
+import { SFX } from '../audio/sfx'
+import { pushBikeCue } from './bikeTerrain'
 
 /** 그림 번호 → 어느 기술로 치우는가 */
 export const OBSTACLE_MOVE: Readonly<Record<number, 'strength' | 'rockSmash' | 'cut'>> = {
@@ -69,6 +71,8 @@ export function pushBoulder(
   }
   boulder.x = tx
   boulder.z = tz
+  // 미는 순간 `SEQ_SE_DP_UG_023` (`ov5_021DFFBC` 578줄 · 괴력 바위가 한 칸 움직이는 과제의 첫 상태)
+  pushBikeCue(SFX.ROCK_MOVE)
   // 깨어진 세계의 바위는 밀린 자리가 세이브에 남는다 (원작은 맵 물체째 담는다)
   distortionBridge.boulderMoved?.(boulder)
   return true

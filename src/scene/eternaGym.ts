@@ -10,7 +10,7 @@
 // ⚠️ **바늘이 도는 것은 연출이다.** 통행 판정은 상태가 바뀌는 **즉시** 새
 // 표로 간다 (`EternaGym_AdvanceClockState`가 태스크를 걸기 전에 상태를 올린다)
 import {
-  ETERNA_CLOCK, ETERNA_CLOCK_SFX, ETERNA_CLOCK_TIMES, ETERNA_GYM_MAP, ETERNA_HAND_MODEL,
+  ETERNA_CLOCK, ETERNA_CLOCK_DONE_SFX, ETERNA_CLOCK_SFX, ETERNA_CLOCK_TIMES, ETERNA_GYM_MAP, ETERNA_HAND_MODEL,
   ETERNA_HAND_Y, ETERNA_CLOCK_CENTER_X, ETERNA_CLOCK_CENTER_Z,
   eternaBlocked, eternaHandAngles, eternaJumpsHourHand, eternaNextState,
 } from '../engine/world/eternaGym'
@@ -38,7 +38,7 @@ let active: Active | null = null
 let sweep: { t: number; from: { hour: number; minute: number } } | null = null
 
 /** 소리를 내는 자리. 씬이 꽂아 준다 */
-export const eternaSound: { play: ((seq: number) => void) | null } = { play: null }
+export const eternaSound: { play: ((seq: number) => void) | null, stop: ((seq: number) => void) | null } = { play: null, stop: null }
 
 /** 맵에 들어설 때 (`EternaGym_DynamicMapFeaturesInit`) */
 export function initEternaGym(map: number, state: number): boolean {
@@ -123,6 +123,9 @@ export function eternaTick(dt: number): void {
   if (sweep.t < SWEEP_TIME) return
   active.angle = to
   sweep = null
+  // 바늘이 다 돌면 시계 소리를 끄고 `SEQ_SE_DP_PIRORIRO2` (`gym_features.c:2797-2798`)
+  eternaSound.stop?.(ETERNA_CLOCK_SFX)
+  eternaSound.play?.(ETERNA_CLOCK_DONE_SFX)
 }
 
 /** 짧은 쪽으로 돈다. 한 바퀴를 넘겨 돌면 바늘이 거꾸로 도는 것으로 보인다 */

@@ -103,10 +103,17 @@ function loadPcParts(): Promise<Object3D | null> {
  * 필드 행동을 화면 위 기호가 아니라 플레이어와 같은 3D 공간에 그린다.
  * 실제 규칙은 기존 시스템에 남고, 이 컴포넌트는 짧은 시각 피드백만 소비한다.
  */
+/** 파도타기 오르내림 — 원작 `surf_mount_renderer.c`: 높이 1.0↔4.0(DS 길이 · 한 칸 16)을 프레임마다 0x400(=0.25)씩, 한 바퀴 24프레임 */
+const SURF_BOB_RANGE = 3 / 16
+const SURF_BOB_FRAMES = 24
+const SURF_BOB_FPS = 60
+
 export function FieldActionEffects({ bodyRef }: Props) {
   const surfRef = useRef<Group>(null)
   /** 파도타기 몸을 BDSP 수면에 붙이는 그리는 높이 (걸음 칸 높이는 그대로) — 매끈하게 따라간다 */
   const waterLiftRef = useRef(0)
+  /** 파도타기 오르내림 — 지금 몸·탈것에 얹힌 값과 그 크기(타고 내릴 때 서서히) */
+  const bobRef = useRef({ now: 0, amp: 0 })
   const surfFallbackRef = useRef<Group>(null)
   const surfModelHostRef = useRef<Group>(null)
   const flyRef = useRef<Group>(null)
@@ -280,8 +287,16 @@ export function FieldActionEffects({ bodyRef }: Props) {
     const level = surfing ? waterLevelAt(pp.x, pp.z, pp.y) : null
     const wantLift = level === null ? 0 : Math.max(-1, Math.min(1.5, level - pp.y))
     waterLiftRef.current += (wantLift - waterLiftRef.current) * Math.min(1, delta * 9)
-    if (surf) surf.position.y = -0.03 + waterLiftRef.current
+    // 타고 있는 동안 몸과 탈것이 같이 오르내린다 — `surf_mount_renderer.c`가 높이 1.0↔4.0(DS 길이)을 0x400씩 프레임마다 오가
+    // 삼각파로 24프레임(60fps에서 0.4초)에 한 바퀴, 진폭 3/16칸이다. 몸은 아래 따라잡기 보간이 지우지 못하게 보간 뒤에 얹고
+    // 다음 프레임 앞에서 걷어 낸다
+    const bob = bobRef.current
+    bob.amp += ((surfing && !flyPose.visible ? 1 : 0) - bob.amp) * Math.min(1, delta * 6)
+    const phase = (time * SURF_BOB_FPS / SURF_BOB_FRAMES) % 1
+    const bobNext = (phase < 0.5 ? phase * 2 : 2 - phase * 2) * SURF_BOB_RANGE * bob.amp
+    if (surf) surf.position.y = -0.03 + waterLiftRef.current + bobNext
     const body = bodyRef.current
+    if (body) body.position.y -= bob.now
     if (body) {
       if (flyPose.visible) {
         // 새에 실려 가는 동안은 **따라잡지 않고 그 자리에 둔다** — 원작 키가
@@ -296,10 +311,13 @@ export function FieldActionEffects({ bodyRef }: Props) {
       }
       // 1인칭 눈도 몸이 든 만큼 든다 — **매끈해진 값**을 넘겨야 타고 내릴 때 눈이
       // 몸과 같이 오르내린다. 새에 실려 가는 동안은 몸이 제 높이를 따로 들므로 0이다
+      // (오르내림은 뺀다 — 1인칭 눈이 0.2칸씩 출렁이면 멀미가 난다)
       cameraSystem.mountLift = flyPose.visible ? 0 : body.position.y
+      body.position.y += bobNext
     } else {
       cameraSystem.mountLift = 0
     }
+    bob.now = body ? bobNext : 0
     if (waveARef.current) {
       const phase = (time * 0.85) % 1
       waveARef.current.scale.setScalar(0.75 + phase * 0.65)

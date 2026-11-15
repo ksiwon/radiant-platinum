@@ -277,3 +277,5 @@ export function eternaHandAngles(hour: number, minute: number): { hour: number; 
 
 /** `SEQ_SE_PL_TOKEI21` — 바늘이 도는 동안 난다 */
 export const ETERNA_CLOCK_SFX = 1355
+/** `SEQ_SE_DP_PIRORIRO2` — 바늘이 다 돌았을 때 시계 소리를 끄고 난다 (`gym_features.c:2797-2798`) */
+export const ETERNA_CLOCK_DONE_SFX = 1507

@@ -24,7 +24,7 @@ import {
 import {
   addRecord, addTrainerScore, RECORD_CAUGHT_POKEMON, RECORD_FAINTED_IN_BATTLE,
   RECORD_TRAINER_BATTLES_FOUGHT, RECORD_WILD_BATTLES_FOUGHT,
-  SCORE_CAPTURED_NATIONAL_MON, SCORE_CAPTURED_REGIONAL_MON,
+  SCORE_CAPTURED_NATIONAL_MON, SCORE_CAPTURED_REGIONAL_MON, SCORE_CAUGHT_SPECIES,
   SCORE_WON_TRAINER_BATTLE, SCORE_WON_WILD_BATTLE,
 } from '../engine/world/gameRecords'
 
@@ -52,7 +52,7 @@ import type { Trainer } from '../data/schema'
 import { trainerMonToInstance } from '../engine/battle/meta/trainerParty'
 import { TrainerItems } from '../engine/battle/meta/trainerItems'
 import { applyEvents, emptyView, type BattleView } from '../engine/battle/view'
-import type { BattleController, BattleFinish, BattleStep } from '../engine/battle/sim/controller'
+import type { BattleController, BattleFinish, BattleStep, BoxTransfer } from '../engine/battle/sim/controller'
 import type { SideMon, SideSpec } from '../engine/battle/sim/session'
 import {
   createWild,
@@ -66,10 +66,10 @@ import {
   type PokemonInstance,
   type Status,
 } from '../engine/pokemon/instance'
-import { timeOfDayForHour } from '../engine/map/timeOfDay'
+import { isNight, timeOfDayForHour } from '../engine/map/timeOfDay'
 import { journalBeatTrainer, journalWildBattle } from '../scene/journal'
 import { poketchGotMon } from '../scene/poketch'
-import { store as storeInBox } from '../engine/pokemon/boxes'
+import { nextSpace, store as storeInBox, type Boxes, type BoxSpot } from '../engine/pokemon/boxes'
 import { encounters } from '../engine/battle/encounterSystem'
 import {
   safariTurn, type SafariCommand, type SafariOutcome, type SafariState as SafariRun,
@@ -82,9 +82,11 @@ import { useSessionStore } from './sessionStore'
 import { markBattle } from '../app/sceneMark'
 import { useEvolutionStore } from './evolutionStore'
 import { useMenuStore } from './menuStore'
-import { dexSet, playerTrainer, useSaveStore } from './saveStore'
+import { dexHas, dexSet, playerTrainer, useSaveStore } from './saveStore'
 import { chatterActivation, chatterChance, decodeChatotCry } from '../engine/pokemon/chatotCry'
 import { worldState } from './worldState'
+import { BOX_TEXT, loadUiText } from '../data/uiText'
+import { FLAG_MET_BEBE } from '../engine/script/vars'
 
 /** 컨트롤러에 넘길 트레이너 도구 묶음 */
 type ControllerItems = NonNullable<Parameters<(typeof BattleController)['start']>[0]['items']>
@@ -563,6 +565,46 @@ let speciesTable: SpeciesTable | null = null
 let itemTable: ItemTable | null = null
 /** 기술 번호 → 최대 PP. 레벨업으로 배운 기술의 PP를 채우는 데 쓴다 */
 let ppOf: (move: number) => number = () => 5
+
+/**
+ * 파티가 찬 채 잡은 마리를 박스로 보낸다 (`battle_script.c` 10733-10756).
+ *
+ * 지금 박스부터 빈 박스를 찾아(`PCBoxes_FirstEmptyBox`) **그 박스를 현재 박스로 바꾸고**
+ * (`PCBoxes_SetCurrentBox`), PP를 최대로 채워 넣는다 (`BoxPokemon_RestorePP`). 540칸이 다 차면 null
+ */
+export function sendToBox(
+  boxes: Boxes, currentBox: number, mon: PokemonInstance,
+): { boxes: Boxes; currentBox: number; at: BoxSpot } | null {
+  const put = storeInBox(boxes, currentBox, fillPp(mon, ppOf))
+  return put === null ? null : { boxes: put.boxes, currentBox: put.at.box, at: put.at }
+}
+
+/**
+ * 파티가 차 있을 때 잡으면 나올 「박스로 보냈다」 글의 빈칸 (`battle_script.c` 10733-10760).
+ * 같은 박스에 들어가면 `to`가 null, 현재 박스가 차서 다른 박스로 가면 간 박스의 이름이다.
+ * 파티에 자리가 있거나 박스가 전부 차 있으면 null
+ */
+async function boxTransferText(): Promise<BoxTransfer | null> {
+  const save = useSaveStore.getState()
+  if (save.party.length < PARTY_MAX) return null
+  const at = nextSpace(save.boxes, save.currentBox)
+  if (at === null) return null
+  const text = await loadUiText('storageSystem').catch(() => [] as string[])
+  const nameOf = (box: number): string => save.boxNames[box] ?? text[BOX_TEXT.boxName + box] ?? ''
+  const from = nameOf(save.currentBox)
+  const metBebe = (save.flags[FLAG_MET_BEBE >> 3]! & (1 << (FLAG_MET_BEBE & 7))) !== 0
+  if (from === '') return null
+  return {
+    from,
+    to: at.box === save.currentBox ? null : nameOf(at.box),
+    bebe: metBebe,
+  }
+}
+
+/** 새 종을 잡았으면 스코어 +20 (`BattleSystem_TryIncrementTrainerScoreCaughtSpecies`) */
+function caughtRecords(records: readonly number[], newSpecies: boolean): number[] {
+  return newSpecies ? addTrainerScore(records, SCORE_CAUGHT_SPECIES) : [...records]
+}
 /**
  * 이번 판의 상대가 배회 포켓몬이면 그 자리 번호 (PARITY §6.3).
  *
@@ -1212,13 +1254,17 @@ export const useBattleStore = create<BattleState>((set, get) => ({
      */
     // 잡는 법 강습은 안 깎는다 — 원작 조건의 둘째다. 가방도 스물짜리 버리는 가방이다
     if (tutorialAlly === null) spendFromBag(await loadItems(), ball)
+    const foeSpecies = current?.foeSpeciesNow ?? null
+    const transfer = await boxTransferText()
     await advance(set, get, (c) =>
       c.throwBall(ball, {
-        // 시간대·지형은 아직 없다. 다이브·다크볼이 보정을 못 받는다는 뜻이다
-        caughtBefore: false,
-        inWater: false,
-        darkness: false,
+        // 리피트볼은 도감의 포획 기록(`BattleSystem_HasCaughtSpecies`), 다이브볼은 땅이 물
+        // (`TERRAIN_WATER`), 다크볼은 밤·심야이거나 굴(`TERRAIN_CAVE`) — `battle_script.c` 10931-10966
+        caughtBefore: foeSpecies !== null && dexHas(useSaveStore.getState().pokedex.caught, foeSpecies),
+        inWater: battleTerrain === Terrain.WATER,
+        darkness: isNight(worldState.time.gameHour) || battleTerrain === Terrain.CAVE,
         sure: tutorialAlly !== null,
+        ...(transfer ? { transfer } : {}),
       }),
     )
   },
@@ -1332,23 +1378,27 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           ),
         }
         const party = save.party.length < PARTY_MAX ? [...save.party, mon] : save.party
-        const boxes = party === save.party
-          ? storeInBox(save.boxes, save.currentBox, mon)?.boxes ?? save.boxes
-          : save.boxes
+        const sent = party === save.party ? sendToBox(save.boxes, save.currentBox, mon) : null
+        const boxes = sent?.boxes ?? save.boxes
+        // 새 종이면 스코어 +20 (`BattleSystem_TryIncrementTrainerScoreCaughtSpecies`). 도감을 갱신하기 전 값으로 본다
+        const newSpecies = !dexHas(save.pokedex.caught, mon.species)
         useSaveStore.setState({
           party,
           boxes,
+          ...(sent ? { currentBox: sent.currentBox } : {}),
           pokedex: {
             ...save.pokedex,
             seen: dexSet(save.pokedex.seen, mon.species),
             caught: dexSet(save.pokedex.caught, mon.species),
             battled: dexSet(save.pokedex.battled, mon.species),
           },
-          records: addTrainerScore(
-            addRecord(save.records, RECORD_CAUGHT_POKEMON, 1),
-            (speciesTable?.sinnohOf[mon.species] ?? 0) > 0
-              ? SCORE_CAPTURED_REGIONAL_MON
-              : SCORE_CAPTURED_NATIONAL_MON),
+          records: caughtRecords(
+            addTrainerScore(
+              addRecord(save.records, RECORD_CAUGHT_POKEMON, 1),
+              (speciesTable?.sinnohOf[mon.species] ?? 0) > 0
+                ? SCORE_CAPTURED_REGIONAL_MON
+                : SCORE_CAPTURED_NATIONAL_MON),
+            newSpecies),
           // 안내원이 물어보는 수 (`TVBroadcast_UpdateSafariGameData`)
           safari: { ...useSaveStore.getState().safari, caught: save.safari.caught + 1 },
         })
@@ -1404,6 +1454,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       let party = results.length ? applyResults(save.party, results) : save.party
       let boxes = save.boxes
       let pokedex = save.pokedex
+      let currentBox = save.currentBox
+      // 새 종인가는 도감을 갱신하기 전 값으로 본다
+      let newSpecies = false
 
       const caught = controller.captured
       if (caught) {
@@ -1435,7 +1488,14 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         // 있는 박스**부터 자리를 찾고 차 있으면 다음 박스로 넘어간다 — 마지막
         // 박스에 쌓는 것이 아니다. 540칸이 다 차면 그 마리는 잃는다
         if (party.length < PARTY_MAX) party = [...party, mon]
-        else boxes = storeInBox(boxes, save.currentBox, mon)?.boxes ?? boxes
+        else {
+          const sent = sendToBox(boxes, save.currentBox, mon)
+          if (sent) {
+            boxes = sent.boxes
+            currentBox = sent.currentBox
+          }
+        }
+        newSpecies = !dexHas(pokedex.caught, mon.species)
         pokedex = {
           ...pokedex,
           seen: dexSet(pokedex.seen, mon.species),
@@ -1463,6 +1523,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         records = addTrainerScore(records, (speciesTable?.sinnohOf[caught.mon.species] ?? 0) > 0
           ? SCORE_CAPTURED_REGIONAL_MON
           : SCORE_CAPTURED_NATIONAL_MON)
+        records = caughtRecords(records, newSpecies)
       }
 
       // 도롱마담은 싸운 땅의 옷감으로 갈아입는다 (PARITY §3.4)
@@ -1472,7 +1533,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       // ⚠️ **판이 어떻게 끝났든 돈다.** 원작은 `BattleControllerPlayer_EndFight`에서
       // 통신 배틀만 빼고 무조건 부른다 — 이겼는지 도망쳤는지를 안 본다
       party = pokerusAfterBattle(party, Math.random)
-      useSaveStore.setState({ party, boxes, pokedex, records })
+      useSaveStore.setState({ party, boxes, currentBox, pokedex, records })
       // 배회는 여기서 자리를 옮기거나 지워진다 (PARITY §6.3).
       //
       // ⚠️ **만난 판이 아니어도 부른다.** 원작은 야생을 한 판 치를 때마다

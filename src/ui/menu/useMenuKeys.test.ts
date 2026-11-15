@@ -6,7 +6,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const beep = vi.hoisted(() => vi.fn())
-vi.mock('../../engine/audio/lazy', () => ({ menuBeep: beep }))
+const sfx = vi.hoisted(() => vi.fn())
+vi.mock('../../engine/audio/lazy', () => ({ menuBeep: beep, playMenuSfx: sfx }))
 vi.mock('react', () => ({
   useRef: <T>(current: T) => ({ current }),
   useEffect: (run: () => void) => { run() },
@@ -21,7 +22,7 @@ vi.stubGlobal('window', {
 // `typingInto`가 `instanceof HTMLElement`로 본다. 대역 이벤트의 `target`은 그것이 아니다
 vi.stubGlobal('HTMLElement', class {})
 
-const { clampCursor, useMenuKeys, wrapCursor } = await import('./useMenuKeys')
+const { OWN_SOUND, clampCursor, useMenuKeys, wrapCursor } = await import('./useMenuKeys')
 
 /** 키 하나를 보낸다. 브라우저가 길게 누른 키를 다시 보낼 때는 `repeat`이 참이다 */
 function press(code: string, repeat = false): { prevented: boolean } {
@@ -38,6 +39,7 @@ function press(code: string, repeat = false): { prevented: boolean } {
 beforeEach(() => {
   listeners.clear()
   beep.mockClear()
+  sfx.mockClear()
 })
 
 describe('useMenuKeys — 누르고 있는 키', () => {
@@ -139,5 +141,36 @@ describe('커서 이동', () => {
     expect(wrapCursor(3, 1, 4)).toBe(0)
     expect(wrapCursor(1, 1, 4)).toBe(2)
     expect(wrapCursor(5, 1, 0)).toBe(0)
+  })
+})
+
+describe('useMenuKeys — 핸들러가 직접 소리를 낸 키', () => {
+  it('OWN_SOUND를 돌려주면 일반 소리를 안 얹는다 (알의 CUSTOM06 · `party_menu/main.c:2643-2650`)', () => {
+    useMenuKeys({ confirm: () => OWN_SOUND, cancel: () => undefined })
+    press('KeyZ')
+    expect(beep).not.toHaveBeenCalled()
+    press('KeyX')
+    expect(beep).toHaveBeenCalledTimes(1)
+  })
+
+  it('moveSfx는 방향키만 바꾼다 — 결정·취소는 그대로 일반 소리다 (`Menu_ProcessInputWithSound`)', () => {
+    useMenuKeys({ up: () => undefined, down: () => false, confirm: () => undefined, cancel: () => undefined }, true, 'START_MENU_MOVE')
+    press('ArrowUp')
+    expect(sfx).toHaveBeenCalledWith('START_MENU_MOVE')
+    expect(beep).not.toHaveBeenCalled()
+    // 안 움직인 방향은 둘 다 조용하다
+    press('ArrowDown')
+    expect(sfx).toHaveBeenCalledTimes(1)
+    press('KeyZ')
+    press('KeyX')
+    expect(beep).toHaveBeenCalledTimes(2)
+    expect(sfx).toHaveBeenCalledTimes(1)
+  })
+
+  it('moveSfx를 안 주면 방향키도 일반 소리다', () => {
+    useMenuKeys({ up: () => undefined })
+    press('ArrowUp')
+    expect(beep).toHaveBeenCalledTimes(1)
+    expect(sfx).not.toHaveBeenCalled()
   })
 })

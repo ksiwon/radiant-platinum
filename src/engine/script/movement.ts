@@ -13,6 +13,7 @@
 // 원작은 동작마다 함수 배열을 돌리지만(step0 → step1 → end) 우리에게 필요한 것은
 // **몇 프레임 동안 어디로 얼마나 가는가**뿐이라 그 셋만 표로 갖고 실행한다.
 import type { ScriptFile } from '../../data/schema'
+import { EMOTE_FRAMES, type EmoteKind } from '../actor/emote'
 
 /** `MOVEMENT_ACTION_END` — 목록의 끝 */
 export const MOVEMENT_END = 254
@@ -121,6 +122,15 @@ export const WALL_STEP_ACTIONS: Readonly<Record<number, { dy: number, dz: number
   108: { dy: 0, dz: -1, face: DIR.north },
 }
 
+/**
+ * 머리 위 표시를 내는 이동 동작. 원작은 이것을 **걸음 목록의 한 동작**으로 낸다 — 시작에 표시를 띄우고(`MovementAction_Emote_Step0`) 그
+ * 표시가 끝날 때까지 다음 걸음이 안 간다(`_Step1`이 `ov5_021F5C4C`를 기다린다). 스크립트에 141번, 65개 파일에서 쓴다
+ */
+const EMOTE_ACTIONS: Readonly<Record<string, EmoteKind>> = {
+  EMOTE_EXCLAMATION_MARK: 'exclaim',
+  EMOTE_DOUBLE_EXCLAMATION_MARK: 'rematch',
+}
+
 /** 벽 걸음 하나의 프레임 수 */
 const WALL_STEP_FRAMES = 8
 
@@ -140,6 +150,8 @@ export class MovementRunner {
     readonly target: Movable,
     private readonly steps: readonly MovementStep[],
     private readonly table: MovementTable,
+    /** 표시 동작이 시작될 때 부른다 — 그림은 장면 쪽이 그린다 */
+    private readonly onEmote?: (kind: EmoteKind) => void,
   ) {}
 
   get done(): boolean {
@@ -164,9 +176,11 @@ export class MovementRunner {
       if (action.dir !== undefined && action.kind !== 'delay') this.target.dir = action.dir
       if (action.name === 'SET_INVISIBLE') this.target.visible = false
       if (action.name === 'SET_VISIBLE') this.target.visible = true
+      const emote = EMOTE_ACTIONS[action.name]
+      if (emote !== undefined) this.onEmote?.(emote)
     }
 
-    const frames = action.frames ?? 1
+    const frames = EMOTE_ACTIONS[action.name] !== undefined ? EMOTE_FRAMES : action.frames ?? 1
     const tiles = action.tiles ?? 0
     if (tiles > 0 && action.dir !== undefined) {
       const move = DIR_STEP[action.dir]!

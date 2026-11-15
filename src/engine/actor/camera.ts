@@ -461,6 +461,19 @@ export function scriptCameraActive(): boolean {
 }
 
 /**
+ * 카메라가 **보는 곳** — 건물 가림이 비켜 줘야 할 자리.
+ *
+ * 평소엔 주인공이고, 스크립트가 카메라를 어느 점에 붙들면(`cameraSystem.free`) 그 점이다. 가림 판정이 계속 주인공을 겨누면 주인공에서
+ * 먼 곳을 비추는 컷에서 그 점과 카메라 사이의 건물 · 나무가 안 비켜 화면을 가린다. 높이는 주인공 것을 쓴다(카메라도 그렇다)
+ */
+export function cameraSubject(out: Vector3): Vector3 {
+  const at = cameraSystem.free
+  const p = worldState.player.position
+  if (at === null || firstPersonView()) return out.copy(p)
+  return out.set(at.x, p.y, at.z)
+}
+
+/**
  * **지금 화면이 1인칭 렌즈로 그려지는가.**
  *
  * ⚠️ **`worldState.camera.mode`와 다르다.** 그쪽은 설정이 고른 시점이고 조작(마우스 ·

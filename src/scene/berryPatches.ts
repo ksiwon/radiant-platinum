@@ -14,6 +14,7 @@ import {
   BERRY_STAGE, berryGrowth, berryItemOf, berryTagOf, elapseBerryPatches, harvestPatch,
   mulchItemOf, mulchTypeOf, plantBerry, soilMoisture, waterPatch, type BerryPatch,
 } from '../engine/world/berryPatches'
+import { addTrainerScore, SCORE_BERRY_HARVESTED } from '../engine/world/gameRecords'
 import { useSaveStore } from '../state/saveStore'
 import { worldState } from '../state/worldState'
 
@@ -329,6 +330,9 @@ export const berryPatchServices = {
     const got = harvestPatch(at)
     writePatch(patch, got.patch)
     if (item !== 0 && got.yield > 0) useSaveStore.getState().addItem(POCKET_BERRIES, item, got.yield)
+    // 딸 때마다 스코어 +1 — 수확량이 0이어도 건다 (`scrcmd_berry.c` 108)
+    const save = useSaveStore.getState()
+    useSaveStore.setState({ records: addTrainerScore(save.records, SCORE_BERRY_HARVESTED) })
   },
 
   water: (start: boolean): void => {

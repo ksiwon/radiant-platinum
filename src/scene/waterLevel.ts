@@ -9,10 +9,24 @@ interface Tracked { mesh: Mesh, x0: number, x1: number, z0: number, z1: number, 
 
 const tracked = new Map<Mesh, Tracked>()
 
-/** `liveWater`가 갈아 끼운 물 메시를 등록한다 — 그 메시가 장면에서 떨어지면 저절로 빠진다 */
+/** `liveWater`가 갈아 끼운 물 메시를 등록한다 — 지역을 버릴 때 `untrackWater`로 뺀다 */
 export function trackWater(mesh: Mesh): void {
   if (!tracked.has(mesh)) tracked.set(mesh, { mesh, x0: 0, x1: 0, z0: 0, z1: 0, y: 0, key: '' })
 }
+
+/**
+ * 버리는 지역의 물 메시를 장부에서 뺀다.
+ *
+ * ⚠️ **빼는 곳이 여기뿐이어야 한다.** 예전엔 `waterLevelAt` 안에서 장면에서 떨어진 메시를 지웠는데, 그 함수는 파도타기 중에만 불려
+ * 파도를 타기 전까지 야외 지역을 오갈 때마다 지역 하나의 glb 그래프(지오메트리 CPU 배열 포함)가 이 장부의 `Mesh → parent` 사슬로
+ * 힙에 남았다. 또 쥐고 있는 지역(`holdField`)은 장면에서 잠깐 떨어져 있을 뿐이라 거기서 지우면 다시 붙인 뒤 수면을 못 찾았다
+ */
+export function untrackWater(root: Object3D): void {
+  root.traverse((o) => { tracked.delete(o as Mesh) })
+}
+
+/** 장부에 든 물 메시 수 — 시험 · 진단용 */
+export const trackedWaterCount = (): number => tracked.size
 
 const attached = (o: Object3D): boolean => {
   for (let q: Object3D | null = o; q; q = q.parent) if ((q as { isScene?: boolean }).isScene === true) return true
@@ -40,7 +54,7 @@ function boxOf(t: Tracked): Tracked {
 export function waterLevelAt(x: number, z: number, near: number): number | null {
   let best: number | null = null
   for (const [m, t] of tracked) {
-    if (!attached(m)) { tracked.delete(m); continue }
+    if (!attached(m)) continue
     const b = boxOf(t)
     if (x < b.x0 || x > b.x1 || z < b.z0 || z > b.z1) continue
     if (best === null || Math.abs(b.y - near) < Math.abs(best - near)) best = b.y

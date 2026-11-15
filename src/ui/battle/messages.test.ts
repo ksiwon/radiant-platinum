@@ -285,6 +285,19 @@ withBank('볼·도망·보상 — 프로토콜에 없는 사건들', () => {
     expect(say(ball(4, true))).toBe('신난다-!\n야생 팬텀을 붙잡았다!')
   })
 
+  it('파티가 차서 박스로 가는 말 — 같은 박스 · 다른 박스 · 베베를 만난 뒤', () => {
+    const boxed = (to: string | null, bebe: boolean): BattleEvent =>
+      ({ kind: 'boxed', actor: FOE, from: '박스 1', to, bebe })
+    const same = say(boxed(null, false))
+    expect(same).toContain('박스 1')
+    expect(same).toContain('팬텀')
+    const other = say(boxed('박스 2', false))
+    expect(other).toContain('박스 1')
+    expect(other).toContain('박스 2')
+    expect(say(boxed(null, true))).not.toBe(same)
+    expect(say(boxed('박스 2', true))).not.toBe(other)
+  })
+
   it('흔들린 횟수마다 말이 다르다', () => {
     // 롬은 863부터 넷을 차례로 들고 있다 — 자리가 곧 아까움의 크기다
     const texts = [0, 1, 2, 3].map((n) => say(ball(n, false)))

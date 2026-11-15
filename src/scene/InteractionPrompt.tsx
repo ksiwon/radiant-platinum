@@ -5,7 +5,7 @@ import {
   type Mesh, type MeshBasicMaterial, type PointLight,
 } from 'three'
 import type { MapGrid } from '../engine/map/grid'
-import { NO_SCRIPT, quarterOf, talkTile } from '../engine/map/world'
+import { NO_SCRIPT, quarterOf, sideTalkTile, talkTile } from '../engine/map/world'
 import { isGameActive, isUiCaptured } from '../engine/input/keys'
 import { scriptBusy } from '../engine/script/field'
 import { npcActors } from '../engine/actor/npcs'
@@ -156,7 +156,12 @@ export function InteractionPrompt({ grid, layer }: { grid: MapGrid; layer: numbe
       z: Math.floor(player.position.z) + step.z,
     }
     const reach = talkTile(grid, front, step)
-    const actor = promptNpcAt(npcActors.list, reach.x, reach.z, NO_SCRIPT, (npc) => npc.info.script)
+    let actor = promptNpcAt(npcActors.list, reach.x, reach.z, NO_SCRIPT, (npc) => npc.info.script)
+    // 앞이 비었고 몸이 옆 칸 쪽으로 치우쳐 있으면 그 칸의 사람이다 — A가 닿는 곳과 빛이 켜지는 곳이 같아야 한다 (`tryTalk`의 `trySideTalk`)
+    if (!actor) {
+      const side = sideTalkTile(grid, player.position, front, step)
+      if (side) actor = promptNpcAt(npcActors.list, side.x, side.z, NO_SCRIPT, (npc) => npc.info.script)
+    }
     if (!actor) {
       show(false)
       return

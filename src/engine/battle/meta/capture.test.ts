@@ -24,7 +24,8 @@ describe('포획 공식', () => {
     // 기라티나·디아루가급. 만피에 던지는 것이 얼마나 헛짓인지가 이 숫자다
     const legend = target({ catchRate: 3 })
     expect(catchValue(legend, 20, 10)).toBe(2)
-    expect(catchChance(legend, Ball.ULTRA, ctx)).toBeCloseTo(0.0078, 4)
+    // a=2 → b = 1048560 / isqrt(isqrt(8355840)) = 1048560 / 53 = 19784
+    expect(catchChance(legend, Ball.ULTRA, ctx)).toBeCloseTo((19784 / 65536) ** 4, 8)
   })
 
   it('HP를 1까지 깎아도 계수는 세 배까지다', () => {
@@ -61,10 +62,25 @@ describe('포획 공식', () => {
     expect(throwBall(legend, Ball.MASTER, ctx, () => 0.999999).caught).toBe(true)
   })
 
-  it('흔들림 문턱은 계수 255에서 65535, 1에서 16399다', () => {
+  it('흔들림 문턱은 계수 255에서 65535, 1에서 16643이다 (단계마다 버림)', () => {
     expect(shakeThreshold(255)).toBe(65535)
-    expect(shakeThreshold(1)).toBe(16399)
+    expect(shakeThreshold(1)).toBe(16643)
     expect(shakeThreshold(0)).toBe(0)
+  })
+
+  it('흔들림 문턱이 a=1..254 전부에서 원문 식(`battle_script.c` 10994-11003)과 같다', () => {
+    // 별도 구현: 비트 단위 정수 제곱근으로 CP 제곱근 회로를 흉내 낸다
+    const sqrt32 = (n: number): number => {
+      let r = 0
+      for (let bit = 1 << 15; bit > 0; bit >>= 1) if ((r | bit) * (r | bit) <= n) r |= bit
+      return r
+    }
+    for (let a = 1; a <= 254; a++) {
+      const x = sqrt32(sqrt32(Math.trunc(16711680 / a)))
+      expect(shakeThreshold(a), `a=${a}`).toBe(Math.trunc(1048560 / x))
+    }
+    // 포획률 100 (a=100): 원문 ≈ 40.96%, 실수 sqrt는 39.2%였다
+    expect((shakeThreshold(100) / 65536) ** 4).toBeCloseTo(0.40958, 4)
   })
 
   it('⚠️ 버리는 자리가 셋이다 — 한 줄로 묶으면 전설이 더 잘 잡힌다', () => {
@@ -97,12 +113,13 @@ describe('볼 보정', () => {
   })
 
   it('퀵볼은 첫 턴에만, 타이머볼은 늦을수록', () => {
-    expect(ballBonus(Ball.QUICK, { ...ctx, turn: 1 })).toBe(40)
-    expect(ballBonus(Ball.QUICK, { ...ctx, turn: 2 })).toBe(10)
+    // `turn`은 `totalTurns` — 첫 턴이 0
+    expect(ballBonus(Ball.QUICK, { ...ctx, turn: 0 })).toBe(40)
+    expect(ballBonus(Ball.QUICK, { ...ctx, turn: 1 })).toBe(10)
     expect(ballBonus(Ball.TIMER, { ...ctx, turn: 0 })).toBe(10)
-    expect(ballBonus(Ball.TIMER, { ...ctx, turn: 5 })).toBe(25)
-    // 10턴에서 멈춘다. 안 멈추면 무한정 올라간다
-    expect(ballBonus(Ball.TIMER, { ...ctx, turn: 10 })).toBe(40)
+    expect(ballBonus(Ball.TIMER, { ...ctx, turn: 5 })).toBe(15)
+    // 30턴에서 40으로 멈춘다
+    expect(ballBonus(Ball.TIMER, { ...ctx, turn: 30 })).toBe(40)
     expect(ballBonus(Ball.TIMER, { ...ctx, turn: 99 })).toBe(40)
   })
 

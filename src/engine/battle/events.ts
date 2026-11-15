@@ -608,6 +608,11 @@ export type BattleEvent =
   /** 볼을 던졌다. `shakes`는 0~3이고 잡히면 4다 */
   | { kind: 'ball'; actor: Actor; ball: number; shakes: number; caught: boolean }
   /**
+   * 파티가 차서 잡은 마리가 박스로 갔다 (`battle_script.c` 10733-10760). `from`은 잡을 때 열려 있던 박스,
+   * `to`는 그 박스가 차서 **다른 박스로 갔을 때** 간 박스의 이름이고 같은 박스면 null. `bebe`는 베베를 만났는가
+   */
+  | { kind: 'boxed'; actor: Actor; from: string; to: string | null; bebe: boolean }
+  /**
    * 도망을 시도했다.
    *
    * `foe`가 서면 **상대가 달아난 것**이다 — 배회 포켓몬이 그렇다 (PARITY §6.3).

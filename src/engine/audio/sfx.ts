@@ -18,10 +18,49 @@ export const SFX = {
    * (`menu.c` 71~110줄). 고르는 소리와 움직이는 소리가 따로가 아니다
    */
   MENU: 1500,
+  /**
+   * `SEQ_SE_DP_SELECT78`. 시작 메뉴의 **커서 이동**
+   * (`start_menu.c:690` `Menu_ProcessInputWithSound(menu->menu, SEQ_SE_DP_SELECT78)`).
+   * 결정·취소는 그대로 `SEQ_SE_CONFIRM`(`MENU`)이다 (`menu.c`의 `Menu_ProcessInputWithSound`)
+   */
+  START_MENU_MOVE: 1504,
+  /** `SEQ_SE_DP_WIN_OPEN`. 시작 메뉴를 여는 순간 (`overlay005/field_control.c:332`) */
+  WIN_OPEN: 1533,
   /** `SEQ_SE_DP_DECIDE`. 배틀 화면이 고를 때 쓴다 (`battle_display.c`) */
   DECIDE: 1501,
   /** `SEQ_SE_DP_DOOR_OPEN`. 문 (`ov5_021D431C.c`) */
   DOOR: 1541,
+  /**
+   * 문 소리 (`DoorAnimation_GetSoundEffectType` · `overlay005/ov5_021D431C.c:141-146·466-477`).
+   *
+   * 열 때: 미닫이 `DOOR10` · 상점 문 `PL_DOOR_OPEN5` · 나머지 `DOOR_OPEN`(`DOOR`).
+   * 닫을 때: 미닫이와 상점 문은 **소리가 없고**(`:189-194`) 나머지만 `DOOR_CLOSE2`다
+   */
+  DOOR_SLIDING: 1544,
+  DOOR_STORE: 1492,
+  DOOR_CLOSE: 1543,
+  /** `SEQ_SE_DP_FW015`. 풀베기 (`overlay006/ov6_02248050.c:211`) */
+  FIELD_CUT: 1611,
+  /** `SEQ_SE_DP_FW088`. 바위깨기 (`ov6_02248050.c:290·309`) */
+  FIELD_ROCK_SMASH: 1610,
+  /**
+   * `SEQ_SE_DP_FW463`. 폭포를 오르내리기 시작할 때 (`ov5_021DFB54.c:1235·1352`).
+   *
+   * ⚠️ **`WATERFALL`(1488, `SE_PL_FW463`)과 다른 소리다** — 그쪽은 깨어진 세계의 폭포
+   */
+  WATERFALL_CLIMB: 1613,
+  /** `SEQ_SE_DP_JITENSYA`. 자전거에 올라탈 때 (`PlayerAvatar_RequestStateCycle`, `ov5_021DFB54.c:296`) */
+  BIKE_RIDE: 1560,
+  /**
+   * `SEQ_SE_DP_F209`. 도는 판에 올라설 때마다 (`ov5_021E1154.c:65`) — 판 하나마다 한 번이다.
+   * 얼음(`actor/ice`)이 아니라 골풀무제철소의 `TILE_BEHAVIOR_SLIDE_*`다
+   */
+  SLIDE_PANEL: 1624,
+  /**
+   * `SEQ_SE_DP_UG_023`. 괴력 바위를 밀기 시작할 때(`ov5_021DFFBC`, 578줄)와
+   * 바위오르기가 벽에 올라붙을 때(`SubTask_RockClimb_CreateMount`, 1085줄)
+   */
+  ROCK_MOVE: 1575,
   /** `SEQ_SE_DP_KAIDAN2`. 계단·동굴 (`field_map_change.c` 631·1516줄) */
   STAIRS: 1539,
   /** `SEQ_SE_DP_NAGERU`. 공 던지기 (`battle_script.c` 10398줄) */

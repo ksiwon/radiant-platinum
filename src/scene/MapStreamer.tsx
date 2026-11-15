@@ -24,6 +24,8 @@ import { bdspVersion, expectBdsp, subscribeBdsp } from './bdspReady'
 import { arriveAt } from './pokecenter'
 import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
+import { doorOpenSe } from '../engine/audio/doorSound'
+import { doorKindAt } from './doorKindAt'
 import {
   enterMap,
   fieldScripts,
@@ -701,7 +703,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         else enter(next, at.map, at.x, at.z, at.matrix, restoreGroundY(next, at, distortion))
         // 물 위에서 쓴 리포트는 물 위에서 · 자전거면 자전거 곡까지 (`bike.ride`가 곡을 갈아 끼운다)
         if (avatar === 2) worldState.player.surfing = true
-        else if (avatar === 1) fieldScripts.services.bike?.ride(true)
+        else if (avatar === 1) fieldScripts.services.bike?.ride(true, true)
         // ⚠️ **`enter` 뒤다.** 그 안의 `enterMap`이 `resetFade`로 덮개를 걷으므로
         // 먼저 덮으면 지워진다. 로딩 화면이 걷히는 그 순간을 이 인이 이어받는다
         coverScreen()
@@ -1203,10 +1205,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       warping.current = true
       // 문이냐 계단이냐는 워프를 잡을 때 이미 갈렸다 (`warpSystem`). 문은
       // **앞 칸**이라 발밑을 봐서는 못 가린다 — 원작도 소리가 갈린다:
-      // 계단은 `SEQ_SE_DP_KAIDAN2`, 문은 `SEQ_SE_DP_DOOR_OPEN`
+      // 계단은 `SEQ_SE_DP_KAIDAN2`, 문은 종류별이다 — 미닫이 `DOOR10` · 상점 문 `PL_DOOR_OPEN5` ·
+      // 나머지 `DOOR_OPEN` (`ov5_021D431C.c:141-146`)
       // 승강 발판은 제 소리가 따로 있어서 문·계단 소리를 안 낸다
       if (target.silent !== true) {
-        void music.playEffect(target.viaDoor ? SFX.DOOR : SFX.STAIRS)
+        const doorKind = target.doorTile ? doorKindAt(world.grid, target.doorTile.x, target.doorTile.z) : undefined
+        void music.playEffect(target.viaDoor ? doorOpenSe(doorKind) : SFX.STAIRS)
       }
       /**
        * ⚠️ **덮개는 스크립트가 이미 들고 있을 수 있다.**

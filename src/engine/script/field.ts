@@ -10,7 +10,7 @@ import { markScript } from '../../app/sceneMark'
 import { scriptSpy } from './spy'
 import {
   BG_EVENT_DIR, BG_EVENT_TYPE, clearWarpOverrides, hideFlagOf, mapById, npcsOf, NO_SCRIPT,
-  scriptBridge, signsOf, talkTile, TILE_BEHAVIOR_PC, triggersOf, warpGateBridge, world as mapWorld,
+  scriptBridge, sideTalkTile, signsOf, talkTile, TILE_BEHAVIOR_PC, triggersOf, warpGateBridge, world as mapWorld,
   type MapHeader, type Npc, type Sign,
 } from '../map/world'
 import { deferredFacilityNotice, deferredScriptNotice } from '../world/frontierGate'
@@ -1422,7 +1422,31 @@ function tryTalk(): void {
   if (tryPC(front, header.scripts)) return
   if (tryTileScript(front, header.scripts)) return
   if (tryVillaFurniture(front, header.scripts)) return
+  if (trySideTalk(front, header.scripts)) return
   tryFieldMove(front)
+}
+
+/**
+ * 앞이 비었는데 몸이 옆 칸 쪽으로 치우쳐 있으면 **그 칸의 사람 · 간판도 눈앞이다** (`sideTalkTile`).
+ *
+ * 앞 칸이 말하는 것(사람 · 간판 · PC · 꿀 나무 · 타일 스크립트)은 이미 다 물은 뒤다 — 앞이 먼저고 옆은 앞이 빌 때만이다.
+ * 기술 창(`tryFieldMove`)보다는 앞이다
+ */
+function trySideTalk(front: { x: number; z: number; y?: number }, mapFile: number): boolean {
+  const grid = mapWorld.grid
+  if (!grid) return false
+  const p = worldState.player
+  const q = quarterOf(p.facing)
+  const side = sideTalkTile(grid, p.position, front, FACING_STEP[q]!)
+  if (side === null) return false
+  const vars = fieldScripts.vars
+  const npc = npcAt(mapWorld.mapId, side.x, side.z, vars, front.y)
+  if (npc && npc.script !== NO_SCRIPT && npc.script !== SIWON_SCRIPT) {
+    const id = npc.trainerType === TRAINER_TYPE_NO_TALK ? 0 : npc.script
+    return start(id, mapFile, npc.localID)
+  }
+  const sign = signAt(mapWorld.mapId, side.x, side.z, q, vars)
+  return sign ? start(sign.script, mapFile) : false
 }
 
 /**
@@ -1602,6 +1626,8 @@ function descendWaterfall(): boolean {
   const landZ = z + 1
   if (grid.isBlocked(front.x, landZ)) return false
   hopTo(front.x + 0.5, landZ + 0.5, WATERFALL_SECONDS, 0)
+  // 내려가는 쪽도 같은 소리다 (`SubTask_Waterfall_WaitForDescentCutIn`, `ov5_021DFB54.c:1352`)
+  fieldScripts.services.sound?.playEffect(SFX.WATERFALL_CLIMB)
   return true
 }
 fieldMoveBridge.waterfallDescent = descendWaterfall
@@ -1745,6 +1771,9 @@ export function runFieldMove(id: FieldMoveId, front: { x: number; z: number }): 
       // ⚠️ **턱의 포물선을 쓰지 않는다.** 벽을 타고 오르는 것이라 뜨면 안 되고,
       // 오르는 높이는 지형이 준다 — `hopTo`가 매 프레임 격자에 물어본다
       hopTo(landX + 0.5, landZ + 0.5, time, 0)
+      // 오르기 시작하는 순간 — 폭포는 `DP_FW463`(`SubTask_Waterfall_WaitForAscentCutIn`, `ov5_021DFB54.c:1235`),
+      // 바위오르기는 `DP_UG_023`(`SubTask_RockClimb_CreateMount`, 1085줄)
+      fieldScripts.services.sound?.playEffect(id === 'waterfall' ? SFX.WATERFALL_CLIMB : SFX.ROCK_MOVE)
       showFieldAction(id, time)
       return true
     }

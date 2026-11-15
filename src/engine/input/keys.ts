@@ -180,6 +180,9 @@ function isImage(target: EventTarget | null): boolean {
 export function attachKeyboard(target: Window = window) {
   target.addEventListener('keydown', (e) => {
     if (typingInto(e.target)) return
+    // Ctrl · Alt · ⌘와 함께 눌린 것은 브라우저의 것이다 — Ctrl+R(새로고침) · Ctrl+D(북마크) · Alt+←(뒤로)를 막고 그 글자를 게임
+    // 키로 세면 새로고침하려다 포켓치가 펼쳐지고 Ctrl+W에 주인공이 걷는다. Shift는 달리기라 거르지 않는다
+    if (e.ctrlKey || e.metaKey || e.altKey) return
     if (e.code === 'Tab' || (gameActive && GAME_KEYS.has(e.code))) e.preventDefault()
     // 자동 반복은 이미 눌린 키다 — 톡으로 또 세지 않는다
     if (!pressed.has(e.code)) tapped.add(e.code)
@@ -187,6 +190,12 @@ export function attachKeyboard(target: Window = window) {
   })
   target.addEventListener('keyup', (e) => pressed.delete(e.code))
   target.addEventListener('blur', () => { pressed.clear(); tapped.clear() })
+  // 탭 전환 단축키로 떠날 때는 blur 없이 숨기만 하는 길이 있다 — keyup이 영영 안 와 돌아오면 주인공이 혼자 걷는다
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { pressed.clear(); tapped.clear() }
+    })
+  }
   target.addEventListener('contextmenu', (e) => {
     if (!typingInto(e.target)) e.preventDefault()
   })

@@ -31,7 +31,7 @@ export type BallId = (typeof Ball)[keyof typeof Ball]
 
 /** 볼 보정을 정하는 데 필요한 판 상황 */
 export interface CatchContext {
-  /** 지금까지 지난 턴 수. 타이머볼이 쓴다 */
+  /** 한 판에서 지난 턴 수 (`totalTurns` — 첫 턴이 0). 타이머·퀵볼이 쓴다 */
   turn: number
   level: number
   /** 상대 타입 번호 두 개. 네트볼이 쓴다 */
@@ -68,11 +68,11 @@ export function ballBonus(ball: BallId, ctx: CatchContext): number {
     // 상대가 낮은 레벨일수록 좋다. 30레벨 이상이면 이점이 없다
     case Ball.NEST: return ctx.level < 30 ? Math.max(10, 40 - ctx.level) : 10
     case Ball.REPEAT: return ctx.caughtBefore ? 30 : 10
-    // 턴마다 조금씩 오르고 10턴에서 멈춘다
-    case Ball.TIMER: return Math.min(40, 10 + ctx.turn * 3)
+    // 턴마다 1씩 오르고 30턴에서 40으로 멈춘다 (`battle_script.c` 10953: `10 + totalTurns`, 상한 40)
+    case Ball.TIMER: return Math.min(40, 10 + ctx.turn)
     case Ball.DUSK: return ctx.darkness ? 35 : 10
-    // 첫 턴에만 좋다
-    case Ball.QUICK: return ctx.turn <= 1 ? 40 : 10
+    // 첫 턴에만 좋다 (`battle_script.c` 10969: `totalTurns < 1`)
+    case Ball.QUICK: return ctx.turn < 1 ? 40 : 10
     default: return 10
   }
 }
@@ -116,15 +116,24 @@ export function catchValue(target: CatchTarget, bonus: number, status: number): 
   return Math.floor((a * status) / 10)
 }
 
+/** 4세대 CPU의 정수 제곱근 (`CP_SetSqrt32` → `CP_GetSqrtResult32`): 내림 */
+function isqrt(n: number): number {
+  let r = Math.floor(Math.sqrt(n))
+  while (r * r > n) r--
+  while ((r + 1) * (r + 1) <= n) r++
+  return r
+}
+
 /**
  * 흔들림 문턱값 `b`. 한 번 흔들 때 `rand(65536) < b`면 통과한다.
  *
- * `b = 1048560 / ⁴√(16711680 / a)`. a가 255면 65535가 나와 사실상 확정이고,
- * a가 1이면 16399가 나와 네 번 통과할 확률이 0.39%다
+ * `battle_script.c` 10994-11003: `(0xFF << 16) / a` → 정수 sqrt → 정수 sqrt → `(0xFFFF << 4) / x`.
+ * **단계마다 버린다.** a가 255면 65535, a가 1이면 16643이 나온다
  */
 export function shakeThreshold(a: number): number {
   if (a <= 0) return 0
-  return Math.floor(1048560 / Math.sqrt(Math.sqrt(16711680 / a)))
+  const x = isqrt(isqrt(Math.floor(16711680 / a)))
+  return Math.floor(1048560 / x)
 }
 
 interface CatchResult {

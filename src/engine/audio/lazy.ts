@@ -29,6 +29,14 @@ export function menuBeep(): void {
   void open().then((a) => a.music.playEffect(a.SFX.MENU)).catch(() => { /* 소리는 필수가 아니다 */ })
 }
 
+/**
+ * 이름으로 효과음 하나를 낸다 (`SFX`의 키). 메뉴가 `menuBeep`과 다른 소리를 낼 때 쓴다 —
+ * 시작 메뉴의 커서 이동(`SELECT78`)과 여는 소리(`WIN_OPEN`)
+ */
+export function playMenuSfx(name: keyof Sfx): void {
+  void open().then((a) => a.music.playEffect(a.SFX[name])).catch(() => { /* 소리는 필수가 아니다 */ })
+}
+
 /** 메뉴 소리를 미리 편다. 깨어나기 전이면 줄을 서고 첫 입력 때 받는다 */
 export function warmMenu(): void {
   void open().then((a) => a.music.prewarm([a.SFX.MENU])).catch(() => { /* 위와 같다 */ })

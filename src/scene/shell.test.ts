@@ -266,8 +266,8 @@ maybe('소품 빠진 면', () => {
     // 개수로는 "있다"인데 실루엣의 절반만 덮는 경우가 있고, 반대로 개수로는
     // "없다"인데 실제로는 안 뚫린 경우도 있다. 덮어 보고 세야 맞다
     expect([...byDir].sort().map(([d, n]) => `${d}${String(n)}`).join(' '))
-      .toBe('+X40 +Y8 +Z19 −X47 −Z337')
-    expect(dirs).toBe(451)
+      .toBe('+X34 +Y4 +Z13 −X43 −Z335')
+    expect(dirs).toBe(429)
     // ⚠️ **0이 아니다.** 남는 것은 소품 19번의 −Z에서 6칸이고, 실루엣 칸
     // 7,129,214개 대비 0.00008%다. 0으로 못 박으면 눈금(64×64)이 바뀔 때마다
     // 깨지므로 **실측한 자리를 그대로** 적는다 — 늘어나면 그게 회귀다.
@@ -277,8 +277,8 @@ maybe('소품 빠진 면', () => {
     expect(bad).toEqual(['19−Z:6'])
     expect(open, `뚫린 칸 ${String(open)}/${String(seenAll)}`).toBe(6)
     // 실루엣 칸 — 노드 사슬(`chunks.nodeChain`)로 조각이 부모 위에 서고, 피벗 회전을 NNS 규칙으로 푼 모양에서 잰다
-    expect(seenAll).toBe(7144793)
-    expect(filled).toBe(351)
+    expect(seenAll).toBe(7145872)
+    expect(filled).toBe(349)
     // 한 장짜리라 건너뛴 방향
     expect(sheets).toBe(110)
   // 590종을 방향 다섯으로 64×64 래스터라이즈한다. 5초 기본값으로는 모자란다
@@ -304,10 +304,10 @@ maybe('소품 빠진 면', () => {
         rows.push(`${String(id)}${dirName(dir)} 뚫림 ${String(openIn(src, src, dir))}→${String(openFull)}/${String(openHoles)} 겹침 ${String(over(full))}→${String(over(holes))}`)
       }
     }
-    // 뚫린 칸은 전부 막고(가운데 0), 원작 면 칸에 겹친 판은 26,329칸 → 3,990칸이다 (REPAIR §173)
+    // 뚫린 칸은 전부 막고(가운데 0), 원작 면 칸에 겹친 판은 아래 「원본→뚫린 칸만」 칸 수로 줄어든다 (REPAIR §173)
     expect(rows).toEqual([
-      '470−X 뚫림 21→0/0 겹침 2828→44', '470+X 뚫림 26→0/0 겹침 2823→71', '470+Y 뚫림 1→0/0 겹침 3994→1269',
-      '470−Z 뚫림 3422→0/0 겹침 314→186', '470+Z 뚫림 2→0/0 겹침 3734→127',
+      '470−X 뚫림 4→0/0 겹침 2845→14', '470+X 뚫림 14→0/0 겹침 2835→44',
+      '470−Z 뚫림 3418→0/0 겹침 318→186',
       '541−X 뚫림 59→0/0 겹침 2024→395', '541+X 뚫림 866→0/0 겹침 1217→383', '541+Y 뚫림 19→0/0 겹침 3172→362',
       '541−Z 뚫림 2037→0/0 겹침 1093→265',
       '542+X 뚫림 1750→0/0 겹침 994→186', '542+Y 뚫림 1→0/0 겹침 3433→440', '542−Z 뚫림 1779→0/0 겹침 703→262',
@@ -395,7 +395,7 @@ maybe('소품 빠진 면', () => {
         }
       }
     }
-    expect(verts).toBe(93969)
+    expect(verts).toBe(82410)
 
     // 주인공 집(23)과 이웃집(22)의 뒤판. **여기가 화면에서 보이던 자리다** —
     // 앞벽에 붙으면 뒤판 뒤로 옆벽만 남아 면이 따로 노는 것으로 보인다
@@ -508,11 +508,11 @@ maybe('소품 빠진 면', () => {
 
   it('모로 선 면은 판에 안 들어간다', () => {
     // 옆벽은 뒤에서 보면 선이라 실루엣에 아무것도 안 보탠다. 주인공 집은
-    // 219개 중 109개가 그렇다 — 넣으면 삼각형만 버린다
+    // 219개 중 110개가 그렇다 — 넣으면 삼각형만 버린다
     const mesh = readProp(23, fmt)
     const plate = facePlate(mesh, paint(mesh), 2, -1)!
     expect(triangles(mesh.geometry)).toHaveLength(219)
-    expect(plate.getAttribute('position').count / 3).toBe(110)
+    expect(plate.getAttribute('position').count / 3).toBe(109)
   })
 
   it('투명한 데가 있는 그림도 판을 만든다 — 창 뚫린 벽이 그렇다', () => {
@@ -557,8 +557,15 @@ maybe('소품 빠진 면', () => {
     // 아틀라스 (0,0) 한 픽셀로 칠해졌다 — 통짜 색 슬래브가 그것이다
     // 34번은 넉 방향이 뚫려 있다 — 두 방향 이상인 소품이 69종이고 그것들이
     // 전부 이 자리를 지난다
-    const mesh = readProp(34, fmt)
-    expect(openDirections(mesh).length, '이 소품이 두 방향 이상 뚫려 있어야 뜻이 있다').toBe(4)
+    // ⚠️ 번호를 못 박지 않고 **넉 방향 이상 뚫린 소품 중 첫 번째**를 찾는다 — 소품 면 좌표가 바뀌면(VTX_DIFF 단위를 바로잡자 34번이
+    // 넉 방향에서 둘로 줄었다) 어느 소품이 그런지도 바뀐다. 그런 소품이 하나도 없으면 이 시험이 잴 것이 없는 것이라 거기서 선다
+    let found = -1
+    for (let id = 0; id < 600 && found < 0; id++) {
+      if (existsSync(resolve(DATA, `props/${String(id)}.bin`)) && openDirections(readProp(id, fmt)).length >= 4) found = id
+    }
+    expect(found, '넉 방향 이상 뚫린 소품이 있어야 이 시험이 뜻이 있다').toBeGreaterThanOrEqual(0)
+    const mesh = readProp(found, fmt)
+    expect(openDirections(mesh).length).toBeGreaterThanOrEqual(4)
     const plate = shellPlates(mesh, { colors: mesh.materials.map(() => 0x8a7f6a) })!
     const uv = plate.getAttribute('uv') as BufferAttribute | undefined
     expect(uv, '합친 판에 UV가 없다').toBeDefined()

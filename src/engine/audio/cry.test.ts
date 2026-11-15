@@ -157,6 +157,17 @@ maybe('효과음 번호', () => {
     expect(songs[SFX.LOW_HP]?.name).toBe('SEQ_SE_DP_HINSI')
   })
 
+  it('문 · 비전기술 · 시작 메뉴 소리 번호가 SDAT 이름과 맞는다', () => {
+    const songs = index().songs
+    const want: [number, string][] = [
+      [SFX.START_MENU_MOVE, 'SEQ_SE_DP_SELECT78'], [SFX.WIN_OPEN, 'SEQ_SE_DP_WIN_OPEN'],
+      [SFX.DOOR_SLIDING, 'SEQ_SE_DP_DOOR10'], [SFX.DOOR_STORE, 'SEQ_SE_PL_DOOR_OPEN5'], [SFX.DOOR_CLOSE, 'SEQ_SE_DP_DOOR_CLOSE2'],
+      [SFX.FIELD_CUT, 'SEQ_SE_DP_FW015'], [SFX.FIELD_ROCK_SMASH, 'SEQ_SE_DP_FW088'], [SFX.WATERFALL_CLIMB, 'SEQ_SE_DP_FW463'],
+      [SFX.BIKE_RIDE, 'SEQ_SE_DP_JITENSYA'], [SFX.SLIDE_PANEL, 'SEQ_SE_DP_F209'], [SFX.ROCK_MOVE, 'SEQ_SE_DP_UG_023'],
+    ]
+    for (const [id, name] of want) expect(songs[id]?.name, name).toBe(name)
+  })
+
   it('메뉴 소리는 디컴프가 이름을 고쳐 붙인 자리다', () => {
     // 디컴프는 `SEQ_SE_CONFIRM`이라 부르고 SDAT는 `SEQ_SE_DP_SELECT`라 부른다.
     // 이름으로 찾으면 못 찾으므로 번호로 둔다

@@ -240,3 +240,30 @@ describe('Esc는 타이틀로 안 보낸다', () => {
     expect(BINDINGS.menu[0]).not.toBe('Escape')
   })
 })
+
+describe('Ctrl · Alt · ⌘ 조합은 브라우저의 것이다', () => {
+  const chord = (code: string, mods: { ctrlKey?: boolean, metaKey?: boolean, altKey?: boolean }) => {
+    const e = { ...event(code), ...mods }
+    win.fire('keydown', e)
+    return e
+  }
+
+  it('Ctrl+R(새로고침)을 막지도 게임 키로 세지도 않는다', () => {
+    const e = chord('KeyR', { ctrlKey: true })
+    expect(e.prevented).toBe(false)
+    expect(held(BINDINGS.poketch)).toBe(false)
+  })
+
+  it('Alt+←(뒤로 가기) · ⌘+W 도 마찬가지다', () => {
+    expect(chord('ArrowLeft', { altKey: true }).prevented).toBe(false)
+    expect(held(BINDINGS.left)).toBe(false)
+    expect(chord('KeyW', { metaKey: true }).prevented).toBe(false)
+    expect(held(BINDINGS.up)).toBe(false)
+  })
+
+  it('수정 키 없이 누른 것은 그대로 게임 키다', () => {
+    down('KeyW')
+    expect(held(BINDINGS.up)).toBe(true)
+    expect(down('Space').prevented).toBe(true)
+  })
+})

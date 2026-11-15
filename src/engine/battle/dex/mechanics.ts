@@ -134,10 +134,30 @@ const ROM_MOVE_RULES: Record<string, Mechanics> = {
   camouflage: { ...MOVE_MECHANICS.camouflage, onHit: camouflageHit },
 }
 
+/**
+ * 테크니션 (`battle_lib.c` 6698) — **발버둥은 뺀다** (`move != MOVE_STRUGGLE`). 구운 코드는 위력만 보므로
+ * 위력 50인 발버둥에 1.5배가 붙는다. 나머지는 구운 코드 그대로(보정이 다 쌓인 위력이 60 이하일 때)
+ */
+function technicianBasePower(
+  this: { modify: (value: number, modifier: number) => number, event: { modifier: number }, chainModify: (n: number) => unknown },
+  basePower: number,
+  _attacker: unknown,
+  _defender: unknown,
+  move: { id: string },
+): unknown {
+  if (move.id === 'struggle') return undefined
+  return this.modify(basePower, this.event.modifier) <= 60 ? this.chainModify(1.5) : undefined
+}
+
+/** 원작 규칙으로 갈아 끼운 특성 효과. 구운 표보다 앞선다 */
+const ROM_ABILITY_RULES: Record<string, Mechanics> = {
+  technician: { ...ABILITY_MECHANICS.technician, onBasePower: technicianBasePower },
+}
+
 export const MechanicsRegistry = {
   species: (id: string): Mechanics | undefined => SPECIES_MECHANICS[id],
   move: (id: string): Mechanics | undefined => ROM_MOVE_RULES[id] ?? MOVE_MECHANICS[id],
-  ability: (id: string): Mechanics | undefined => ABILITY_MECHANICS[id],
+  ability: (id: string): Mechanics | undefined => ROM_ABILITY_RULES[id] ?? ABILITY_MECHANICS[id],
   item: (id: string): Mechanics | undefined => ITEM_MECHANICS[id],
   type: (id: string): Mechanics | undefined => TYPE_MECHANICS[id],
   /** 도구는 롬 468종 중 배틀에 나오는 것만 구현이 있다 */

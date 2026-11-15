@@ -262,7 +262,8 @@ maybe('스크립트 VM', () => {
     // 순서가 아니라 **집합**이다 — 새 명령을 표 중간에 붙여도 목록 순서를 안 맞춘다
     expect([...idle].sort()).toEqual([...IDLE_COMMANDS].sort())
     expect(handledSeen.length).toBe(implemented - IDLE_COMMANDS.length)
-  })
+  // 전 스크립트를 두 답으로 훑는다. 혼자 돌면 3초지만 시험 묶음이 병렬로 돌 때는 5초 기본값을 넘긴다
+  }, 30_000)
 
   it('닿는 자리의 98.9%가 돈다 — DATA.md §2.10의 그 수', () => {
     // ⚠️ **"몇 개를 만들었나"는 눈금이 못 된다.** 안 쓰이는 명령이 태반이다.

@@ -3,7 +3,9 @@
 // 원작 상태 기계가 168줄이고 그중 재는 값이 셋이다 — **어느 쪽으로 미는가** ·
 // **몸이 몇 번 도는가** · **언제 서는가**. 셋 다 여기서 못 박는다.
 import { beforeEach, describe, expect, it } from 'vitest'
+import { SFX } from '../audio/sfx'
 import { Behavior } from '../map/zone'
+import { drainBikeCues } from './bikeTerrain'
 import { DIR } from '../script/movement'
 import {
   clearPanelSlide, dirStep, isSlidePanel, nextDir, panelSlide, panelStep, SLIDE_BEHAVIOR,
@@ -150,5 +152,29 @@ describe('맵을 옮기면 푼다', () => {
     clearPanelSlide()
     // 판이 아닌 맵에서는 이제 아무것도 안 가져간다
     expect(panelStep(world({ '0,0': 0 }), { x: 0.5, z: 0.5 }, 4.5)).toBeNull()
+  })
+})
+
+describe('판 소리 (`ov5_021E1154.c:65` `SEQ_SE_DP_F209`)', () => {
+  it('판에 올라선 순간 한 번 난다 — 판이 아닌 칸에서는 안 난다', () => {
+    drainBikeCues()
+    panelStep(world({ '0,0': 0 }), { x: 0.5, z: 0.5 }, 4.5)
+    expect(drainBikeCues()).toEqual([])
+    const view = world({ '0,0': SLIDE_BEHAVIOR.east, '1,0': 0, '2,0': 0 })
+    panelStep(view, { x: 0.5, z: 0.5 }, 4.5)
+    expect(drainBikeCues()).toEqual([SFX.SLIDE_PANEL])
+    // 가는 동안 매 프레임 다시 나지 않는다
+    panelStep(view, { x: 0.8, z: 0.5 }, 4.5)
+    expect(drainBikeCues()).toEqual([])
+  })
+
+  it('이어진 다음 칸도 판이면 다시 나고, 판 밖으로 나가는 칸은 안 난다', () => {
+    drainBikeCues()
+    const view = world({ '0,0': SLIDE_BEHAVIOR.east, '1,0': SLIDE_BEHAVIOR.east, '2,0': 0, '2,-1': 0 })
+    panelStep(view, { x: 0.5, z: 0.5 }, 4.5)
+    panelStep(view, { x: 1.5, z: 0.5 }, 4.5)
+    expect(drainBikeCues()).toEqual([SFX.SLIDE_PANEL, SFX.SLIDE_PANEL])
+    panelStep(view, { x: 2.5, z: 0.5 }, 4.5)
+    expect(drainBikeCues()).toEqual([])
   })
 })

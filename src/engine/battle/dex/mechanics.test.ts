@@ -95,3 +95,29 @@ describe('위장', () => {
     expect(r).toBe(false)
   })
 })
+
+describe('테크니션 (`battle_lib.c` 6698) — 발버둥은 뺀다', () => {
+  const ability = MechanicsRegistry.ability('technician')
+  const run = (id: string, power: number, modifier = 4096): unknown => {
+    const f = ability?.onBasePower as (this: unknown, ...a: unknown[]) => unknown
+    const chain = vi.fn(() => 'boost')
+    const self = {
+      event: { modifier },
+      modify: (v: number, m: number) => Math.trunc((v * m) / 4096),
+      chainModify: chain,
+    }
+    return f.call(self, power, {}, {}, { id })
+  }
+  it('위력 60 이하는 1.5배, 61부터는 그대로', () => {
+    expect(run('tackle', 40)).toBe('boost')
+    expect(run('tackle', 60)).toBe('boost')
+    expect(run('tackle', 61)).toBeUndefined()
+  })
+  it('발버둥(위력 50)은 붙지 않는다', () => {
+    expect(run('struggle', 50)).toBeUndefined()
+  })
+  it('다른 보정이 먼저 쌓인 위력으로 본다 — 40 × 1.5(도우미) = 60은 붙고 × 2는 안 붙는다', () => {
+    expect(run('tackle', 40, 6144)).toBe('boost')
+    expect(run('tackle', 40, 8192)).toBeUndefined()
+  })
+})

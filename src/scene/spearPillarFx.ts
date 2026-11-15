@@ -90,6 +90,12 @@ export function lakeOrbsDone(): boolean {
   return true
 }
 
+/**
+ * 호수 요정의 울음 — 좌우 가운데 · 음량 100 (`Sound_PlayPokemonCryEx(POKECRY_NORMAL, …, 0, 100, …)`,
+ * `overlay006/ov6_0223E140.c:1119·1342·1483`). 기본 127로 내면 원작보다 크다
+ */
+export const LAKE_CRY = { pan: 0, volume: 100 } as const
+
 /** 필드 한 프레임 — 틱을 세어 민다 */
 export function spearPillarFxTick(dt: number): void {
   const o = spearPillarLive.orbs
@@ -99,7 +105,7 @@ export function spearPillarFxTick(dt: number): void {
     spearPillarLive.acc -= ticks
     while (ticks-- > 0 && o.state !== 6) {
       for (const ev of lakeOrbsTick(o)) {
-        if (ev.kind === 'cry') void music.playCry(ev.species)
+        if (ev.kind === 'cry') void music.playCry(ev.species, LAKE_CRY)
         else if (ev.kind === 'se') void music.playEffect(ev.seq)
         else if (ev.kind === 'mesprit') {
           const m = npcActors.byLocalID.get(MESPRIT)

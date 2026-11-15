@@ -47,7 +47,17 @@ export const RECORD_FAINTED_IN_BATTLE = 41
 /** 깊은 진흙에 붙들린 횟수 — 붙들릴 때 한 번 (`FieldSystem_CreateTaskStuckInDeepMud`, `ov5_021DFB54.c` 886줄) */
 export const RECORD_TIMES_STUCK_IN_DEEP_MUD = 56
 
-/** `TRAINER_SCORE_EVENT_*` 중 우리가 실제로 거는 것 */
+/** 편지를 쓴 횟수 (`generated/game_records.txt` 46번째 줄) */
+export const RECORD_TIMES_MAIL_WRITTEN = 45
+
+/**
+ * `TRAINER_SCORE_EVENT_*` 중 우리가 실제로 거는 것.
+ * 번호는 `game_records.c` `sTrainerScoreIncrements`의 줄 순서다 — `gameRecordsTable`의 배열 자리와 같다
+ */
+/** `TRAINER_SCORE_EVENT_BERRY_HARVESTED` — 열매를 땄다 (`scrcmd_berry.c` 108) */
+export const SCORE_BERRY_HARVESTED = 0
+/** `TRAINER_SCORE_EVENT_MAIL_WRITTEN` — 편지 쓰기를 확정했다 (`applications/mail.c` 328) */
+export const SCORE_MAIL_WRITTEN = 2
 export const SCORE_WON_WILD_BATTLE = 8
 export const SCORE_CAPTURED_REGIONAL_MON = 9
 export const SCORE_CAPTURED_NATIONAL_MON = 10

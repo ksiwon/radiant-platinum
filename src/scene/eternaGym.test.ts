@@ -5,14 +5,14 @@
 // 에게도 못 간다.
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  ETERNA_CLOCK, ETERNA_CLOCK_COLLISION, ETERNA_CLOCK_DIAMETER, ETERNA_CLOCK_LEFT,
+  ETERNA_CLOCK, ETERNA_CLOCK_COLLISION, ETERNA_CLOCK_DONE_SFX, ETERNA_CLOCK_SFX, ETERNA_CLOCK_DIAMETER, ETERNA_CLOCK_LEFT,
   ETERNA_CLOCK_STATES, ETERNA_CLOCK_TIMES, ETERNA_CLOCK_TOP, ETERNA_FOUNTAIN_COLLISION,
   ETERNA_FOUNTAIN_Z, ETERNA_GYM_MAP, ETERNA_GYM_WIDTH, ETERNA_JUMP_TILES,
   eternaBlocked, eternaHandAngles, eternaNextState,
 } from '../engine/world/eternaGym'
 import {
   advanceEternaClock, eternaBlockedAt, eternaBusy, eternaJumpAt, eternaProps, eternaState,
-  eternaTick, initEternaGym, resetEternaGym,
+  eternaSound, eternaTick, initEternaGym, resetEternaGym,
 } from './eternaGym'
 
 /** 다 돌 때까지 굴린다 */
@@ -187,5 +187,25 @@ describe('시침을 뛰어넘는다', () => {
 
   it('이 체육관이 아니면 안 뛴다', () => {
     expect(eternaJumpAt(11, 18, 0)).toBe(false)
+  })
+})
+
+describe('바늘 소리 (`gym_features.c:2769·2797-2798`)', () => {
+  beforeEach(() => { resetEternaGym() })
+
+  it('돌기 시작할 때 시계 소리, 다 돌면 시계 소리를 끄고 PIRORIRO2', () => {
+    const log: string[] = []
+    eternaSound.play = (seq) => { log.push(`play ${String(seq)}`) }
+    eternaSound.stop = (seq) => { log.push(`stop ${String(seq)}`) }
+    initEternaGym(ETERNA_GYM_MAP, ETERNA_CLOCK.initial)
+    advanceEternaClock()
+    expect(log).toEqual([`play ${String(ETERNA_CLOCK_SFX)}`])
+    settle()
+    expect(log).toEqual([
+      `play ${String(ETERNA_CLOCK_SFX)}`, `stop ${String(ETERNA_CLOCK_SFX)}`, `play ${String(ETERNA_CLOCK_DONE_SFX)}`,
+    ])
+    expect(ETERNA_CLOCK_DONE_SFX).toBe(1507)
+    eternaSound.play = null
+    eternaSound.stop = null
   })
 })

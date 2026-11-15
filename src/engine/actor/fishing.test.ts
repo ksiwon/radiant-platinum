@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   CAST_FRAMES, CAST_SOUND_FRAME, HOOK_FRAMES, NO_FISH_FRAMES, REEL_FRAMES,
-  castSounds, startFishing, tickFishing, type FishingState,
+  biteBegan, castSounds, startFishing, tickFishing, type FishingState,
 } from './fishing'
 import type { Rod } from '../battle/encounter'
 
@@ -124,5 +124,36 @@ describe('낚시', () => {
     )
     expect(done.phase).toBe('done')
     expect(idle(done, 100)).toEqual(done)
+  })
+})
+
+describe('입질 소리 (`fishing.c:276` → `ov5_021F5A10.c:276`)', () => {
+  it('「!」가 뜨는 첫 프레임에 한 번만 참이다', () => {
+    let s = startFishing('old', true, fixed(0))
+    let before: string | null = null
+    const fired: number[] = []
+    for (let i = 0; i < 400 && s.phase !== 'reel'; i++) {
+      s = tickFishing(s, false)
+      if (biteBegan(before, s.phase)) fired.push(i)
+      before = s.phase
+    }
+    expect(fired).toHaveLength(1)
+  })
+
+  it('안 물리는 판은 안 난다', () => {
+    let s = startFishing('old', false, fixed(0))
+    let before: string | null = null
+    for (let i = 0; i < 400; i++) {
+      s = tickFishing(s, false)
+      expect(biteBegan(before, s.phase)).toBe(false)
+      before = s.phase
+    }
+  })
+
+  it('낚시가 끝나고 다시 던지면 다시 난다', () => {
+    expect(biteBegan('message', 'bite')).toBe(true)
+    expect(biteBegan(null, 'bite')).toBe(true)
+    expect(biteBegan('bite', 'bite')).toBe(false)
+    expect(biteBegan('wait', 'wait')).toBe(false)
   })
 })

@@ -102,6 +102,13 @@ export function SwitchScreen(
   const [descAt, setDescAt] = useState<number | null>(null)
   const cursor = Math.min(at, Math.max(0, party.length - 1))
   const goto = (next: number): void => { setAt(next); setDescAt(null) }
+  /** 그 칸이 알인가 — 카드가 알이면 요약 쪽 시트도 안 연다 */
+  const eggAt = (i: number): boolean => {
+    const slot = party[i]
+    if (!slot) return false
+    const entry = roster[slot.key]
+    return savedOf(saveParty, slot.key, entry)?.isEgg === true
+  }
   const step = (d: number) => (): boolean => {
     const next = clampCursor(cursor, d, party.length)
     if (next === cursor) return false
@@ -126,7 +133,11 @@ export function SwitchScreen(
     right: step(1),
     confirm: () => { const a = actionAt(cursor); if (a) onPick(a) },
     cancel: onBack ?? undefined,
-    tab: () => { setPage((p) => (p === 'moves' ? 'stats' : 'moves')); setDescAt(null) },
+    // 원작은 알이면 「요약」 · 「기술 보기」 단추를 무시한다 (`battle_party.c`의 `CheckSelectedPokemonIsEgg`)
+    tab: () => {
+      if (eggAt(cursor)) return false
+      setPage((p) => (p === 'moves' ? 'stats' : 'moves')); setDescAt(null)
+    },
     pageUp: stepDesc(-1),
     pageDown: stepDesc(1),
   })
@@ -195,7 +206,7 @@ export function SwitchScreen(
   const say = lineId === null ? null : romLine(partyLines, lineId, who)
   const keys = [
     ...(actionAt(cursor) !== null ? [`Z ${romLine(partyLines, PARTY.shiftButton) ?? ''}`] : []),
-    `Tab ${romLine(partyLines, page === 'moves' ? PARTY.summaryButton : PARTY.checkMovesButton) ?? ''}`,
+    ...(eggAt(cursor) ? [] : [`Tab ${romLine(partyLines, page === 'moves' ? PARTY.summaryButton : PARTY.checkMovesButton) ?? ''}`]),
     ...(onBack !== null ? [words.close] : []),
   ].join(' · ')
 
@@ -248,7 +259,9 @@ export function SwitchScreen(
         />
       </div>
 
-      {chosen ? (
+      {chosen && eggAt(cursor) ? (
+        <div className={css.empty} />
+      ) : chosen ? (
         <MonSheet
           slot={chosen}
           label={cards[cursor]?.label ?? chosen.key}

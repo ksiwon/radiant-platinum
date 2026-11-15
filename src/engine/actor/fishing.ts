@@ -113,6 +113,14 @@ function say(s: FishingState, result: FishingResult): FishingState {
 }
 
 /**
+ * 입질 「!」가 **이번 프레임에 처음** 떴는가. 이전 단계가 `bite`가 아니고 지금이 `bite`일 때만 참이다 —
+ * 안 물리는 판은 `bite`에 안 들고, 한 번 뜬 뒤 창이 닫힐 때까지 다시 참이 되지 않는다
+ */
+export function biteBegan(before: string | null, now: string | null): boolean {
+  return now === 'bite' && before !== 'bite'
+}
+
+/**
  * 한 프레임 (`GoFish`).
  *
  * `pressedA`는 **이번 프레임에 새로 눌렸는가**다 (`TryPressA`는 눌린 순간만

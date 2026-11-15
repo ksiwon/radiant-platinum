@@ -9,6 +9,7 @@
 // 앞쪽이 순수 함수라 시험이 표 전량을 훑을 수 있어서다
 import { BIKE_PARTNER_LINE, BIKE_WHY_LINE, bikeBlock, isOnCyclingRoad } from '../../engine/actor/bike'
 import { onElevatedBridge } from '../../engine/actor/bridge'
+import { SFX } from '../../engine/audio/sfx'
 import { azureFluteReady, BLOCKED_LINE_AT } from '../../engine/bag/fieldUse'
 import type { FieldContext, FieldItemAction, PartyItemUse } from '../../engine/bag/fieldUse'
 import { isRadarGrass } from '../../engine/battle/encounter'
@@ -169,6 +170,8 @@ export function performItemAction(action: FieldItemAction, deps: ItemActionDeps)
       if (why !== null) { deps.say(bikeRefusalLine(BIKE_WHY_LINE[why])); return false }
       p.cycling = !p.cycling
       p.pedalling = 0
+      // 올라탈 때만 `SEQ_SE_DP_JITENSYA` — 내릴 때는 `RequestStateWalking`이라 소리가 없다 (`ov5_021DFB54.c:296`)
+      if (p.cycling) fieldScripts.services.sound?.playEffect(SFX.BIKE_RIDE)
       deps.back()
       return true
     }

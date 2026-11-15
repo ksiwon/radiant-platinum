@@ -11,7 +11,7 @@
 |---|---:|---|
 | 공개 배포를 막을 수 있는 자리 | 재는 자리 12 | [DEPLOY.md](DEPLOY.md) §1 |
 | 우리가 만든 자리가 어긋난 것 | 0 (끝난 23은 안 센다) | [REPAIR.md](REPAIR.md) |
-| 원작 대비 반쯤 · 없음 | 8 · 0 | [PARITY.md](PARITY.md) |
+| 원작 대비 반쯤 · 없음 | 11 · 0 | [PARITY.md](PARITY.md) |
 | 화면에 아직 안 서는 것 | 0 | [3D_GAP_AUDIT.md](3D_GAP_AUDIT.md) §5 |
 | 알고 남겨 둔 것 | 10 | [PLAN.md](PLAN.md) §16.11 |
 
@@ -67,6 +67,9 @@
 | §8.5b | 소품이 스스로 움직인다 (BTA0 · BTP0) | BDSP가 그리는 맵은 BDSP 원본의 움직임으로 돈다 (`scene/bdspMotion` — 굽는 값은 `import/bdsp/motion.ts` · `field.ts`의 `Moving` · 노드 쪽 `bdspArena.py`의 `motion_extras` · `mo |
 | §8.12 | 크레딧 | 두루마리가 흐르고 끝나면 타이틀로 나간다 (`ui/menu/CreditsScreen`). 글은 롬의 대사 뱅크 548이고 줄 수가 판마다 다르다(미국 237 · 한국 209 · 일본 184). 어느 줄이 몇 픽셀째에 서고 어느 줄이 가운데인지는 사용자 롬의 오버레이 # |
 | §8.15 | 창기둥 → 깨어진 세계 | 빨려 드는 문이 원작대로 돈다(`DoDWWarp` · `dw_warp.c` · `scene/DwWarpStage`) — `titledemo` 16 모델을 원점에, BCA0 · BTA0를 한 틱에 한 프레임, 카메라가 10칸 위에서 곧장 내려다보며 화각이 반각 4004에 |
+| §8.16 | 메뉴 소리 표 | 시작 메뉴 이동(`SELECT78`)과 열기(`WIN_OPEN`)·도구 회복(`KAIFUKU`)·알 `CUSTOM06`만 원작 표를 따른다. 요약(`SYU01`)·PC박스(`BOX01·02·03`)·도감(`DENSI06`)·가방(`BAG_030`·`BUTTON9`)·타 |
+| §8.21 | 괴력 바위 미는 슬라이드 | 바위가 한 틱에 한 칸 옮겨져(`obstacles.ts`의 `pushBoulder`) 미는 박자의 미끄러짐이 없다. 원작 `MOVEMENT_ACTION_PUSH_*`의 프레임을 따르려면 그리는 쪽 보간이 필요하다 |
+| §8.25 | 도감 모습 쪽 | 모습이 여럿인 종은 본 적 없는 모습까지 다 보인다. 원작은 본 모습만 보인다(`Pokedex_TryAppendSeenForm`). 세이브 도감에 본 모습 비트가 없다 |
 
 ## 4. 화면에 아직 안 서는 것
 

@@ -149,6 +149,35 @@ maybe('혼자 하는 짓', () => {
     expect({ x: npc.x, z: npc.z }).toEqual({ x: 3, z: 3 })
   })
 
+  it('⚠️ 주인공의 몸이 걸친 칸으로는 안 걸어 들어온다 — 가운데가 속한 칸만 보면 몸이 겹친다', () => {
+    // 북(0)으로 한 칸 가면 z=2. 주인공 가운데는 칸 1(z=1.9)이지만 몸(반지름 0.3)은 칸 2에 걸친다
+    worldState.player.position.set(3.5, 0, 1.9)
+    const npc = actor(TYPE.wanderAround, 3, 3)
+    npcActors.list = [npc]
+    run(17 + WALK_FRAMES)
+    expect({ x: npc.x, z: npc.z }).toEqual({ x: 3, z: 3 })
+  })
+
+  it('몸이 닿지 않는 칸이면 그대로 걷는다', () => {
+    worldState.player.position.set(3.5, 0, 1.6) // 몸이 z 1.3~1.9 — 칸 2에 안 닿는다
+    const npc = actor(TYPE.wanderAround, 3, 3)
+    npcActors.list = [npc]
+    run(17)
+    run(WALK_FRAMES + 2)
+    expect(npc.z).toBe(2)
+  })
+
+  it('⚠️ 걷는 중인 사람이 떠나는 칸 · 도착할 칸은 둘 다 그의 것이다', () => {
+    // 4→5 사이를 걷는 중(x 4.3) — 반올림하면 칸 4 하나지만 칸 5도 아직 그의 것이다
+    const mover = actor(TYPE.lookSouth, 4.3, 2)
+    mover.localID = 2
+    // 북(0)으로 한 칸 가면 (5,2)
+    const npc = actor(TYPE.wanderAround, 5, 3)
+    npcActors.list = [mover, npc]
+    run(17 + WALK_FRAMES)
+    expect({ x: npc.x, z: npc.z }).toEqual({ x: 5, z: 3 })
+  })
+
   it('배회하는 사람은 16프레임에 딱 한 칸 간다', () => {
     // 북(0)을 고르게 두고 방 가운데 세운다
     const npc = actor(TYPE.wanderAround, 3, 3)

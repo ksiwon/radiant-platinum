@@ -6,7 +6,7 @@
 //
 // ⚠️ **글을 지어내지 않는다.** 네 줄 다 원작 공용 글묶음(213)의 자리를 읽는다
 import { useEffect, useRef, useState } from 'react'
-import { COMMON_STRINGS_BANK, FISHING_TEXT, type FishingResult } from '../../engine/actor/fishing'
+import { COMMON_STRINGS_BANK, FISHING_TEXT, biteBegan, type FishingResult } from '../../engine/actor/fishing'
 import { loadDialogueBank } from '../../data/gameData'
 import { SFX } from '../../engine/audio/sfx'
 import { fieldScripts } from '../../engine/script/field'
@@ -38,6 +38,8 @@ export function FishingBox() {
   useEffect(() => {
     let raf = 0
     let last = ''
+    /** 지난 프레임의 단계 — 「!」가 뜨는 첫 프레임을 가르는 데 쓴다 */
+    let was: string | null = null
     const poll = (): void => {
       raf = requestAnimationFrame(poll)
       if (fishing.splash) {
@@ -45,6 +47,10 @@ export function FishingBox() {
         fieldScripts.services.sound?.playEffect(SFX.CAST_ROD)
       }
       const s = fishing.state
+      // 입질 「!」가 뜨는 순간 `SEQ_SE_DP_DECIDE` — 찌 효과의 `userInt`가 1일 때 낸다
+      // (`fishing.c:276` → `ov5_021F5A10.c:276`). 트레이너 시선의 「!」는 `userInt` 0이라 무음이다
+      if (biteBegan(was, s?.phase ?? null)) fieldScripts.services.sound?.playEffect(SFX.DECIDE)
+      was = s?.phase ?? null
       if (s === null) {
         if (last !== '') { last = ''; setView(null) }
         return

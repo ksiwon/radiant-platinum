@@ -213,6 +213,19 @@ describe('볼과 도망', () => {
 
   const catchCtx = { caughtBefore: false, inWater: false, darkness: false }
 
+  it('박스로 가는 말은 잡혔을 때만 「잡았다」 뒤에 붙는다', async () => {
+    const { controller } = await wild(101)
+    expect(controller.foeSpeciesNow).toBe(STARLY)
+    const step = await controller.throwBall(Ball.MASTER, {
+      ...catchCtx, transfer: { from: '박스 1', to: '박스 2', bebe: false },
+    })
+    const kinds = step.events.map((e) => e.kind)
+    expect(kinds.indexOf('boxed')).toBe(kinds.indexOf('ball') + 1)
+    const boxed = step.events.find((e) => e.kind === 'boxed')
+    expect(boxed).toMatchObject({ from: '박스 1', to: '박스 2', bebe: false })
+    controller.destroy()
+  })
+
   it('마스터볼은 반드시 잡고 그 자리에서 끝난다', async () => {
     const { controller } = await wild(101)
     const step = await controller.throwBall(Ball.MASTER, catchCtx)

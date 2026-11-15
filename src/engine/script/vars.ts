@@ -164,6 +164,9 @@ const NULL_FLAG = 0
  */
 export const FLAG_HAS_POKEDEX = 144
 
+/** `FLAG_MET_BEBE` — 베베를 만났다. 포획 뒤 박스 글이 「베베의 PC」로 갈린다 (`SystemFlag_CheckMetBebe`). 같은 셈법 */
+export const FLAG_MET_BEBE = 2430
+
 /** 명령 결과가 들어오는 자리. `GoToIfEq VAR_RESULT, ...`가 이걸 본다 */
 export const VAR_RESULT = 0x800c
 /** 방금 말을 건 상대의 local ID */

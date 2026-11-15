@@ -11,7 +11,9 @@
 // ⚠️ **도는 것이 진행 방향이 아니라 몸이다.** 원작은 한 칸을 가는 동안 얼굴만
 // 세 번 돌리고(`ov5_021E11E0`), 진행 방향은 `unk_00`에 따로 든다. 칸이 끝날 때
 // 그 방향을 다시 정한다 — 판 위면 판이, 판 밖이면 한 번 더 돈 값이.
+import { SFX } from '../audio/sfx'
 import { Behavior } from '../map/zone'
+import { pushBikeCue } from './bikeTerrain'
 import { DIR, DIR_STEP } from '../script/movement'
 import type { IceView } from './ice'
 
@@ -137,6 +139,8 @@ export function panelStep(view: PanelView, pos: { x: number, z: number },
     panelSlide.facing = dir
     panelSlide.spun = 0
     aim(view, tx, tz)
+    // 판에 올라선 순간 `SEQ_SE_DP_F209` — 판 하나마다 과제 하나가 서고 그 첫머리에서 낸다 (`ov5_021E11B0`)
+    pushBikeCue(SFX.SLIDE_PANEL)
   }
 
   if (reached(pos)) {
@@ -152,6 +156,8 @@ export function panelStep(view: PanelView, pos: { x: number, z: number },
     panelSlide.facing = dir
     panelSlide.spun = 0
     aim(view, tx, tz)
+    // 다음 칸도 판이면 원작은 거기서 새 과제를 세운다 — 소리도 다시 난다. 판 밖으로 한 칸 더 가는 것은 안 난다
+    if (slideDirOf(here) !== null) pushBikeCue(SFX.SLIDE_PANEL)
   }
 
   // 한 칸을 가는 동안 몸이 세 번 돈다. 얼마나 왔는지로 나눈다

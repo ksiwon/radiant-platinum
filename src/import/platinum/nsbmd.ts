@@ -143,11 +143,15 @@ export function vertexFrom(op: number, params: number[], prev: Vec3): Vec3 {
     case 0x25: return [fx16(signed(v & 0xffff, 16)), fx16(signed(v >>> 16, 16)), prev[2]]
     case 0x26: return [fx16(signed(v & 0xffff, 16)), prev[1], fx16(signed(v >>> 16, 16))]
     case 0x27: return [prev[0], fx16(signed(v & 0xffff, 16)), fx16(signed(v >>> 16, 16))]
-    case 0x28: // VTX_DIFF — 직전 정점에서의 차이. 10비트, 소수 12자리의 1/8
+    // VTX_DIFF — 직전 정점에서의 차이. 10비트 부호 정수를 1.3.12 원시값 그대로 더한다(÷4096).
+    // 나눗수 1024~32768을 두고 땅 청크 666개의 0x28 사각형 3186개가 평행사변형으로 닫히는
+    // 비율을 재면 ÷4096에서만 11.6%로 솟고(÷32768 2.9% · ÷2048 2.5% · ÷512 2.1%),
+    // 이어 그린 삼각형이 가늘게 찌그러지는 비율도 ÷32768 27.6% → ÷4096 0.9%다
+    case 0x28:
       return [
-        prev[0] + signed(v & 0x3ff, 10) / 4096 / 8,
-        prev[1] + signed((v >>> 10) & 0x3ff, 10) / 4096 / 8,
-        prev[2] + signed((v >>> 20) & 0x3ff, 10) / 4096 / 8,
+        prev[0] + signed(v & 0x3ff, 10) / 4096,
+        prev[1] + signed((v >>> 10) & 0x3ff, 10) / 4096,
+        prev[2] + signed((v >>> 20) & 0x3ff, 10) / 4096,
       ]
     default: return prev
   }

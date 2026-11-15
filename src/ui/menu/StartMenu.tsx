@@ -35,6 +35,9 @@ import {
 } from './startMenuEntries'
 import * as own from './startMenu.css'
 
+/** 커서 이동만 `SELECT78`이다 (`start_menu.c:690`). 결정·닫기는 `useMenuKeys`가 일반 소리를 낸다 */
+const START_MENU_MOVE_SFX = 'START_MENU_MOVE'
+
 interface Entry {
   key: StartKey
   label: string
@@ -221,7 +224,7 @@ export function StartMenu() {
     // 연 키(C)로도 닫힌다 — 원작은 연 X 버튼이 B와 같이 닫는 키다
     // (`Menu_New(…, PAD_BUTTON_B | PAD_BUTTON_X)`)
     menu: closeAll,
-  })
+  }, true, START_MENU_MOVE_SFX)
 
   /**
    * ⚠️ **글이 오기 전에는 판을 안 그린다.** 빈 줄과 ▶만 있는 판이 바쁜 맵에서 몇 프레임 떴다

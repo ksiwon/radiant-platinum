@@ -210,6 +210,12 @@ export interface PendingWarp {
    */
   viaDoor: boolean
   /**
+   * 드나든 문의 워프 칸. 소리가 문 종류로 갈리는데(`engine/audio/doorSound`) 종류는 그 칸 둘레의
+   * 소품 모델이 정한다 — 원작도 가로 3칸 상자 안에서 문 모델을 찾는다 (`ov5_021D431C.c`의
+   * `TerrainCollisionHitbox_Init(…, -1, -1, 3, 1, …)`)
+   */
+  doorTile?: { x: number, z: number }
+  /**
    * 도착 높이를 이쪽이 정한다. 없으면 격자의 바닥에 선다.
    *
    * 깨어진 세계의 승강 발판만 쓴다 — 층이 바뀌는 순간에도 발판은 허공을
@@ -584,6 +590,34 @@ export function talkTile(
   return { x: front.x + step.x, z: front.z + step.z }
 }
 
+/** 몸이 칸 가운데에서 이만큼(칸 단위) 옆으로 치우치면 옆 칸 사람에게도 몸이 걸친 것이다 */
+const SIDE_TALK_OFFSET = 0.25
+
+/**
+ * 앞 칸이 비었을 때 **같이 살펴볼 옆 칸.** 걷는 선에 수직인 쪽으로 몸이 `SIDE_TALK_OFFSET` 넘게 치우쳤을 때만 있다.
+ *
+ * 원작은 칸 이동이라 몸이 두 칸에 걸치는 일이 없다. 우리는 자유 이동이라 주인공 가운데가 5.99에 서면 칸 번호는 5인데 몸은
+ * 6의 사람 바로 옆이다 — 앞 칸(5)만 보면 눈앞에 선 사람에게 A를 눌러도 말이 안 걸린다.
+ *
+ * 앞 칸이 막혔으면(벽 · 가구) 없다 — 벽 너머로 손이 닿으면 안 된다. 옆 칸이 계산대여도 없다(그 너머로 닿는 것은 `talkTile`의 몫이고
+ * 대각선으로는 안 닿는다)
+ */
+export function sideTalkTile(
+  grid: { behavior(tx: number, tz: number): number; isBlocked(tx: number, tz: number): boolean },
+  pos: { x: number; z: number },
+  front: { x: number; z: number },
+  step: { x: number; z: number },
+): { x: number; z: number } | null {
+  const lateral = step.x !== 0 ? pos.z : pos.x
+  const off = lateral - Math.floor(lateral) - 0.5
+  if (Math.abs(off) < SIDE_TALK_OFFSET) return null
+  if (grid.isBlocked(front.x, front.z)) return null
+  const dir = off < 0 ? -1 : 1
+  const side = step.x !== 0 ? { x: front.x, z: front.z + dir } : { x: front.x + dir, z: front.z }
+  if (grid.behavior(side.x, side.z) === TILE_BEHAVIOR_TABLE) return null
+  return side
+}
+
 /**
  * 문에서 나온 자리를 한 칸 아래로 옮긴다.
  *
@@ -784,6 +818,7 @@ export const warpSystem = {
     if (!target) return
     // 도착한 워프가 특별한 자리로 미루는 문이면 **여기가** 그 자리다 (`Field_SetMapConnection`)
     const taken = door ?? here!
+    if (target.viaDoor) target.doorTile = { x: taken.x, z: taken.z }
     const arrival = taken.to === DYNAMIC_WARP_MAP ? undefined : warpsOf(taken.to)[taken.anchor]
     if (arrival?.to === DYNAMIC_WARP_MAP) {
       Object.assign(specialLocation, { map: world.mapId, warp: warps.indexOf(taken), x: taken.x, z: taken.z })

@@ -943,6 +943,14 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       return rom(ctx, MSG.ohNoThePokemonBrokeFree + Math.min(Math.max(e.shakes, 0), 3))
     }
 
+    case 'boxed': {
+      // 이름은 맨 이름이다 — 이 줄에는 「야생 」이 없다. 베베를 만났으면 줄이 하나 뒤다 (`GetMetBebe`)
+      const nick = ctx.bare?.(e.actor.name) ?? ctx.label(e.actor)
+      const bebe = e.bebe ? 1 : 0
+      if (e.to === null) return rom(ctx, MSG.pokemonWasTransferredToBoxInSomeonesPC + bebe, nick, e.from)
+      return rom(ctx, MSG.boxInSomeonesPCIsFullPokemonWasTransferredToOtherBoxInstead + bebe, nick, e.from, e.to)
+    }
+
     case 'escape':
       // 배회 포켓몬이 달아난 자리 (PARITY §6.3). 우리가 도망친 것과 글이 다르다.
       // 이 줄도 「야생 」이 문장에 박혀 있어 맨 이름을 넣는다

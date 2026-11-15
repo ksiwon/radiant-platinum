@@ -60,7 +60,9 @@ import { music } from '../../engine/audio/music'
 import { SFX } from '../../engine/audio/sfx'
 import { fieldBgm } from '../../engine/audio/songs'
 import { useEvolutionStore } from '../../state/evolutionStore'
-import { addRecord, RECORD_POKEMON_EVOLVED } from '../../engine/world/gameRecords'
+import {
+  addRecord, addTrainerScore, RECORD_POKEMON_EVOLVED, SCORE_CAUGHT_SPECIES,
+} from '../../engine/world/gameRecords'
 import { useMenuStore } from '../../state/menuStore'
 import { useCinematicStore, type MonVisual } from '../../state/cinematicStore'
 import { useGameLocale } from '../../state/optionsStore'
@@ -372,8 +374,14 @@ export function EvolutionScreen() {
         })
       }
 
-      // 진화시킨 수 (PARITY §7.5)
-      useSaveStore.setState({ party, records: addRecord(store.records, RECORD_POKEMON_EVOLVED, 1) })
+      // 진화시킨 수 (PARITY §7.5)와 스코어. **새 종이든 아니든 +20이다** — 진화 로그 단계(`evolution.c` 450)와
+      // 껍질몬을 만든 자리(`evolution.c` 774-776)가 각각 `TRAINER_SCORE_EVENT_CAUGHT_SPECIES`를 건다.
+      // 껍질몬도 진화시킨 수에 한 번 더 센다
+      let records = addTrainerScore(addRecord(store.records, RECORD_POKEMON_EVOLVED, 1), SCORE_CAUGHT_SPECIES)
+      if (shedinja) {
+        records = addTrainerScore(addRecord(records, RECORD_POKEMON_EVOLVED, 1), SCORE_CAUGHT_SPECIES)
+      }
+      useSaveStore.setState({ party, records })
       if (shedinja) {
         store.removeItem(ballPocket, ITEM_POKE_BALL, 1)
         store.markSeen(SPECIES_SHEDINJA)

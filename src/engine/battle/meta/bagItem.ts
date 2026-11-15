@@ -131,6 +131,15 @@ function num(item: Item, key: string): number {
 }
 
 /**
+ * 체력·상태·PP를 되돌리는 쓰임인가. 이런 쓰임만 쓰는 순간 `SEQ_SE_DP_KAIFUKU`가 난다
+ * (`battle_party.c:948·1004`). 능력치를 올리는 배틀용 도구(`boosts`·`focusEnergy`·`mist`)는
+ * 파티 화면을 안 거치고 기술 연출이 소리를 맡는다
+ */
+export function restoresMember(plan: ItemPlan): boolean {
+  return plan.heal > 0 || plan.revive || plan.cure.length > 0 || plan.clear.length > 0 || plan.pp.length > 0
+}
+
+/**
  * 이 도구는 파티에서 **누구를 먹일지 골라야 하는가**.
  *
  * 원작 배틀 가방은 주머니로 가른다 (`battle_bag.c`의 `TryUseItem`) — 배틀용은

@@ -9,8 +9,10 @@ import {
   addRecord, addTrainerScore, MAX_RECORDS, MAX_TRAINER_SCORE_EVENTS, newGameRecords,
   RANKED_RECORDS, RECORD_CAUGHT_POKEMON, RECORD_STEPS, RECORD_TIMES_STUCK_IN_DEEP_MUD, RECORD_TRAINER_SCORE,
   rankedValue, recordLimit, recordValue,
-  SCORE_BADGE_EARNED, SCORE_HALL_OF_FAME_ENTRY, SCORE_WON_WILD_BATTLE,
+  RECORD_TIMES_MAIL_WRITTEN, SCORE_BADGE_EARNED, SCORE_BERRY_HARVESTED, SCORE_CAUGHT_SPECIES,
+  SCORE_HALL_OF_FAME_ENTRY, SCORE_MAIL_WRITTEN, SCORE_WON_WILD_BATTLE,
 } from './gameRecords'
+import { FLAG_MET_BEBE } from '../script/vars'
 import {
   HIGH_LIMIT_U16, HIGH_LIMIT_U32, LOW_LIMIT_U16, LOW_LIMIT_U32, NUM_U32_RECORDS,
   TRAINER_SCORE_INCREMENT, USES_HIGH_LIMIT,
@@ -112,5 +114,36 @@ withDecomp('generated/game_records.txt')('원작 번호와 맞대기', () => {
     r = addRecord(r, RECORD_TIMES_STUCK_IN_DEEP_MUD)
     r = addRecord(r, RECORD_TIMES_STUCK_IN_DEEP_MUD)
     expect(recordValue(r, RECORD_TIMES_STUCK_IN_DEEP_MUD)).toBe(2)
+  })
+})
+
+withDecomp('generated/game_records.txt', 'src/game_records.c', 'generated/vars_flags.txt')('스코어 사건 · 기록 번호 — 원문과 맞대기', () => {
+  const raw = (at: string): string => readFileSync(resolve(__dirname, '../../../raw/decomp', at), 'utf8')
+
+  it('스코어 사건 번호가 `sTrainerScoreIncrements`의 줄 순서와 같다', () => {
+    const events = [...raw('src/game_records.c').matchAll(/\[(TRAINER_SCORE_EVENT_\w+)\] = (\d+),/g)]
+    const at = (name: string): number => events.findIndex((m) => m[1] === name)
+    expect(at('TRAINER_SCORE_EVENT_BERRY_HARVESTED')).toBe(SCORE_BERRY_HARVESTED)
+    expect(at('TRAINER_SCORE_EVENT_MAIL_WRITTEN')).toBe(SCORE_MAIL_WRITTEN)
+    expect(at('TRAINER_SCORE_EVENT_CAUGHT_SPECIES')).toBe(SCORE_CAUGHT_SPECIES)
+    events.forEach((m, i) => { expect(TRAINER_SCORE_INCREMENT[i], m[1]).toBe(Number(m[2])) })
+  })
+
+  it('편지를 쓴 횟수 칸이 원작 표의 그 자리다', () => {
+    const names = raw('generated/game_records.txt').split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== '')
+    expect(names.indexOf('RECORD_TIMES_MAIL_WRITTEN')).toBe(RECORD_TIMES_MAIL_WRITTEN)
+  })
+
+  it('`=` 줄을 세지 않고 이름만 있는 줄을 센 번호가 `FLAG_MET_BEBE`다', () => {
+    const names = raw('generated/vars_flags.txt').split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== '' && !l.includes('='))
+    expect(names.indexOf('FLAG_MET_BEBE')).toBe(FLAG_MET_BEBE)
+  })
+})
+
+describe('새로 거는 스코어', () => {
+  it('열매 · 편지는 1, 새 종은 20이 오른다', () => {
+    expect(recordValue(addTrainerScore(newGameRecords(), SCORE_BERRY_HARVESTED), RECORD_TRAINER_SCORE)).toBe(1)
+    expect(recordValue(addTrainerScore(newGameRecords(), SCORE_MAIL_WRITTEN), RECORD_TRAINER_SCORE)).toBe(1)
+    expect(recordValue(addTrainerScore(newGameRecords(), SCORE_CAUGHT_SPECIES), RECORD_TRAINER_SCORE)).toBe(20)
   })
 })

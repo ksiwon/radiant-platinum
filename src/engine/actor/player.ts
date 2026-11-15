@@ -81,7 +81,7 @@ function bikeAtTopSpeed(): boolean {
   return p.cycling && bikeSpeedLevel(p.pedalling, p.bikeGear) === TOP_LEVEL
 }
 /** 캐릭터 반지름(타일 단위). 벽에 얼굴이 박히지 않게 여유를 둔다 */
-const RADIUS = 0.3
+export const RADIUS = 0.3
 /**
  * 모서리 보정이 옆으로 끌어 주는 가장 먼 거리 (타일).
  *
