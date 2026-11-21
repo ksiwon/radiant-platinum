@@ -85,6 +85,19 @@ export function setFxDebugView(v: string): void {
   debugView = v
 }
 
+/**
+ * 깊이 페이드가 읽는 장면 깊이 — **모든 재질이 이 노드 하나를 나눠 쓴다.**
+ *
+ * ⚠️ **재질마다 `viewportDepthTexture()`를 부르면 화면 크기 깊이 텍스처가 재질 수만큼 생기고 안 놓인다.** three(0.185)의
+ * `ViewportTextureNode`는 노드마다 렌더 타깃별 사본(`_cacheTextures` — 공유 깊이 텍스처의 `clone()`)을 들고, 재질은 이펙트 슬롯마다
+ * 캐시에 남으므로(`BdspEffect`의 `materials`) 사본도 세션 내내 남는다. 그리고 그 노드마다 그려지는 렌더마다 깊이를 한 번씩 복사한다.
+ * 실측(2026-11-21 · WebGPU 960×640 · 꽃향기마을에서 배틀 12판): 렌더러가 올리고 안 놓은 `DepthTexture 960×640`이 6판 뒤 133장 · 12판 뒤
+ * 244장 — 판마다 약 20장 · 장당 2.4MB다. 화면이 크면 장마다 그만큼 커진다(1920×1080이면 8MB). 꽃향기의 꽃밭 조무래기 둘을 지난 뒤로
+ * 맵이든 배틀이든 프레임이 무너진다는 제보(2026-11-21)와 맞는 쌓임이다 — 제보한 기계에서 잰 것은 아니다. 노드 하나면 사본도 렌더 타깃마다 한 장 · 복사도 렌더마다 한 번이다.
+ * 색 버퍼 왜곡의 `viewportSharedTexture`는 이 문제가 없다 — 사본 없이 모듈의 한 장을 돌려준다
+ */
+const SCENE_DEPTH = viewportDepthTexture()
+
 /** 안 옮긴 기능을 기능마다 한 번만 알린다 */
 function noteTodo(spec: FxMaterialSpec): void {
   for (const t of spec.todo) {
@@ -293,7 +306,7 @@ export function buildFxMaterial(spec: FxMaterialSpec, maps: readonly Texture[], 
     }
     // 깊이 페이드 — 장면 깊이가 입자 깊이보다 `near` 넘게 뒤에 있어야 온전히 선다
     if (FX_SCREEN && spec.soft) {
-      const sceneZ = perspectiveDepthToViewZ(viewportDepthTexture().r, cameraNear, cameraFar)
+      const sceneZ = perspectiveDepthToViewZ(SCENE_DEPTH.r, cameraNear, cameraFar)
       alpha = alpha.mul(saturate(vView.z.sub(sceneZ).sub(softNear).mul(softScale)))
     }
     // 색 버퍼 왜곡 — 그림의 RG(0.5 중심)만큼 화면 UV를 밀어 지금까지 그려진 화면을 다시 읽는다. 섞기는 평소 알파 섞기다

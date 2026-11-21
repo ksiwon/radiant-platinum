@@ -155,6 +155,27 @@ function bodyInside(actor: NpcActor, x: number, z: number): boolean {
 const FLOOR_GAP = 2
 
 /**
+ * 그 사람이 **다른 층**에 서 있는가 — 막기(`sub_02063F00`의 `|objY − y| < 2`) · 말 걸기(`sub_0203C9B0`의 높이 같음) ·
+ * 시선(`IsPathInterrupted`의 마지막 칸이 「사람뿐」)이 원작에서 다 층을 본다.
+ *
+ * ⚠️ **그 사람의 바닥은 그 사람의 배치 높이에 가까운 판으로 읽는다.** 그리는 쪽(`scene/NpcModels`의 `groundYAt`)이
+ * 그렇게 세운다. 주인공 높이에 가까운 판으로 읽으면 다리처럼 판이 겹친 칸에서 **위에 선 사람의 바닥이 밑의 땅으로**
+ * 읽혀 같은 층이 된다 — 206번도로 자전거로드(높이 8.75) 위의 사이클리스트 Megan이 그 밑 땅(높이 1)의 미혹의 동굴 숨은
+ * 입구 워프 칸 (299, 611)을 막고, A를 누르면 그녀에게 말이 걸려 동굴에 못 들어갔다(2026-11-21 실측). 판이 하나뿐인 칸은
+ * 어느 쪽으로 읽어도 같다.
+ *
+ * 깨어진 세계 판 위는 여기로 안 온다 — 판 높이로 가르는 `solidNpcAtHeight`가 따로 있다. 격자가 없으면 모른다(거짓)
+ *
+ * @param y 주인공이 선 높이
+ */
+export function onOtherFloor(actor: NpcActor, y: number): boolean {
+  const grid = activeZone.grid
+  if (grid === null) return false
+  const ground = grid.heightAtWorld(actor.x + 0.5, actor.z + 0.5, actor.y)
+  return ground !== null && Math.abs(ground - y) >= FLOOR_GAP
+}
+
+/**
  * 사람이 아니라 **물건**인 그림 번호 — 칸 전체를 막는다.
  *
  * 원작의 렌더러 표(`ov5_021FAF40.c`)에서 사람 렌더러(`Unk_ov5_021FAFD8`)가 아닌
@@ -230,10 +251,9 @@ export function solidNpcAt(cx: number, cz: number, y: number): NpcActor | null {
       // 사람은 늘 다리 **위**로 친다 (`actor/ambient`의 `terrainBlocks`)
       if (isBridgeOverWater(grid.behaviorAtWorld(actor.x + 0.5, actor.z + 0.5))
         && !onElevatedBridge()) continue
-      // 깨어진 세계처럼 층이 겹치는 자리 — 발밑이 멀면 다른 층이다
-      const ground = grid.heightAtWorld(actor.x + 0.5, actor.z + 0.5, y)
-      if (ground !== null && Math.abs(ground - y) >= FLOOR_GAP) continue
     }
+    // 땅 위 다리(자전거로드)처럼 층이 겹치는 자리 — 그 사람의 발밑이 멀면 다른 층이다
+    if (onOtherFloor(actor, y)) continue
     return actor
   }
   return null

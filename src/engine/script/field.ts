@@ -41,7 +41,7 @@ import {
   VAR_GIVE_COUNT, VAR_GIVE_ITEM,
 } from './siwonScene'
 import { SIWON_CAMEO_MAP, SIWON_SCRIPT } from '../world/siwonPlace'
-import { obstacleAt } from '../actor/obstacles'
+import { obstacleAt, onOtherFloor } from '../actor/obstacles'
 import { HIDDEN_ITEMS } from '../world/hiddenItemTable'
 import { HOP_RISE, HOP_TIME } from '../actor/ledge'
 import { OVERWORLD_WEATHER, overworldWeather } from '../world/overworldWeather'
@@ -1327,9 +1327,11 @@ export function tileInFront(x: number, z: number, facing: number): { x: number, 
  * 보면 스크립트가 걸어 옮긴 사람에게는 원래 자리에서만 말이 걸리고, 정작 지금
  * 서 있는 자리에서는 안 걸린다.
  *
- * ⚠️ 층 비교(`sub_0203C9B0`)는 **아직 못 옮겼다.** 배치표의 `height`는 층 번호가
- * 아니라 타일 높이라(실측: 같은 체육관에서 0·10·20이 섞여 나온다) 주인공의
- * 층과 곧바로 견줄 수가 없다. 겹친 판에서 아래층 사람에게 말이 걸릴 수 있다.
+ * ⚠️ **다른 층 사람에게는 말이 안 걸린다** (`sub_0203C9B0` — 주인공과 그 사람의 높이가 같아야 한다). `stand`를
+ * 주면 그 사람의 바닥을 그 사람의 판으로 읽어 견준다(`actor/obstacles`의 `onOtherFloor` — 막기와 같은 잣대).
+ * 배치표의 `height`를 주인공 높이와 곧바로 빼지는 않는다 — 같은 체육관에서 0·10·20이 섞여 나오는 값이라
+ * 판을 고르는 단서로만 쓴다. 206번도로 자전거로드 밑에서 동굴 입구를 보고 A를 누르면 다리 위 사이클리스트의
+ * 대사가 떴다(2026-11-21).
  *
  * 플래그가 **서 있으면 숨은 것**이라는 규칙은 `spawnNpcs`가 이미 적용했다.
  */
@@ -1342,12 +1344,15 @@ export function npcAt(
    * 벽에서는 앞뒤가 오르내림이라 x·z만 보면 같은 기둥의 딴 높이 사람에게 말이 걸린다
    */
   y?: number,
+  /** 주인공이 선 높이 — 주면 다른 층 사람을 건너뛴다. 깨어진 세계(`y`를 줄 때)는 `y`가 가른다 */
+  stand?: number,
 ): Npc | null {
   // 세워 둔 것이 **이 맵의 것일 때만** 쓴다. 아직 안 세웠으면 배치표로 떨어진다
   if (npcActors.mapId === mapId) {
     for (const actor of npcActors.list) {
       if (!actor.visible) continue
       if (y !== undefined && Math.round(actor.y) !== y) continue
+      if (y === undefined && stand !== undefined && onOtherFloor(actor, stand)) continue
       if (Math.round(actor.x) === x && Math.round(actor.z) === z) return actor.info
     }
     return null
@@ -1400,7 +1405,7 @@ function tryTalk(): void {
     ? talkTile(grid, front, FACING_STEP[quarterOf(p.facing)]!)
     : front
 
-  const npc = npcAt(mapWorld.mapId, reach.x, reach.z, vars, front.y)
+  const npc = npcAt(mapWorld.mapId, reach.x, reach.z, vars, front.y, p.position.y)
   if (npc && npc.script !== NO_SCRIPT) {
     // 우리가 얹은 사람은 롬 스크립트가 없다 (SIWON.md). 번호가 표시일 뿐이라
     // `start()`에 넘기면 엉뚱한 자리를 밟는다
@@ -1440,7 +1445,7 @@ function trySideTalk(front: { x: number; z: number; y?: number }, mapFile: numbe
   const side = sideTalkTile(grid, p.position, front, FACING_STEP[q]!)
   if (side === null) return false
   const vars = fieldScripts.vars
-  const npc = npcAt(mapWorld.mapId, side.x, side.z, vars, front.y)
+  const npc = npcAt(mapWorld.mapId, side.x, side.z, vars, front.y, p.position.y)
   if (npc && npc.script !== NO_SCRIPT && npc.script !== SIWON_SCRIPT) {
     const id = npc.trainerType === TRAINER_TYPE_NO_TALK ? 0 : npc.script
     return start(id, mapFile, npc.localID)
@@ -2156,7 +2161,9 @@ function sightAt(
     // 유형은 걸어 다니므로 처음 섰던 자리에 없다 — 217번도로 아홉 중 넷이
     // 30칸 넘게 떠나 있었고, 그 넷은 배치표 자리에서 허공을 보고 있었다.
     // 칸 사이를 걷는 중이면 반올림한다(`ambient`의 `partnerTile`과 같은 규약)
-    npcActors.list.map((a) => ({
+    // ⚠️ **다른 층의 트레이너는 못 본다** — 원작 시선은 마지막 칸에서 「사람만 막는다」(`sub_02063F00`의 `|Δy| < 2`)를
+    // 요구한다. 판을 주인공 높이로 고르는 아래 `heightAt`만으로는 자전거로드 위 사이클리스트가 다리 밑 땅의 주인공을 봤다
+    npcActors.list.filter((a) => !onOtherFloor(a, p.y)).map((a) => ({
       npc: a.info, x: Math.round(a.x), z: Math.round(a.z), facing: a.dir,
     })),
     x, z,
@@ -2165,7 +2172,7 @@ function sightAt(
       blocked: (bx, bz) => grid.isBlocked(bx, bz)
         || obstacleAt(bx, bz) !== null
         || npcActors.list.some((a) =>
-          a.visible && Math.round(a.x) === bx && Math.round(a.z) === bz),
+          a.visible && Math.round(a.x) === bx && Math.round(a.z) === bz && !onOtherFloor(a, p.y)),
       // ⚠️ **판을 고르는 단서는 주인공의 지금 높이다** — 다리와 그 밑처럼
       // 판이 겹치는 자리에서 어느 층을 읽을지 가른다. 씬이 층을 세는 자리도
       // 같은 값이다 (`MapStreamer`의 `Math.round(p.y)`).
